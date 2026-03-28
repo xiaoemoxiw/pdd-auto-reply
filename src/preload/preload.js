@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiGetSessions: (params) => ipcRenderer.invoke('api-get-sessions', params),
   apiGetMessages: (params) => ipcRenderer.invoke('api-get-messages', params),
   apiSendMessage: (params) => ipcRenderer.invoke('api-send-message', params),
+  apiMarkLatestConversations: (params) => ipcRenderer.invoke('api-mark-latest-conversations', params),
   apiStartPolling: (params) => ipcRenderer.invoke('api-start-polling', params),
   apiStopPolling: (params) => ipcRenderer.invoke('api-stop-polling', params),
   getApiTraffic: (params) => ipcRenderer.invoke('get-api-traffic', params),

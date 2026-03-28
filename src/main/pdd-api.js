@@ -1,4 +1,5 @@
 const { BrowserWindow, session } = require('electron');
+const crypto = require('crypto');
 const { EventEmitter } = require('events');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
@@ -64,6 +65,15 @@ class PddApiClient extends EventEmitter {
     }
   }
 
+  _cloneJson(value) {
+    if (!value || typeof value !== 'object') return value;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return value;
+    }
+  }
+
   _getLatestAntiContent() {
     const urlParts = [
       '/plateau/chat/list',
@@ -88,6 +98,17 @@ class PddApiClient extends EventEmitter {
     const body = entry?.responseBody;
     if (body && typeof body === 'object') return body;
     return null;
+  }
+
+  _randomHex(length = 32) {
+    return crypto.randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+  }
+
+  _buildMessageHash(sessionId, text, ts, random) {
+    return crypto
+      .createHash('md5')
+      .update(`${sessionId}|${text}|${ts}|${random}`)
+      .digest('hex');
   }
 
   _nextRequestId() {
@@ -320,14 +341,6 @@ class PddApiClient extends EventEmitter {
       await this.initSession();
     }
 
-    const cachedPayload = this._getLatestResponseBody('/plateau/chat/latest_conversations');
-    const cachedSessions = this._parseSessionList(cachedPayload);
-    if (cachedSessions.length > 0) {
-      this._sessionCache = cachedSessions;
-      this._log('[API] 使用页面抓取的 latest_conversations 缓存');
-      return cachedSessions;
-    }
-
     const latestTraffic = this._findLatestTraffic('/plateau/chat/latest_conversations');
     const templateBody = this._safeParseJson(latestTraffic?.requestBody);
     const antiContent = templateBody?.anti_content || this._getLatestAntiContent();
@@ -354,11 +367,21 @@ class PddApiClient extends EventEmitter {
           client: 'WEB',
           anti_content: antiContent,
         };
-    const payload = await this._post('/plateau/chat/latest_conversations', requestBody);
-
-    const sessions = this._parseSessionList(payload);
-    this._sessionCache = sessions;
-    return sessions;
+    try {
+      const payload = await this._post('/plateau/chat/latest_conversations', requestBody);
+      const sessions = this._parseSessionList(payload);
+      this._sessionCache = sessions;
+      return sessions;
+    } catch (error) {
+      const cachedPayload = this._getLatestResponseBody('/plateau/chat/latest_conversations');
+      const cachedSessions = this._parseSessionList(cachedPayload);
+      if (cachedSessions.length > 0) {
+        this._sessionCache = cachedSessions;
+        this._log('[API] latest_conversations 直调失败，回退页面抓取缓存', { message: error.message });
+        return cachedSessions;
+      }
+      throw error;
+    }
   }
 
   _isBuyerMessage(item) {
@@ -396,16 +419,6 @@ class PddApiClient extends EventEmitter {
   async getSessionMessages(sessionId, page = 1, pageSize = 30) {
     if (!this._sessionInited) {
       await this.initSession();
-    }
-
-    const cachedPayload = this._getLatestResponseBody('/plateau/chat/list');
-    const cachedRequest = this._safeParseJson(this._findLatestTraffic('/plateau/chat/list')?.requestBody);
-    if (cachedPayload && String(cachedRequest?.data?.list?.with?.id || '') === String(sessionId)) {
-      const cachedMessages = this._parseMessages(cachedPayload);
-      if (cachedMessages.length > 0) {
-        this._log('[API] 使用页面抓取的 chat/list 缓存');
-        return cachedMessages;
-      }
     }
 
     const latestTraffic = this._findLatestTraffic('/plateau/chat/list');
@@ -447,22 +460,131 @@ class PddApiClient extends EventEmitter {
           client: 'WEB',
           anti_content: antiContent,
         };
-    const payload = await this._post('/plateau/chat/list', requestBody);
+    try {
+      const payload = await this._post('/plateau/chat/list', requestBody);
+      return this._parseMessages(payload);
+    } catch (error) {
+      const cachedPayload = this._getLatestResponseBody('/plateau/chat/list');
+      const cachedRequest = this._safeParseJson(this._findLatestTraffic('/plateau/chat/list')?.requestBody);
+      if (cachedPayload && String(cachedRequest?.data?.list?.with?.id || '') === String(sessionId)) {
+        const cachedMessages = this._parseMessages(cachedPayload);
+        if (cachedMessages.length > 0) {
+          this._log('[API] chat/list 直调失败，回退页面抓取缓存', { message: error.message });
+          return cachedMessages;
+        }
+      }
+      throw error;
+    }
+  }
 
-    return this._parseMessages(payload);
+  _buildSendMessageBody(sessionId, text) {
+    const latestTraffic = this._findLatestTraffic('/plateau/chat/send_message');
+    const templateBody = this._safeParseJson(latestTraffic?.requestBody);
+    const antiContent = templateBody?.anti_content || this._getLatestAntiContent();
+    const requestId = this._nextRequestId();
+    const ts = Math.floor(Date.now() / 1000);
+    const random = this._randomHex(32);
+    const hash = this._buildMessageHash(sessionId, text, ts, random);
+
+    if (templateBody) {
+      const body = this._cloneJson(templateBody);
+      body.data = body.data || {};
+      body.data.request_id = requestId;
+      body.data.cmd = body.data.cmd || 'send_message';
+      body.data.random = random;
+      body.data.anti_content = body.data.anti_content || antiContent;
+      body.data.message = {
+        ...(body.data.message || {}),
+        to: {
+          ...((body.data.message && body.data.message.to) || {}),
+          role: body.data.message?.to?.role || 'user',
+          uid: String(sessionId),
+        },
+        from: {
+          ...((body.data.message && body.data.message.from) || {}),
+          role: body.data.message?.from?.role || 'mall_cs',
+        },
+        ts,
+        content: text,
+        msg_id: null,
+        type: body.data.message?.type ?? 0,
+        is_aut: 0,
+        manual_reply: 1,
+        status: body.data.message?.status || 'read',
+        is_read: body.data.message?.is_read ?? 1,
+        hash,
+      };
+      body.client = body.client || 'WEB';
+      body.anti_content = body.anti_content || antiContent;
+      return body;
+    }
+
+    return {
+      data: {
+        cmd: 'send_message',
+        anti_content: antiContent,
+        request_id: requestId,
+        message: {
+          to: { role: 'user', uid: String(sessionId) },
+          from: { role: 'mall_cs' },
+          ts,
+          content: text,
+          msg_id: null,
+          type: 0,
+          is_aut: 0,
+          manual_reply: 1,
+          status: 'read',
+          is_read: 1,
+          hash,
+        },
+        random,
+      },
+      client: 'WEB',
+      anti_content: antiContent,
+    };
   }
 
   async sendMessage(sessionId, text) {
-    const payload = await this._post('/plateau/chat/send', {
-      sessionId,
-      mallId: this._getMallId(),
-      content: text,
-      msgType: 1,
-    });
+    if (!this._sessionInited) {
+      await this.initSession();
+    }
+
+    const payload = await this._post('/plateau/chat/send_message', this._buildSendMessageBody(sessionId, text));
 
     const result = { sessionId, text, response: payload };
     this.emit('messageSent', result);
     return result;
+  }
+
+  async markLatestConversations(size = 100) {
+    if (!this._sessionInited) {
+      await this.initSession();
+    }
+
+    const latestTraffic = this._findLatestTraffic('/plateau/chat/marked_lastest_conversations');
+    const templateBody = this._safeParseJson(latestTraffic?.requestBody);
+    const antiContent = templateBody?.anti_content || this._getLatestAntiContent();
+    const requestBody = templateBody
+      ? {
+          ...this._cloneJson(templateBody),
+          data: {
+            ...(templateBody.data || {}),
+            request_id: this._nextRequestId(),
+            size,
+          },
+        }
+      : {
+          data: {
+            cmd: 'marked_lastest_conversations',
+            request_id: this._nextRequestId(),
+            size,
+            anti_content: antiContent,
+          },
+          client: 'WEB',
+          anti_content: antiContent,
+        };
+
+    return this._post('/plateau/chat/marked_lastest_conversations', requestBody);
   }
 
   async testConnection() {

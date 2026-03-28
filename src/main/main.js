@@ -787,6 +787,16 @@ ipcMain.handle('api-send-message', async (event, params = {}) => {
   }
 });
 
+ipcMain.handle('api-mark-latest-conversations', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  try {
+    return await getApiClient(shopId).markLatestConversations(params.size || 100);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('api-start-polling', (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有可用店铺' };

@@ -12,15 +12,19 @@ class NetworkMonitor {
     this.onLog = options.onLog || (() => {});
     this.onMessage = options.onMessage || (() => {});
     this.onCustomerMessage = options.onCustomerMessage || null;
+    this.onApiTraffic = options.onApiTraffic || (() => {});
     // 启动后的宽限期：前 N 秒内提取的消息视为历史消息，不触发回复
     this._startTime = Date.now();
     this._warmupMs = options.warmupMs || 10000;
     // 已见消息去重（避免轮询接口重复触发）
     this._seenMessages = new Set();
+    this._requestMap = new Map();
+    this._webSocketMap = new Map();
 
     // 需要捕获响应体的 URL 关键词（从 DevTools 截图中识别的关键接口）
     this.capturePatterns = [
       '/plateau/',    // PDD 客服平台核心 API（含 sync/message, chat/list 等）
+      '/chats/',
       'message',
       'chat',
       'im/',
@@ -74,8 +78,20 @@ class NetworkMonitor {
     });
 
     this.debugger.on('message', (_, method, params) => {
+      if (method === 'Network.requestWillBeSent') {
+        this._handleRequest(params);
+      }
       if (method === 'Network.responseReceived') {
         this._handleResponse(params);
+      }
+      if (method === 'Network.webSocketCreated') {
+        this._handleWebSocketCreated(params);
+      }
+      if (method === 'Network.webSocketFrameSent') {
+        this._handleWebSocketFrame('sent', params);
+      }
+      if (method === 'Network.webSocketFrameReceived') {
+        this._handleWebSocketFrame('received', params);
       }
     });
 
@@ -94,6 +110,123 @@ class NetworkMonitor {
   _shouldCapture(url) {
     if (this.excludePatterns.some(p => url.includes(p))) return false;
     return this.capturePatterns.some(p => url.includes(p));
+  }
+
+  _summarizeHeaders(headers) {
+    if (!headers || typeof headers !== 'object') return {};
+    const picked = {};
+    const allowList = [
+      'content-type', 'Content-Type',
+      'x-pdd-token', 'X-PDD-Token',
+      'windows-app-shop-token',
+      'pddid',
+      'etag',
+      'verifyauthtoken', 'VerifyAuthToken',
+      'referer', 'Referer',
+      'origin', 'Origin'
+    ];
+    for (const [key, value] of Object.entries(headers)) {
+      if (allowList.includes(key)) {
+        picked[key] = value;
+      }
+    }
+    return picked;
+  }
+
+  _sanitizePostData(postData) {
+    if (!postData) return '';
+    return String(postData).slice(0, 4000);
+  }
+
+  _sanitizeFrameData(payloadData) {
+    if (!payloadData) return '';
+    return String(payloadData).slice(0, 4000);
+  }
+
+  _isWebSocketCaptureUrl(url) {
+    return /pinduoduo\.com|m-ws\.pinduoduo\.com/.test(String(url || ''));
+  }
+
+  _handleRequest(params) {
+    const { requestId, request, initiator, type } = params;
+    const { url, method, headers, postData } = request || {};
+    if (!url || !this._shouldCapture(url)) return;
+
+    let shortUrl;
+    try {
+      const parsed = new URL(url);
+      shortUrl = parsed.pathname + parsed.search;
+    } catch {
+      shortUrl = url;
+    }
+
+    this._requestMap.set(requestId, {
+      requestId,
+      timestamp: Date.now(),
+      url: shortUrl,
+      fullUrl: url,
+      method: method || 'GET',
+      requestHeaders: this._summarizeHeaders(headers),
+      requestBody: this._sanitizePostData(postData),
+      initiator: initiator?.type || '',
+      resourceType: type || '',
+    });
+  }
+
+  _handleWebSocketCreated(params) {
+    const { requestId, url } = params || {};
+    if (!requestId || !this._isWebSocketCaptureUrl(url)) return;
+    this._webSocketMap.set(requestId, { url, createdAt: Date.now() });
+    this.onApiTraffic({
+      type: 'websocket-created',
+      requestId,
+      timestamp: Date.now(),
+      url,
+      fullUrl: url,
+      method: 'WS',
+      requestHeaders: {},
+      requestBody: '',
+      initiator: 'websocket',
+      resourceType: 'WebSocket',
+      status: 101,
+      mimeType: 'websocket',
+      responseHeaders: {},
+      responseBody: '',
+      isJson: false,
+    });
+  }
+
+  _handleWebSocketFrame(direction, params) {
+    const { requestId, response, timestamp } = params || {};
+    const socketInfo = this._webSocketMap.get(requestId);
+    if (!socketInfo) return;
+
+    const payloadData = this._sanitizeFrameData(response?.payloadData);
+    if (!payloadData) return;
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(payloadData);
+    } catch {}
+
+    this.onApiTraffic({
+      type: `websocket-${direction}`,
+      requestId,
+      timestamp: timestamp ? Math.round(timestamp * 1000) : Date.now(),
+      url: socketInfo.url,
+      fullUrl: socketInfo.url,
+      method: direction === 'sent' ? 'WS-SEND' : 'WS-RECV',
+      requestHeaders: {},
+      requestBody: direction === 'sent' ? payloadData : '',
+      initiator: 'websocket',
+      resourceType: 'WebSocket',
+      status: 101,
+      mimeType: 'websocket',
+      responseHeaders: {},
+      responseBody: direction === 'received' ? (parsed || payloadData) : '',
+      isJson: !!parsed,
+      opcode: response?.opcode,
+    });
   }
 
   async _handleResponse(params) {
@@ -134,14 +267,36 @@ class NetworkMonitor {
         body: parsed || body.slice(0, 2000),
         isJson: !!parsed,
       };
+      const requestEntry = this._requestMap.get(requestId) || null;
+      const apiTraffic = {
+        ...(requestEntry || {
+          requestId,
+          timestamp: Date.now(),
+          url: shortUrl,
+          fullUrl: url,
+          method: 'GET',
+          requestHeaders: {},
+          requestBody: '',
+          initiator: '',
+          resourceType: '',
+        }),
+        status,
+        mimeType,
+        responseHeaders: this._summarizeHeaders(response.headers),
+        responseBody: parsed || body.slice(0, 4000),
+        isJson: !!parsed,
+      };
 
-      this._log('network', `[${status}] ${shortUrl} (${body.length}B)`, logEntry);
+      this._log('network', `[${status}] ${shortUrl} (${body.length}B)`, apiTraffic);
+      this.onApiTraffic(apiTraffic);
 
       if (parsed) {
         this._analyzeForMessages(parsed, logEntry);
       }
     } catch {
       // 响应体可能已被清理，忽略
+    } finally {
+      this._requestMap.delete(requestId);
     }
   }
 

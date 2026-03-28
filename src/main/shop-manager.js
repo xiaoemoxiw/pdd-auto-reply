@@ -314,7 +314,9 @@ class ShopManager {
         token: tokenStr,
         mallId,
         userId,
-        raw: tokenData.windowsAppShopToken
+        raw: tokenData.windowsAppShopToken,
+        userAgent: tokenData.userAgent || '',
+        pddid: tokenData.pddid || ''
       };
     }
 
@@ -380,7 +382,14 @@ class ShopManager {
     }
 
     if (!global.__pddTokens) global.__pddTokens = {};
-    global.__pddTokens[shopId] = { token: tokenStr, mallId, userId, raw: tokenData.windowsAppShopToken };
+    global.__pddTokens[shopId] = {
+      token: tokenStr,
+      mallId,
+      userId,
+      raw: tokenData.windowsAppShopToken,
+      userAgent: tokenData.userAgent || shop?.userAgent || '',
+      pddid: tokenData.pddid || ''
+    };
 
     this.switchTo(shopId);
     if (view) view.webContents.loadURL(this._getChatUrl());
@@ -429,9 +438,11 @@ class ShopManager {
 
     const shops = this.store.get('shops') || [];
     const shop = shops.find(s => s.id === shopId);
+    const view = this.views.get(shopId);
     if (shop) {
       shop.status = 'online';
       shop.name = `新店铺 ${shopId.slice(-6)}`;
+      shop.userAgent = view?.webContents.getUserAgent() || shop.userAgent || '';
       this.store.set('shops', shops);
     }
 

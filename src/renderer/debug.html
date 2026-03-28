@@ -258,8 +258,7 @@
 
     window.debugApi.onNetworkLog((entry) => {
       if (entry.type === 'network' || entry.type === 'important') {
-        const jsonData = entry.data?.isJson ? entry.data.body : null;
-        addEntry('networkLog', entry.type, entry.text, jsonData);
+        addEntry('networkLog', entry.type, entry.text, entry.data || null);
         networkCount++;
         updateStats();
 
@@ -270,6 +269,22 @@
         }
       } else {
         addEntry('systemLog', 'info', `[网络监控] ${entry.text}`);
+      }
+    });
+
+    window.debugApi.onApiTraffic((payload) => {
+      const entry = payload?.entry || payload;
+      if (!entry) return;
+      addEntry('networkLog', 'network',
+        `[${entry.method}] ${entry.url} -> ${entry.status}`,
+        entry
+      );
+      networkCount++;
+      updateStats();
+      if (activeTab !== 'network') {
+        const badge = document.getElementById('networkBadge');
+        badge.textContent = parseInt(badge.textContent || '0') + 1;
+        badge.style.display = '';
       }
     });
 

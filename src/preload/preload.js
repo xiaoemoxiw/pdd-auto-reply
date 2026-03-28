@@ -61,6 +61,16 @@ contextBridge.exposeInMainWorld('pddApi', {
   importTokenFile: () => ipcRenderer.invoke('import-token-file'),
   importTokenFromPath: (path) => ipcRenderer.invoke('import-token-from-path', path),
   getTokenInfo: () => ipcRenderer.invoke('get-token-info'),
+  apiGetTokenStatus: () => ipcRenderer.invoke('api-get-token-status'),
+  apiInitSession: () => ipcRenderer.invoke('api-init-session'),
+  apiTestConnection: () => ipcRenderer.invoke('api-test-connection'),
+  apiGetSessions: (params) => ipcRenderer.invoke('api-get-sessions', params),
+  apiGetMessages: (params) => ipcRenderer.invoke('api-get-messages', params),
+  apiSendMessage: (params) => ipcRenderer.invoke('api-send-message', params),
+  apiStartPolling: (params) => ipcRenderer.invoke('api-start-polling', params),
+  apiStopPolling: (params) => ipcRenderer.invoke('api-stop-polling', params),
+  getApiTraffic: (params) => ipcRenderer.invoke('get-api-traffic', params),
+  clearApiTraffic: (params) => ipcRenderer.invoke('clear-api-traffic', params),
 
   // 快捷短语
   getQuickPhrases: () => ipcRenderer.invoke('get-quick-phrases'),
@@ -111,5 +121,9 @@ contextBridge.exposeInMainWorld('pddApi', {
   onShopSwitched: (cb) => ipcRenderer.on('shop-switched', (_, d) => cb(d)),
   onShopAdded: (cb) => ipcRenderer.on('shop-added', (_, d) => cb(d)),
   onShopLoginSuccess: (cb) => ipcRenderer.on('shop-login-success', (_, d) => cb(d)),
-  onShopListUpdated: (cb) => ipcRenderer.on('shop-list-updated', (_, d) => cb(d))
+  onShopListUpdated: (cb) => ipcRenderer.on('shop-list-updated', (_, d) => cb(d)),
+  onApiAuthExpired: (cb) => ipcRenderer.on('api-auth-expired', (_, d) => cb(d)),
+  onApiSessionUpdated: (cb) => ipcRenderer.on('api-session-updated', (_, d) => cb(d)),
+  onApiNewMessage: (cb) => ipcRenderer.on('api-new-message', (_, d) => cb(d)),
+  onApiMessageSent: (cb) => ipcRenderer.on('api-message-sent', (_, d) => cb(d))
 });

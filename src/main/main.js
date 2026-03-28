@@ -1,8 +1,10 @@
 const { app, BrowserWindow, Menu, ipcMain, session, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { nativeImage } = require('electron');
 const { ReplyEngine } = require('./reply-engine');
 const { NetworkMonitor } = require('./network-monitor');
+const { PddApiClient } = require('./pdd-api');
 const { createSettingsWindow } = require('./settings-window');
 const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
@@ -173,6 +175,9 @@ let shopManager = null;
 let replyEngine = null;
 let aiIntentEngine = null;
 let networkMonitors = new Map();  // shopId -> NetworkMonitor
+let apiClients = new Map();
+let apiTrafficStore = new Map();
+const API_TRAFFIC_LOG_PATH = path.join(__dirname, '..', '..', 'test', 'api-traffic-log.jsonl');
 
 function getPddChatUrl() {
   return store.get('chatUrl') || PDD_CHAT_URL;
@@ -241,6 +246,17 @@ function startNetworkMonitor(view, shopId) {
     onMessage(logEntry) {
       sendToDebug('network-message-detected', logEntry);
     },
+    onApiTraffic(entry) {
+      const list = apiTrafficStore.get(shopId) || [];
+      list.push(entry);
+      if (list.length > 200) {
+        list.splice(0, list.length - 200);
+      }
+      apiTrafficStore.set(shopId, list);
+      appendApiTrafficLog(shopId, entry);
+      console.log(`[接口抓取:${shopId}] [${entry.method}] ${entry.url} -> ${entry.status}`);
+      sendToDebug('api-traffic', { shopId, entry });
+    },
     onCustomerMessage(msg) {
       if (!store.get('autoReplyEnabled')) return;
       // 去重：5秒内相同文本不重复处理（DOM 监听可能已处理过）
@@ -266,6 +282,78 @@ function startNetworkMonitor(view, shopId) {
 
   monitor.start();
   networkMonitors.set(shopId, monitor);
+}
+
+function getApiClient(shopId) {
+  if (!shopId) return null;
+  if (apiClients.has(shopId)) return apiClients.get(shopId);
+
+  const client = new PddApiClient(shopId, {
+    onLog(message, extra) {
+      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      console.log(`[PDD接口:${shopId}] ${message}`);
+    },
+    getShopInfo() {
+      const shops = store.get('shops') || [];
+      return shops.find(item => item.id === shopId) || null;
+    },
+    getApiTraffic() {
+      return getApiTraffic(shopId);
+    }
+  });
+
+  client.on('authExpired', payload => {
+    mainWindow?.webContents.send('api-auth-expired', payload);
+    sendToDebug('api-auth-expired', payload);
+  });
+
+  client.on('sessionUpdated', sessions => {
+    const payload = { shopId, sessions };
+    mainWindow?.webContents.send('api-session-updated', payload);
+    sendToDebug('api-session-updated', { shopId, count: sessions.length });
+  });
+
+  client.on('newMessage', payload => {
+    mainWindow?.webContents.send('api-new-message', payload);
+    sendToDebug('api-new-message', payload);
+    handleNewCustomerMessage({
+      message: payload.text,
+      customer: payload.customer,
+      conversationId: payload.sessionId
+    });
+  });
+
+  client.on('messageSent', payload => {
+    mainWindow?.webContents.send('api-message-sent', { shopId, ...payload });
+    sendToDebug('api-message-sent', { shopId, sessionId: payload.sessionId });
+  });
+
+  apiClients.set(shopId, client);
+  return client;
+}
+
+function destroyApiClient(shopId) {
+  const client = apiClients.get(shopId);
+  if (!client) return;
+  client.destroy();
+  apiClients.delete(shopId);
+}
+
+function getApiTraffic(shopId) {
+  return apiTrafficStore.get(shopId) || [];
+}
+
+function appendApiTrafficLog(shopId, entry) {
+  try {
+    const record = JSON.stringify({
+      shopId,
+      recordedAt: Date.now(),
+      entry,
+    });
+    fs.appendFileSync(API_TRAFFIC_LOG_PATH, `${record}\n`, 'utf-8');
+  } catch (error) {
+    console.error('[PDD助手] 写入接口抓取日志失败:', error.message);
+  }
 }
 
 // ---- 窗口创建 ----
@@ -608,6 +696,7 @@ ipcMain.handle('add-shop-by-qrcode', async () => {
 
 ipcMain.handle('remove-shop', (event, shopId) => {
   if (!shopManager) return false;
+  destroyApiClient(shopId);
   return shopManager.removeShop(shopId);
 });
 
@@ -633,6 +722,96 @@ ipcMain.handle('import-token-from-path', async (event, filePath) => {
 ipcMain.handle('get-token-info', () => {
   const shopId = shopManager?.getActiveShopId();
   return (global.__pddTokens && shopId) ? global.__pddTokens[shopId] || null : null;
+});
+
+ipcMain.handle('api-get-token-status', () => {
+  const shopId = shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有活跃店铺' };
+  return getApiClient(shopId).getTokenStatus();
+});
+
+ipcMain.handle('api-init-session', async () => {
+  const shopId = shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有活跃店铺' };
+  try {
+    return await getApiClient(shopId).initSession(true);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('api-test-connection', async () => {
+  const shopId = shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有活跃店铺' };
+  try {
+    return await getApiClient(shopId).testConnection();
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('api-get-sessions', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  try {
+    return await getApiClient(shopId).getSessionList(params.page || 1, params.pageSize || 20);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('api-get-messages', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  if (!params.sessionId) return { error: '缺少 sessionId' };
+  try {
+    return await getApiClient(shopId).getSessionMessages(
+      params.sessionId,
+      params.page || 1,
+      params.pageSize || 30
+    );
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('api-send-message', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  if (!params.sessionId) return { error: '缺少 sessionId' };
+  if (!params.text) return { error: '缺少发送内容' };
+  try {
+    return await getApiClient(shopId).sendMessage(params.sessionId, params.text);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('api-start-polling', (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  getApiClient(shopId).startPolling();
+  return { ok: true, shopId };
+});
+
+ipcMain.handle('api-stop-polling', (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  destroyApiClient(shopId);
+  return { ok: true, shopId };
+});
+
+ipcMain.handle('get-api-traffic', (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return [];
+  return getApiTraffic(shopId);
+});
+
+ipcMain.handle('clear-api-traffic', (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return false;
+  apiTrafficStore.set(shopId, []);
+  return true;
 });
 
 // ---- 视图切换 ----
@@ -1442,6 +1621,12 @@ function setupAppMenu() {
 }
 
 app.whenReady().then(async () => {
+  try {
+    fs.mkdirSync(path.dirname(API_TRAFFIC_LOG_PATH), { recursive: true });
+    fs.writeFileSync(API_TRAFFIC_LOG_PATH, '', 'utf-8');
+  } catch (error) {
+    console.error('[PDD助手] 初始化接口抓取日志失败:', error.message);
+  }
   app.setName(APP_NAME);
 
   if (process.platform === 'darwin') {
@@ -1475,7 +1660,6 @@ app.whenReady().then(async () => {
   await migrateOldData();
   createMainWindow();
 
-  const fs = require('fs');
   const devTokenPath = path.join(__dirname, '..', '..', 'test', 'tokens', 'sample-token.json');
   const hasDevToken = fs.existsSync(devTokenPath);
 
@@ -1657,6 +1841,9 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   if (shopManager) shopManager.saveAllCookies();
+  for (const shopId of apiClients.keys()) {
+    destroyApiClient(shopId);
+  }
 });
 
 app.on('window-all-closed', () => {

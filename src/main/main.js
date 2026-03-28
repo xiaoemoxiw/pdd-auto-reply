@@ -8,8 +8,6 @@ const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
 const { SYSTEM_PHRASES, DEFAULT_SCENES, PHRASE_CATEGORIES, DEFAULT_AI_INTENTS } = require('./system-phrases');
 const { AIIntentEngine, MODEL_ID, MODEL_SOURCES } = require('./ai-intent');
-const { ApiLogger } = require('./api-logger');
-const { PddApiClient } = require('./pdd-api');
 const Store = require('electron-store');
 
 const UNMATCHED_LOG_MAX = 200;
@@ -54,7 +52,6 @@ const fallbackCooldowns = new Map();
 // 跨通道消息去重：防止 DOM 监听和网络监控同时处理同一条消息
 const messageDedup = new Map(); // "customer|message" -> timestamp
 
-// 保留用于兼容
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
 
 const MOCK_SHOPS = [
@@ -176,10 +173,52 @@ let shopManager = null;
 let replyEngine = null;
 let aiIntentEngine = null;
 let networkMonitors = new Map();  // shopId -> NetworkMonitor
-const apiLogger = new ApiLogger();
-const apiClients = new Map();     // shopId -> PddApiClient
 
+function getPddChatUrl() {
+  return store.get('chatUrl') || PDD_CHAT_URL;
+}
 
+// ---- 注入脚本 ----
+
+function injectAutoReplyScript(view) {
+  if (!view) return;
+  const injectPath = path.join(__dirname, '..', 'inject', 'auto-reply.js');
+  const fs = require('fs');
+  const script = fs.readFileSync(injectPath, 'utf-8');
+  view.webContents.executeJavaScript(script).then(() => {
+    // 注入成功后立即同步当前自动回复开关状态
+    const enabled = store.get('autoReplyEnabled');
+    view.webContents.send('auto-reply-toggle', enabled);
+  }).catch(err => {
+    console.error('注入自动回复脚本失败:', err.message);
+  });
+}
+
+// ---- 自动检测客服聊天页面 ----
+
+function detectChatPage(view, shopId) {
+  if (!view || !mainWindow) return;
+
+  view.webContents.executeJavaScript(`
+    (function() {
+      var text = document.body ? document.body.innerText : '';
+      var buttons = document.querySelectorAll('button');
+      var hasSendBtn = false;
+      for (var i = 0; i < buttons.length; i++) {
+        if (buttons[i].textContent.trim() === '发送') { hasSendBtn = true; break; }
+      }
+      var hasSessionList = text.indexOf('今日接待') !== -1 || text.indexOf('全部会话') !== -1;
+      return hasSendBtn && hasSessionList;
+    })()
+  `).then(isChat => {
+    if (!isChat) return;
+    const url = view.webContents.getURL();
+    if (url === store.get('chatUrl')) return;
+    store.set('chatUrl', url);
+    console.log('[PDD助手] 自动检测到客服页面，已保存:', url);
+    mainWindow.webContents.send('chat-url-detected', { url });
+  }).catch(() => {});
+}
 
 // ---- 网络监控 ----
 
@@ -201,20 +240,6 @@ function startNetworkMonitor(view, shopId) {
     },
     onMessage(logEntry) {
       sendToDebug('network-message-detected', logEntry);
-    },
-    onApiCapture(captureEntry) {
-      const record = apiLogger.add(captureEntry);
-      sendToDebug('api-capture', {
-        id: record.id,
-        timestamp: record.timestamp,
-        category: record.category,
-        method: record.request.method,
-        url: record.request.shortUrl,
-        status: record.response.status,
-        bodySize: record.response.bodySize,
-        isJson: record.response.isJson,
-        hasPostData: !!record.request.postData,
-      });
     },
     onCustomerMessage(msg) {
       if (!store.get('autoReplyEnabled')) return;
@@ -267,6 +292,9 @@ function createMainWindow() {
   mainWindow.on('resize', () => {
     const [w, h] = mainWindow.getSize();
     store.set('windowBounds', { width: w, height: h });
+    if (currentView === 'chat' && shopManager) {
+      shopManager.resizeActiveView();
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -277,9 +305,9 @@ function createMainWindow() {
   // 创建 ShopManager
   shopManager = new ShopManager(mainWindow, store, {
     onLog: (msg) => console.log(msg),
-    onInjectScript: () => {},
+    onInjectScript: injectAutoReplyScript,
     onNetworkMonitor: startNetworkMonitor,
-    onDetectChat: () => {}
+    onDetectChat: detectChatPage
   });
 }
 
@@ -338,6 +366,12 @@ ipcMain.handle('get-auto-reply-enabled', () => store.get('autoReplyEnabled'));
 
 ipcMain.handle('set-auto-reply-enabled', (event, enabled) => {
   store.set('autoReplyEnabled', enabled);
+  // 向所有已创建的 BrowserView 广播
+  if (shopManager) {
+    for (const view of shopManager.views.values()) {
+      view.webContents.send('auto-reply-toggle', enabled);
+    }
+  }
   return true;
 });
 
@@ -410,11 +444,83 @@ ipcMain.handle('open-settings', () => {
 });
 
 ipcMain.handle('open-devtools', () => {
-  if (mainWindow) mainWindow.webContents.openDevTools({ mode: 'detach' });
+  const view = shopManager?.getActiveView();
+  if (view) view.webContents.openDevTools({ mode: 'detach' });
 });
 
 ipcMain.handle('diagnose-page', async () => {
-  return { info: 'API 模式，无 BrowserView 可诊断' };
+  const view = shopManager?.getActiveView();
+  if (!view) return { error: '没有活跃的 BrowserView' };
+  return view.webContents.executeJavaScript(`(function(){
+    var r = {};
+    r.url = location.href;
+    r.title = document.title;
+
+    // body 直接子元素
+    r.bodyChildren = [];
+    var body = document.body;
+    if (body) {
+      for (var i = 0; i < Math.min(body.children.length, 30); i++) {
+        var el = body.children[i];
+        var rect = el.getBoundingClientRect();
+        r.bodyChildren.push({
+          tag: el.tagName, id: el.id || '',
+          cls: (el.className || '').toString().slice(0, 100),
+          w: Math.round(rect.width), h: Math.round(rect.height)
+        });
+      }
+    }
+
+    // 深层布局：找到所有宽度 > 100px 的直接子元素及其子元素
+    r.layoutTree = [];
+    function walkLayout(parent, depth) {
+      if (depth > 3) return;
+      for (var c = 0; c < parent.children.length && r.layoutTree.length < 80; c++) {
+        var el = parent.children[c];
+        var rect = el.getBoundingClientRect();
+        if (rect.width < 50 || rect.height < 50) continue;
+        r.layoutTree.push({
+          depth: depth,
+          tag: el.tagName, id: el.id || '',
+          cls: (el.className || '').toString().slice(0, 100),
+          x: Math.round(rect.left), y: Math.round(rect.top),
+          w: Math.round(rect.width), h: Math.round(rect.height),
+          children: el.children.length
+        });
+        walkLayout(el, depth + 1);
+      }
+    }
+    if (body) walkLayout(body, 0);
+
+    // iframe
+    r.iframes = [];
+    document.querySelectorAll('iframe').forEach(function(f){
+      var rect = f.getBoundingClientRect();
+      r.iframes.push({
+        src: (f.src || '').slice(0, 300), id: f.id || '',
+        w: Math.round(rect.width), h: Math.round(rect.height),
+        visible: rect.width > 0 && rect.height > 0
+      });
+    });
+
+    // Shadow DOM
+    r.shadowRoots = 0;
+    document.querySelectorAll('*').forEach(function(el){ if (el.shadowRoot) r.shadowRoots++; });
+
+    // 微前端
+    r.singleSpa = typeof window.singleSpa !== 'undefined';
+    r.qiankun = typeof window.__POWERED_BY_QIANKUN__ !== 'undefined';
+
+    // guide 状态
+    r.layerCount = document.querySelectorAll('.layer').length;
+    r.layerVisible = false;
+    document.querySelectorAll('.layer').forEach(function(el){
+      var rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) r.layerVisible = true;
+    });
+
+    return r;
+  })()`);
 });
 
 ipcMain.handle('open-debug-window', () => {
@@ -422,8 +528,8 @@ ipcMain.handle('open-debug-window', () => {
 });
 
 ipcMain.handle('reload-pdd', () => {
-  // API 模式下无需重载页面
-  return true;
+  const view = shopManager?.getActiveView();
+  if (view) view.webContents.loadURL(getPddChatUrl());
 });
 
 ipcMain.handle('get-chat-url', () => store.get('chatUrl'));
@@ -433,9 +539,15 @@ ipcMain.handle('set-chat-url', (event, url) => {
   return true;
 });
 
-ipcMain.handle('get-current-url', () => '');
+ipcMain.handle('get-current-url', () => {
+  const view = shopManager?.getActiveView();
+  return view ? view.webContents.getURL() : '';
+});
 
-ipcMain.handle('navigate-pdd', () => true);
+ipcMain.handle('navigate-pdd', (event, url) => {
+  const view = shopManager?.getActiveView();
+  if (view) view.webContents.loadURL(url);
+});
 
 ipcMain.handle('inject-cookies', async (event, cookies) => {
   const shopId = shopManager?.getActiveShopId();
@@ -446,6 +558,8 @@ ipcMain.handle('inject-cookies', async (event, cookies) => {
       console.error('设置 Cookie 失败:', err.message);
     }
   }
+  const view = shopManager?.getActiveView();
+  if (view) view.webContents.loadURL(getPddChatUrl());
   return true;
 });
 
@@ -525,6 +639,11 @@ ipcMain.handle('get-token-info', () => {
 
 ipcMain.handle('switch-view', (event, view) => {
   currentView = view;
+  if (view === 'chat') {
+    if (shopManager) shopManager.showActiveView();
+  } else {
+    if (shopManager) shopManager.hideActiveView();
+  }
   return true;
 });
 
@@ -840,9 +959,9 @@ ipcMain.handle('save-quick-phrases', (event, phrases) => {
   return true;
 });
 
-ipcMain.handle('send-quick-phrase', async (event, text) => {
-  // 通过 Vue UI 的 IPC 通知前端显示，实际发送由前端调用 api-send-message
-  mainWindow?.webContents.send('quick-phrase-insert', { text });
+ipcMain.handle('send-quick-phrase', (event, text) => {
+  const view = shopManager?.getActiveView();
+  if (view) view.webContents.send('send-reply', { message: text });
   return true;
 });
 
@@ -883,175 +1002,214 @@ ipcMain.handle('bind-shops', (event, newShops) => {
   return true;
 });
 
-// ---- API 抓包 IPC ----
-
-ipcMain.handle('api-capture-list', () => apiLogger.getSummaryList(200));
-
-ipcMain.handle('api-capture-detail', (event, captureId) => apiLogger.getDetail(captureId));
-
-ipcMain.handle('api-capture-categories', () => apiLogger.getCategories());
-
-ipcMain.handle('api-capture-export', async (event, category) => {
-  try {
-    const filePath = category ? apiLogger.exportCategory(category) : apiLogger.exportToFile();
-    return { success: true, path: filePath };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-capture-clear', () => {
-  apiLogger.clear();
-  return true;
-});
-
-ipcMain.handle('api-capture-log-dir', () => apiLogger.getLogDir());
-
-// ---- PDD API 客户端 IPC ----
-
-function getOrCreateApiClient(shopId) {
-  if (!shopId) shopId = shopManager?.getActiveShopId();
-  if (!shopId) return null;
-  if (apiClients.has(shopId)) return apiClients.get(shopId);
-
-  const client = new PddApiClient(shopId, {
-    onLog: (msg) => {
-      console.log(`[API:${shopId}] ${msg}`);
-      sendToDebug('system-log', { type: 'info', text: msg });
-    }
-  });
-
-  client.on('newMessage', (msg) => {
-    mainWindow?.webContents.send('api-new-message', msg);
-    sendToDebug('system-log', { type: 'important', text: `[API新消息] ${msg.senderName}: ${msg.content.slice(0, 50)}` });
-    if (store.get('autoReplyEnabled')) {
-      handleNewCustomerMessage({
-        message: msg.content,
-        customer: msg.senderName,
-        conversationId: msg.sessionId,
-      });
-    }
-  });
-
-  client.on('sessionUpdated', (sessions) => {
-    mainWindow?.webContents.send('api-session-updated', sessions);
-  });
-
-  client.on('authExpired', (info) => {
-    mainWindow?.webContents.send('api-auth-expired', { shopId, ...info });
-    console.log(`[PDD助手] 店铺 ${shopId} Token 已过期: ${info?.errorMsg || '会话已过期'}`);
-  });
-
-  client.on('messageSent', (data) => {
-    mainWindow?.webContents.send('api-message-sent', data);
-  });
-
-  apiClients.set(shopId, client);
-  return client;
-}
-
-ipcMain.handle('api-get-sessions', async (event, { shopId, page, pageSize } = {}) => {
-  const client = getOrCreateApiClient(shopId);
-  if (!client) return { error: '无活跃店铺' };
-  try {
-    return { data: await client.getSessionList(page, pageSize) };
-  } catch (err) {
-    return { error: err.message, authExpired: !!err.authExpired };
-  }
-});
-
-ipcMain.handle('api-get-messages', async (event, { sessionId, page, pageSize }) => {
-  const client = getOrCreateApiClient();
-  if (!client) return { error: '无活跃店铺' };
-  try {
-    return { data: await client.getSessionMessages(sessionId, page, pageSize) };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-send-message', async (event, { sessionId, text }) => {
-  const client = getOrCreateApiClient();
-  if (!client) return { error: '无活跃店铺' };
-  try {
-    const result = await client.sendMessage(sessionId, text);
-    return { data: result };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-get-order-info', async (event, { orderId }) => {
-  const client = getOrCreateApiClient();
-  if (!client) return { error: '无活跃店铺' };
-  try {
-    return { data: await client.getOrderInfo(orderId) };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-get-customer-info', async (event, { customerId }) => {
-  const client = getOrCreateApiClient();
-  if (!client) return { error: '无活跃店铺' };
-  try {
-    return { data: await client.getCustomerInfo(customerId) };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-start-polling', (event, { shopId } = {}) => {
-  const client = getOrCreateApiClient(shopId);
-  if (!client) return { error: '无活跃店铺' };
-  client.startMessagePolling();
-  return { success: true };
-});
-
-ipcMain.handle('api-stop-polling', (event, { shopId } = {}) => {
-  const sid = shopId || shopManager?.getActiveShopId();
-  const client = sid ? apiClients.get(sid) : null;
-  if (client) client.stopMessagePolling();
-  return { success: true };
-});
-
-ipcMain.handle('api-get-token-status', () => {
-  const client = getOrCreateApiClient();
-  if (!client) return { hasToken: false, mallId: '', userId: '' };
-  return client.getTokenStatus();
-});
-
-ipcMain.handle('api-discover-endpoints', async () => {
-  const client = getOrCreateApiClient();
-  if (!client) return { error: '无活跃店铺' };
-  try {
-    const captured = await client.discoverApiEndpoints();
-    return { data: captured };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
 // ---- 网络监控 IPC ----
 
-ipcMain.handle('toggle-network-monitor', () => {
-  // API 模式下网络监控由 API 客户端处理
+ipcMain.handle('toggle-network-monitor', (event, enabled) => {
+  const view = shopManager?.getActiveView();
+  const shopId = shopManager?.getActiveShopId();
+  if (enabled && view && shopId) {
+    startNetworkMonitor(view, shopId);
+  } else if (!enabled && shopId && networkMonitors.has(shopId)) {
+    networkMonitors.get(shopId).stop();
+    networkMonitors.delete(shopId);
+  }
   return true;
 });
 
 ipcMain.handle('get-network-monitor-status', () => {
-  return { active: false, mode: 'api' };
+  const shopId = shopManager?.getActiveShopId();
+  if (!shopId) return { active: false };
+  const monitor = networkMonitors.get(shopId);
+  return { active: !!monitor?.attached };
 });
 
 // ---- 测试自动回复 ----
 
 ipcMain.handle('test-auto-reply', async () => {
-  // API 模式下通过 API 客户端发送测试消息
-  const client = getOrCreateApiClient();
-  if (!client) return { error: '无活跃 API 客户端' };
-  return { info: 'API 模式，请使用消息流水线测试功能' };
+  const view = shopManager?.getActiveView();
+  if (!view) return { error: '没有活跃的 BrowserView' };
+
+  try {
+    // 第一步：填入消息并获取发送按钮坐标
+    const result = await view.webContents.executeJavaScript(`
+      (function() {
+        var report = { found: {} };
+
+        // 查找输入框
+        var selectors = ['[contenteditable="true"]', 'textarea'];
+        var input = null;
+        for (var i = 0; i < selectors.length; i++) {
+          try { input = document.querySelector(selectors[i]); } catch(e) {}
+          if (input) { report.found.inputSelector = selectors[i]; break; }
+        }
+        report.found.inputTag = input ? input.tagName : null;
+
+        // 查找发送按钮
+        var sendBtn = null;
+        var candidates = document.querySelectorAll('button, a, div, span');
+        for (var j = 0; j < candidates.length; j++) {
+          var el = candidates[j];
+          if ((el.textContent || '').trim() === '发送' && el.offsetParent !== null) {
+            sendBtn = el;
+            break;
+          }
+        }
+        report.found.sendButtonTag = sendBtn ? sendBtn.tagName : null;
+        report.found.sendButtonClass = sendBtn ? (sendBtn.className || '').toString().slice(0, 60) : null;
+
+        if (!input) { report.error = '未找到输入框'; return report; }
+        if (!sendBtn) { report.error = '未找到发送按钮'; return report; }
+
+        // 填入消息
+        var msg = '亲，您好！请问有什么可以帮您的呢？';
+        input.focus();
+        if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {
+          var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+          if (setter && setter.set) setter.set.call(input, msg);
+          else input.value = msg;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          input.textContent = msg;
+          input.dispatchEvent(new InputEvent('input', { bubbles: true, data: msg }));
+        }
+
+        // 返回发送按钮坐标
+        var rect = sendBtn.getBoundingClientRect();
+        report.btnX = Math.round(rect.left + rect.width / 2);
+        report.btnY = Math.round(rect.top + rect.height / 2);
+        report.success = true;
+        return report;
+      })()
+    `);
+
+    console.log('[PDD助手] 填入结果:', JSON.stringify(result));
+    if (!result.success) return result;
+
+    // 第二步：使用 Chromium 底层输入 API 点击发送按钮
+    await new Promise(r => setTimeout(r, 300));
+    view.webContents.sendInputEvent({
+      type: 'mouseDown', x: result.btnX, y: result.btnY, button: 'left', clickCount: 1
+    });
+    await new Promise(r => setTimeout(r, 80));
+    view.webContents.sendInputEvent({
+      type: 'mouseUp', x: result.btnX, y: result.btnY, button: 'left', clickCount: 1
+    });
+
+    console.log(`[PDD助手] 已通过 sendInputEvent 点击发送按钮 (${result.btnX}, ${result.btnY})`);
+    mainWindow?.webContents.send('auto-reply-sent', {
+      customer: '当前客户',
+      question: '(手动触发)',
+      answer: '亲，您好！请问有什么可以帮您的呢？'
+    });
+    return result;
+  } catch (err) {
+    console.error('[PDD助手] 测试失败:', err.message);
+    return { error: err.message };
+  }
 });
 
+// 注入脚本请求点击发送按钮（通过 Chromium 底层输入 API）
+ipcMain.on('click-send-button', async (event, { x, y }) => {
+  const view = shopManager?.getActiveView();
+  if (!view) return;
+  view.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+  await new Promise(r => setTimeout(r, 80));
+  view.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+});
+
+/**
+ * 确保 BrowserView 中有活跃的客服会话，没有则自动选择
+ * 使用 sendInputEvent 模拟真实鼠标点击，比 DOM element.click() 可靠
+ */
+async function selectConversationInView(view) {
+  if (!view) return false;
+
+  const hasConv = await view.webContents.executeJavaScript(`(function(){
+    var input = document.querySelector('.middle-panel [contenteditable="true"]')
+             || document.querySelector('.middle-panel textarea')
+             || document.querySelector('[contenteditable="true"]');
+    if (input && input.offsetParent !== null) return true;
+    var areas = ['.middle-panel .content','.middle-panel .chat-content','.middle-panel .msg-list'];
+    for (var i = 0; i < areas.length; i++) {
+      var el = document.querySelector(areas[i]);
+      if (el && el.children.length > 0) return true;
+    }
+    var mid = document.querySelector('.middle-panel');
+    if (mid && mid.querySelector('[contenteditable]')) return true;
+    return false;
+  })()`).catch(() => false);
+
+  if (hasConv) return true;
+
+  console.log('[PDD助手] 无活跃会话，主进程尝试自动选择...');
+
+  const coords = await view.webContents.executeJavaScript(`(function(){
+    // 通过"今日接待"文本定位会话列表区域
+    var panels = document.querySelectorAll('div, aside, section, nav');
+    var sp = null;
+    for (var i = 0; i < panels.length; i++) {
+      var el = panels[i];
+      var rect = el.getBoundingClientRect();
+      if (rect.left > 50 || rect.width < 100 || rect.width > 500 || rect.height < 200) continue;
+      if (el.textContent && el.textContent.indexOf('今日接待') !== -1) { sp = el; break; }
+    }
+    if (!sp) return null;
+
+    // 策略1: 通过超时/等待提示定位待回复会话
+    var hints = ['已超时','已等待','秒后超时','分后超时','分钟后超时'];
+    var allEls = sp.querySelectorAll('*');
+    for (var j = 0; j < allEls.length; j++) {
+      var t = (allEls[j].textContent || '').trim();
+      if (t.length > 200) continue;
+      for (var h = 0; h < hints.length; h++) {
+        if (t.indexOf(hints[h]) !== -1) {
+          var item = allEls[j];
+          for (var d = 0; d < 10 && item && item !== sp; d++) {
+            var r = item.getBoundingClientRect();
+            if (r.height >= 40 && r.height <= 150 && r.width >= 150)
+              return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+            item = item.parentElement;
+          }
+        }
+      }
+    }
+
+    // 策略2: 取面板中第一个像会话条目的元素
+    var items = sp.querySelectorAll('div, li, a');
+    for (var k = 0; k < items.length; k++) {
+      var el = items[k];
+      var r = el.getBoundingClientRect();
+      if (r.height < 40 || r.height > 150 || r.width < 150 || r.top < 150) continue;
+      if (!el.offsetParent) continue;
+      var text = (el.textContent || '').trim();
+      if (text.length < 3 || text.length > 300) continue;
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    }
+    return null;
+  })()`).catch(() => null);
+
+  if (!coords) {
+    console.log('[PDD助手] 未找到可点击的会话条目');
+    return false;
+  }
+
+  console.log(`[PDD助手] sendInputEvent 点击会话 (${coords.x}, ${coords.y})`);
+  view.webContents.sendInputEvent({ type: 'mouseDown', x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
+  await new Promise(r => setTimeout(r, 80));
+  view.webContents.sendInputEvent({ type: 'mouseUp', x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
+
+  // 等待会话加载
+  await new Promise(r => setTimeout(r, 2000));
+
+  // 关闭可能弹出的弹窗
+  await view.webContents.executeJavaScript(
+    `window.__PDD_HELPER__?.dismissBlockingPopups?.() || 0`
+  ).catch(() => {});
+  await new Promise(r => setTimeout(r, 500));
+
+  return true;
+}
 
 /**
  * 统一消息处理管线：DOM 监听和网络监控共用
@@ -1112,29 +1270,24 @@ async function handleNewCustomerMessage(data) {
   }
 
   const doSend = async () => {
+    const view = shopManager?.getActiveView();
+    if (!view) return;
+
+    // 确保有活跃会话（没有则自动选择）
+    await selectConversationInView(view);
+
+    view.webContents.send('send-reply', {
+      conversationId: data.conversationId,
+      message: result.reply
+    });
     const replyData = {
       customer: data.customer,
       question: data.message,
       answer: result.reply,
       matched: result.matched,
       ruleName: result.ruleName,
-      score: result.score,
-      conversationId: data.conversationId,
+      score: result.score
     };
-
-    // 优先通过 API 客户端直接发送
-    const client = getOrCreateApiClient();
-    if (client && data.conversationId) {
-      try {
-        await client.sendMessage(data.conversationId, result.reply);
-        console.log(`[PDD助手] API 发送成功: "${result.reply.slice(0, 30)}" -> ${data.conversationId}`);
-      } catch (err) {
-        console.error(`[PDD助手] API 发送失败: ${err.message}`);
-      }
-    } else {
-      console.log('[PDD助手] 无 API 客户端或 conversationId，无法发送');
-    }
-
     mainWindow?.webContents.send('auto-reply-sent', replyData);
     sendToDebug('auto-reply-sent', replyData);
   };
@@ -1171,6 +1324,27 @@ async function handleNewCustomerMessage(data) {
     const delay = defaultReply?.delay || 2000;
     const timer = setTimeout(async () => {
       pendingFallbacks.delete(data.customer);
+
+      // 人工抢答取消：检查输入框是否有人正在输入
+      if (defaultReply?.cancelOnHumanReply !== false) {
+        const view = shopManager?.getActiveView();
+        if (view) {
+          try {
+            const humanTyping = await view.webContents.executeJavaScript(
+              `window.__PDD_HELPER__?.checkInputBoxHasContent?.() || false`
+            );
+            if (humanTyping) {
+              console.log(`[PDD助手] 检测到人工正在输入，取消兜底回复: ${data.customer}`);
+              mainWindow?.webContents.send('fallback-cancelled', {
+                customer: data.customer,
+                reason: '人工正在输入'
+              });
+              return;
+            }
+          } catch { /* 检查失败则继续发送 */ }
+        }
+      }
+
       fallbackCooldowns.set(data.customer, Date.now());
       await doSend();
     }, delay);
@@ -1179,8 +1353,7 @@ async function handleNewCustomerMessage(data) {
   }
 }
 
-// 消息来源现在是 API 客户端的 newMessage 事件（在 getOrCreateApiClient 中绑定）
-// 保留此 IPC 通道以兼容
+// 从注入脚本接收到新消息（DOM 监听通道）
 ipcMain.on('new-customer-message', (event, data) => {
   handleNewCustomerMessage(data);
 });
@@ -1313,18 +1486,24 @@ app.whenReady().then(async () => {
     await shopManager.addByToken(devTokenPath);
   }
 
-  // 启动后状态检查
+  // 启动后状态检查 + 页面结构诊断
   setTimeout(() => {
     const enabled = store.get('autoReplyEnabled');
     console.log(`[PDD助手] 自动回复状态: ${enabled ? '已开启' : '未开启'}`);
-    console.log('[PDD助手] 架构模式: API 驱动 + Vue.js UI');
-  }, 3000);
 
-  /*
-  // 旧版 BrowserView 诊断代码已完全移除
-  if (false) { void(`(function(){
+    const view = shopManager?.getActiveView();
+    if (!view) return;
+
+    // 深度页面结构诊断
+    view.webContents.executeJavaScript(`(function(){
       var report = {};
-      report.injected = false;
+
+      // 基本注入状态
+      report.injected = !!window.__PDD_AUTO_REPLY_INJECTED__;
+      report.guideSuppressed = !!window.__PDD_GUIDE_SUPPRESSED__;
+      if (window.__PDD_HELPER__) report.helperStatus = window.__PDD_HELPER__.getStatus();
+
+      // 顶层布局容器
       var body = document.body;
       report.bodyChildren = [];
       if (body) {
@@ -1453,9 +1632,10 @@ app.whenReady().then(async () => {
         console.log('[引导localStorage]', JSON.stringify(r.guideStatus.guideLocalStorage));
       }
       console.log('====== 诊断结束 ======\\n');
-    }).catch(err => {});
+    }).catch(err => {
+      console.error('[PDD助手] 页面诊断失败:', err.message);
+    });
   }, 15000);
-  */
 
   if (!hasDevToken) {
     // 恢复上次活跃的店铺

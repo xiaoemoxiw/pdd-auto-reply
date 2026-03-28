@@ -2,7 +2,6 @@
  * 网络请求监控模块
  * 通过 Chrome DevTools Protocol (CDP) 拦截 BrowserView 中的网络请求，
  * 捕获拼多多客服页面的消息轮询接口响应数据。
- * 同时捕获完整的请求信息（URL/方法/Headers/Body）用于 API 逆向。
  */
 
 class NetworkMonitor {
@@ -13,16 +12,15 @@ class NetworkMonitor {
     this.onLog = options.onLog || (() => {});
     this.onMessage = options.onMessage || (() => {});
     this.onCustomerMessage = options.onCustomerMessage || null;
-    // API 抓包回调：捕获完整的请求+响应对
-    this.onApiCapture = options.onApiCapture || null;
+    // 启动后的宽限期：前 N 秒内提取的消息视为历史消息，不触发回复
     this._startTime = Date.now();
     this._warmupMs = options.warmupMs || 10000;
+    // 已见消息去重（避免轮询接口重复触发）
     this._seenMessages = new Set();
-    // 请求缓存：requestId -> 请求信息（等待响应匹配）
-    this._pendingRequests = new Map();
 
+    // 需要捕获响应体的 URL 关键词（从 DevTools 截图中识别的关键接口）
     this.capturePatterns = [
-      '/plateau/',
+      '/plateau/',    // PDD 客服平台核心 API（含 sync/message, chat/list 等）
       'message',
       'chat',
       'im/',
@@ -34,13 +32,9 @@ class NetworkMonitor {
       'recv',
       'long_polling',
       'sync',
-      'order',
-      'trade',
-      'goods',
-      'customer',
-      'user_info',
     ];
 
+    // 排除的 URL（心跳、埋点等无关请求）
     this.excludePatterns = [
       '/ping',
       'front_err',
@@ -54,10 +48,6 @@ class NetworkMonitor {
       '.css',
       '.js',
       'favicon',
-      '.woff',
-      '.ttf',
-      '.svg',
-      '.ico',
     ];
   }
 
@@ -84,9 +74,7 @@ class NetworkMonitor {
     });
 
     this.debugger.on('message', (_, method, params) => {
-      if (method === 'Network.requestWillBeSent') {
-        this._handleRequestWillBeSent(params);
-      } else if (method === 'Network.responseReceived') {
+      if (method === 'Network.responseReceived') {
         this._handleResponse(params);
       }
     });
@@ -100,7 +88,6 @@ class NetworkMonitor {
       this.debugger.detach();
     } catch {}
     this.attached = false;
-    this._pendingRequests.clear();
     this._log('info', '网络监控已停止');
   }
 
@@ -109,38 +96,13 @@ class NetworkMonitor {
     return this.capturePatterns.some(p => url.includes(p));
   }
 
-  /**
-   * 捕获请求发出时的完整信息（URL/方法/Headers/Body）
-   */
-  _handleRequestWillBeSent(params) {
-    const { requestId, request } = params;
-    const { url, method, headers, postData } = request;
-
-    if (!this._shouldCapture(url)) return;
-
-    this._pendingRequests.set(requestId, {
-      url,
-      method,
-      headers,
-      postData: postData || null,
-      timestamp: Date.now(),
-    });
-
-    // 防止缓存无限增长（清理超过 60 秒的请求）
-    if (this._pendingRequests.size > 500) {
-      const now = Date.now();
-      for (const [id, req] of this._pendingRequests) {
-        if (now - req.timestamp > 60000) this._pendingRequests.delete(id);
-      }
-    }
-  }
-
   async _handleResponse(params) {
     const { requestId, response } = params;
     const { url, status, mimeType } = response;
 
     if (!this._shouldCapture(url)) return;
 
+    // 提取 URL 中的路径名用于简洁显示
     let shortUrl;
     try {
       const parsed = new URL(url);
@@ -148,10 +110,6 @@ class NetworkMonitor {
     } catch {
       shortUrl = url;
     }
-
-    // 取出关联的请求信息
-    const requestInfo = this._pendingRequests.get(requestId);
-    this._pendingRequests.delete(requestId);
 
     try {
       const result = await this.debugger.sendCommand('Network.getResponseBody', { requestId });
@@ -177,30 +135,7 @@ class NetworkMonitor {
         isJson: !!parsed,
       };
 
-      // 构建完整的请求+响应捕获记录
-      if (requestInfo) {
-        const captureEntry = {
-          id: requestId,
-          timestamp: Date.now(),
-          request: {
-            url: requestInfo.url,
-            shortUrl,
-            method: requestInfo.method,
-            headers: requestInfo.headers,
-            postData: requestInfo.postData,
-          },
-          response: {
-            status,
-            mimeType,
-            bodySize: body.length,
-            body: parsed || body.slice(0, 2000),
-            isJson: !!parsed,
-          },
-        };
-        this.onApiCapture?.(captureEntry);
-      }
-
-      this._log('network', `[${status}] ${requestInfo?.method || 'GET'} ${shortUrl} (${body.length}B)`, logEntry);
+      this._log('network', `[${status}] ${shortUrl} (${body.length}B)`, logEntry);
 
       if (parsed) {
         this._analyzeForMessages(parsed, logEntry);

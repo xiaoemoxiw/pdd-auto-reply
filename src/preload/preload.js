@@ -99,16 +99,6 @@ contextBridge.exposeInMainWorld('pddApi', {
   aiSetEnabled: (enabled) => ipcRenderer.invoke('ai-set-enabled', enabled),
   onAiDownloadProgress: (cb) => ipcRenderer.on('ai-download-progress', (_, d) => cb(d)),
 
-  // PDD API 客户端
-  apiGetSessions: (opts) => ipcRenderer.invoke('api-get-sessions', opts),
-  apiGetMessages: (opts) => ipcRenderer.invoke('api-get-messages', opts),
-  apiSendMessage: (opts) => ipcRenderer.invoke('api-send-message', opts),
-  apiGetOrderInfo: (opts) => ipcRenderer.invoke('api-get-order-info', opts),
-  apiGetCustomerInfo: (opts) => ipcRenderer.invoke('api-get-customer-info', opts),
-  apiStartPolling: (opts) => ipcRenderer.invoke('api-start-polling', opts),
-  apiStopPolling: (opts) => ipcRenderer.invoke('api-stop-polling', opts),
-  apiGetTokenStatus: () => ipcRenderer.invoke('api-get-token-status'),
-
   // 事件监听
   onPddPageLoaded: (cb) => ipcRenderer.on('pdd-page-loaded', (_, d) => cb(d)),
   onPddNavigated: (cb) => ipcRenderer.on('pdd-navigated', (_, d) => cb(d)),
@@ -116,12 +106,6 @@ contextBridge.exposeInMainWorld('pddApi', {
   onUnmatchedMessage: (cb) => ipcRenderer.on('unmatched-message', (_, d) => cb(d)),
   onFallbackCancelled: (cb) => ipcRenderer.on('fallback-cancelled', (_, d) => cb(d)),
   onChatUrlDetected: (cb) => ipcRenderer.on('chat-url-detected', (_, d) => cb(d)),
-
-  // API 事件
-  onApiNewMessage: (cb) => ipcRenderer.on('api-new-message', (_, d) => cb(d)),
-  onApiSessionUpdated: (cb) => ipcRenderer.on('api-session-updated', (_, d) => cb(d)),
-  onApiAuthExpired: (cb) => ipcRenderer.on('api-auth-expired', (_, d) => cb(d)),
-  onApiMessageSent: (cb) => ipcRenderer.on('api-message-sent', (_, d) => cb(d)),
 
   // 店铺相关事件
   onShopSwitched: (cb) => ipcRenderer.on('shop-switched', (_, d) => cb(d)),

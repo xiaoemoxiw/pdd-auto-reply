@@ -1,0 +1,20 @@
+{
+  "name": "pdd-auto-reply",
+  "productName": "元尾巴 · 拼多多客服助手",
+  "version": "0.1.0",
+  "description": "元尾巴 · 拼多多客服自动回复工具",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "NODE_ENV=development electron ."
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "electron-store": "8"
+  }
+}

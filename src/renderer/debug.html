@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>调试面板 · 网络抓包</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Cascadia Code", "Fira Code", "SF Mono", Menlo, monospace;
+      background: #1e1e1e; color: #d4d4d4;
+      height: 100vh; display: flex; flex-direction: column;
+      font-size: 12px; overflow: hidden;
+    }
+
+    .header {
+      display: flex; align-items: center;
+      padding: 0 12px; background: #2d2d2d;
+      border-bottom: 1px solid #3c3c3c;
+      -webkit-app-region: drag;
+      min-height: 36px;
+    }
+    .tabs {
+      display: flex; gap: 2px; flex: 1;
+      -webkit-app-region: no-drag;
+    }
+    .tab {
+      padding: 8px 16px; color: #888;
+      background: transparent; border: none;
+      cursor: pointer; font-size: 12px;
+      border-bottom: 2px solid transparent;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .tab:hover { color: #ccc; }
+    .tab.active { color: #4ec9b0; border-bottom-color: #4ec9b0; }
+    .badge {
+      display: inline-block; min-width: 16px; height: 16px;
+      line-height: 16px; text-align: center;
+      background: #e02e24; color: #fff; border-radius: 8px;
+      font-size: 10px; margin-left: 4px; padding: 0 4px;
+    }
+
+    .toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px; background: #252525;
+      border-bottom: 1px solid #3c3c3c;
+    }
+    .toolbar-btn {
+      padding: 3px 10px; background: #3c3c3c; border: none;
+      color: #ccc; border-radius: 3px; cursor: pointer;
+      font-size: 11px; font-family: inherit;
+      transition: background 0.15s;
+    }
+    .toolbar-btn:hover { background: #505050; }
+    .toolbar-btn.active { background: #4ec9b0; color: #1e1e1e; }
+    .toolbar-info {
+      margin-left: auto; color: #666; font-size: 11px;
+    }
+
+    .tab-content {
+      display: none; flex: 1; overflow: hidden;
+      flex-direction: column;
+    }
+    .tab-content.active { display: flex; }
+
+    .log-area {
+      flex: 1; overflow-y: auto; padding: 8px 12px;
+      line-height: 1.7;
+    }
+
+    .entry { padding: 1px 0; }
+    .entry.info { color: #569cd6; }
+    .entry.reply { color: #4ec9b0; }
+    .entry.error { color: #f44747; }
+    .entry.network { color: #dcdcaa; }
+    .entry.important { color: #f48771; font-weight: 600; }
+    .entry.clickable { cursor: pointer; }
+    .entry.clickable:hover { text-decoration: underline; }
+
+    .json-detail {
+      display: none; padding: 8px 10px; margin: 2px 0 6px 0;
+      background: #2a2a2a; border-radius: 4px;
+      color: #9cdcfe; white-space: pre-wrap;
+      word-break: break-all; max-height: 300px; overflow-y: auto;
+      border-left: 3px solid #4ec9b0; font-size: 11px;
+    }
+    .json-detail.visible { display: block; }
+
+    .status-bar {
+      padding: 4px 12px; background: #007acc; color: #fff;
+      font-size: 11px; display: flex; gap: 16px;
+    }
+    .status-bar .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #4caf50; display: inline-block;
+      margin-right: 4px; vertical-align: middle;
+    }
+
+    .filter-input {
+      background: #3c3c3c; border: 1px solid #555;
+      color: #d4d4d4; padding: 2px 8px; border-radius: 3px;
+      font-size: 11px; font-family: inherit; width: 180px;
+      outline: none;
+    }
+    .filter-input:focus { border-color: #4ec9b0; }
+    .filter-input::placeholder { color: #666; }
+
+    .api-toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px; background: #252525;
+      border-bottom: 1px solid #3c3c3c;
+    }
+    .api-toolbar select {
+      background: #3c3c3c; border: 1px solid #555; color: #d4d4d4;
+      padding: 2px 6px; border-radius: 3px; font-size: 11px;
+      font-family: inherit; outline: none;
+    }
+    .api-split {
+      display: flex; flex: 1; overflow: hidden;
+    }
+    .api-list {
+      width: 45%; border-right: 1px solid #3c3c3c;
+      overflow-y: auto; padding: 4px 0;
+    }
+    .api-item {
+      padding: 4px 10px; cursor: pointer; font-size: 11px;
+      display: flex; align-items: center; gap: 6px;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .api-item:hover { background: #2a2d2e; }
+    .api-item.selected { background: #094771; }
+    .api-item .method {
+      font-weight: 600; min-width: 32px; font-size: 10px;
+    }
+    .api-item .method.GET { color: #4ec9b0; }
+    .api-item .method.POST { color: #dcdcaa; }
+    .api-item .method.PUT { color: #569cd6; }
+    .api-item .method.DELETE { color: #f44747; }
+    .api-item .url { color: #d4d4d4; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .api-item .status { color: #888; min-width: 24px; text-align: right; }
+    .api-item .status.s2xx { color: #4ec9b0; }
+    .api-item .status.s4xx { color: #f48771; }
+    .api-item .status.s5xx { color: #f44747; }
+    .api-item .category-tag {
+      font-size: 9px; padding: 1px 4px; border-radius: 2px;
+      background: #3c3c3c; color: #888; white-space: nowrap;
+    }
+    .api-item .category-tag.message-send { background: #2d4a2d; color: #4ec9b0; }
+    .api-item .category-tag.message-receive { background: #4a2d2d; color: #f48771; }
+    .api-item .category-tag.session-list { background: #2d3a4a; color: #569cd6; }
+    .api-item .category-tag.plateau-core { background: #4a3a2d; color: #dcdcaa; }
+    .api-detail {
+      flex: 1; overflow-y: auto; padding: 8px 12px;
+    }
+    .api-detail-placeholder {
+      color: #555; text-align: center; padding: 40px;
+    }
+    .api-detail h4 {
+      color: #4ec9b0; margin: 12px 0 4px; font-size: 12px;
+      border-bottom: 1px solid #3c3c3c; padding-bottom: 4px;
+    }
+    .api-detail h4:first-child { margin-top: 0; }
+    .api-detail .kv { padding: 2px 0; }
+    .api-detail .kv .k { color: #569cd6; }
+    .api-detail .kv .v { color: #ce9178; word-break: break-all; }
+    .api-detail pre {
+      background: #1a1a1a; padding: 8px; border-radius: 4px;
+      color: #9cdcfe; white-space: pre-wrap; word-break: break-all;
+      font-size: 11px; max-height: 300px; overflow-y: auto;
+      border: 1px solid #2a2a2a;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="tabs">
+      <button class="tab active" data-tab="system">系统日志</button>
+      <button class="tab" data-tab="network">网络抓包 <span class="badge" id="networkBadge" style="display:none">0</span></button>
+      <button class="tab" data-tab="messages">消息发现 <span class="badge" id="messageBadge" style="display:none">0</span></button>
+      <button class="tab" data-tab="apiCapture">API 抓包 <span class="badge" id="apiBadge" style="display:none">0</span></button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button class="toolbar-btn" id="btnClear">清空</button>
+    <button class="toolbar-btn" id="btnAutoScroll" title="自动滚动到底部">自动滚动</button>
+    <input class="filter-input" id="filterInput" placeholder="过滤关键词...">
+    <span class="toolbar-info" id="countInfo">0 条记录</span>
+  </div>
+
+  <div class="tab-content active" id="tabSystem">
+    <div class="log-area" id="systemLog"></div>
+  </div>
+  <div class="tab-content" id="tabNetwork">
+    <div class="log-area" id="networkLog"></div>
+  </div>
+  <div class="tab-content" id="tabMessages">
+    <div class="log-area" id="messagesLog"></div>
+  </div>
+  <div class="tab-content" id="tabApiCapture">
+    <div class="api-toolbar">
+      <select id="apiCategoryFilter">
+        <option value="">全部分类</option>
+        <option value="message-send">消息发送</option>
+        <option value="message-receive">消息接收</option>
+        <option value="session-list">会话列表</option>
+        <option value="order">订单</option>
+        <option value="goods">商品</option>
+        <option value="customer">客户</option>
+        <option value="plateau-core">Plateau核心</option>
+        <option value="other">其他</option>
+      </select>
+      <button class="toolbar-btn" id="btnExportApi">导出</button>
+      <button class="toolbar-btn" id="btnClearApi">清空</button>
+      <span class="toolbar-info" id="apiCountInfo">0 条</span>
+    </div>
+    <div class="api-split">
+      <div class="api-list" id="apiList"></div>
+      <div class="api-detail" id="apiDetail">
+        <div class="api-detail-placeholder">点击左侧条目查看详情</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span><span class="dot" id="statusDot"></span><span id="statusText">监控中</span></span>
+    <span id="statsText">网络请求: 0 | 消息接口: 0</span>
+  </div>
+
+  <script>
+    let autoScroll = true;
+    let filterText = '';
+    let networkCount = 0;
+    let messageCount = 0;
+    let apiCaptureCount = 0;
+    let activeTab = 'system';
+    let apiCaptures = [];
+    let selectedCaptureId = null;
+
+    // ---- 标签页切换 ----
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        activeTab = tab.dataset.tab;
+        const map = { system: 'tabSystem', network: 'tabNetwork', messages: 'tabMessages', apiCapture: 'tabApiCapture' };
+        document.getElementById(map[activeTab]).classList.add('active');
+
+        if (activeTab === 'network') document.getElementById('networkBadge').style.display = 'none';
+        if (activeTab === 'messages') document.getElementById('messageBadge').style.display = 'none';
+        if (activeTab === 'apiCapture') document.getElementById('apiBadge').style.display = 'none';
+        updateCount();
+      });
+    });
+
+    // ---- 工具栏 ----
+    document.getElementById('btnClear').addEventListener('click', () => {
+      document.getElementById('systemLog').innerHTML = '';
+      document.getElementById('networkLog').innerHTML = '';
+      document.getElementById('messagesLog').innerHTML = '';
+      networkCount = 0;
+      messageCount = 0;
+      updateStats();
+      updateCount();
+    });
+
+    document.getElementById('btnClearApi').addEventListener('click', () => {
+      window.debugApi.clearApiCaptures();
+      apiCaptures = [];
+      apiCaptureCount = 0;
+      renderApiList();
+      document.getElementById('apiDetail').innerHTML = '<div class="api-detail-placeholder">点击左侧条目查看详情</div>';
+      document.getElementById('apiCountInfo').textContent = '0 条';
+    });
+
+    document.getElementById('btnExportApi').addEventListener('click', async () => {
+      const cat = document.getElementById('apiCategoryFilter').value || undefined;
+      const result = await window.debugApi.exportApiCaptures(cat);
+      if (result.success) {
+        addEntry('systemLog', 'info', `API 抓包已导出: ${result.path}`);
+      } else {
+        addEntry('systemLog', 'error', `导出失败: ${result.error}`);
+      }
+    });
+
+    document.getElementById('apiCategoryFilter').addEventListener('change', () => renderApiList());
+
+    const scrollBtn = document.getElementById('btnAutoScroll');
+    scrollBtn.classList.add('active');
+    scrollBtn.addEventListener('click', () => {
+      autoScroll = !autoScroll;
+      scrollBtn.classList.toggle('active', autoScroll);
+    });
+
+    document.getElementById('filterInput').addEventListener('input', (e) => {
+      filterText = e.target.value.toLowerCase();
+      applyFilter();
+    });
+
+    function applyFilter() {
+      const map = { system: 'systemLog', network: 'networkLog', messages: 'messagesLog' };
+      const container = document.getElementById(map[activeTab]);
+      container.querySelectorAll('.entry').forEach(el => {
+        if (!filterText || el.textContent.toLowerCase().includes(filterText)) {
+          el.style.display = '';
+          const next = el.nextElementSibling;
+          if (next?.classList.contains('json-detail')) next.style.display = next.classList.contains('visible') ? '' : 'none';
+        } else {
+          el.style.display = 'none';
+          const next = el.nextElementSibling;
+          if (next?.classList.contains('json-detail')) next.style.display = 'none';
+        }
+      });
+    }
+
+    function updateCount() {
+      const map = { system: 'systemLog', network: 'networkLog', messages: 'messagesLog' };
+      const container = document.getElementById(map[activeTab]);
+      const count = container.querySelectorAll('.entry').length;
+      document.getElementById('countInfo').textContent = `${count} 条记录`;
+    }
+
+    function updateStats() {
+      document.getElementById('statsText').textContent = `网络请求: ${networkCount} | 消息接口: ${messageCount}`;
+    }
+
+    function scrollToBottom(container) {
+      if (autoScroll) container.scrollTop = container.scrollHeight;
+    }
+
+    // ---- 添加日志 ----
+    function addEntry(containerId, type, text, jsonData) {
+      const container = document.getElementById(containerId);
+      const time = new Date().toLocaleTimeString('zh-CN');
+
+      const el = document.createElement('div');
+      el.className = `entry ${type}`;
+      el.textContent = `[${time}] ${text}`;
+
+      if (jsonData) {
+        el.classList.add('clickable');
+        const detail = document.createElement('div');
+        detail.className = 'json-detail';
+        detail.textContent = typeof jsonData === 'string' ? jsonData : JSON.stringify(jsonData, null, 2);
+        el.addEventListener('click', () => detail.classList.toggle('visible'));
+        container.appendChild(el);
+        container.appendChild(detail);
+      } else {
+        container.appendChild(el);
+      }
+
+      if (filterText && !el.textContent.toLowerCase().includes(filterText)) {
+        el.style.display = 'none';
+      }
+
+      scrollToBottom(container);
+      updateCount();
+    }
+
+    // ---- 事件监听 ----
+    window.debugApi.onSystemLog((entry) => {
+      addEntry('systemLog', entry.type || 'info', entry.text);
+    });
+
+    window.debugApi.onAutoReplySent((data) => {
+      addEntry('systemLog', 'reply', `[自动回复] ${data.customer}: ${data.question} → ${data.answer}`);
+    });
+
+    window.debugApi.onNetworkLog((entry) => {
+      if (entry.type === 'network' || entry.type === 'important') {
+        const jsonData = entry.data?.isJson ? entry.data.body : null;
+        addEntry('networkLog', entry.type, entry.text, jsonData);
+        networkCount++;
+        updateStats();
+
+        if (activeTab !== 'network') {
+          const badge = document.getElementById('networkBadge');
+          badge.textContent = parseInt(badge.textContent || '0') + 1;
+          badge.style.display = '';
+        }
+      } else {
+        addEntry('systemLog', 'info', `[网络监控] ${entry.text}`);
+      }
+    });
+
+    window.debugApi.onNetworkMessageDetected((logEntry) => {
+      addEntry('messagesLog', 'important',
+        `发现消息接口: ${logEntry.url} (${logEntry.bodySize}B)`,
+        logEntry.body
+      );
+      messageCount++;
+      updateStats();
+
+      if (activeTab !== 'messages') {
+        const badge = document.getElementById('messageBadge');
+        badge.textContent = parseInt(badge.textContent || '0') + 1;
+        badge.style.display = '';
+      }
+    });
+
+    // ---- API 抓包 ----
+
+    function renderApiList() {
+      const filterCat = document.getElementById('apiCategoryFilter').value;
+      const list = filterCat ? apiCaptures.filter(c => c.category === filterCat) : apiCaptures;
+      const container = document.getElementById('apiList');
+      container.innerHTML = '';
+      for (const item of list) {
+        const el = document.createElement('div');
+        el.className = 'api-item' + (item.id === selectedCaptureId ? ' selected' : '');
+        const statusClass = item.status >= 200 && item.status < 300 ? 's2xx' : item.status >= 400 && item.status < 500 ? 's4xx' : item.status >= 500 ? 's5xx' : '';
+        el.innerHTML = `<span class="method ${item.method}">${item.method}</span>`
+          + `<span class="url" title="${item.url}">${item.url}</span>`
+          + `<span class="category-tag ${item.category}">${item.category}</span>`
+          + `<span class="status ${statusClass}">${item.status}</span>`;
+        el.addEventListener('click', () => showCaptureDetail(item.id));
+        container.appendChild(el);
+      }
+      document.getElementById('apiCountInfo').textContent = `${list.length} 条`;
+    }
+
+    async function showCaptureDetail(captureId) {
+      selectedCaptureId = captureId;
+      renderApiList();
+      const detail = await window.debugApi.getApiCaptureDetail(captureId);
+      const container = document.getElementById('apiDetail');
+      if (!detail) {
+        container.innerHTML = '<div class="api-detail-placeholder">未找到详情</div>';
+        return;
+      }
+      const time = new Date(detail.timestamp).toLocaleTimeString('zh-CN');
+      let html = `<h4>请求 (${time})</h4>`;
+      html += `<div class="kv"><span class="k">Method: </span><span class="v">${detail.request.method}</span></div>`;
+      html += `<div class="kv"><span class="k">URL: </span><span class="v">${detail.request.url}</span></div>`;
+      html += `<div class="kv"><span class="k">分类: </span><span class="v">${detail.category}</span></div>`;
+
+      if (detail.request.headers) {
+        html += '<h4>请求 Headers</h4><pre>' + escapeHtml(JSON.stringify(detail.request.headers, null, 2)) + '</pre>';
+      }
+      if (detail.request.postData) {
+        html += '<h4>请求 Body</h4>';
+        let postBody = detail.request.postData;
+        try { postBody = JSON.stringify(JSON.parse(postBody), null, 2); } catch {}
+        html += '<pre>' + escapeHtml(postBody) + '</pre>';
+      }
+      html += `<h4>响应 (${detail.response.status})</h4>`;
+      html += `<div class="kv"><span class="k">大小: </span><span class="v">${detail.response.bodySize} B</span></div>`;
+      if (detail.response.body) {
+        html += '<h4>响应 Body</h4><pre>'
+          + escapeHtml(typeof detail.response.body === 'string' ? detail.response.body : JSON.stringify(detail.response.body, null, 2))
+          + '</pre>';
+      }
+      container.innerHTML = html;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // 实时接收新的 API 捕获
+    window.debugApi.onApiCapture((item) => {
+      apiCaptures.unshift(item);
+      if (apiCaptures.length > 500) apiCaptures.length = 500;
+      apiCaptureCount++;
+      if (activeTab === 'apiCapture') {
+        renderApiList();
+      } else {
+        const badge = document.getElementById('apiBadge');
+        badge.textContent = parseInt(badge.textContent || '0') + 1;
+        badge.style.display = '';
+      }
+    });
+
+    // 启动时加载已有的捕获
+    window.debugApi.getApiCaptureList().then(list => {
+      apiCaptures = list || [];
+      apiCaptureCount = apiCaptures.length;
+      renderApiList();
+    });
+
+    addEntry('systemLog', 'info', '调试面板已打开，正在监听网络请求...');
+  </script>
+</body>
+</html>

@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>元尾巴 · 自动回复设置</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      padding-bottom: 60px;
+    }
+
+    .header {
+      background: #fff;
+      padding: 16px 20px 0;
+      border-bottom: 1px solid #e8e8e8;
+    }
+
+    .header h1 { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+
+    /* ---- Tab 导航 ---- */
+    .tab-nav {
+      display: flex;
+      gap: 0;
+      border-bottom: none;
+    }
+
+    .tab-btn {
+      padding: 8px 20px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      font-size: 14px;
+      color: #888;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover { color: #333; }
+    .tab-btn.active { color: #e02e24; border-bottom-color: #e02e24; font-weight: 600; }
+
+    .tab-content { display: none; padding: 20px; }
+    .tab-content.active { display: block; }
+
+    /* ---- 通用 ---- */
+    .panel {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px;
+      border: 1px solid #e8e8e8;
+      margin-bottom: 16px;
+    }
+
+    .panel h3 {
+      font-size: 14px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel .desc { font-size: 12px; color: #999; margin-bottom: 12px; }
+
+    .btn {
+      padding: 6px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.2s;
+    }
+
+    .btn-primary { background: #e02e24; color: #fff; }
+    .btn-primary:hover { background: #c62620; }
+    .btn-secondary { background: #f0f0f0; color: #333; }
+    .btn-secondary:hover { background: #e0e0e0; }
+    .btn-danger { background: #fff; color: #e02e24; border: 1px solid #e02e24; }
+    .btn-danger:hover { background: #fef0f0; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-xs { padding: 2px 8px; font-size: 11px; }
+    .btn-ghost { background: none; border: 1px solid #d9d9d9; color: #666; }
+    .btn-ghost:hover { border-color: #e02e24; color: #e02e24; }
+
+    label.switch {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 12px; color: #666; cursor: pointer;
+    }
+
+    label.switch input { display: none; }
+
+    .switch-track {
+      width: 32px; height: 18px; background: #ccc;
+      border-radius: 9px; position: relative; transition: background 0.3s;
+    }
+
+    label.switch input:checked + .switch-track { background: #4caf50; }
+
+    .switch-track::after {
+      content: ''; width: 14px; height: 14px; background: #fff;
+      border-radius: 50%; position: absolute; top: 2px; left: 2px;
+      transition: transform 0.3s;
+    }
+
+    label.switch input:checked + .switch-track::after { transform: translateX(14px); }
+
+    .field { margin-bottom: 10px; }
+
+    .field-label {
+      font-size: 12px; color: #888; margin-bottom: 4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .field-label .hint { font-size: 11px; color: #bbb; font-weight: normal; }
+
+    .field textarea, .field input[type="text"] {
+      width: 100%; padding: 8px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px;
+      font-size: 13px; font-family: inherit; resize: vertical;
+    }
+
+    .field textarea { min-height: 60px; }
+
+    .toast {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: #333; color: #fff; padding: 8px 20px;
+      border-radius: 6px; font-size: 13px; z-index: 9999;
+      opacity: 0; transition: opacity 0.3s;
+    }
+
+    .toast.show { opacity: 1; }
+
+    /* ---- Tab 1: 规则管理 ---- */
+    .rule-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .rule-card {
+      background: #fff; border-radius: 8px; padding: 16px;
+      border: 1px solid #e8e8e8; transition: box-shadow 0.2s;
+    }
+
+    .rule-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
+    .rule-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+    }
+
+    .rule-header input[type="text"] {
+      flex: 1; padding: 6px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px;
+    }
+
+    .rule-header select {
+      padding: 6px 10px; border: 1px solid #d9d9d9;
+      border-radius: 4px; font-size: 13px; background: #fff;
+    }
+
+    .rule-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
+    .priority-field { display: flex; align-items: center; gap: 8px; }
+    .priority-field input { width: 60px; text-align: center; }
+
+    .keyword-groups { display: flex; flex-direction: column; gap: 8px; }
+
+    .keyword-group { display: flex; gap: 8px; align-items: flex-start; }
+
+    .keyword-group textarea {
+      flex: 1; min-height: 36px; padding: 6px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px;
+      font-size: 13px; font-family: inherit; resize: vertical;
+    }
+
+    .keyword-group .group-label {
+      min-width: 50px; font-size: 11px; color: #aaa;
+      padding-top: 8px; text-align: right; flex-shrink: 0;
+    }
+
+    .keyword-group .group-actions {
+      display: flex; flex-direction: column; gap: 2px; padding-top: 4px;
+    }
+
+    .add-group-btn {
+      background: none; border: 1px dashed #d9d9d9; border-radius: 4px;
+      padding: 4px 12px; font-size: 12px; color: #999; cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .add-group-btn:hover { border-color: #e02e24; color: #e02e24; }
+
+    .add-rule-btn {
+      width: 100%; padding: 12px; background: #fff;
+      border: 2px dashed #d9d9d9; border-radius: 8px;
+      cursor: pointer; font-size: 14px; color: #999; transition: all 0.2s;
+    }
+
+    .add-rule-btn:hover { border-color: #e02e24; color: #e02e24; }
+
+    .test-panel h3 { font-size: 14px; margin-bottom: 10px; }
+
+    .test-row { display: flex; gap: 10px; align-items: center; }
+
+    .test-row input {
+      flex: 1; padding: 8px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px;
+    }
+
+    .test-result {
+      margin-top: 10px; padding: 10px; border-radius: 4px;
+      font-size: 13px; display: none;
+    }
+
+    .test-result.hit {
+      display: block; background: #f0faf0;
+      border: 1px solid #b7eb8f; color: #389e0d;
+    }
+
+    .test-result.miss {
+      display: block; background: #fff7e6;
+      border: 1px solid #ffd591; color: #d48806;
+    }
+
+    .exclude-field textarea { min-height: 36px; background: #fffbfb; }
+
+    .empty-state { text-align: center; padding: 40px; color: #999; }
+
+    /* ---- Tab 2: 兜底设置 ---- */
+    .setting-row {
+      display: flex; gap: 16px; align-items: center;
+      flex-wrap: wrap; margin-bottom: 12px;
+    }
+
+    .setting-item {
+      display: flex; align-items: center; gap: 6px; font-size: 13px;
+    }
+
+    .setting-item label { color: #666; white-space: nowrap; }
+
+    .setting-item input[type="number"], .setting-item select {
+      padding: 4px 8px; border: 1px solid #d9d9d9;
+      border-radius: 4px; font-size: 13px; width: 90px;
+    }
+
+    .setting-item select { width: auto; }
+
+    .text-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+
+    .text-item {
+      display: flex; gap: 8px; align-items: flex-start;
+    }
+
+    .text-item textarea {
+      flex: 1; min-height: 40px; padding: 6px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px;
+      font-size: 13px; font-family: inherit; resize: vertical;
+    }
+
+    .text-item .text-num {
+      min-width: 24px; font-size: 11px; color: #bbb;
+      padding-top: 10px; text-align: center;
+    }
+
+    /* 场景卡片 */
+    .scene-card {
+      background: #fafafa; border-radius: 6px; padding: 14px;
+      border: 1px solid #e8e8e8; margin-bottom: 10px;
+    }
+
+    .scene-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+
+    .scene-header input[type="text"] {
+      flex: 1; padding: 5px 8px;
+      border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px;
+    }
+
+    .scene-header input[type="number"] {
+      width: 60px; padding: 5px 8px; text-align: center;
+      border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px;
+    }
+
+    .scene-field { margin-bottom: 8px; }
+
+    .scene-field .scene-label {
+      font-size: 12px; color: #888; margin-bottom: 4px;
+    }
+
+    .scene-field textarea {
+      width: 100%; min-height: 36px; padding: 6px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px;
+      font-size: 13px; font-family: inherit; resize: vertical;
+    }
+
+    .scene-replies-list {
+      display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px;
+    }
+
+    .scene-reply-item {
+      display: flex; gap: 6px; align-items: flex-start;
+    }
+
+    .scene-reply-item textarea {
+      flex: 1; min-height: 36px; padding: 6px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px;
+      font-size: 13px; font-family: inherit; resize: vertical;
+    }
+
+    /* ---- Tab 3: 话术库 ---- */
+    .phrase-tabs {
+      display: flex; gap: 0; margin-bottom: 12px;
+      border-bottom: 1px solid #e8e8e8;
+    }
+
+    .phrase-tab-btn {
+      padding: 6px 16px; background: none; border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer; font-size: 13px; color: #888; transition: all 0.2s;
+    }
+
+    .phrase-tab-btn.active { color: #e02e24; border-bottom-color: #e02e24; }
+
+    .phrase-filter {
+      display: flex; gap: 10px; margin-bottom: 12px; align-items: center;
+    }
+
+    .phrase-filter select {
+      padding: 5px 10px; border: 1px solid #d9d9d9;
+      border-radius: 4px; font-size: 13px; background: #fff;
+    }
+
+    .phrase-filter input {
+      flex: 1; padding: 6px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px;
+    }
+
+    .phrase-list { max-height: 400px; overflow-y: auto; }
+
+    .phrase-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-bottom: 1px solid #f0f0f0;
+      transition: background 0.15s;
+    }
+
+    .phrase-item:hover { background: #fafafa; }
+
+    .phrase-category-tag {
+      font-size: 11px; color: #fff; background: #e02e24;
+      padding: 1px 8px; border-radius: 10px; white-space: nowrap;
+    }
+
+    .phrase-text { flex: 1; font-size: 13px; color: #333; }
+
+    .phrase-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+    .add-custom-phrase {
+      display: flex; gap: 8px; margin-top: 12px; align-items: flex-start;
+    }
+
+    .add-custom-phrase textarea {
+      flex: 1; min-height: 36px; padding: 6px 10px;
+      border: 1px solid #d9d9d9; border-radius: 4px;
+      font-size: 13px; font-family: inherit; resize: vertical;
+    }
+
+    .add-custom-phrase select {
+      padding: 5px 8px; border: 1px solid #d9d9d9;
+      border-radius: 4px; font-size: 13px;
+    }
+
+    /* ---- Tab 4: 未匹配记录 ---- */
+    .stats-bar {
+      display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+
+    .stat-chip {
+      font-size: 12px; background: #f5f5f5; padding: 4px 12px;
+      border-radius: 12px; color: #666;
+    }
+
+    .stat-chip strong { color: #e02e24; }
+
+    .unmatched-list { max-height: 500px; overflow-y: auto; }
+
+    .unmatched-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-bottom: 1px solid #f0f0f0;
+      font-size: 13px;
+    }
+
+    .unmatched-item:hover { background: #fafafa; }
+
+    .unmatched-time { color: #aaa; font-size: 12px; white-space: nowrap; min-width: 50px; }
+    .unmatched-customer { color: #666; font-weight: 500; white-space: nowrap; min-width: 80px; }
+    .unmatched-msg { flex: 1; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ---- Footer ---- */
+    .footer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #fff; padding: 12px 20px;
+      border-top: 1px solid #e8e8e8;
+      display: flex; justify-content: flex-end; gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>元尾巴 · 自动回复设置</h1>
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="rules">规则管理</button>
+      <button class="tab-btn" data-tab="fallback">兜底设置</button>
+      <button class="tab-btn" data-tab="phrases">话术库</button>
+      <button class="tab-btn" data-tab="unmatched">未匹配记录</button>
+    </div>
+  </div>
+
+  <!-- ==================== Tab 1: 规则管理 ==================== -->
+  <div class="tab-content active" id="tab-rules">
+    <div class="panel test-panel">
+      <h3>规则测试</h3>
+      <div class="test-row">
+        <input type="text" id="testInput" placeholder="输入客户消息，测试匹配结果...">
+        <button class="btn btn-primary btn-sm" id="btnTest">测试</button>
+      </div>
+      <div class="test-result" id="testResult"></div>
+    </div>
+
+    <div class="rule-list" id="ruleList"></div>
+    <button class="add-rule-btn" id="btnAddRule">+ 添加规则</button>
+  </div>
+
+  <!-- ==================== Tab 2: 兜底设置 ==================== -->
+  <div class="tab-content" id="tab-fallback">
+    <!-- 基础设置 -->
+    <div class="panel">
+      <h3>
+        兜底回复
+        <label class="switch">
+          <input type="checkbox" id="fallbackEnabled">
+          <span class="switch-track"></span>
+        </label>
+      </h3>
+      <div class="desc">所有规则都匹配不上时，自动发送兜底话术，确保客户一定能收到回复</div>
+
+      <div class="setting-row">
+        <div class="setting-item">
+          <label>延迟发送</label>
+          <input type="number" id="fallbackDelay" min="0" max="30" step="0.5" value="2">
+          <label>秒</label>
+        </div>
+        <div class="setting-item">
+          <label>冷却时间</label>
+          <input type="number" id="fallbackCooldown" min="0" max="600" step="10" value="60">
+          <label>秒（同一客户）</label>
+        </div>
+        <div class="setting-item">
+          <label>发送策略</label>
+          <select id="fallbackStrategy">
+            <option value="random">随机选取</option>
+            <option value="sequential">顺序轮换</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <label class="switch">
+            <input type="checkbox" id="cancelOnHuman" checked>
+            <span class="switch-track"></span>
+          </label>
+          <label>人工输入时取消兜底</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 通用兜底话术 -->
+    <div class="panel">
+      <h3>通用兜底话术</h3>
+      <div class="desc">未匹配任何场景时使用，支持多条话术按策略轮换发送</div>
+      <div class="text-list" id="fallbackTexts"></div>
+      <button class="add-group-btn" id="btnAddFallbackText" style="margin-top:4px">+ 添加话术</button>
+    </div>
+
+    <!-- 场景分类兜底 -->
+    <div class="panel">
+      <h3>场景分类兜底</h3>
+      <div class="desc">根据消息中的触发词自动识别场景，使用对应的场景话术回复（优先级高于通用兜底）</div>
+      <div id="sceneList"></div>
+      <button class="add-group-btn" id="btnAddScene" style="margin-top:4px">+ 添加场景</button>
+    </div>
+
+    <div style="text-align:right; margin-top: 8px;">
+      <button class="btn btn-primary" id="btnSaveFallback">保存兜底设置</button>
+    </div>
+  </div>
+
+  <!-- ==================== Tab 3: 话术库 ==================== -->
+  <div class="tab-content" id="tab-phrases">
+    <div class="panel">
+      <h3>话术库</h3>
+      <div class="desc">从系统预置话术中选用，或添加自己的常用话术</div>
+
+      <div class="phrase-tabs">
+        <button class="phrase-tab-btn active" data-ptab="system">系统话术</button>
+        <button class="phrase-tab-btn" data-ptab="custom">我的话术</button>
+      </div>
+
+      <div class="phrase-filter">
+        <select id="phraseCategory">
+          <option value="">全部分类</option>
+        </select>
+        <input type="text" id="phraseSearch" placeholder="搜索话术...">
+      </div>
+
+      <div id="phraseTabSystem">
+        <div class="phrase-list" id="systemPhraseList"></div>
+      </div>
+
+      <div id="phraseTabCustom" style="display:none">
+        <div class="phrase-list" id="customPhraseList"></div>
+        <div class="add-custom-phrase">
+          <textarea id="newPhraseText" rows="1" placeholder="输入自定义话术..."></textarea>
+          <select id="newPhraseCategory"></select>
+          <button class="btn btn-primary btn-sm" id="btnAddPhrase">添加</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Tab 4: 未匹配记录 ==================== -->
+  <div class="tab-content" id="tab-unmatched">
+    <div class="panel">
+      <h3 style="justify-content:space-between">
+        <span>未匹配消息记录</span>
+        <button class="btn btn-ghost btn-sm" id="btnClearLog">清空记录</button>
+      </h3>
+      <div class="desc">客户消息未被任何规则命中的记录，可据此补充规则</div>
+
+      <div class="stats-bar" id="unmatchedStats"></div>
+      <div class="unmatched-list" id="unmatchedList"></div>
+      <div class="empty-state" id="unmatchedEmpty" style="display:none">暂无未匹配记录</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <button class="btn btn-secondary" id="btnImport">导入规则</button>
+    <button class="btn btn-secondary" id="btnExport">导出规则</button>
+    <button class="btn btn-primary" id="btnSave">保存所有规则</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ==================== 全局状态 ====================
+    let rules = [];
+    let fallbackConfig = {};
+    let systemPhrases = [];
+    let customPhrases = [];
+    let phraseCategories = [];
+    let unmatchedLog = [];
+    let currentPhraseTab = 'system';
+
+    // ==================== 初始化 ====================
+    (async () => {
+      rules = await window.pddApi.getRules();
+      rules.forEach(migrateRule);
+      renderRules();
+
+      fallbackConfig = await window.pddApi.getDefaultReply() || {};
+      migrateFallbackConfig();
+      renderFallbackSettings();
+
+      systemPhrases = await window.pddApi.getSystemPhrases();
+      customPhrases = await window.pddApi.getPhraseLibrary();
+      phraseCategories = await window.pddApi.getPhraseCategories();
+      initPhraseCategorySelects();
+      renderPhrases();
+
+      unmatchedLog = await window.pddApi.getUnmatchedLog();
+      renderUnmatched();
+    })();
+
+    // ==================== Tab 切换 ====================
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // ==================== 工具函数 ====================
+    function createId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    function escHtml(str) {
+      return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2000);
+    }
+
+    function formatTime(ts) {
+      const d = new Date(ts);
+      return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+
+    function formatDate(ts) {
+      const d = new Date(ts);
+      return `${d.getMonth()+1}/${d.getDate()} ${formatTime(ts)}`;
+    }
+
+    // ==================== Tab 1: 规则管理 ====================
+
+    function migrateRule(rule) {
+      if (!rule.keywordGroups) {
+        rule.keywordGroups = rule.keywords?.length ? [rule.keywords] : [[]];
+      }
+      if (rule.keywordGroups.length === 0) rule.keywordGroups = [[]];
+      if (!rule.excludeKeywords) rule.excludeKeywords = [];
+      if (rule.minScore === undefined) rule.minScore = 5;
+    }
+
+    function renderRules() {
+      const list = document.getElementById('ruleList');
+      if (rules.length === 0) {
+        list.innerHTML = '<div class="empty-state">暂无规则，点击下方按钮添加</div>';
+        return;
+      }
+
+      list.innerHTML = rules.map((rule, idx) => {
+        const groupsHtml = (rule.keywordGroups || [[]]).map((group, gIdx) => `
+          <div class="keyword-group">
+            <span class="group-label">组${gIdx + 1}</span>
+            <textarea rows="1"
+              placeholder="同义词用逗号分隔，如: 退货, 退款, 退回"
+              onchange="updateGroup(${idx}, ${gIdx}, this.value)"
+            >${(group || []).join(', ')}</textarea>
+            <div class="group-actions">
+              ${(rule.keywordGroups || []).length > 1
+                ? `<button class="btn btn-danger btn-xs" onclick="removeGroup(${idx}, ${gIdx})">×</button>`
+                : ''}
+            </div>
+          </div>
+        `).join('');
+
+        return `
+        <div class="rule-card" data-idx="${idx}">
+          <div class="rule-header">
+            <input type="text" value="${escHtml(rule.name)}" placeholder="规则名称"
+                   onchange="updateRule(${idx}, 'name', this.value)">
+            <select onchange="updateRule(${idx}, 'matchType', this.value)">
+              <option value="contains" ${rule.matchType === 'contains' ? 'selected' : ''}>包含关键词</option>
+              <option value="exact" ${rule.matchType === 'exact' ? 'selected' : ''}>完全匹配</option>
+              <option value="regex" ${rule.matchType === 'regex' ? 'selected' : ''}>正则匹配</option>
+            </select>
+            <label class="switch">
+              <input type="checkbox" ${rule.enabled ? 'checked' : ''}
+                     onchange="updateRule(${idx}, 'enabled', this.checked)">
+              <span class="switch-track"></span>
+            </label>
+            <div class="priority-field">
+              <span style="font-size:12px;color:#888;">优先级</span>
+              <input type="text" value="${rule.priority || 0}"
+                     onchange="updateRule(${idx}, 'priority', parseInt(this.value)||0)">
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              关键词分组
+              <span class="hint">每组内为同义词（命中任一即可），命中的组越多得分越高</span>
+            </div>
+            <div class="keyword-groups">${groupsHtml}</div>
+            <button class="add-group-btn" style="margin-top:6px" onclick="addGroup(${idx})">+ 添加关键词组</button>
+          </div>
+
+          <div class="field exclude-field">
+            <div class="field-label">
+              排除关键词
+              <span class="hint">消息包含这些词时不触发，逗号分隔</span>
+            </div>
+            <textarea rows="1"
+              placeholder="如: 不退, 不用退, 不需要退"
+              onchange="updateRule(${idx}, 'excludeKeywords', this.value.split(',').map(s=>s.trim()).filter(Boolean))"
+            >${(rule.excludeKeywords || []).join(', ')}</textarea>
+          </div>
+
+          <div class="field">
+            <div class="field-label">回复内容 <span class="hint">支持变量: {time} {date}</span></div>
+            <textarea onchange="updateRule(${idx}, 'reply', this.value)"
+            >${escHtml(rule.reply || '')}</textarea>
+          </div>
+
+          <div class="rule-actions">
+            <button class="btn btn-danger btn-sm" onclick="deleteRule(${idx})">删除</button>
+          </div>
+        </div>
+      `}).join('');
+    }
+
+    function updateRule(idx, key, value) { rules[idx][key] = value; }
+
+    function updateGroup(ruleIdx, groupIdx, value) {
+      rules[ruleIdx].keywordGroups[groupIdx] = value.split(',').map(s => s.trim()).filter(Boolean);
+      syncKeywordsFromGroups(ruleIdx);
+    }
+
+    function addGroup(ruleIdx) { rules[ruleIdx].keywordGroups.push([]); renderRules(); }
+
+    function removeGroup(ruleIdx, groupIdx) {
+      rules[ruleIdx].keywordGroups.splice(groupIdx, 1);
+      syncKeywordsFromGroups(ruleIdx);
+      renderRules();
+    }
+
+    function syncKeywordsFromGroups(ruleIdx) {
+      rules[ruleIdx].keywords = (rules[ruleIdx].keywordGroups || []).flat();
+    }
+
+    function deleteRule(idx) {
+      if (confirm('确定删除此规则？')) { rules.splice(idx, 1); renderRules(); }
+    }
+
+    document.getElementById('btnAddRule').addEventListener('click', () => {
+      rules.push({
+        id: createId(), name: `规则 ${rules.length + 1}`, enabled: true,
+        keywords: [], keywordGroups: [[]], excludeKeywords: [],
+        matchType: 'contains', reply: '', shops: null, priority: 0, minScore: 5
+      });
+      renderRules();
+    });
+
+    document.getElementById('btnSave').addEventListener('click', async () => {
+      rules.forEach((_, i) => syncKeywordsFromGroups(i));
+      await window.pddApi.saveRules(rules);
+      showToast('规则已保存');
+    });
+
+    document.getElementById('btnExport').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(rules, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'pdd-reply-rules.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('btnImport').addEventListener('click', () => {
+      const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+      input.onchange = async (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        try {
+          const imported = JSON.parse(await file.text());
+          if (Array.isArray(imported)) { rules = imported; rules.forEach(migrateRule); renderRules(); }
+        } catch { showToast('导入失败：文件格式不正确'); }
+      };
+      input.click();
+    });
+
+    // 规则测试
+    document.getElementById('btnTest').addEventListener('click', async () => {
+      const msg = document.getElementById('testInput').value.trim();
+      if (!msg) return;
+      const result = await window.pddApi.testRule(msg);
+      const el = document.getElementById('testResult');
+      if (result.matched) {
+        el.className = 'test-result hit';
+        el.innerHTML = `<strong>命中规则：</strong>${escHtml(result.ruleName)}（得分 ${result.score}）<br><strong>回复：</strong>${escHtml(result.reply)}`;
+      } else {
+        el.className = 'test-result miss';
+        el.textContent = '未匹配到任何规则（将触发兜底回复）';
+      }
+    });
+
+    document.getElementById('testInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btnTest').click();
+    });
+
+    // ==================== Tab 2: 兜底设置 ====================
+
+    function migrateFallbackConfig() {
+      if (!fallbackConfig.texts && fallbackConfig.text) {
+        fallbackConfig.texts = [fallbackConfig.text];
+      }
+      if (!fallbackConfig.texts) fallbackConfig.texts = [];
+      if (!fallbackConfig.scenes) fallbackConfig.scenes = [];
+      if (fallbackConfig.cooldown === undefined) fallbackConfig.cooldown = 60000;
+      if (!fallbackConfig.strategy) fallbackConfig.strategy = 'random';
+      if (fallbackConfig.cancelOnHumanReply === undefined) fallbackConfig.cancelOnHumanReply = true;
+    }
+
+    function renderFallbackSettings() {
+      document.getElementById('fallbackEnabled').checked = fallbackConfig.enabled !== false;
+      document.getElementById('fallbackDelay').value = (fallbackConfig.delay || 2000) / 1000;
+      document.getElementById('fallbackCooldown').value = (fallbackConfig.cooldown || 60000) / 1000;
+      document.getElementById('fallbackStrategy').value = fallbackConfig.strategy || 'random';
+      document.getElementById('cancelOnHuman').checked = fallbackConfig.cancelOnHumanReply !== false;
+      renderFallbackTexts();
+      renderScenes();
+    }
+
+    function renderFallbackTexts() {
+      const container = document.getElementById('fallbackTexts');
+      const texts = fallbackConfig.texts || [];
+      if (texts.length === 0) {
+        container.innerHTML = '<div style="color:#ccc;font-size:13px;padding:8px 0;">暂无话术，请添加</div>';
+        return;
+      }
+      container.innerHTML = texts.map((t, i) => `
+        <div class="text-item">
+          <span class="text-num">${i + 1}</span>
+          <textarea rows="1" onchange="fallbackConfig.texts[${i}]=this.value">${escHtml(t)}</textarea>
+          <button class="btn btn-danger btn-xs" onclick="removeFallbackText(${i})">×</button>
+        </div>
+      `).join('');
+    }
+
+    function removeFallbackText(idx) {
+      fallbackConfig.texts.splice(idx, 1);
+      renderFallbackTexts();
+    }
+
+    document.getElementById('btnAddFallbackText').addEventListener('click', () => {
+      fallbackConfig.texts.push('');
+      renderFallbackTexts();
+      // 自动聚焦到新添加的 textarea
+      const items = document.querySelectorAll('#fallbackTexts textarea');
+      items[items.length - 1]?.focus();
+    });
+
+    // 场景管理
+    function renderScenes() {
+      const container = document.getElementById('sceneList');
+      const scenes = fallbackConfig.scenes || [];
+      if (scenes.length === 0) {
+        container.innerHTML = '<div style="color:#ccc;font-size:13px;padding:8px 0;">暂无场景分类</div>';
+        return;
+      }
+      container.innerHTML = scenes.map((scene, si) => {
+        const repliesHtml = (scene.replies || []).map((r, ri) => `
+          <div class="scene-reply-item">
+            <textarea rows="1" onchange="fallbackConfig.scenes[${si}].replies[${ri}]=this.value">${escHtml(r)}</textarea>
+            ${scene.replies.length > 1
+              ? `<button class="btn btn-danger btn-xs" onclick="removeSceneReply(${si},${ri})">×</button>`
+              : ''}
+          </div>
+        `).join('');
+
+        return `
+        <div class="scene-card">
+          <div class="scene-header">
+            <input type="text" value="${escHtml(scene.name)}" placeholder="场景名称"
+                   onchange="fallbackConfig.scenes[${si}].name=this.value">
+            <span style="font-size:12px;color:#888;">优先级</span>
+            <input type="number" value="${scene.priority || 0}"
+                   onchange="fallbackConfig.scenes[${si}].priority=parseInt(this.value)||0">
+            <label class="switch">
+              <input type="checkbox" ${scene.enabled !== false ? 'checked' : ''}
+                     onchange="fallbackConfig.scenes[${si}].enabled=this.checked">
+              <span class="switch-track"></span>
+            </label>
+            <button class="btn btn-danger btn-xs" onclick="removeScene(${si})">删除</button>
+          </div>
+          <div class="scene-field">
+            <div class="scene-label">触发词（逗号分隔，消息包含任一即触发）</div>
+            <textarea rows="1"
+              onchange="fallbackConfig.scenes[${si}].signals=this.value.split(',').map(s=>s.trim()).filter(Boolean)"
+            >${(scene.signals || []).join(', ')}</textarea>
+          </div>
+          <div class="scene-field">
+            <div class="scene-label">场景话术</div>
+            <div class="scene-replies-list">${repliesHtml}</div>
+            <button class="add-group-btn" onclick="addSceneReply(${si})">+ 添加话术</button>
+          </div>
+        </div>
+      `}).join('');
+    }
+
+    function removeScene(idx) {
+      if (confirm('确定删除此场景？')) {
+        fallbackConfig.scenes.splice(idx, 1);
+        renderScenes();
+      }
+    }
+
+    function addSceneReply(sceneIdx) {
+      fallbackConfig.scenes[sceneIdx].replies.push('');
+      renderScenes();
+    }
+
+    function removeSceneReply(sceneIdx, replyIdx) {
+      fallbackConfig.scenes[sceneIdx].replies.splice(replyIdx, 1);
+      renderScenes();
+    }
+
+    document.getElementById('btnAddScene').addEventListener('click', () => {
+      fallbackConfig.scenes.push({
+        id: 'scene_' + createId(),
+        name: '新场景',
+        enabled: true,
+        signals: [],
+        replies: [''],
+        priority: 0
+      });
+      renderScenes();
+    });
+
+    document.getElementById('btnSaveFallback').addEventListener('click', async () => {
+      const config = {
+        enabled: document.getElementById('fallbackEnabled').checked,
+        texts: fallbackConfig.texts.filter(t => t.trim()),
+        delay: Math.round(parseFloat(document.getElementById('fallbackDelay').value || '2') * 1000),
+        cooldown: Math.round(parseFloat(document.getElementById('fallbackCooldown').value || '60') * 1000),
+        strategy: document.getElementById('fallbackStrategy').value,
+        cancelOnHumanReply: document.getElementById('cancelOnHuman').checked,
+        scenes: fallbackConfig.scenes
+      };
+      await window.pddApi.saveDefaultReply(config);
+      fallbackConfig = config;
+      showToast('兜底设置已保存');
+    });
+
+    // ==================== Tab 3: 话术库 ====================
+
+    function initPhraseCategorySelects() {
+      const options = '<option value="">全部分类</option>' +
+        phraseCategories.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+      document.getElementById('phraseCategory').innerHTML = options;
+
+      const addOptions = phraseCategories.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+      document.getElementById('newPhraseCategory').innerHTML = addOptions;
+    }
+
+    // 话术 tab 切换
+    document.querySelectorAll('.phrase-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.phrase-tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentPhraseTab = btn.dataset.ptab;
+        document.getElementById('phraseTabSystem').style.display = currentPhraseTab === 'system' ? '' : 'none';
+        document.getElementById('phraseTabCustom').style.display = currentPhraseTab === 'custom' ? '' : 'none';
+        renderPhrases();
+      });
+    });
+
+    // 筛选事件
+    document.getElementById('phraseCategory').addEventListener('change', renderPhrases);
+    document.getElementById('phraseSearch').addEventListener('input', renderPhrases);
+
+    function renderPhrases() {
+      const cat = document.getElementById('phraseCategory').value;
+      const search = document.getElementById('phraseSearch').value.trim().toLowerCase();
+
+      if (currentPhraseTab === 'system') {
+        renderPhraseList(systemPhrases, 'systemPhraseList', cat, search, false);
+      } else {
+        renderPhraseList(customPhrases, 'customPhraseList', cat, search, true);
+      }
+    }
+
+    // 保存当前筛选后的话术列表引用，供按钮回调使用
+    let _filteredPhrases = [];
+    let _filteredIsCustom = false;
+
+    function renderPhraseList(phrases, containerId, filterCat, filterSearch, isCustom) {
+      let filtered = phrases;
+      if (filterCat) filtered = filtered.filter(p => p.category === filterCat);
+      if (filterSearch) filtered = filtered.filter(p => p.text.toLowerCase().includes(filterSearch));
+
+      _filteredPhrases = filtered;
+      _filteredIsCustom = isCustom;
+
+      const container = document.getElementById(containerId);
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state">无匹配话术</div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map((p, i) => `
+        <div class="phrase-item">
+          <span class="phrase-category-tag">${escHtml(p.category)}</span>
+          <span class="phrase-text">${escHtml(p.text)}</span>
+          <div class="phrase-actions">
+            <button class="btn btn-ghost btn-xs" onclick="handlePhraseCopy(${i})" title="复制">复制</button>
+            <button class="btn btn-ghost btn-xs" onclick="handlePhraseUseFallback(${i})" title="添加到通用兜底话术">引用到兜底</button>
+            ${isCustom ? `<button class="btn btn-danger btn-xs" onclick="handlePhraseDelete(${i})">删除</button>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function handlePhraseCopy(idx) {
+      const text = _filteredPhrases[idx]?.text;
+      if (text) navigator.clipboard.writeText(text).then(() => showToast('已复制'));
+    }
+
+    async function handlePhraseUseFallback(idx) {
+      const text = _filteredPhrases[idx]?.text;
+      if (!text) return;
+      await window.pddApi.addPhraseToFallback(text);
+      if (!fallbackConfig.texts.includes(text)) fallbackConfig.texts.push(text);
+      showToast('已添加到通用兜底话术');
+    }
+
+    async function handlePhraseDelete(idx) {
+      const phrase = _filteredPhrases[idx];
+      if (!phrase) return;
+      const realIdx = customPhrases.findIndex(p => p.id === phrase.id);
+      if (realIdx >= 0) {
+        customPhrases.splice(realIdx, 1);
+        await window.pddApi.savePhraseLibrary(customPhrases);
+        renderPhrases();
+      }
+    }
+
+    document.getElementById('btnAddPhrase').addEventListener('click', async () => {
+      const text = document.getElementById('newPhraseText').value.trim();
+      const category = document.getElementById('newPhraseCategory').value;
+      if (!text) return;
+
+      customPhrases.push({ id: 'cp_' + createId(), text, category });
+      await window.pddApi.savePhraseLibrary(customPhrases);
+      document.getElementById('newPhraseText').value = '';
+      renderPhrases();
+      showToast('自定义话术已添加');
+    });
+
+    // ==================== Tab 4: 未匹配记录 ====================
+
+    function renderUnmatched() {
+      const list = document.getElementById('unmatchedList');
+      const emptyEl = document.getElementById('unmatchedEmpty');
+
+      if (unmatchedLog.length === 0) {
+        list.innerHTML = '';
+        emptyEl.style.display = '';
+        document.getElementById('unmatchedStats').innerHTML = '';
+        return;
+      }
+
+      emptyEl.style.display = 'none';
+
+      // 高频关键词统计
+      const wordCount = {};
+      unmatchedLog.forEach(item => {
+        const words = item.message.replace(/[，。！？、；：""（）\s]+/g, ' ').split(' ').filter(w => w.length >= 2);
+        words.forEach(w => { wordCount[w] = (wordCount[w] || 0) + 1; });
+      });
+      const topWords = Object.entries(wordCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8);
+
+      document.getElementById('unmatchedStats').innerHTML =
+        `<span class="stat-chip">共 <strong>${unmatchedLog.length}</strong> 条</span>` +
+        topWords.map(([w, c]) =>
+          `<span class="stat-chip">${escHtml(w)} <strong>×${c}</strong></span>`
+        ).join('');
+
+      list.innerHTML = unmatchedLog.map((item, idx) => `
+        <div class="unmatched-item">
+          <span class="unmatched-time">${formatDate(item.timestamp)}</span>
+          <span class="unmatched-customer">${escHtml(item.customer)}</span>
+          <span class="unmatched-msg" title="${escHtml(item.message)}">${escHtml(item.message)}</span>
+          <button class="btn btn-ghost btn-xs" onclick="createRuleFromUnmatched(${idx})">创建规则</button>
+        </div>
+      `).join('');
+    }
+
+    function createRuleFromUnmatched(idx) {
+      const item = unmatchedLog[idx];
+      if (!item) return;
+
+      // 提取 2 字以上的词作为关键词建议
+      const suggestedKw = item.message
+        .replace(/[，。！？、；：""（）\s]+/g, ',')
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length >= 2)
+        .slice(0, 5);
+
+      rules.push({
+        id: createId(),
+        name: `来自未匹配: ${item.message.slice(0, 15)}`,
+        enabled: true,
+        keywords: suggestedKw,
+        keywordGroups: [suggestedKw],
+        excludeKeywords: [],
+        matchType: 'contains',
+        reply: '',
+        shops: null,
+        priority: 0,
+        minScore: 5
+      });
+
+      // 切换到规则管理 tab
+      document.querySelector('[data-tab="rules"]').click();
+      renderRules();
+      showToast('已创建规则草稿，请补充回复内容');
+
+      // 滚动到底部
+      setTimeout(() => {
+        const ruleList = document.getElementById('ruleList');
+        ruleList.lastElementChild?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+
+    document.getElementById('btnClearLog').addEventListener('click', async () => {
+      if (!confirm('确定清空所有未匹配记录？')) return;
+      await window.pddApi.clearUnmatchedLog();
+      unmatchedLog = [];
+      renderUnmatched();
+      showToast('记录已清空');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+---
+description: 项目核心开发规范，定义技术栈、架构模式、编码风格和工具链
+globs:
+alwaysApply: true
+---
+
+# 元尾巴 · 拼多多客服助手 - 核心开发规范
+
+## 语言与输出
+- 使用中文回答问题
+- 如果遇到要使用的开源库或者开源包，通过 MCP 的 Context7 查看对应的文档
+
+## 技术栈
+- **运行环境**: Electron (桌面应用)
+- **语言**: JavaScript (Node.js)
+- **主进程**: Electron Main Process (BrowserWindow, BrowserView, IPC)
+- **渲染进程**: 原生 HTML + CSS + JS（工具栏、设置面板）
+- **嵌入页面**: 拼多多商家后台网页（通过 BrowserView 加载）
+- **数据持久化**: electron-store（自动回复规则、用户配置）
+- **注入脚本**: 原生 JS（DOM 操作、MutationObserver）
+
+## 项目结构
+
+```
+src/
+├── main/                   # Electron 主进程
+│   ├── main.js             # 应用入口：窗口管理、BrowserView、IPC
+│   ├── reply-engine.js     # 自动回复规则引擎
+│   └── settings-window.js  # 设置窗口管理
+├── preload/                # 预加载脚本（安全通信桥）
+│   ├── preload.js          # 工具栏 UI ↔ 主进程
+│   └── pdd-preload.js      # 拼多多网页 ↔ 主进程
+├── inject/                 # 注入到拼多多网页的脚本
+│   └── auto-reply.js       # DOM 监听 + 消息发送
+└── renderer/               # 前端页面
+    ├── index.html          # 主窗口（工具栏 + 状态栏）
+    └── settings.html       # 自动回复规则配置
+```
+
+## 架构原则
+
+### 嵌入式 WebView 架构
+- 客服聊天界面**通过 BrowserView 嵌入拼多多官方网页**，不自行实现聊天 UI
+- 自动回复功能通过**注入 JS 脚本**到拼多多网页实现
+- 自定义 UI 仅包含：工具栏、设置面板、状态栏、日志面板
+
+### 进程通信
+- 使用 Electron IPC 进行主进程与渲染进程通信
+- 使用 `contextBridge` 暴露安全 API，禁止在渲染进程使用 `nodeIntegration`
+- 注入脚本与 preload 之间通过 `window.postMessage` 通信
+
+### 数据流方向
+```
+拼多多网页 DOM → 注入脚本 → pdd-preload → 主进程(规则引擎) → pdd-preload → 注入脚本 → 模拟发送
+```
+
+## 编码规范
+
+### 通用
+- 仅在关键位置添加注释，注释使用中文
+- 不需要编写测试代码
+- 不要增加不必要的变量来中转数据
+- 非必要的变量不要建立，不要做备份函数、兼容函数
+- 除非用户明确指定，**禁止使用硬编码**做成常量或变量来满足需求
+
+### 命名
+- 文件名使用 kebab-case（如 `reply-engine.js`）
+- 变量和函数使用 camelCase
+- 类名使用 PascalCase
+- 常量使用 UPPER_SNAKE_CASE
+- IPC 通道名使用 kebab-case（如 `new-customer-message`）
+
+### DOM 注入脚本
+- 所有 CSS 选择器集中定义在 `SELECTORS` 对象中，方便调整
+- 必须使用防重复注入检查（`window.__PDD_AUTO_REPLY_INJECTED__`）
+- 暴露 `window.__PDD_HELPER__` 调试接口
+- 使用 `MutationObserver` 监听 DOM 变化，不使用轮询
+
+### Electron
+- BrowserView 使用独立 partition（`persist:pdd`）隔离 Cookie
+- 预加载脚本必须启用 `contextIsolation: true`
+- 窗口尺寸记忆使用 electron-store 持久化
+
+## 禁止事项
+- **禁止在渲染进程直接使用 Node.js API**（必须通过 preload 桥接）
+- **禁止自行实现聊天 UI**（使用嵌入拼多多官方网页）
+- **禁止硬编码拼多多 DOM 选择器到业务逻辑中**（统一在 SELECTORS 对象管理）
+- **禁止在注入脚本中使用 Node.js 模块**

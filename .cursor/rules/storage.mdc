@@ -1,0 +1,107 @@
+---
+description: 数据存储规范。当涉及到本地数据存储、配置持久化、规则数据管理时使用此规则
+globs: src/main/**
+---
+
+# 数据存储规范
+
+## 存储方案
+
+本项目使用 `electron-store` 进行本地数据持久化。
+
+## 存储结构
+
+| 数据类型 | Key | 类型 | 说明 |
+|---------|-----|------|------|
+| 自动回复规则 | `rules` | Array | 规则列表 |
+| 自动回复开关 | `autoReplyEnabled` | Boolean | 全局开关 |
+| 兜底回复 | `defaultReply` | Object | 见下方兜底回复配置 |
+| 窗口尺寸 | `windowBounds` | Object | `{ width, height }` |
+| 自定义话术库 | `phraseLibrary` | Array | 用户自定义话术列表 |
+| 未匹配消息记录 | `unmatchedLog` | Array | 最近 200 条未匹配消息 |
+
+## 规则数据格式
+
+```js
+{
+  id: string,                          // 唯一标识
+  name: string,                        // 规则名称
+  enabled: boolean,                    // 是否启用
+  keywords: string[],                  // 触发关键词（向后兼容，由 keywordGroups 自动同步）
+  keywordGroups: string[][],           // 关键词分组，每组内为同义词，命中组越多得分越高
+  excludeKeywords: string[],           // 排除关键词，消息包含这些词时不触发
+  matchType: 'contains' | 'exact' | 'regex',  // 匹配模式
+  reply: string,                       // 回复内容（支持 {time} {date} 变量）
+  shops: string[] | null,              // 适用店铺（null = 全部）
+  priority: number,                    // 优先级（数字越大优先级越高）
+  minScore: number                     // 最低匹配分（默认 5，低于此分不回复）
+}
+```
+
+### 匹配评分机制
+- 每命中一个关键词组 +10 分
+- exact 完全匹配额外 +20 分
+- 优先级作为权重叠加：priority × 0.1
+- 所有规则评分后取最高分，低于 minScore 的不回复
+- excludeKeywords 命中则直接排除该规则
+
+### 兜底回复配置
+```js
+{
+  enabled: boolean,              // 是否启用兜底回复
+  texts: string[],               // 多条兜底话术（支持 {time} {date} 变量）
+  delay: number,                 // 发送延迟（毫秒），给商家人工介入的时间窗口
+  cooldown: number,              // 同一客户冷却时间（毫秒），冷却期内不重复兜底
+  strategy: 'random' | 'sequential',  // 话术选取策略
+  cancelOnHumanReply: boolean,   // 延迟期间检测到人工输入则取消兜底
+  scenes: Scene[]                // 场景分类兜底列表
+}
+```
+
+### 场景分类（Scene）
+```js
+{
+  id: string,
+  name: string,          // 场景名称
+  enabled: boolean,
+  signals: string[],     // 触发词列表，消息包含任一即命中
+  replies: string[],     // 该场景的话术列表
+  priority: number       // 优先级，数字越大越先匹配
+}
+```
+
+### 自定义话术
+```js
+{ id: string, text: string, category: string }
+```
+
+### 未匹配消息记录
+```js
+{ message: string, customer: string, timestamp: number, shopId: string }
+```
+
+#### 兜底流程
+1. 所有规则匹配不上 → 尝试场景分类匹配（按触发词）→ 命中场景则用场景话术
+2. 场景也不命中 → 从通用兜底话术中按策略选取
+3. 同一客户在冷却期内不重复发送兜底
+4. 延迟发送期间如检测到人工正在输入则取消
+5. 所有未匹配消息记录到 unmatchedLog（上限 200 条）
+
+## 使用规范
+
+### 读写配置
+```js
+const Store = require('electron-store');
+const store = new Store({ defaults: { ... } });
+
+// 读取
+const rules = store.get('rules');
+
+// 写入
+store.set('rules', rules);
+```
+
+### 禁止事项
+- **禁止使用文件系统直接读写 JSON 文件**来存储配置（使用 electron-store）
+- **禁止在渲染进程直接操作 store**（必须通过 IPC 通信，由主进程操作）
+- **禁止存储敏感信息（如 Token）到 electron-store**（后续需使用 safeStorage 或 keytar）

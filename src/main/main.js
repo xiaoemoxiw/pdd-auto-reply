@@ -724,10 +724,10 @@ ipcMain.handle('get-token-info', () => {
   return (global.__pddTokens && shopId) ? global.__pddTokens[shopId] || null : null;
 });
 
-ipcMain.handle('api-get-token-status', () => {
+ipcMain.handle('api-get-token-status', async () => {
   const shopId = shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有活跃店铺' };
-  return getApiClient(shopId).getTokenStatus();
+  return await getApiClient(shopId).getTokenStatus();
 });
 
 ipcMain.handle('api-init-session', async () => {

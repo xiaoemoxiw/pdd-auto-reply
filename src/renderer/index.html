@@ -846,7 +846,14 @@
       text-align: center;
       position: relative;
       flex-shrink: 0;
+      overflow: hidden;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    }
+    .api-shop-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
     .api-shop-avatar::after {
       content: '';
@@ -1025,7 +1032,7 @@
     .api-log-list {
       flex: 1;
       overflow-y: auto;
-      min-height: 0;
+      min-height: 180px;
     }
     .api-session-task {
       margin: 12px 14px;
@@ -1090,6 +1097,13 @@
       background: #fff;
       border-top: 1px solid #eceef2;
       border-bottom: 1px solid #eceef2;
+      max-height: 280px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    .api-session-groups.hidden,
+    .api-group-link.hidden {
+      display: none;
     }
     .api-session-group-item {
       padding: 14px 18px;
@@ -1147,6 +1161,12 @@
       flex-shrink: 0;
       overflow: hidden;
       filter: blur(0.2px);
+    }
+    .api-session-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
     .api-session-main {
       min-width: 0;
@@ -1354,6 +1374,12 @@
       background: linear-gradient(135deg, #f1f4f8, #d7dee8);
       overflow: hidden;
     }
+    .api-message-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
     .api-message-item.service .api-message-avatar {
       order: 2;
       color: #9a4f00;
@@ -1367,6 +1393,17 @@
     }
     .api-message-item.service .api-message-body {
       align-items: flex-end;
+    }
+    .api-message-item.buyer .api-message-body {
+      align-items: flex-start;
+    }
+    .api-message-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #999;
+      font-size: 12px;
+      line-height: 1;
     }
     .api-message-bubble {
       padding: 10px 12px;
@@ -1397,10 +1434,18 @@
       white-space: pre-wrap;
     }
     .api-message-time {
-      margin-top: 6px;
       font-size: 11px;
       color: #999;
-      text-align: right;
+    }
+    .api-message-status {
+      font-size: 11px;
+      color: #b3b3b3;
+    }
+    .api-message-divider {
+      text-align: center;
+      color: #b2b2b2;
+      font-size: 12px;
+      margin: 18px 0 14px;
     }
     .api-composer {
       border-top: 1px solid #f0f0f0;
@@ -2762,6 +2807,14 @@
       return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
     }
 
+    function formatApiDate(value) {
+      const num = Number(value);
+      if (!num) return '';
+      const ms = num < 1e12 ? num * 1000 : num;
+      const date = new Date(ms);
+      return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
+    }
+
     function setApiHint(text) {
       document.getElementById('apiComposerHint').textContent = text;
     }
@@ -2769,9 +2822,13 @@
     function getFilteredApiSessions() {
       let list = apiSessions.slice();
       if (apiSessionTab === 'unread') {
-        list = list
-          .filter(item => Number(item.unreadCount || 0) > 0)
-          .sort((a, b) => Number(b.unreadCount || 0) - Number(a.unreadCount || 0));
+        list = list.sort((a, b) => {
+          const unreadDiff = Number(b.unreadCount || 0) - Number(a.unreadCount || 0);
+          if (unreadDiff !== 0) return unreadDiff;
+          return Number(b.lastMessageTime || 0) - Number(a.lastMessageTime || 0);
+        });
+      } else {
+        list = list.sort((a, b) => Number(b.lastMessageTime || 0) - Number(a.lastMessageTime || 0));
       }
       const keyword = apiSessionKeyword.trim().toLowerCase();
       if (keyword) {
@@ -2786,6 +2843,14 @@
         });
       }
       return list;
+    }
+
+    function updateApiSidebarMode() {
+      const groups = document.querySelector('.api-session-groups');
+      const loadMore = document.getElementById('apiLoadMoreSessions');
+      const showGroups = apiSessionTab === 'all';
+      groups?.classList.toggle('hidden', !showGroups);
+      loadMore?.classList.toggle('hidden', !showGroups);
     }
 
     async function syncApiSelectionWithFilter() {
@@ -2815,6 +2880,7 @@
       document.getElementById('apiTodoHint').textContent = unreadTotal > 0 ? `当前有 ${unreadTotal} 条未读待处理消息` : '当前没有待处理接口会话';
       document.getElementById('apiSidebarToday').classList.toggle('active', apiSessionTab === 'unread');
       document.getElementById('apiSidebarAll').classList.toggle('active', apiSessionTab === 'all');
+      updateApiSidebarMode();
       if (!sessions.length) {
         container.innerHTML = '<div class="api-empty">暂无接口会话数据，请先操作嵌入网页或刷新接口会话。</div>';
         return;
@@ -2823,8 +2889,11 @@
       container.innerHTML = sessions.map(session => {
         const active = String(session.sessionId) === String(apiActiveSessionId);
         const unread = Number(session.unreadCount || 0);
+        const avatarHtml = session.customerAvatar
+          ? `<img src="${esc(session.customerAvatar)}" alt="">`
+          : '';
         return `<div class="api-session-item ${active ? 'active' : ''}" data-session-id="${esc(session.sessionId)}" data-customer-name="${esc(session.customerName || '')}">
-          <div class="api-session-avatar"></div>
+          <div class="api-session-avatar">${avatarHtml}</div>
           <div class="api-session-main">
             <div class="api-session-item-title">
               <span>${esc(session.customerName || session.customerId || '未知客户')}</span>
@@ -2848,6 +2917,7 @@
       document.getElementById('apiChatSubtitle').textContent = apiActiveSessionId ? `会话ID：${apiActiveSessionId}` : '请选择左侧会话进行测试';
       document.getElementById('apiChatMeta').textContent = apiMessages.length ? `${apiMessages.length} 条消息` : '';
       const activeSession = apiSessions.find(item => String(item.sessionId) === String(apiActiveSessionId)) || null;
+      const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
       document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
       document.getElementById('apiChatCustomerId').textContent = `客户ID：${activeSession?.customerId || '-'}`;
       document.getElementById('apiChatGenderTag').textContent = Number(activeSession?.unreadCount || 0) > 0 ? `未读 ${activeSession?.unreadCount || 0}` : '接口';
@@ -2863,19 +2933,33 @@
         return;
       }
 
-      container.innerHTML = apiMessages.map(message => {
+      const sortedMessages = apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+      let lastDayKey = '';
+      container.innerHTML = sortedMessages.map(message => {
         const isBuyer = !!message.isFromBuyer;
-        const avatarText = isBuyer
-          ? (apiActiveSessionName || '客户').slice(0, 2)
-          : (document.getElementById('apiShopName')?.textContent || '客服').slice(0, 2);
-        return `<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
-          <div class="api-message-avatar">${esc(avatarText)}</div>
+        const rawTs = Number(message.timestamp || 0);
+        const ts = rawTs < 1e12 ? rawTs * 1000 : rawTs;
+        const dayKey = ts ? new Date(ts).toISOString().slice(0, 10) : '';
+        const buyerAvatar = activeSession?.customerAvatar || '';
+        const sellerText = (apiTokenStatus?.serviceName || document.getElementById('apiShopName')?.textContent || '主账号').slice(0, 4);
+        const avatarHtml = isBuyer
+          ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((apiActiveSessionName || '客户').slice(0, 2)))
+          : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
+        const senderName = message.senderName || (isBuyer ? apiActiveSessionName || '客户' : '主账号');
+        const metaHtml = isBuyer
+          ? `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span></div>`
+          : `<div class="api-message-meta"><span class="api-message-status">${message.isFromBuyer ? '' : (message.raw?.is_read ? '已读' : '')}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span><span class="api-message-sender">${esc(senderName)}</span></div>`;
+        const divider = dayKey && dayKey !== lastDayKey
+          ? `<div class="api-message-divider">${esc(formatApiDate(message.timestamp))}</div>`
+          : '';
+        lastDayKey = dayKey;
+        return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
+          <div class="api-message-avatar">${avatarHtml}</div>
           <div class="api-message-body">
-            <div class="api-message-sender">${esc(message.senderName || (isBuyer ? apiActiveSessionName || '客户' : '主账号'))}</div>
+            ${metaHtml}
             <div class="api-message-bubble">
               <div class="api-message-content">${esc(message.content || '')}</div>
             </div>
-            <div class="api-message-time">${formatApiTime(message.timestamp)}</div>
           </div>
         </div>`;
       }).join('');
@@ -2885,10 +2969,16 @@
     function renderApiStatus() {
       const statusEl = document.getElementById('apiStatusList');
       const activeShop = shops.find(item => item.id === activeShopId);
-      document.getElementById('apiShopName').textContent = activeShop?.name || '主账号';
-      document.getElementById('apiShopAvatar').textContent = (activeShop?.name || '主账号').slice(0, 6);
+      const shopName = apiTokenStatus?.mallName || activeShop?.name || '主账号';
+      const avatarEl = document.getElementById('apiShopAvatar');
+      document.getElementById('apiShopName').textContent = shopName;
+      if (apiTokenStatus?.serviceAvatar) {
+        avatarEl.innerHTML = `<img src="${esc(apiTokenStatus.serviceAvatar)}" alt="">`;
+      } else {
+        avatarEl.textContent = shopName.slice(0, 6);
+      }
       const items = [
-        ['当前店铺', activeShop?.name || '未选择店铺'],
+        ['当前店铺', shopName || '未选择店铺'],
         ['当前模式', apiPolling ? '接口轮询中' : '手动测试'],
         ['Token状态', apiTokenStatus?.hasToken ? '已导入' : '未导入'],
         ['会话初始化', apiTokenStatus?.sessionInited ? '已建立' : '未建立'],

@@ -16,6 +16,7 @@ class PddApiClient extends EventEmitter {
     this._pollTimer = null;
     this._sessionInited = false;
     this._authExpired = false;
+    this._serviceProfileCache = null;
     this._seenMessageIds = new Set();
     this._sessionCache = [];
     this._onLog = options.onLog || (() => {});
@@ -303,9 +304,47 @@ class PddApiClient extends EventEmitter {
     };
   }
 
+  _parseServiceProfile(payload) {
+    const info = payload?.result || payload?.data || payload || {};
+    const mall = (info.mall && typeof info.mall === 'object') ? info.mall : {};
+    return {
+      mallId: info.mall_id || info.mallId || mall.mall_id || this._getMallId() || '',
+      mallName: mall.mall_name || info.mall_name || this._getShopInfo()?.name || '',
+      serviceName: info.username || info.nickname || info.nick_name || info.name || '',
+      serviceAvatar: mall.logo || info.avatar || info.head_img || '',
+    };
+  }
+
   async getUserInfo() {
     const payload = await this._post('/janus/api/new/userinfo', {});
     return this._parseUserInfo(payload);
+  }
+
+  async getServiceProfile(force = false) {
+    if (this._serviceProfileCache && !force) {
+      return this._serviceProfileCache;
+    }
+
+    const cachedPayload = this._getLatestResponseBody('/chats/userinfo/realtime');
+    const cachedProfile = this._parseServiceProfile(cachedPayload);
+    const hasCachedProfile = !!(cachedProfile.mallName || cachedProfile.serviceName || cachedProfile.serviceAvatar);
+    if (hasCachedProfile && !force) {
+      this._serviceProfileCache = cachedProfile;
+      return cachedProfile;
+    }
+
+    try {
+      const payload = await this._request('GET', '/chats/userinfo/realtime?get_response=true');
+      const profile = this._parseServiceProfile(payload);
+      this._serviceProfileCache = profile;
+      return profile;
+    } catch (error) {
+      if (hasCachedProfile) {
+        this._serviceProfileCache = cachedProfile;
+        return cachedProfile;
+      }
+      throw error;
+    }
   }
 
   _parseSessionList(payload) {
@@ -385,9 +424,18 @@ class PddApiClient extends EventEmitter {
   }
 
   _isBuyerMessage(item) {
-    const role = String(item.role || item.msg_from || item.from_type || item.sender_role || '').toLowerCase();
+    const role = String(
+      item.role ||
+      item.msg_from ||
+      item.from_type ||
+      item.sender_role ||
+      item?.from?.role ||
+      item?.sender?.role ||
+      item?.to?.role ||
+      ''
+    ).toLowerCase();
     if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return true;
-    if (['seller', 'system', 'robot', 'service', 'kf', 'agent', 'bot', '2', '3', '4', '99'].includes(role)) return false;
+    if (['seller', 'system', 'robot', 'service', 'kf', 'agent', 'bot', 'mall_cs', '2', '3', '4', '99'].includes(role)) return false;
     if (item.is_buyer || item.is_buyer === 1 || item.sender_type === 1 || item.sender_type === 0) return true;
     if (item.is_seller || item.is_robot || item.is_system) return false;
     return !role;
@@ -683,8 +731,14 @@ class PddApiClient extends EventEmitter {
     this._pollTimer = setTimeout(() => this._doPoll(), delay);
   }
 
-  getTokenStatus() {
+  async getTokenStatus() {
     const tokenInfo = this._getTokenInfo();
+    let serviceProfile = null;
+    if (tokenInfo?.raw) {
+      try {
+        serviceProfile = await this.getServiceProfile();
+      } catch {}
+    }
     return {
       hasToken: !!tokenInfo?.raw,
       shopId: this.shopId,
@@ -692,6 +746,9 @@ class PddApiClient extends EventEmitter {
       userId: tokenInfo?.userId || '',
       authExpired: this._authExpired,
       sessionInited: this._sessionInited,
+      mallName: serviceProfile?.mallName || this._getShopInfo()?.name || '',
+      serviceName: serviceProfile?.serviceName || '',
+      serviceAvatar: serviceProfile?.serviceAvatar || '',
     };
   }
 

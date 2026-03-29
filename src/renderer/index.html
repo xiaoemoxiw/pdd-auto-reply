@@ -2275,17 +2275,17 @@
     .api-shop-header {
       background: linear-gradient(135deg, #5f568e 0%, #4c456f 100%);
       color: #fff;
-      padding: 18px 18px 16px;
+      padding: 12px 14px;
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 12px;
     }
 
     .api-shop-header-left {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 10px;
       min-width: 0;
       flex: 1;
     }
@@ -2386,12 +2386,13 @@
 
     .api-shop-select {
       width: 150px;
-      height: 36px;
-      border-radius: 10px;
+      height: 32px;
+      border-radius: 8px;
       border: 1px solid rgba(255, 255, 255, 0.22);
       background: rgba(255, 255, 255, 0.18);
       color: #fff;
-      padding: 0 10px;
+      padding: 0 8px;
+      font-size: 13px;
       outline: none;
     }
 
@@ -2409,15 +2410,15 @@
     .api-sidebar-tabs {
       display: flex;
       gap: 10px;
-      padding: 14px 14px 10px;
-      background: #f4f5f7;
+      padding: 8px 12px 10px;
+      background: #fff;
       border-bottom: 1px solid #e8eaee;
     }
 
     .api-sidebar-tab {
       flex: 1;
-      min-height: 18px;
-      border-radius: 12px;
+      min-height: 16px;
+      border-radius: 10px;
       border: 1px solid #d6d9df;
       background: #f5f5f6;
       font-size: 14px;
@@ -2425,11 +2426,12 @@
       font-weight: 600;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
       cursor: pointer;
-      padding: 8px 12px;
+      padding: 6px 10px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
+      min-width: 0;
     }
 
     .api-sidebar-tab.active {
@@ -2439,18 +2441,21 @@
 
     .api-sidebar-tab-text {
       text-align: left;
-      font-size: 12px;
+      font-size: 13px;
+      line-height: 1;
+      white-space: nowrap;
+      min-width: 0;
     }
 
     .api-sidebar-tab-badge {
-      min-width: 22px;
-      height: 22px;
-      padding: 0 7px;
-      border-radius: 11px;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 10px;
       background: #e9edf8;
       color: #4c456f;
-      font-size: 12px;
-      line-height: 22px;
+      font-size: 11px;
+      line-height: 20px;
       text-align: center;
       flex-shrink: 0;
     }
@@ -2461,12 +2466,12 @@
     }
 
     .api-sidebar-search-row {
-      padding: 12px 14px;
+      padding: 8px 12px;
       background: #f7f8fa;
       border-bottom: 1px solid #eceef2;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
     }
 
     .api-batch-action {
@@ -2484,14 +2489,14 @@
 
     .api-search-wrap {
       flex: 1;
-      height: 38px;
-      border-radius: 8px;
+      height: 34px;
+      border-radius: 7px;
       border: 1px solid #e5e7ec;
       background: #fff;
       display: flex;
       align-items: center;
-      padding: 0 12px;
-      gap: 8px;
+      padding: 0 10px;
+      gap: 6px;
     }
 
     .api-search-icon {
@@ -2520,7 +2525,7 @@
       background: transparent;
       padding: 0;
       height: 100%;
-      font-size: 14px;
+      font-size: 13px;
       color: #333;
     }
 
@@ -2529,14 +2534,14 @@
     }
 
     .api-plus-btn {
-      width: 38px;
-      height: 38px;
-      border-radius: 8px;
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
       border: 1px solid #cad4ee;
       background: #6488ff;
       color: #fff;
-      font-size: 24px;
-      line-height: 24px;
+      font-size: 22px;
+      line-height: 22px;
       cursor: pointer;
     }
 
@@ -2545,15 +2550,7 @@
     }
 
     .api-session-summary-bar {
-      padding: 10px 14px;
-      background: #fff;
-      border-bottom: 1px solid #eceef2;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 12px;
-      color: #666;
+      display: none;
     }
 
     .api-session-summary-count {
@@ -2749,14 +2746,15 @@
     }
 
     .api-session-item {
-      padding: 14px 16px;
+      width: 100%;
+      padding: 14px 12px 14px 14px;
       border-bottom: 1px solid #eceef2;
       cursor: pointer;
       transition: background 0.15s;
       background: #fff;
       display: flex;
-      gap: 14px;
-      align-items: flex-start;
+      gap: 10px;
+      align-items: center;
     }
 
     .api-session-item:hover {
@@ -2787,16 +2785,21 @@
     .api-session-main {
       min-width: 0;
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
 
     .api-session-item-title {
       display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
+      align-items: center;
+      min-width: 0;
     }
 
-    .api-session-item-top {
+    .api-session-item-info-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       min-width: 0;
       flex: 1;
     }
@@ -2809,18 +2812,20 @@
       align-items: center;
       gap: 8px;
       min-width: 0;
+      flex-shrink: 1;
     }
 
-    .api-session-item-time {
-      font-size: 12px;
-      color: #999;
+    .api-session-item-name-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .api-session-item-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .api-session-item-time {
+      font-size: 11px;
+      color: #999;
+      white-space: nowrap;
       flex-shrink: 0;
     }
 
@@ -2828,8 +2833,9 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-top: 6px;
-      flex-wrap: wrap;
+      min-width: 0;
+      flex-shrink: 0;
+      margin-left: auto;
     }
 
     .api-session-shop-tag,
@@ -2846,6 +2852,10 @@
     .api-session-shop-tag {
       background: #eef3ff;
       color: #4d66a5;
+      max-width: 92px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .api-session-order-tag {
@@ -4039,6 +4049,13 @@
                 <div class="api-shop-current" id="apiShopCurrentText">当前：显示所有店铺</div>
               </div>
             </div>
+            <div class="api-sidebar-search-row">
+              <div class="api-search-wrap">
+                <span class="api-search-icon"></span>
+                <input class="api-session-search" id="apiSessionSearch" placeholder="输入订单号、客户名或会话关键词">
+              </div>
+              <button class="api-plus-btn" id="btnApiPlus">+</button>
+            </div>
             <div class="api-sidebar-tabs">
               <button class="api-sidebar-tab active" id="apiSidebarLatest">
                 <span class="api-sidebar-tab-text">最新消息</span>
@@ -4048,13 +4065,6 @@
                 <span class="api-sidebar-tab-text">收藏会话</span>
                 <span class="api-sidebar-tab-badge" id="apiStarredSessionCount">0</span>
               </button>
-            </div>
-            <div class="api-sidebar-search-row">
-              <div class="api-search-wrap">
-                <span class="api-search-icon"></span>
-                <input class="api-session-search" id="apiSessionSearch" placeholder="输入订单号、客户名或会话关键词">
-              </div>
-              <button class="api-plus-btn" id="btnApiPlus">+</button>
             </div>
             <div class="api-session-summary-bar">
               <span id="apiSessionSummary">0 条会话</span>
@@ -5191,18 +5201,15 @@
           <div class="api-session-avatar">${avatarHtml}</div>
           <div class="api-session-main">
             <div class="api-session-item-title">
-              <div class="api-session-item-top">
+              <div class="api-session-item-info-row">
                 <div class="api-session-item-name">
-                  <span>${esc(session.customerName || session.customerId || '未知客户')}</span>
+                  <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
                   ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
                 </div>
                 <div class="api-session-shop">
                   <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
-                  ${session.orderId ? `<span class="api-session-order-tag">订单 ${esc(session.orderId)}</span>` : ''}
+                  <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
                 </div>
-              </div>
-              <div class="api-session-item-actions">
-                <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
               </div>
             </div>
             <div class="api-session-item-text">${esc(session.lastMessage || '暂无消息')}</div>

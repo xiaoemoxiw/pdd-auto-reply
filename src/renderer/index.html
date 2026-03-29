@@ -2624,6 +2624,13 @@
       flex: 1;
       overflow-y: auto;
       min-height: 0;
+    }
+
+    .api-session-list {
+      overflow-x: hidden;
+    }
+
+    .api-log-list {
       scrollbar-gutter: stable;
     }
 
@@ -2747,6 +2754,7 @@
 
     .api-session-item {
       width: 100%;
+      box-sizing: border-box;
       padding: 14px 12px 14px 14px;
       border-bottom: 1px solid #eceef2;
       cursor: pointer;
@@ -2963,7 +2971,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      padding: 16px 18px 14px;
+      padding: 14px 18px;
       border-bottom: 1px solid #eceef2;
       background: #fff;
     }
@@ -2977,29 +2985,22 @@
       gap: 8px;
     }
 
-    .api-conversation-sub {
-      margin-top: 4px;
-      font-size: 12px;
-      color: #999;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
     .api-conversation-actions {
       display: flex;
       gap: 10px;
       flex-shrink: 0;
-      flex-wrap: wrap;
+    }
+
+    .api-conversation-actions.hidden {
+      display: none;
     }
 
     .api-conversation-action {
       min-width: 44px;
-      height: 36px;
-      padding: 0 12px;
+      height: 32px;
+      padding: 0 14px;
       border: 1px solid #dadde3;
-      border-radius: 6px;
+      border-radius: 16px;
       background: #fff;
       color: #444;
       font-size: 13px;
@@ -3011,6 +3012,17 @@
       border-color: #b8c7eb;
       color: #4f73ef;
       background: #f7f9ff;
+    }
+
+    .api-conversation-action.is-active {
+      border-color: #ffd7d3;
+      background: #fff1f0;
+      color: #e02e24;
+    }
+
+    .api-chat-follow-tag {
+      background: #f2f7ff;
+      color: #4f73ef;
     }
 
     .api-banner {
@@ -3287,6 +3299,15 @@
       white-space: nowrap;
     }
 
+    .api-chat-main-inner.is-empty-session .api-message-list {
+      padding: 0;
+    }
+
+    .api-chat-main-inner.is-empty-session .api-composer,
+    .api-chat-main-inner.is-empty-session .quick-phrase-panel {
+      display: none;
+    }
+
     @media (max-width: 1120px) {
       .api-chat-stats {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3316,150 +3337,55 @@
       }
     }
 
-    .api-status-list {
-      padding: 12px 14px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      border-bottom: 1px solid #f0f0f0;
+    .api-side-shell {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: #f4f6f9;
     }
 
     .api-side-tabs {
       display: flex;
       gap: 8px;
-      padding: 12px 12px 0;
+      padding: 12px;
+      padding-bottom: 10px;
       background: #fff;
+      border-bottom: 1px solid #edf0f4;
     }
 
     .api-side-tab {
       flex: 1;
       height: 34px;
-      border-radius: 10px;
-      border: 1px solid #e5e9f2;
-      background: #f7f9fc;
-      color: #667188;
+      border-radius: 8px;
+      border: 1px solid #e3e7ee;
+      background: #f7f8fb;
+      color: #8a92a3;
       font-size: 12px;
       cursor: pointer;
       transition: all 0.18s;
     }
 
     .api-side-tab.active {
-      color: #4f73ef;
-      border-color: #bfd0ff;
-      background: #eef4ff;
+      background: #fff;
+      color: #5d6472;
+      border-color: #d8dde6;
       font-weight: 600;
     }
 
-    .api-side-card {
-      margin: 12px;
-      margin-top: 0;
-      background: #fff;
-      border: 1px solid #edf0f5;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 8px 24px rgba(16, 24, 40, 0.04);
-    }
-
-    .api-side-log-card {
+    .api-side-order-stage {
       flex: 1;
       min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .api-side-card-header {
-      padding: 10px 12px;
+      padding: 18px 16px;
+      background: #eef2f5;
+      color: #b6bcc7;
       font-size: 13px;
-      font-weight: 600;
-      color: #333;
-      border-bottom: 1px solid #f6f6f6;
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .api-side-card-body {
-      padding: 14px 12px;
-      font-size: 12px;
-      color: #666;
       line-height: 1.7;
     }
 
-    .api-side-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .api-side-grid-item {
-      background: #f8faff;
-      border-radius: 10px;
-      padding: 10px;
-      border: 1px solid #eef2f7;
-    }
-
-    .api-side-grid-label {
-      font-size: 11px;
-      color: #999;
-      margin-bottom: 4px;
-    }
-
-    .api-side-grid-value {
-      font-size: 13px;
-      color: #333;
-      font-weight: 600;
+    .api-side-order-empty {
+      color: #b8bec8;
       word-break: break-word;
-    }
-
-    .api-side-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .api-side-list-item {
-      padding: 9px 10px;
-      border-radius: 10px;
-      background: #f8faff;
-      font-size: 12px;
-      color: #666;
-      line-height: 1.6;
-      border: 1px solid #eef2f7;
-    }
-
-    .api-side-list-item strong {
-      color: #333;
-    }
-
-    .api-status-item {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      font-size: 12px;
-      color: #666;
-      padding: 10px;
-      border-radius: 10px;
-      background: #f8faff;
-      border: 1px solid #eef2f7;
-    }
-
-    .api-status-item strong {
-      color: #333;
-      font-weight: 600;
-    }
-
-    .api-log-item {
-      padding: 12px 14px;
-      border-bottom: 1px solid #f5f5f5;
-      font-size: 12px;
-      color: #666;
-      line-height: 1.6;
-      word-break: break-word;
-    }
-
-    .api-log-item strong {
-      color: #333;
     }
 
     .api-empty {
@@ -4075,69 +4001,18 @@
           </div>
           <div class="api-chat-main">
             <div class="api-chat-main-inner">
-              <div class="api-chat-stats">
-                <div class="api-chat-stat">
-                  <div class="api-chat-stat-label">当前会话店铺</div>
-                  <div class="api-chat-stat-value" id="apiStatShopName">-</div>
-                </div>
-                <div class="api-chat-stat">
-                  <div class="api-chat-stat-label">当前客户</div>
-                  <div class="api-chat-stat-value" id="apiStatCustomer">-</div>
-                </div>
-                <div class="api-chat-stat">
-                  <div class="api-chat-stat-label">消息总数</div>
-                  <div class="api-chat-stat-value" id="apiStatMessageCount">0 条</div>
-                </div>
-                <div class="api-chat-stat">
-                  <div class="api-chat-stat-label">未读消息</div>
-                  <div class="api-chat-stat-value" id="apiStatUnread">0 条</div>
-                </div>
-                <div class="api-chat-stat">
-                  <div class="api-chat-stat-label">最新消息时间</div>
-                  <div class="api-chat-link" id="apiStatLatestTime">--</div>
-                </div>
-              </div>
               <div class="api-conversation-header">
                 <div>
                   <div class="api-conversation-title">
                     <span id="apiChatCustomerName">未选择客户</span>
-                    <span class="api-chat-tag" id="apiChatGenderTag">接口</span>
-                  </div>
-                  <div class="api-conversation-sub">
-                    <span id="apiChatSubtitle">请选择左侧会话进行测试</span>
-                    <span id="apiChatCustomerId">客户ID：-</span>
-                    <span id="apiChatMeta"></span>
+                    <span class="api-chat-tag api-chat-follow-tag" id="apiChatFollowStatus">已关注本店</span>
                   </div>
                 </div>
                 <div class="api-conversation-actions">
-                  <button class="api-conversation-action" id="btnApiTransfer">转移会话</button>
-                  <button class="api-conversation-action" id="btnApiRisk">风险</button>
                   <button class="api-conversation-action" id="btnApiStar">收藏</button>
+                  <button class="api-conversation-action" id="btnApiRisk">拉黑</button>
                 </div>
               </div>
-              <div class="api-chat-summary">
-                <div class="api-chat-summary-left">
-                  <div class="api-chat-summary-title">
-                    <span>会话概览</span>
-                    <span class="api-chat-tag" id="apiChatShopTag">店铺</span>
-                    <span class="api-chat-tag" id="apiChatOrderTag">订单待补齐</span>
-                  </div>
-                  <div class="api-chat-summary-meta">
-                    <span id="apiChatServiceName">当前客服：-</span>
-                    <span id="apiChatSessionStatus">会话状态：待接入</span>
-                    <span id="apiChatLatestTime">最新消息：-</span>
-                  </div>
-                </div>
-                <div class="api-chat-summary-right" id="apiChatSummaryExtra">当前右侧信息继续沿用接口数据视图</div>
-              </div>
-              <div class="api-chat-tools">
-                <button class="api-chat-tool" id="btnApiToolInviteFollow">邀请关注</button>
-                <button class="api-chat-tool" id="btnApiToolInviteOrder">邀请下单</button>
-                <button class="api-chat-tool" id="btnApiToolSendCoupon">发送优惠</button>
-                <button class="api-chat-tool" id="btnApiToolCopySession">复制会话标识</button>
-                <button class="api-chat-tool" id="btnApiToolRefreshDetail">刷新会话详情</button>
-              </div>
-              <div class="api-banner" id="apiBannerText">机器人套餐即将用完，将影响店铺接待！请尽快续费！</div>
               <div class="api-message-list" id="apiMessageList"></div>
               <div class="api-composer">
                 <div class="api-composer-toolbar">
@@ -4176,36 +4051,15 @@
               <span>服务助手 · 会话详情</span>
               <span class="api-panel-subtitle" id="apiTrafficSummary">0 条抓包</span>
             </div>
-            <div class="api-side-tabs">
-              <button class="api-side-tab active" data-api-side-tab="personal">个人订单</button>
-              <button class="api-side-tab" data-api-side-tab="aftersale">售后订单</button>
-              <button class="api-side-tab" data-api-side-tab="pending">店铺待支付</button>
-            </div>
-            <div class="api-status-list" id="apiStatusList"></div>
-            <div class="api-side-card">
-              <div class="api-side-card-header">
-                <span>订单概览</span>
-                <span class="api-panel-subtitle" id="apiOrderPanelSubtitle">个人订单视图</span>
+            <div class="api-side-shell">
+              <div class="api-side-tabs">
+                <button class="api-side-tab active" data-api-side-tab="personal">个人订单</button>
+                <button class="api-side-tab" data-api-side-tab="aftersale">售后订单</button>
+                <button class="api-side-tab" data-api-side-tab="pending">店铺待支付</button>
               </div>
-              <div class="api-side-card-body">
-                <div class="api-side-grid" id="apiOrderCard"></div>
+              <div class="api-side-order-stage">
+                <div class="api-side-order-empty" id="apiSideOrderEmpty">近90天无订单，更早订单请在管理后台查看</div>
               </div>
-            </div>
-            <div class="api-side-card">
-              <div class="api-side-card-header">
-                <span>服务建议</span>
-                <span class="api-panel-subtitle">会话辅助视图</span>
-              </div>
-              <div class="api-side-card-body">
-                <div class="api-side-list" id="apiHelperCard"></div>
-              </div>
-            </div>
-            <div class="api-side-card api-side-log-card">
-              <div class="api-side-card-header">
-                <span>最新接口记录</span>
-                <span class="api-panel-subtitle">仅展示关键记录</span>
-              </div>
-              <div class="api-log-list" id="apiTrafficList"></div>
             </div>
           </div>
         </div>
@@ -5240,39 +5094,23 @@
 
     function renderApiMessages() {
       const container = document.getElementById('apiMessageList');
+      const mainInner = document.querySelector('.api-chat-main-inner');
       const activeSession = getApiActiveSession();
-      const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
       const shopName = activeSession?.shopName || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '未选择店铺');
       const unreadCount = Number(activeSession?.unreadCount || 0);
-      const latestTime = formatApiListTime(activeSession?.lastMessageTime);
-      const serviceName = apiTokenStatus?.serviceName || '主账号';
+      const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
       document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
-      document.getElementById('apiChatSubtitle').textContent = apiActiveSessionId ? `店铺：${shopName} · 会话ID：${apiActiveSessionId}` : '请选择左侧会话进行测试';
-      document.getElementById('apiChatCustomerId').textContent = `客户ID：${activeSession?.customerId || '-'}`;
-      document.getElementById('apiChatMeta').textContent = activeSession?.orderId ? `订单号：${activeSession.orderId}` : (apiMessages.length ? `${apiMessages.length} 条消息` : '');
-      document.getElementById('apiChatGenderTag').textContent = unreadCount > 0
-        ? `未读 ${unreadCount}`
-        : (isApiSessionStarred(activeSession || {}) ? '已收藏' : '接口');
-      document.getElementById('apiBannerText').textContent = activeSession?.lastMessage
-        ? `最近消息：${activeSession.lastMessage}`
-        : '机器人套餐即将用完，将影响店铺接待！请尽快续费！';
       document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
-      document.getElementById('apiStatShopName').textContent = shopName || '-';
-      document.getElementById('apiStatCustomer').textContent = apiActiveSessionName || '-';
-      document.getElementById('apiStatMessageCount').textContent = `${apiMessages.length} 条`;
-      document.getElementById('apiStatUnread').textContent = `${unreadCount} 条`;
-      document.getElementById('apiStatLatestTime').textContent = latestTime;
-      document.getElementById('apiChatShopTag').textContent = shopName || '店铺';
-      document.getElementById('apiChatOrderTag').textContent = activeSession?.orderId ? `订单 ${activeSession.orderId}` : '订单待补齐';
-      document.getElementById('apiChatServiceName').textContent = `当前客服：${serviceName}`;
-      document.getElementById('apiChatSessionStatus').textContent = `会话状态：${!activeSession ? '待选择' : unreadCount > 0 ? '待优先回复' : '跟进中'}`;
-      document.getElementById('apiChatLatestTime').textContent = `最新消息：${latestTime}`;
-      document.getElementById('apiChatSummaryExtra').textContent = activeSession
-        ? `当前正在查看 ${shopName} 的接口会话，右侧可继续查看订单概览、服务建议与接口记录。`
-        : '选择左侧会话后，这里会显示更完整的会话概览。';
+      document.getElementById('apiChatFollowStatus').textContent = !activeSession
+        ? '未选择会话'
+        : unreadCount > 0
+          ? `未读 ${unreadCount}`
+          : '已关注本店';
+      document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !apiActiveSessionId);
+      mainInner?.classList.toggle('is-empty-session', !apiActiveSessionId);
 
       if (!apiActiveSessionId) {
-        container.innerHTML = '<div class="api-empty">请选择一个接口会话进行查看和发送。</div>';
+        container.innerHTML = '';
         return;
       }
 
@@ -5289,11 +5127,13 @@
         const ts = rawTs < 1e12 ? rawTs * 1000 : rawTs;
         const dayKey = ts ? new Date(ts).toISOString().slice(0, 10) : '';
         const buyerAvatar = activeSession?.customerAvatar || '';
-        const sellerText = (apiTokenStatus?.serviceName || shopName || '主账号').slice(0, 4);
+        const sellerText = (shopName || apiTokenStatus?.mallName || '店铺').slice(0, 4);
         const avatarHtml = isBuyer
           ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((apiActiveSessionName || '客户').slice(0, 2)))
           : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
-        const senderName = message.senderName || (isBuyer ? apiActiveSessionName || '客户' : shopName);
+        const senderName = isBuyer
+          ? (message.senderName || apiActiveSessionName || '客户')
+          : (shopName || message.senderName || '未选择店铺');
         const metaHtml = isBuyer
           ? `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span></div>`
           : `<div class="api-message-meta"><span class="api-message-status">${message.raw?.is_read ? '已读' : ''}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span><span class="api-message-sender">${esc(senderName)}</span></div>`;
@@ -5315,108 +5155,25 @@
     }
 
     function renderApiStatus() {
-      const statusEl = document.getElementById('apiStatusList');
-      const selectedShop = getApiSelectedShop();
-      const activeSession = getApiActiveSession();
-      const contextShop = shops.find(item => item.id === (apiTokenStatus?.shopId || apiActiveSessionShopId || apiSelectedShopId || activeShopId)) || null;
-      const scopeLabel = apiSelectedShopId === API_ALL_SHOPS ? '显示所有店铺' : `仅看 ${selectedShop?.name || '店铺'}`;
-      const shopLabel = activeSession?.shopName || apiTokenStatus?.mallName || contextShop?.name || '未选择店铺';
-      const items = [
-        ['当前范围', scopeLabel],
-        ['当前会话店铺', shopLabel],
-        ['当前模式', apiPolling ? '接口轮询中' : '手动测试'],
-        ['Token状态', apiTokenStatus?.hasToken ? '已导入' : '未导入'],
-        ['会话初始化', apiTokenStatus?.sessionInited ? '已建立' : '未建立'],
-        ['认证状态', apiTokenStatus?.authExpired ? '已过期' : '正常'],
-        ['抓包记录', `${apiTrafficEntries.length} 条`],
-      ];
-      statusEl.innerHTML = items.map(([label, value]) => `<div class="api-status-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join('');
       renderApiSideCards();
     }
 
     function renderApiSideCards() {
-      const activeSession = getApiActiveSession();
-      const orderCard = document.getElementById('apiOrderCard');
-      const helperCard = document.getElementById('apiHelperCard');
-      if (!orderCard || !helperCard) return;
-      const unreadTotal = getApiScopedSessions().reduce((sum, item) => sum + Number(item.unreadCount || 0), 0);
-      const panelSubtitleMap = {
-        personal: '个人订单视图',
-        aftersale: '售后订单视图',
-        pending: '店铺待支付视图',
-      };
-      document.getElementById('apiOrderPanelSubtitle').textContent = panelSubtitleMap[apiSideTab] || '个人订单视图';
+      const emptyEl = document.getElementById('apiSideOrderEmpty');
+      if (!emptyEl) return;
       document.querySelectorAll('.api-side-tab').forEach(button => {
         button.classList.toggle('active', button.dataset.apiSideTab === apiSideTab);
       });
-      const orderItems = apiSideTab === 'aftersale'
-        ? [
-          ['售后状态', activeSession ? (Number(activeSession.unreadCount || 0) > 0 ? '待处理' : '可跟进') : '-'],
-          ['风险提示', activeSession?.lastMessage ? '建议关注最近诉求' : '-'],
-          ['会话店铺', activeSession?.shopName || '-'],
-          ['最后跟进', formatApiTime(activeSession?.lastMessageTime)]
-        ]
-        : apiSideTab === 'pending'
-          ? [
-            ['当前范围', apiSelectedShopId === API_ALL_SHOPS ? '所有店铺' : (getApiSelectedShop()?.name || '-')],
-            ['轮询状态', apiPolling ? '轮询中' : '未开启'],
-            ['待处理消息', `${unreadTotal} 条`],
-            ['抓包记录', `${apiTrafficEntries.length} 条`]
-          ]
-          : [
-            ['会话店铺', activeSession?.shopName || '-'],
-            ['订单号', activeSession?.orderId || '-'],
-            ['客户ID', activeSession?.customerId || '-'],
-            ['最近时间', formatApiTime(activeSession?.lastMessageTime)]
-          ];
-      orderCard.innerHTML = orderItems.map(([label, value]) => `
-        <div class="api-side-grid-item">
-          <div class="api-side-grid-label">${esc(label)}</div>
-          <div class="api-side-grid-value">${esc(value)}</div>
-        </div>
-      `).join('');
-
-      const latestTraffic = apiTrafficEntries.slice(0, 3);
-      const helperItems = apiSideTab === 'aftersale'
-        ? [
-          `<strong>售后建议：</strong>${esc(activeSession?.lastMessage ? '优先核对买家诉求与最近回复内容' : '选择会话后生成建议')}`,
-          `<strong>当前客户：</strong>${esc(apiActiveSessionName || '未选择')}`,
-          `<strong>待处理点：</strong>${esc(Number(activeSession?.unreadCount || 0) > 0 ? '存在未读消息，建议先人工接待' : '当前无未读，可继续跟进')}`,
-          ...latestTraffic.map(item => `<strong>${esc(item.shopName || activeSession?.shopName || '记录')}</strong> ${esc(item.url || item.method || '')}`)
-        ]
-        : apiSideTab === 'pending'
-          ? [
-            `<strong>范围说明：</strong>${esc(apiSelectedShopId === API_ALL_SHOPS ? '正在查看全部店铺汇总会话' : `当前只看 ${getApiSelectedShop()?.name || '店铺'}`)}`,
-            `<strong>轮询状态：</strong>${esc(apiPolling ? '接口轮询已开启' : '当前为手动刷新模式')}`,
-            `<strong>待处理消息：</strong>${esc(String(unreadTotal))} 条`,
-            ...latestTraffic.map(item => `<strong>${esc(item.shopName || activeSession?.shopName || '记录')}</strong> ${esc(item.url || item.method || '')}`)
-          ]
-          : [
-            `<strong>当前客户：</strong>${esc(apiActiveSessionName || '未选择')}`,
-            `<strong>咨询店铺：</strong>${esc(activeSession?.shopName || '未选择')}`,
-            `<strong>最近消息：</strong>${esc(activeSession?.lastMessage || '暂无')}`,
-            `<strong>消息数量：</strong>${esc(String(apiMessages.length))}`,
-            ...latestTraffic.map(item => `<strong>${esc(item.shopName || activeSession?.shopName || '记录')}</strong> ${esc(item.url || item.method || '')}`)
-          ];
-      helperCard.innerHTML = helperItems.map(item => `<div class="api-side-list-item">${item}</div>`).join('');
+      const emptyTextMap = {
+        personal: '近90天无订单，更早订单请在管理后台查看',
+        aftersale: '近90天无售后订单，更早记录请在管理后台查看',
+        pending: '暂无待支付订单，请在管理后台查看',
+      };
+      emptyEl.textContent = emptyTextMap[apiSideTab] || emptyTextMap.personal;
     }
 
     function renderApiTraffic() {
-      const container = document.getElementById('apiTrafficList');
       document.getElementById('apiTrafficSummary').textContent = `${apiTrafficEntries.length} 条抓包`;
-      if (!apiTrafficEntries.length) {
-        container.innerHTML = '<div class="api-empty">暂无抓包记录，请先操作嵌入网页对话。</div>';
-        return;
-      }
-      container.innerHTML = apiTrafficEntries.slice(0, 20).map(entry => {
-        const summary = entry.type?.startsWith('websocket')
-          ? `${entry.shopName ? `【${entry.shopName}】` : ''}${entry.method} ${entry.url}`
-          : `${entry.shopName ? `【${entry.shopName}】` : ''}${entry.method || 'GET'} ${entry.url} -> ${entry.status || '-'}`;
-        return `<div class="api-log-item">
-          <div><strong>${esc(summary)}</strong></div>
-          <div>${esc((entry.requestBody && String(entry.requestBody).slice(0, 160)) || (typeof entry.responseBody === 'string' ? entry.responseBody.slice(0, 160) : JSON.stringify(entry.responseBody || {}).slice(0, 160)) || '')}</div>
-        </div>`;
-      }).join('');
       renderApiSideCards();
     }
 

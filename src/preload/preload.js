@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   // 客服页面 URL 管理
   getChatUrl: () => ipcRenderer.invoke('get-chat-url'),
   setChatUrl: (url) => ipcRenderer.invoke('set-chat-url', url),
+  getMailUrl: () => ipcRenderer.invoke('get-mail-url'),
+  setMailUrl: (url) => ipcRenderer.invoke('set-mail-url', url),
   getCurrentUrl: () => ipcRenderer.invoke('get-current-url'),
 
   // Cookie 注入
@@ -72,6 +74,9 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiStopPolling: (params) => ipcRenderer.invoke('api-stop-polling', params),
   getApiTraffic: (params) => ipcRenderer.invoke('get-api-traffic', params),
   clearApiTraffic: (params) => ipcRenderer.invoke('clear-api-traffic', params),
+  mailGetOverview: (params) => ipcRenderer.invoke('mail-get-overview', params),
+  mailGetList: (params) => ipcRenderer.invoke('mail-get-list', params),
+  mailGetDetail: (params) => ipcRenderer.invoke('mail-get-detail', params),
   getApiStarredSessions: () => ipcRenderer.invoke('get-api-starred-sessions'),
   toggleApiStarredSession: (session) => ipcRenderer.invoke('toggle-api-starred-session', session),
 

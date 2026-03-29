@@ -5,6 +5,7 @@ const { nativeImage } = require('electron');
 const { ReplyEngine } = require('./reply-engine');
 const { NetworkMonitor } = require('./network-monitor');
 const { PddApiClient } = require('./pdd-api');
+const { MailApiClient } = require('./mail-api');
 const { createSettingsWindow } = require('./settings-window');
 const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
@@ -31,6 +32,7 @@ const store = new Store({
     },
     windowBounds: { width: 1400, height: 900 },
     chatUrl: '',
+    mailUrl: '',
     shops: [],
     activeShopId: '',
     shopGroups: [],
@@ -58,6 +60,7 @@ const fallbackCooldowns = new Map();
 const messageDedup = new Map(); // "customer|message" -> timestamp
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
+const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=441077635572';
 
 const MOCK_SHOPS = [
   { id: 'shop_1', name: '环球优品旗舰店', account: 'huanqiu_001', mallId: '', group: 'group_1', remark: '主力店铺', status: 'online', loginMethod: 'token', userAgent: '', bindTime: '2025-10-15', category: '日用百货', balance: 15280.50 },
@@ -179,10 +182,31 @@ let replyEngine = null;
 let aiIntentEngine = null;
 let networkMonitors = new Map();  // shopId -> NetworkMonitor
 let apiClients = new Map();
+let mailApiClients = new Map();
 let apiTrafficStore = new Map();
 
 function getPddChatUrl() {
   return store.get('chatUrl') || PDD_CHAT_URL;
+}
+
+function getPddMailUrl() {
+  return store.get('mailUrl') || PDD_MAIL_URL;
+}
+
+function isEmbeddedPddView(view) {
+  return view === 'chat' || view === 'mail';
+}
+
+function isMailRelatedView(view) {
+  return view === 'mail' || view === 'mail-api';
+}
+
+function isMailPageUrl(url) {
+  return String(url || '').includes('/other/mail/');
+}
+
+function isChatPageUrl(url) {
+  return String(url || '').includes('chat-merchant');
 }
 
 // ---- 注入脚本 ----
@@ -205,6 +229,11 @@ function injectAutoReplyScript(view) {
 
 function detectChatPage(view, shopId) {
   if (!view || !mainWindow) return;
+  const currentUrl = view.webContents.getURL();
+  if (isMailPageUrl(currentUrl) && currentUrl !== store.get('mailUrl')) {
+    store.set('mailUrl', currentUrl);
+    console.log('[PDD助手] 自动检测到站内信页面，已保存:', currentUrl);
+  }
 
   view.webContents.executeJavaScript(`
     (function() {
@@ -305,11 +334,15 @@ function getApiClient(shopId) {
   });
 
   client.on('authExpired', payload => {
+    updateShopStatus(shopId, 'expired');
     mainWindow?.webContents.send('api-auth-expired', payload);
     sendToDebug('api-auth-expired', payload);
   });
 
   client.on('sessionUpdated', sessions => {
+    if (Array.isArray(sessions) && sessions.length >= 0) {
+      updateShopStatus(shopId, 'online');
+    }
     const payload = { shopId, sessions };
     mainWindow?.webContents.send('api-session-updated', payload);
     sendToDebug('api-session-updated', { shopId, count: sessions.length });
@@ -341,12 +374,50 @@ function destroyApiClient(shopId) {
   apiClients.delete(shopId);
 }
 
+function getMailApiClient(shopId) {
+  if (!shopId) return null;
+  if (mailApiClients.has(shopId)) return mailApiClients.get(shopId);
+  const client = new MailApiClient(shopId, {
+    onLog(message, extra) {
+      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      console.log(`[PDD站内信:${shopId}] ${message}`);
+    },
+    getShopInfo() {
+      const shops = store.get('shops') || [];
+      return shops.find(item => item.id === shopId) || null;
+    },
+    getApiTraffic() {
+      return getApiTraffic(shopId);
+    },
+    getMailUrl() {
+      return getPddMailUrl();
+    }
+  });
+  mailApiClients.set(shopId, client);
+  return client;
+}
+
+function destroyMailApiClient(shopId) {
+  if (!mailApiClients.has(shopId)) return;
+  mailApiClients.delete(shopId);
+}
+
 function getApiTraffic(shopId) {
   return apiTrafficStore.get(shopId) || [];
 }
 
 function getStoredShops() {
   return store.get('shops') || [];
+}
+
+function updateShopStatus(shopId, status) {
+  if (!shopId || !status) return;
+  const shops = getStoredShops();
+  const target = shops.find(item => item.id === shopId);
+  if (!target || target.status === status) return;
+  target.status = status;
+  store.set('shops', shops);
+  mainWindow?.webContents.send('shop-list-updated', { shops });
 }
 
 function getApiShopList(shopId) {
@@ -437,7 +508,7 @@ function createMainWindow() {
   mainWindow.on('resize', () => {
     const [w, h] = mainWindow.getSize();
     store.set('windowBounds', { width: w, height: h });
-    if (currentView === 'chat' && shopManager) {
+    if (isEmbeddedPddView(currentView) && shopManager) {
       shopManager.resizeActiveView();
     }
   });
@@ -674,13 +745,21 @@ ipcMain.handle('open-debug-window', () => {
 
 ipcMain.handle('reload-pdd', () => {
   const view = shopManager?.getActiveView();
-  if (view) view.webContents.loadURL(getPddChatUrl());
+  if (!view) return;
+  view.webContents.loadURL(isMailRelatedView(currentView) ? getPddMailUrl() : getPddChatUrl());
 });
 
 ipcMain.handle('get-chat-url', () => store.get('chatUrl'));
 
 ipcMain.handle('set-chat-url', (event, url) => {
   store.set('chatUrl', url);
+  return true;
+});
+
+ipcMain.handle('get-mail-url', () => store.get('mailUrl'));
+
+ipcMain.handle('set-mail-url', (event, url) => {
+  store.set('mailUrl', url);
   return true;
 });
 
@@ -886,6 +965,37 @@ ipcMain.handle('get-api-traffic', (event, params = {}) => {
   return getApiTrafficByScope(shopId);
 });
 
+ipcMain.handle('mail-get-overview', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  try {
+    return await getMailApiClient(shopId).getOverview();
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('mail-get-list', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  try {
+    return await getMailApiClient(shopId).getList(params);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('mail-get-detail', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  if (!params.messageId) return { error: '缺少 messageId' };
+  try {
+    return await getMailApiClient(shopId).getDetail(params.messageId);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('clear-api-traffic', (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return false;
@@ -934,8 +1044,18 @@ ipcMain.handle('toggle-api-starred-session', (event, session = {}) => {
 
 ipcMain.handle('switch-view', (event, view) => {
   currentView = view;
-  if (view === 'chat') {
+  if (isEmbeddedPddView(view)) {
+    const activeView = shopManager?.getActiveView();
     if (shopManager) shopManager.showActiveView();
+    if (activeView) {
+      const currentUrl = activeView.webContents.getURL();
+      if (view === 'mail' && !isMailPageUrl(currentUrl)) {
+        activeView.webContents.loadURL(getPddMailUrl());
+      }
+      if (view === 'chat' && !isChatPageUrl(currentUrl)) {
+        activeView.webContents.loadURL(getPddChatUrl());
+      }
+    }
   } else {
     if (shopManager) shopManager.hideActiveView();
   }
@@ -1777,6 +1897,14 @@ app.whenReady().then(async () => {
   await migrateOldData();
   createMainWindow();
 
+  const savedChatUrl = store.get('chatUrl');
+  if (!savedChatUrl || isMailPageUrl(savedChatUrl)) {
+    store.set('chatUrl', PDD_CHAT_URL);
+  }
+  if (!store.get('mailUrl')) {
+    store.set('mailUrl', PDD_MAIL_URL);
+  }
+
   const devTokenPath = path.join(__dirname, '..', '..', 'test', 'tokens', 'sample-token.json');
   const hasDevToken = fs.existsSync(devTokenPath);
 
@@ -1960,6 +2088,9 @@ app.on('before-quit', () => {
   if (shopManager) shopManager.saveAllCookies();
   for (const shopId of apiClients.keys()) {
     destroyApiClient(shopId);
+  }
+  for (const shopId of mailApiClients.keys()) {
+    destroyMailApiClient(shopId);
   }
 });
 

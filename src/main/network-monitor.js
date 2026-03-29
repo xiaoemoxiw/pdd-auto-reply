@@ -108,8 +108,35 @@ class NetworkMonitor {
   }
 
   _shouldCapture(url) {
-    if (this.excludePatterns.some(p => url.includes(p))) return false;
-    return this.capturePatterns.some(p => url.includes(p));
+    return this._shouldCaptureRequest(url);
+  }
+
+  _isMerchantHost(url) {
+    try {
+      const hostname = new URL(url).hostname;
+      return hostname.endsWith('.pinduoduo.com');
+    } catch {
+      return false;
+    }
+  }
+
+  _hasExcludedPattern(text) {
+    return this.excludePatterns.some(pattern => text.includes(pattern));
+  }
+
+  _shouldCaptureRequest(url, resourceType = '', mimeType = '') {
+    const rawUrl = String(url || '');
+    if (!rawUrl) return false;
+    if (this._hasExcludedPattern(rawUrl)) return false;
+    if (this.capturePatterns.some(pattern => rawUrl.includes(pattern))) return true;
+    if (!this._isMerchantHost(rawUrl)) return false;
+
+    const type = String(resourceType || '').toLowerCase();
+    const mime = String(mimeType || '').toLowerCase();
+    const isDataRequest = ['xhr', 'fetch', 'preflight'].includes(type);
+    const isHtmlDocument = type === 'document' && (!mime || mime.includes('text/html'));
+    const isTextPayload = mime.includes('json') || mime.includes('text/plain') || mime.includes('javascript');
+    return isDataRequest || isHtmlDocument || isTextPayload;
   }
 
   _summarizeHeaders(headers) {
@@ -150,7 +177,7 @@ class NetworkMonitor {
   _handleRequest(params) {
     const { requestId, request, initiator, type } = params;
     const { url, method, headers, postData } = request || {};
-    if (!url || !this._shouldCapture(url)) return;
+    if (!url || !this._shouldCaptureRequest(url, type)) return;
 
     let shortUrl;
     try {
@@ -230,10 +257,11 @@ class NetworkMonitor {
   }
 
   async _handleResponse(params) {
-    const { requestId, response } = params;
+    const { requestId, response, type } = params;
     const { url, status, mimeType } = response;
+    const requestEntry = this._requestMap.get(requestId) || null;
 
-    if (!this._shouldCapture(url)) return;
+    if (!this._shouldCaptureRequest(url, requestEntry?.resourceType || type, mimeType)) return;
 
     // 提取 URL 中的路径名用于简洁显示
     let shortUrl;
@@ -267,7 +295,6 @@ class NetworkMonitor {
         body: parsed || body.slice(0, 2000),
         isJson: !!parsed,
       };
-      const requestEntry = this._requestMap.get(requestId) || null;
       const apiTraffic = {
         ...(requestEntry || {
           requestId,

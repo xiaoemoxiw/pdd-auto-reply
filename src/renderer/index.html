@@ -3834,6 +3834,381 @@
       color: #bbb;
       font-size: 13px;
     }
+
+    .mail-api-layout {
+      display: grid;
+      grid-template-columns: 180px 360px minmax(420px, 1fr);
+      gap: 0;
+      height: calc(100% - 60px);
+      min-height: 0;
+      padding: 12px;
+      background: #f3f4f6;
+    }
+
+    .mail-api-pane {
+      min-width: 0;
+      min-height: 0;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .mail-api-pane + .mail-api-pane {
+      border-left: none;
+    }
+
+    .mail-api-sidebar {
+      border-top-left-radius: 14px;
+      border-bottom-left-radius: 14px;
+      background: #fafafa;
+    }
+
+    .mail-api-list-pane {
+      background: #fff;
+    }
+
+    .mail-api-detail-pane {
+      border-top-right-radius: 14px;
+      border-bottom-right-radius: 14px;
+      background: #fcfcfd;
+    }
+
+    .mail-api-pane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #eceff3;
+      background: rgba(255, 255, 255, .92);
+    }
+
+    .mail-api-pane-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .mail-api-pane-subtitle {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .mail-api-toolbar-stats {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .mail-api-toolbar-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      background: #fff;
+      font-size: 12px;
+      color: #4b5563;
+    }
+
+    .mail-api-toolbar-chip strong {
+      font-size: 13px;
+      color: #111827;
+    }
+
+    .mail-api-category-list {
+      flex: 1;
+      overflow: auto;
+      padding: 10px 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .mail-api-category-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-left: 3px solid transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      color: #374151;
+      background: transparent;
+      transition: all .15s ease;
+    }
+
+    .mail-api-category-item:hover {
+      background: #eef4ff;
+      color: #1d4ed8;
+    }
+
+    .mail-api-category-item.active {
+      border-left-color: #2563eb;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+
+    .mail-api-category-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .mail-api-category-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #d1d5db;
+      flex: none;
+    }
+
+    .mail-api-category-item.active .mail-api-category-dot {
+      background: #2563eb;
+    }
+
+    .mail-api-category-badge {
+      min-width: 22px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #fee2e2;
+      color: #dc2626;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .mail-api-list-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid #eceff3;
+      background: #fafafa;
+    }
+
+    .mail-api-list-toolbar .search-box {
+      flex: 1;
+    }
+
+    .mail-api-filter-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #4b5563;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .mail-api-list-box {
+      flex: 1;
+      overflow: auto;
+      background: #fafafa;
+    }
+
+    .mail-api-list-empty,
+    .mail-api-detail-empty {
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: #6b7280;
+      text-align: center;
+      line-height: 1.8;
+    }
+
+    .mail-api-list-item {
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr);
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #eef2f7;
+      background: #fff;
+      cursor: pointer;
+      transition: background .15s ease;
+    }
+
+    .mail-api-list-item:hover {
+      background: #f8fbff;
+    }
+
+    .mail-api-list-item.active {
+      background: #eff6ff;
+    }
+
+    .mail-api-list-marker {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      margin-top: 6px;
+      background: #d1d5db;
+    }
+
+    .mail-api-list-marker.unread {
+      background: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, .12);
+    }
+
+    .mail-api-list-item-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .mail-api-list-item-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+      line-height: 1.5;
+    }
+
+    .mail-api-list-item-time {
+      font-size: 12px;
+      color: #9ca3af;
+      white-space: nowrap;
+    }
+
+    .mail-api-list-item-summary {
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.6;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .mail-api-list-item-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .mail-api-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #4338ca;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .mail-api-tag.unread {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .mail-api-detail-head {
+      padding: 20px 28px 12px;
+      border-bottom: 1px solid #eceff3;
+      background: #fff;
+      text-align: center;
+    }
+
+    .mail-api-detail-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: #111827;
+      line-height: 1.45;
+      margin-bottom: 8px;
+    }
+
+    .mail-api-detail-meta {
+      display: flex;
+      justify-content: center;
+      gap: 10px 14px;
+      flex-wrap: wrap;
+      color: #9ca3af;
+      font-size: 12px;
+    }
+
+    .mail-api-detail-panel {
+      flex: 1;
+      overflow: auto;
+      padding: 24px 28px;
+      background: #fff;
+    }
+
+    .mail-api-detail-content {
+      max-width: 860px;
+      margin: 0 auto;
+      font-size: 14px;
+      color: #1f2937;
+      line-height: 1.9;
+      word-break: break-word;
+    }
+
+    .mail-api-detail-content img {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .mail-api-detail-content table {
+      max-width: 100%;
+      display: block;
+      overflow: auto;
+    }
+
+    .mail-api-detail-footer {
+      border-top: 1px solid #eceff3;
+      background: #fafafa;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .mail-api-detail-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .mail-api-traffic-box {
+      min-width: 220px;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .mail-api-traffic-summary {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .mail-api-traffic-list {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .mail-api-traffic-chip {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #4338ca;
+      font-size: 11px;
+      font-weight: 600;
+    }
   </style>
 </head>
 
@@ -3890,6 +4265,23 @@
             <path d="M8 12h8"></path>
           </svg>
           <span>客户对话（接口对接）</span>
+        </div>
+        <div class="nav-item" data-view="mail">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h16v12H4z"></path>
+            <path d="M22 6l-10 7L2 6"></path>
+          </svg>
+          <span>站内信（嵌入网页）</span>
+        </div>
+        <div class="nav-item" data-view="mail-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h16v12H4z"></path>
+            <path d="M22 6l-10 7L2 6"></path>
+            <path d="M8 19h8"></path>
+          </svg>
+          <span>站内信（接口对接）</span>
         </div>
         <div class="nav-item" data-view="shops">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -4005,6 +4397,23 @@
               <button class="btn btn-sm btn-secondary" id="btnManagePhrases">管理</button>
             </div>
             <div class="phrase-panel-body" id="phrasePanelBody"></div>
+          </div>
+        </div>
+      </div>
+      <div class="view-page" id="viewMail">
+        <div class="chat-bar">
+          <button class="chat-bar-btn" id="btnMailReloadTip">站内信列表</button>
+          <button class="chat-bar-btn" id="btnMailDetailTip">邮件详情</button>
+          <button class="chat-bar-btn" id="btnMailMarkTip">标记已读</button>
+          <div class="chat-bar-sep"></div>
+          <button class="chat-bar-btn" id="btnMailOpenDebug">调试窗口</button>
+          <div style="flex:1"></div>
+          <span class="api-panel-subtitle" id="mailCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开站内信后台</span>
+        </div>
+        <div style="position:relative;flex:1;">
+          <div class="chat-placeholder">
+            <p>拼多多站内信页面加载中...</p>
+            <p style="margin-top:8px;color:#999;">进入列表后可切换未读、打开详情、翻页并观察抓包。</p>
           </div>
         </div>
       </div>
@@ -4196,6 +4605,77 @@
                 <span class="api-panel-subtitle">仅展示关键记录</span>
               </div>
               <div class="api-log-list" id="apiTrafficList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="view-page" id="viewMailApi">
+        <div class="page-toolbar">
+          <div class="balance-total">站内信接口对接</div>
+          <div class="mail-api-toolbar-stats">
+            <span class="mail-api-toolbar-chip">总数 <strong id="mailApiTotalNum">-</strong></span>
+            <span class="mail-api-toolbar-chip">未读 <strong id="mailApiUnreadNum">-</strong></span>
+            <span class="mail-api-toolbar-chip">消息盒子 <strong id="mailApiMsgBoxCount">-</strong></span>
+            <span class="mail-api-toolbar-chip">普通总量 <strong id="mailApiNormalTotal">-</strong></span>
+          </div>
+          <span class="spacer"></span>
+          <button class="btn btn-secondary" id="btnMailApiRefreshList">刷新列表</button>
+          <button class="btn btn-secondary" id="btnMailApiRefreshDetail">刷新详情</button>
+          <button class="btn btn-secondary" id="btnMailApiRefreshPage">刷新站内信页</button>
+          <button class="btn btn-secondary" id="btnMailApiReloadTraffic">刷新抓包</button>
+          <button class="btn btn-secondary" id="btnMailApiOpenDebug">调试窗口</button>
+          <button class="btn btn-secondary" id="btnMailApiClearTraffic">清空记录</button>
+        </div>
+        <div class="mail-api-layout">
+          <div class="mail-api-pane mail-api-sidebar">
+            <div class="mail-api-pane-header">
+              <span class="mail-api-pane-title">分类</span>
+              <span class="mail-api-pane-subtitle" id="mailApiHeaderMeta">等待加载站内信数据</span>
+            </div>
+            <div class="mail-api-category-list" id="mailApiCategoryList"></div>
+          </div>
+          <div class="mail-api-pane mail-api-list-pane">
+            <div class="mail-api-pane-header">
+              <span class="mail-api-pane-title" id="mailApiListTitle">站内信列表</span>
+              <span class="mail-api-pane-subtitle" id="mailApiListMeta">0 条消息</span>
+            </div>
+            <div class="mail-api-list-toolbar">
+              <input class="search-box" id="mailApiKeyword" placeholder="搜索标题或内容摘要">
+              <label class="mail-api-filter-toggle">
+                <input type="checkbox" id="mailApiUnreadOnly">
+                <span>只看未读</span>
+              </label>
+              <span class="mail-api-list-status" id="mailApiListStatus">点击左侧分类后加载列表</span>
+            </div>
+            <div class="mail-api-list-box" id="mailApiList"></div>
+          </div>
+          <div class="mail-api-pane mail-api-detail-pane">
+            <div class="mail-api-pane-header">
+              <span class="mail-api-pane-title">详情预览</span>
+              <span class="mail-api-pane-subtitle" id="mailApiDetailMeta">点击左侧列表打开详情</span>
+            </div>
+            <div class="mail-api-detail-head" id="mailApiDetailHead">
+              <div class="mail-api-detail-title">请选择一条站内信</div>
+              <div class="mail-api-detail-meta">
+                <span>分类：-</span>
+                <span>时间：-</span>
+              </div>
+            </div>
+            <div class="mail-api-detail-panel" id="mailApiDetailPanel">
+              <div class="mail-api-detail-empty">请选择一条站内信查看详情</div>
+            </div>
+            <div class="mail-api-detail-footer">
+              <div class="mail-api-detail-actions">
+                <button class="btn btn-secondary" id="btnMailApiPrev">上一条</button>
+                <button class="btn btn-secondary" id="btnMailApiNext">下一条</button>
+                <button class="btn btn-secondary" id="btnMailApiBackToMail">切回站内信页</button>
+              </div>
+              <div class="mail-api-traffic-box">
+                <div class="mail-api-traffic-summary" id="mailApiTrafficSummary">0 条抓包记录</div>
+                <div class="mail-api-traffic-list" id="mailApiTrafficList">
+                  <span class="mail-api-traffic-chip">暂无抓包</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -4841,6 +5321,14 @@
     let apiPolling = false;
     let apiTokenStatus = null;
     let apiTrafficEntries = [];
+    let mailApiEntries = [];
+    let mailApiOverview = null;
+    let mailApiList = [];
+    let mailApiActiveType = -1;
+    let mailApiActiveMessageId = '';
+    let mailApiActiveDetail = null;
+    let mailApiKeyword = '';
+    let mailApiUnreadOnly = false;
     let apiSessionTab = 'latest';
     let apiSideTab = 'personal';
     let apiSessionKeyword = '';
@@ -4880,9 +5368,14 @@
 
       if (view === 'chat') {
         document.getElementById('viewChat').classList.add('active');
+      } else if (view === 'mail') {
+        document.getElementById('viewMail').classList.add('active');
       } else if (view === 'chat-api') {
         document.getElementById('viewChatApi').classList.add('active');
         await loadApiChatView();
+      } else if (view === 'mail-api') {
+        document.getElementById('viewMailApi').classList.add('active');
+        await loadMailApiView({ keepCurrent: true });
       } else if (view === 'shops') {
         document.getElementById('viewShops').classList.add('active');
         await loadShops();
@@ -4943,7 +5436,7 @@
           await window.pddApi.switchShop(shopId);
           shopDropdown.classList.remove('visible');
           shopSwitcherBtn.classList.remove('open');
-          if (currentView !== 'chat') await switchView('chat');
+          if (!isEmbeddedPddView(currentView)) await switchView('chat');
         });
       });
     }
@@ -4980,6 +5473,10 @@
 
     function setApiHint(text) {
       document.getElementById('apiComposerHint').textContent = text;
+    }
+
+    function isEmbeddedPddView(view) {
+      return view === 'chat' || view === 'mail';
     }
 
     function formatApiListTime(value) {
@@ -5307,6 +5804,24 @@
       container.scrollTop = container.scrollHeight;
     }
 
+    function getApiAuthStatusText(status = apiTokenStatus) {
+      const authState = status?.authState || 'normal';
+      if (authState === 'token_missing') return '缺少 Token';
+      if (authState === 'expired') return '已过期';
+      return '正常';
+    }
+
+    function getApiAuthHintText(status = apiTokenStatus) {
+      const authState = status?.authState || 'normal';
+      if (authState === 'token_missing') {
+        return status?.authHint || '当前店铺缺少接口 Token，请重新导入 Token';
+      }
+      if (authState === 'expired') {
+        return status?.authHint || '网页登录已失效，请刷新登录态或重新导入 Token';
+      }
+      return '';
+    }
+
     function renderApiStatus() {
       const statusEl = document.getElementById('apiStatusList');
       const selectedShop = getApiSelectedShop();
@@ -5320,7 +5835,7 @@
         ['当前模式', apiPolling ? '接口轮询中' : '手动测试'],
         ['Token状态', apiTokenStatus?.hasToken ? '已导入' : '未导入'],
         ['会话初始化', apiTokenStatus?.sessionInited ? '已建立' : '未建立'],
-        ['认证状态', apiTokenStatus?.authExpired ? '已过期' : '正常'],
+        ['认证状态', getApiAuthStatusText()],
         ['抓包记录', `${apiTrafficEntries.length} 条`],
       ];
       statusEl.innerHTML = items.map(([label, value]) => `<div class="api-status-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join('');
@@ -5426,6 +5941,282 @@
       renderApiStatus();
     }
 
+    function getMailTrafficType(entry) {
+      const text = `${entry?.fullUrl || entry?.url || ''} ${entry?.requestBody || ''}`.toLowerCase();
+      if (text.includes('/other/mail/maillist')) return '页面入口';
+      if (text.includes('/newjersy/api/innermessage/querymsglistformerchant')) return '站内信列表';
+      if (text.includes('/newjersy/api/innermessage/querymessageformerchant')) return '详情接口';
+      if (text.includes('/newjersy/api/innermessage/querystaticsbyuserid')) return '分类统计';
+      if (text.includes('/newjersy/api/innermessage/queryunreadcountfortype')) return '未读统计';
+      if (text.includes('/newjersy/api/msgbox/v1/latestmsgboxandinnermsg')) return '消息盒子';
+      if (text.includes('/newjersy/api/msgbox/v1/total')) return '盒子总数';
+      if (text.includes('/newjersy/api/innermessage/')) return '站内信接口';
+      if (text.includes('/newjersy/api/msgbox/')) return '消息盒子';
+      if (text.includes('/other/mail/')) return '页面入口';
+      return '';
+    }
+
+    function isMailTrafficEntry(entry) {
+      return !!getMailTrafficType(entry);
+    }
+
+    function resetMailApiState() {
+      mailApiOverview = null;
+      mailApiList = [];
+      mailApiEntries = [];
+      mailApiActiveMessageId = '';
+      mailApiActiveDetail = null;
+      mailApiUnreadOnly = false;
+      const unreadOnlyToggle = document.getElementById('mailApiUnreadOnly');
+      if (unreadOnlyToggle) unreadOnlyToggle.checked = false;
+      renderMailApiOverview();
+      renderMailApiCategories();
+      renderMailApiList();
+      renderMailApiDetail();
+      renderMailApiTraffic();
+    }
+
+    function sanitizeMailHtml(html) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(`<div>${html || ''}</div>`, 'text/html');
+      doc.querySelectorAll('script,style,iframe,object,embed').forEach(el => el.remove());
+      doc.querySelectorAll('a').forEach(el => {
+        el.setAttribute('target', '_blank');
+        el.setAttribute('rel', 'noopener noreferrer');
+      });
+      doc.querySelectorAll('img').forEach(el => {
+        el.setAttribute('loading', 'lazy');
+      });
+      return doc.body.innerHTML;
+    }
+
+    function getMailVisibleList() {
+      const keyword = mailApiKeyword.trim().toLowerCase();
+      return mailApiList.filter(item => {
+        if (mailApiUnreadOnly && item.readStatus !== 0) return false;
+        if (!keyword) return true;
+        const text = `${item.title || ''} ${item.summary || ''}`.toLowerCase();
+        return text.includes(keyword);
+      });
+    }
+
+    function renderMailApiOverview() {
+      document.getElementById('mailApiTotalNum').textContent = mailApiOverview ? String(mailApiOverview.totalNum || 0) : '-';
+      document.getElementById('mailApiUnreadNum').textContent = mailApiOverview ? String(mailApiOverview.unreadNum || 0) : '-';
+      document.getElementById('mailApiMsgBoxCount').textContent = mailApiOverview ? String(mailApiOverview.msgBoxCount || 0) : '-';
+      document.getElementById('mailApiNormalTotal').textContent = mailApiOverview ? String(mailApiOverview.normalTotal || 0) : '-';
+    }
+
+    function renderMailApiCategories() {
+      const container = document.getElementById('mailApiCategoryList');
+      const categories = mailApiOverview?.categories || [];
+      if (!categories.length) {
+        container.innerHTML = '<div class="mail-api-list-empty">暂无分类数据</div>';
+        return;
+      }
+      if (!categories.some(item => Number(item.contentType) === Number(mailApiActiveType))) {
+        mailApiActiveType = Number(categories[0].contentType);
+      }
+      container.innerHTML = categories.map(item => `
+        <div class="mail-api-category-item ${Number(item.contentType) === Number(mailApiActiveType) ? 'active' : ''}" data-mail-type="${item.contentType}">
+          <div class="mail-api-category-name">
+            <span class="mail-api-category-dot"></span>
+            <span>${esc(item.label)}</span>
+          </div>
+          <div class="mail-api-category-badge">${esc(String(item.unreadCount || 0))}</div>
+        </div>
+      `).join('');
+      container.querySelectorAll('[data-mail-type]').forEach(item => {
+        item.addEventListener('click', async () => {
+          const nextType = Number(item.dataset.mailType);
+          if (nextType === mailApiActiveType) return;
+          mailApiActiveType = nextType;
+          mailApiActiveMessageId = '';
+          mailApiActiveDetail = null;
+          renderMailApiCategories();
+          renderMailApiDetail();
+          await loadMailApiList();
+        });
+      });
+    }
+
+    function renderMailApiList() {
+      const container = document.getElementById('mailApiList');
+      const visibleList = getMailVisibleList();
+      const activeCategory = (mailApiOverview?.categories || []).find(item => Number(item.contentType) === Number(mailApiActiveType));
+      document.getElementById('mailApiListTitle').textContent = activeCategory ? activeCategory.label : '站内信列表';
+      document.getElementById('mailApiListMeta').textContent = `${visibleList.length} / ${mailApiList.length} 条消息`;
+      document.getElementById('mailApiListStatus').textContent = activeCategory
+        ? `当前分类：${activeCategory.label}${mailApiUnreadOnly ? ' · 仅未读' : ''}`
+        : '当前分类：-';
+      if (!visibleList.length) {
+        container.innerHTML = '<div class="mail-api-list-empty">当前分类暂无消息，或没有匹配到搜索结果。</div>';
+        return;
+      }
+      container.innerHTML = visibleList.map(item => `
+        <div class="mail-api-list-item ${String(item.messageId) === String(mailApiActiveMessageId) ? 'active' : ''}" data-message-id="${esc(item.messageId)}">
+          <div class="mail-api-list-marker ${item.readStatus === 0 ? 'unread' : ''}"></div>
+          <div>
+            <div class="mail-api-list-item-header">
+              <div class="mail-api-list-item-title">${esc(item.title || '未命名站内信')}</div>
+              <div class="mail-api-list-item-time">${esc(formatApiListTime(item.sendTime))}</div>
+            </div>
+            <div class="mail-api-list-item-summary">${esc(item.summary || '暂无摘要')}</div>
+            <div class="mail-api-list-item-footer">
+              <span class="mail-api-tag">${esc(item.contentTypeName || '未知分类')}</span>
+              ${Number(item.attachmentCount || 0) > 0 ? `<span class="mail-api-tag">附件 ${esc(String(item.attachmentCount))}</span>` : ''}
+              ${item.readStatus === 0 ? '<span class="mail-api-tag unread">未读</span>' : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+      container.querySelectorAll('[data-message-id]').forEach(item => {
+        item.addEventListener('click', async () => {
+          await openMailApiDetail(item.dataset.messageId);
+        });
+      });
+    }
+
+    function renderMailApiDetail() {
+      const head = document.getElementById('mailApiDetailHead');
+      const panel = document.getElementById('mailApiDetailPanel');
+      if (!mailApiActiveDetail?.messageId) {
+        head.innerHTML = `
+          <div class="mail-api-detail-title">请选择一条站内信</div>
+          <div class="mail-api-detail-meta"><span>分类：-</span><span>时间：-</span></div>
+        `;
+        panel.innerHTML = '<div class="mail-api-detail-empty">请选择一条站内信查看详情</div>';
+        document.getElementById('mailApiDetailMeta').textContent = '点击左侧列表打开详情';
+        return;
+      }
+      const attachments = Array.isArray(mailApiActiveDetail.attachmentList) ? mailApiActiveDetail.attachmentList : [];
+      head.innerHTML = `
+        <div class="mail-api-detail-title">${esc(mailApiActiveDetail.title || '未命名站内信')}</div>
+        <div class="mail-api-detail-meta">
+          <span>分类：${esc(mailApiActiveDetail.contentTypeName || '-')}</span>
+          <span>时间：${esc(formatApiTime(mailApiActiveDetail.sendTime))}</span>
+          <span>消息ID：${esc(mailApiActiveDetail.messageId || '-')}</span>
+          <span>附件：${esc(String(attachments.length))}</span>
+        </div>
+      `;
+      panel.innerHTML = `
+        <div class="mail-api-detail-content">${sanitizeMailHtml(mailApiActiveDetail.contentHtml || `<p>${esc(mailApiActiveDetail.contentText || '暂无正文')}</p>`)}</div>
+        ${attachments.length ? `<div class="mail-api-detail-actions">${attachments.map((item, index) => `<span class="mail-api-tag">附件 ${index + 1}</span>`).join('')}</div>` : ''}
+      `;
+      document.getElementById('mailApiDetailMeta').textContent = `已打开详情：${mailApiActiveDetail.messageId}`;
+    }
+
+    function renderMailApiTraffic() {
+      const container = document.getElementById('mailApiTrafficList');
+      document.getElementById('mailApiTrafficSummary').textContent = `${mailApiEntries.length} 条抓包记录`;
+      if (!mailApiEntries.length) {
+        container.innerHTML = '<span class="mail-api-traffic-chip">暂无抓包</span>';
+        return;
+      }
+      container.innerHTML = mailApiEntries.slice(0, 8).map(entry => {
+        const typeTag = getMailTrafficType(entry);
+        const summary = `${typeTag} · ${entry.method || 'GET'} ${entry.url}`;
+        return `<span class="mail-api-traffic-chip" title="${esc(summary)}">${esc(summary)}</span>`;
+      }).join('');
+    }
+
+    async function loadMailApiTraffic(shopId = activeShopId) {
+      if (!shopId) {
+        mailApiEntries = [];
+        renderMailApiTraffic();
+        return;
+      }
+      const list = await window.pddApi.getApiTraffic({ shopId });
+      mailApiEntries = Array.isArray(list) ? list.slice().reverse().filter(isMailTrafficEntry) : [];
+      renderMailApiTraffic();
+    }
+
+    async function loadMailApiOverview(shopId = activeShopId) {
+      const result = await window.pddApi.mailGetOverview({ shopId });
+      if (!result || result.error) {
+        mailApiOverview = null;
+        renderMailApiOverview();
+        renderMailApiCategories();
+        document.getElementById('mailApiHeaderMeta').textContent = result?.error || '加载站内信统计失败';
+        return false;
+      }
+      mailApiOverview = result;
+      renderMailApiOverview();
+      renderMailApiCategories();
+      document.getElementById('mailApiHeaderMeta').textContent = `共 ${result.totalNum || 0} 条，未读 ${result.unreadNum || 0} 条`;
+      return true;
+    }
+
+    async function openMailApiDetail(messageId, options = {}) {
+      if (!messageId || !activeShopId) return;
+      mailApiActiveMessageId = String(messageId);
+      renderMailApiList();
+      const result = await window.pddApi.mailGetDetail({ shopId: activeShopId, messageId });
+      if (!result || result.error) {
+        mailApiActiveDetail = null;
+        renderMailApiDetail();
+        addLog(result?.error || '加载站内信详情失败', 'error');
+        return;
+      }
+      mailApiActiveDetail = result;
+      renderMailApiDetail();
+      if (!options.skipTraffic) {
+        await loadMailApiTraffic();
+      }
+    }
+
+    async function loadMailApiList(options = {}) {
+      if (!activeShopId) {
+        mailApiList = [];
+        mailApiActiveMessageId = '';
+        mailApiActiveDetail = null;
+        renderMailApiList();
+        renderMailApiDetail();
+        return false;
+      }
+      const result = await window.pddApi.mailGetList({
+        shopId: activeShopId,
+        contentType: mailApiActiveType,
+        pageNum: 1,
+        size: 40
+      });
+      if (!result || result.error) {
+        mailApiList = [];
+        mailApiActiveMessageId = '';
+        mailApiActiveDetail = null;
+        renderMailApiList();
+        renderMailApiDetail();
+        addLog(result?.error || '加载站内信列表失败', 'error');
+        return false;
+      }
+      mailApiList = Array.isArray(result.list) ? result.list : [];
+      renderMailApiList();
+      const visibleList = getMailVisibleList();
+      const keepCurrent = options.keepCurrent && visibleList.some(item => String(item.messageId) === String(mailApiActiveMessageId));
+      if (keepCurrent && mailApiActiveMessageId) {
+        await openMailApiDetail(mailApiActiveMessageId, { skipTraffic: true });
+      } else if (visibleList[0]?.messageId) {
+        await openMailApiDetail(visibleList[0].messageId, { skipTraffic: true });
+      } else {
+        mailApiActiveMessageId = '';
+        mailApiActiveDetail = null;
+        renderMailApiDetail();
+      }
+      return true;
+    }
+
+    async function loadMailApiView(options = {}) {
+      const shopId = activeShopId;
+      if (!shopId) {
+        document.getElementById('mailApiHeaderMeta').textContent = '当前没有活跃店铺';
+        resetMailApiState();
+        return;
+      }
+      await loadMailApiOverview(shopId);
+      await loadMailApiList({ keepCurrent: options.keepCurrent });
+      await loadMailApiTraffic(shopId);
+    }
+
     async function loadApiSessions(options = {}) {
       const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 50 });
       if (!Array.isArray(result)) {
@@ -5513,7 +6304,12 @@
         }
       }
       renderApiMessages();
-      if (!shops.length) setApiHint('请先添加店铺，再测试接口对话。');
+      const authHint = getApiAuthHintText();
+      if (authHint) {
+        setApiHint(authHint);
+      } else if (!shops.length) {
+        setApiHint('请先添加店铺，再测试接口对话。');
+      }
     }
 
     // 工具栏 + 添加按钮
@@ -5556,7 +6352,7 @@
         if (result.error) {
           addLog(`扫码添加失败: ${result.error}`, 'error');
         } else {
-          if (currentView !== 'chat') await switchView('chat');
+          if (!isEmbeddedPddView(currentView)) await switchView('chat');
         }
       } catch (err) {
         addLog(`扫码添加异常: ${err.message}`, 'error');
@@ -5564,11 +6360,17 @@
     }
 
     // 店铺事件监听
-    window.pddApi.onShopSwitched((data) => {
+    window.pddApi.onShopSwitched(async (data) => {
       updateShopSwitcherDisplay(data.shop);
       addLog(`已切换到: ${data.shop?.name || '未知店铺'}`, 'info');
+      if (currentView === 'mail' || currentView === 'mail-api') {
+        await window.pddApi.reloadPdd();
+      }
       if (currentView === 'chat-api') {
         loadApiChatView({ keepCurrent: true });
+      }
+      if (currentView === 'mail-api') {
+        loadMailApiView();
       }
     });
 
@@ -5595,6 +6397,9 @@
       }
       if (currentView === 'chat-api') {
         loadApiChatView({ keepCurrent: true });
+      }
+      if (currentView === 'mail-api') {
+        loadMailApiView();
       }
     });
 
@@ -5850,9 +6655,14 @@
 
     window.pddApi.onApiAuthExpired((payload) => {
       if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-      apiTokenStatus = { ...(apiTokenStatus || {}), authExpired: true };
+      apiTokenStatus = {
+        ...(apiTokenStatus || {}),
+        authExpired: true,
+        authState: payload?.authState || 'expired',
+        authHint: payload?.errorMsg || '',
+      };
       renderApiStatus();
-      setApiHint('接口认证已过期，请重新导入 Token 或刷新登录态');
+      setApiHint(payload?.errorMsg || getApiAuthHintText() || '接口认证已过期，请重新导入 Token 或刷新登录态');
     });
 
     // ==================== 店铺管理 ====================
@@ -6870,6 +7680,82 @@
 
     document.getElementById('btnReload').addEventListener('click', () => window.pddApi.reloadPdd());
     document.getElementById('btnDevTools').addEventListener('click', () => window.pddApi.openDevTools());
+    document.getElementById('btnMailOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
+    document.getElementById('btnMailApiOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
+    document.getElementById('btnMailApiRefreshPage').addEventListener('click', () => window.pddApi.reloadPdd());
+    document.getElementById('btnMailApiRefreshList').addEventListener('click', async () => {
+      await loadMailApiOverview();
+      await loadMailApiList({ keepCurrent: true });
+      await loadMailApiTraffic();
+      addLog('已刷新站内信列表', 'info');
+    });
+    document.getElementById('btnMailApiRefreshDetail').addEventListener('click', async () => {
+      if (!mailApiActiveMessageId) {
+        addLog('请先选择一条站内信', 'info');
+        return;
+      }
+      await openMailApiDetail(mailApiActiveMessageId);
+      addLog('已刷新当前站内信详情', 'info');
+    });
+    document.getElementById('btnMailApiReloadTraffic').addEventListener('click', async () => {
+      await loadMailApiTraffic();
+      addLog('已刷新站内信抓包记录', 'info');
+    });
+    document.getElementById('btnMailApiClearTraffic').addEventListener('click', async () => {
+      const shopId = activeShopId || API_ALL_SHOPS;
+      await window.pddApi.clearApiTraffic({ shopId });
+      await loadMailApiTraffic();
+      addLog('已清空当前范围的抓包记录', 'info');
+    });
+    document.getElementById('btnMailApiBackToMail').addEventListener('click', () => switchView('mail'));
+    document.getElementById('mailApiKeyword').addEventListener('input', async (event) => {
+      mailApiKeyword = event.target.value || '';
+      renderMailApiList();
+      const visibleList = getMailVisibleList();
+      if (mailApiActiveMessageId && visibleList.some(item => String(item.messageId) === String(mailApiActiveMessageId))) {
+        return;
+      }
+      if (visibleList[0]?.messageId) {
+        await openMailApiDetail(visibleList[0].messageId, { skipTraffic: true });
+      } else {
+        mailApiActiveMessageId = '';
+        mailApiActiveDetail = null;
+        renderMailApiDetail();
+      }
+    });
+    document.getElementById('mailApiUnreadOnly').addEventListener('change', async (event) => {
+      mailApiUnreadOnly = !!event.target.checked;
+      renderMailApiList();
+      const visibleList = getMailVisibleList();
+      if (mailApiActiveMessageId && visibleList.some(item => String(item.messageId) === String(mailApiActiveMessageId))) {
+        return;
+      }
+      if (visibleList[0]?.messageId) {
+        await openMailApiDetail(visibleList[0].messageId, { skipTraffic: true });
+      } else {
+        mailApiActiveMessageId = '';
+        mailApiActiveDetail = null;
+        renderMailApiDetail();
+      }
+    });
+    document.getElementById('btnMailApiPrev').addEventListener('click', async () => {
+      const visibleList = getMailVisibleList();
+      const index = visibleList.findIndex(item => String(item.messageId) === String(mailApiActiveMessageId));
+      if (index <= 0) {
+        addLog('已经是第一条站内信', 'info');
+        return;
+      }
+      await openMailApiDetail(visibleList[index - 1].messageId);
+    });
+    document.getElementById('btnMailApiNext').addEventListener('click', async () => {
+      const visibleList = getMailVisibleList();
+      const index = visibleList.findIndex(item => String(item.messageId) === String(mailApiActiveMessageId));
+      if (index < 0 || index >= visibleList.length - 1) {
+        addLog('已经是最后一条站内信', 'info');
+        return;
+      }
+      await openMailApiDetail(visibleList[index + 1].messageId);
+    });
 
     document.getElementById('btnTestReply').addEventListener('click', async () => {
       const btn = document.getElementById('btnTestReply');
@@ -6896,8 +7782,13 @@
     document.getElementById('btnSaveUrl').addEventListener('click', async () => {
       const url = await window.pddApi.getCurrentUrl();
       if (url && !url.includes('/other/404')) {
-        await window.pddApi.setChatUrl(url);
-        addLog(`已保存客服首页: ${url}`, 'info');
+        if (currentView === 'mail' || currentView === 'mail-api') {
+          await window.pddApi.setMailUrl(url);
+          addLog(`已保存站内信入口: ${url}`, 'info');
+        } else {
+          await window.pddApi.setChatUrl(url);
+          addLog(`已保存客服首页: ${url}`, 'info');
+        }
         const btn = document.getElementById('btnSaveUrl');
         btn.textContent = '已保存';
         setTimeout(() => { btn.textContent = '记住此页'; }, 2000);

@@ -3118,7 +3118,7 @@
     .api-message-item {
       display: flex;
       margin-bottom: 18px;
-      align-items: flex-end;
+      align-items: flex-start;
       gap: 12px;
     }
 
@@ -3167,6 +3167,10 @@
 
     .api-message-item.buyer .api-message-body {
       align-items: flex-start;
+    }
+
+    .api-message-item.service .api-message-meta {
+      justify-content: flex-end;
     }
 
     .api-message-meta {
@@ -3257,7 +3261,7 @@
     }
 
     .api-compose-notice {
-      margin: 0 18px 10px;
+      margin: 0 10px 10px;
       padding: 10px 12px;
       border: 1px solid #f1b8b1;
       background: #fff8f7;
@@ -3303,6 +3307,7 @@
       padding: 0;
     }
 
+    .api-chat-main-inner.is-empty-session .api-conversation-header,
     .api-chat-main-inner.is-empty-session .api-composer,
     .api-chat-main-inner.is-empty-session .quick-phrase-panel {
       display: none;
@@ -3790,7 +3795,7 @@
       flex-direction: column;
     }
 
-    .mail-api-pane + .mail-api-pane {
+    .mail-api-pane+.mail-api-pane {
       border-left: none;
     }
 
@@ -4437,7 +4442,6 @@
                   <span style="color:#999;">邀请下单</span>
                   <span style="color:#999;">小额打款</span>
                 </div>
-                <div class="api-compose-notice" id="apiComposeNotice">服务用语须严格遵守：尊重准则、耐心准则、同理心准则</div>
                 <div class="api-compose-inputbar">
                   <textarea id="apiMessageInput" placeholder="输入要通过接口发送的消息..."></textarea>
                   <div class="api-composer-actions">
@@ -5593,6 +5597,7 @@
       const container = document.getElementById('apiMessageList');
       const mainInner = document.querySelector('.api-chat-main-inner');
       const activeSession = getApiActiveSession();
+      const hasActiveSession = !!(apiActiveSessionId && activeSession);
       const shopName = activeSession?.shopName || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '未选择店铺');
       const unreadCount = Number(activeSession?.unreadCount || 0);
       const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
@@ -5603,10 +5608,10 @@
         : unreadCount > 0
           ? `未读 ${unreadCount}`
           : '已关注本店';
-      document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !apiActiveSessionId);
-      mainInner?.classList.toggle('is-empty-session', !apiActiveSessionId);
+      document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
+      mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 
-      if (!apiActiveSessionId) {
+      if (!hasActiveSession) {
         container.innerHTML = '';
         return;
       }
@@ -5634,6 +5639,11 @@
         const metaHtml = isBuyer
           ? `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span></div>`
           : `<div class="api-message-meta"><span class="api-message-status">${message.raw?.is_read ? '已读' : ''}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span><span class="api-message-sender">${esc(senderName)}</span></div>`;
+        const bubbleHtml = isApiImageMessage(message)
+          ? ''
+          : `<div class="api-message-bubble">
+              <div class="api-message-content">${esc(message.content || '')}</div>
+            </div>`;
         const divider = dayKey && dayKey !== lastDayKey
           ? `<div class="api-message-divider">${esc(formatApiDate(message.timestamp))}</div>`
           : '';
@@ -5642,31 +5652,11 @@
           <div class="api-message-avatar">${avatarHtml}</div>
           <div class="api-message-body">
             ${metaHtml}
-            <div class="api-message-bubble">
-              <div class="api-message-content">${esc(message.content || '')}</div>
-            </div>
+            ${bubbleHtml}
           </div>
         </div>`;
       }).join('');
       container.scrollTop = container.scrollHeight;
-    }
-
-    function getApiAuthStatusText(status = apiTokenStatus) {
-      const authState = status?.authState || 'normal';
-      if (authState === 'token_missing') return '缺少 Token';
-      if (authState === 'expired') return '已过期';
-      return '正常';
-    }
-
-    function getApiAuthHintText(status = apiTokenStatus) {
-      const authState = status?.authState || 'normal';
-      if (authState === 'token_missing') {
-        return status?.authHint || '当前店铺缺少接口 Token，请重新导入 Token';
-      }
-      if (authState === 'expired') {
-        return status?.authHint || '网页登录已失效，请刷新登录态或重新导入 Token';
-      }
-      return '';
     }
 
     function renderApiStatus() {

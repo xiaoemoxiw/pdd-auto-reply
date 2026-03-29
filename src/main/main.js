@@ -13,6 +13,7 @@ const { AIIntentEngine, MODEL_ID, MODEL_SOURCES } = require('./ai-intent');
 const Store = require('electron-store');
 
 const UNMATCHED_LOG_MAX = 200;
+const API_ALL_SHOPS = '__all__';
 
 const store = new Store({
   defaults: {
@@ -32,6 +33,7 @@ const store = new Store({
     shops: [],
     activeShopId: '',
     shopGroups: [],
+    apiStarredSessions: [],
     quickPhrases: [],
     shopCookies: {},
     phraseLibrary: [],
@@ -343,6 +345,59 @@ function getApiTraffic(shopId) {
   return apiTrafficStore.get(shopId) || [];
 }
 
+function getStoredShops() {
+  return store.get('shops') || [];
+}
+
+function getApiShopList(shopId) {
+  const shops = getStoredShops().filter(item => item?.id);
+  if (shopId === API_ALL_SHOPS) return shops;
+  return shops.filter(item => item.id === shopId);
+}
+
+function decorateApiSession(shopId, session) {
+  const shop = getStoredShops().find(item => item.id === shopId);
+  return {
+    ...session,
+    shopId,
+    shopName: session?.shopName || shop?.name || '未知店铺',
+    shopStatus: shop?.status || '',
+  };
+}
+
+async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
+  const targetShops = getApiShopList(shopId);
+  if (!targetShops.length) {
+    if (shopId === API_ALL_SHOPS) return [];
+    throw new Error('没有可用店铺');
+  }
+  if (shopId !== API_ALL_SHOPS) {
+    const sessions = await getApiClient(targetShops[0].id).getSessionList(page, pageSize);
+    return sessions.map(session => decorateApiSession(targetShops[0].id, session));
+  }
+  const sessionGroups = await Promise.all(targetShops.map(async shop => {
+    try {
+      const sessions = await getApiClient(shop.id).getSessionList(page, pageSize);
+      return sessions.map(session => decorateApiSession(shop.id, session));
+    } catch (error) {
+      sendToDebug('api-session-load-skipped', { shopId: shop.id, message: error.message });
+      return [];
+    }
+  }));
+  return sessionGroups
+    .flat()
+    .sort((a, b) => Number(b.lastMessageTime || 0) - Number(a.lastMessageTime || 0));
+}
+
+function getApiTrafficByScope(shopId) {
+  if (shopId !== API_ALL_SHOPS) {
+    return getApiTraffic(shopId).map(entry => decorateApiSession(shopId, entry));
+  }
+  return getStoredShops()
+    .flatMap(shop => getApiTraffic(shop.id).map(entry => decorateApiSession(shop.id, entry)))
+    .sort((a, b) => Number(b.timestamp || b.recordedAt || 0) - Number(a.timestamp || a.recordedAt || 0));
+}
+
 function appendApiTrafficLog(shopId, entry) {
   try {
     const record = JSON.stringify({
@@ -364,7 +419,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width,
     height,
-    minWidth: 1100,
+    minWidth: 800,
     minHeight: 700,
     title: '元尾巴 · 拼多多客服助手',
     icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
@@ -724,9 +779,10 @@ ipcMain.handle('get-token-info', () => {
   return (global.__pddTokens && shopId) ? global.__pddTokens[shopId] || null : null;
 });
 
-ipcMain.handle('api-get-token-status', async () => {
-  const shopId = shopManager?.getActiveShopId();
+ipcMain.handle('api-get-token-status', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有活跃店铺' };
+  if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
   return await getApiClient(shopId).getTokenStatus();
 });
 
@@ -740,9 +796,10 @@ ipcMain.handle('api-init-session', async () => {
   }
 });
 
-ipcMain.handle('api-test-connection', async () => {
-  const shopId = shopManager?.getActiveShopId();
+ipcMain.handle('api-test-connection', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有活跃店铺' };
+  if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
   try {
     return await getApiClient(shopId).testConnection();
   } catch (err) {
@@ -754,7 +811,7 @@ ipcMain.handle('api-get-sessions', async (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有可用店铺' };
   try {
-    return await getApiClient(shopId).getSessionList(params.page || 1, params.pageSize || 20);
+    return await getApiSessionsByScope(shopId, params.page || 1, params.pageSize || 20);
   } catch (err) {
     return { error: err.message };
   }
@@ -800,6 +857,11 @@ ipcMain.handle('api-mark-latest-conversations', async (event, params = {}) => {
 ipcMain.handle('api-start-polling', (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有可用店铺' };
+  if (shopId === API_ALL_SHOPS) {
+    const targetShops = getApiShopList(API_ALL_SHOPS);
+    targetShops.forEach(shop => getApiClient(shop.id).startPolling());
+    return { ok: true, shopId, count: targetShops.length };
+  }
   getApiClient(shopId).startPolling();
   return { ok: true, shopId };
 });
@@ -807,6 +869,11 @@ ipcMain.handle('api-start-polling', (event, params = {}) => {
 ipcMain.handle('api-stop-polling', (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有可用店铺' };
+  if (shopId === API_ALL_SHOPS) {
+    const targetShops = getApiShopList(API_ALL_SHOPS);
+    targetShops.forEach(shop => destroyApiClient(shop.id));
+    return { ok: true, shopId, count: targetShops.length };
+  }
   destroyApiClient(shopId);
   return { ok: true, shopId };
 });
@@ -814,14 +881,51 @@ ipcMain.handle('api-stop-polling', (event, params = {}) => {
 ipcMain.handle('get-api-traffic', (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return [];
-  return getApiTraffic(shopId);
+  return getApiTrafficByScope(shopId);
 });
 
 ipcMain.handle('clear-api-traffic', (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return false;
+  if (shopId === API_ALL_SHOPS) {
+    getApiShopList(API_ALL_SHOPS).forEach(shop => apiTrafficStore.set(shop.id, []));
+    return true;
+  }
   apiTrafficStore.set(shopId, []);
   return true;
+});
+
+ipcMain.handle('get-api-starred-sessions', () => store.get('apiStarredSessions') || []);
+
+ipcMain.handle('toggle-api-starred-session', (event, session = {}) => {
+  const sessions = store.get('apiStarredSessions') || [];
+  const sessionKey = String(session.sessionKey || `${session.shopId || ''}::${session.sessionId || ''}`);
+  if (!session.shopId || !session.sessionId || !sessionKey) {
+    return { error: '缺少收藏会话标识', sessions };
+  }
+  const currentIndex = sessions.findIndex(item => item.sessionKey === sessionKey);
+  if (currentIndex >= 0) {
+    sessions.splice(currentIndex, 1);
+    store.set('apiStarredSessions', sessions);
+    return { starred: false, sessions };
+  }
+  const nextSession = {
+    sessionKey,
+    shopId: session.shopId,
+    sessionId: session.sessionId,
+    shopName: session.shopName || '',
+    customerName: session.customerName || '',
+    customerId: session.customerId || '',
+    customerAvatar: session.customerAvatar || '',
+    lastMessage: session.lastMessage || '',
+    lastMessageTime: session.lastMessageTime || 0,
+    unreadCount: session.unreadCount || 0,
+    orderId: session.orderId || '',
+    updatedAt: Date.now(),
+  };
+  sessions.unshift(nextSession);
+  store.set('apiStarredSessions', sessions);
+  return { starred: true, sessions };
 });
 
 // ---- 视图切换 ----

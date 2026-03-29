@@ -61,9 +61,9 @@ contextBridge.exposeInMainWorld('pddApi', {
   importTokenFile: () => ipcRenderer.invoke('import-token-file'),
   importTokenFromPath: (path) => ipcRenderer.invoke('import-token-from-path', path),
   getTokenInfo: () => ipcRenderer.invoke('get-token-info'),
-  apiGetTokenStatus: () => ipcRenderer.invoke('api-get-token-status'),
+  apiGetTokenStatus: (params) => ipcRenderer.invoke('api-get-token-status', params),
   apiInitSession: () => ipcRenderer.invoke('api-init-session'),
-  apiTestConnection: () => ipcRenderer.invoke('api-test-connection'),
+  apiTestConnection: (params) => ipcRenderer.invoke('api-test-connection', params),
   apiGetSessions: (params) => ipcRenderer.invoke('api-get-sessions', params),
   apiGetMessages: (params) => ipcRenderer.invoke('api-get-messages', params),
   apiSendMessage: (params) => ipcRenderer.invoke('api-send-message', params),
@@ -72,6 +72,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiStopPolling: (params) => ipcRenderer.invoke('api-stop-polling', params),
   getApiTraffic: (params) => ipcRenderer.invoke('get-api-traffic', params),
   clearApiTraffic: (params) => ipcRenderer.invoke('clear-api-traffic', params),
+  getApiStarredSessions: () => ipcRenderer.invoke('get-api-starred-sessions'),
+  toggleApiStarredSession: (session) => ipcRenderer.invoke('toggle-api-starred-session', session),
 
   // 快捷短语
   getQuickPhrases: () => ipcRenderer.invoke('get-quick-phrases'),

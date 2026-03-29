@@ -2,9 +2,9 @@ const path = require('path');
 const fs = require('fs');
 const { app, session, BrowserWindow } = require('electron');
 const { PddApiClient } = require('../src/main/pdd-api');
+const { getApiTrafficLogPath, getLegacyApiTrafficLogPath } = require('../src/main/api-traffic-path');
 
 const TOKEN_PATH = path.join(__dirname, 'tokens', 'sample-token.json');
-const API_TRAFFIC_LOG_PATH = path.join(__dirname, 'api-traffic-log.jsonl');
 const SHOP_ID = 'shop_smoke_test';
 const PARTITION = `persist:pdd-${SHOP_ID}`;
 
@@ -31,19 +31,37 @@ function decodeShopToken(rawToken) {
   }
 }
 
-function loadApiTraffic() {
-  if (!fs.existsSync(API_TRAFFIC_LOG_PATH)) return [];
-  return fs.readFileSync(API_TRAFFIC_LOG_PATH, 'utf-8')
+function loadApiTrafficFile(filePath) {
+  return fs.readFileSync(filePath, 'utf-8')
     .split('\n')
     .filter(Boolean)
     .map(line => {
       try {
-        return JSON.parse(line).entry;
+        const parsed = JSON.parse(line);
+        return parsed?.entry || parsed;
       } catch {
         return null;
       }
     })
     .filter(Boolean);
+}
+
+function loadApiTraffic() {
+  const candidates = [
+    getApiTrafficLogPath(),
+    getLegacyApiTrafficLogPath(),
+  ];
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    return {
+      entries: loadApiTrafficFile(filePath),
+      sourcePath: filePath,
+    };
+  }
+  return {
+    entries: [],
+    sourcePath: '',
+  };
 }
 
 async function importTokenToSession(tokenData) {
@@ -143,7 +161,8 @@ async function runPageContextFetch(tokenData, mallId) {
 async function main() {
   const tokenData = loadToken();
   const decoded = decodeShopToken(tokenData.windowsAppShopToken);
-  const apiTraffic = loadApiTraffic();
+  const apiTrafficState = loadApiTraffic();
+  const apiTraffic = apiTrafficState.entries;
 
   await importTokenToSession(tokenData);
 
@@ -181,6 +200,7 @@ async function main() {
     tokenUserAgent: tokenData.userAgent || '',
     hasCookies: Array.isArray(tokenData.mallCookies) && tokenData.mallCookies.length > 0,
     apiTrafficCount: apiTraffic.length,
+    apiTrafficSource: apiTrafficState.sourcePath,
     cookieNamesBeforeInit: await getSessionCookieNames(),
     steps: [],
   };

@@ -10,6 +10,7 @@ const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
 const { SYSTEM_PHRASES, DEFAULT_SCENES, PHRASE_CATEGORIES, DEFAULT_AI_INTENTS } = require('./system-phrases');
 const { AIIntentEngine, MODEL_ID, MODEL_SOURCES } = require('./ai-intent');
+const { getApiTrafficLogPath } = require('./api-traffic-path');
 const Store = require('electron-store');
 
 const UNMATCHED_LOG_MAX = 200;
@@ -179,7 +180,6 @@ let aiIntentEngine = null;
 let networkMonitors = new Map();  // shopId -> NetworkMonitor
 let apiClients = new Map();
 let apiTrafficStore = new Map();
-const API_TRAFFIC_LOG_PATH = path.join(__dirname, '..', '..', 'test', 'api-traffic-log.jsonl');
 
 function getPddChatUrl() {
   return store.get('chatUrl') || PDD_CHAT_URL;
@@ -400,12 +400,14 @@ function getApiTrafficByScope(shopId) {
 
 function appendApiTrafficLog(shopId, entry) {
   try {
+    const apiTrafficLogPath = getApiTrafficLogPath();
     const record = JSON.stringify({
       shopId,
       recordedAt: Date.now(),
       entry,
     });
-    fs.appendFileSync(API_TRAFFIC_LOG_PATH, `${record}\n`, 'utf-8');
+    fs.mkdirSync(path.dirname(apiTrafficLogPath), { recursive: true });
+    fs.appendFileSync(apiTrafficLogPath, `${record}\n`, 'utf-8');
   } catch (error) {
     console.error('[PDD助手] 写入接口抓取日志失败:', error.message);
   }
@@ -1736,8 +1738,9 @@ function setupAppMenu() {
 
 app.whenReady().then(async () => {
   try {
-    fs.mkdirSync(path.dirname(API_TRAFFIC_LOG_PATH), { recursive: true });
-    fs.writeFileSync(API_TRAFFIC_LOG_PATH, '', 'utf-8');
+    const apiTrafficLogPath = getApiTrafficLogPath();
+    fs.mkdirSync(path.dirname(apiTrafficLogPath), { recursive: true });
+    fs.writeFileSync(apiTrafficLogPath, '', 'utf-8');
   } catch (error) {
     console.error('[PDD助手] 初始化接口抓取日志失败:', error.message);
   }

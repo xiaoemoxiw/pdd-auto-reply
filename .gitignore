@@ -4,3 +4,5 @@ dist/
 *.log
 test/tokens/*
 !test/tokens/sample-token.json
+test/api-traffic-log.jsonl
+test/api-traffic-sample.jsonl

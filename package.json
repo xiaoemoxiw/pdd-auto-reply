@@ -6,7 +6,9 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "NODE_ENV=development electron ."
+    "dev": "NODE_ENV=development electron .",
+    "smoke:api": "electron test/run-pdd-api-smoke.js",
+    "export:api-sample": "electron test/export-api-traffic-sample.js"
   },
   "author": "",
   "license": "MIT",

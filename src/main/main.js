@@ -15,6 +15,8 @@ const { AIIntentEngine, MODEL_ID, MODEL_SOURCES } = require('./ai-intent');
 const { getApiTrafficLogPath } = require('./api-traffic-path');
 const Store = require('electron-store');
 
+app.disableHardwareAcceleration();
+
 const UNMATCHED_LOG_MAX = 200;
 const API_ALL_SHOPS = '__all__';
 

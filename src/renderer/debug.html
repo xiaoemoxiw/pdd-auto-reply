@@ -252,6 +252,12 @@
       addEntry('systemLog', entry.type || 'info', entry.text);
     });
 
+    window.debugApi.onApiLog((entry) => {
+      const level = /失败|错误|过期/i.test(String(entry?.message || '')) ? 'error' : 'info';
+      const shopText = entry?.shopId ? `[${entry.shopId}] ` : '';
+      addEntry('systemLog', level, `${shopText}${entry?.message || 'API 日志'}`, entry?.extra || null);
+    });
+
     window.debugApi.onAutoReplySent((data) => {
       addEntry('systemLog', 'reply', `[自动回复] ${data.customer}: ${data.question} → ${data.answer}`);
     });

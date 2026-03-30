@@ -114,6 +114,126 @@ class PddApiClient extends EventEmitter {
     return null;
   }
 
+  _findLatestTrafficEntry(matcher) {
+    const list = this._getApiTrafficEntries();
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (matcher(list[i])) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
+  _getLatestRequestBody(urlPart) {
+    return this._safeParseJson(this._findLatestTraffic(urlPart)?.requestBody);
+  }
+
+  _getLatestConversationTrafficEntry() {
+    return this._findLatestTrafficEntry((entry) => {
+      if (!String(entry?.url || '').includes('/plateau/chat/latest_conversations')) return false;
+      const body = this._safeParseJson(entry?.requestBody);
+      return body?.data?.chat_type_id === undefined;
+    }) || this._findLatestTraffic('/plateau/chat/latest_conversations');
+  }
+
+  _getLatestConversationRequestBody() {
+    return this._safeParseJson(this._getLatestConversationTrafficEntry()?.requestBody);
+  }
+
+  _getLatestClientValue() {
+    const urlParts = [
+      '/plateau/chat/send_message',
+      '/plateau/chat/list',
+      '/plateau/chat/latest_conversations',
+    ];
+
+    for (const urlPart of urlParts) {
+      const body = this._getLatestRequestBody(urlPart);
+      if (body?.client !== undefined && body?.client !== null && body?.client !== '') {
+        return body.client;
+      }
+    }
+
+    return 1;
+  }
+
+  _getLatestSessionTraffic(urlPart, sessionId) {
+    return this._findLatestTrafficEntry((entry) => {
+      if (!String(entry?.url || '').includes(urlPart)) return false;
+      const body = this._safeParseJson(entry?.requestBody);
+      const targetId = body?.data?.list?.with?.id || body?.data?.message?.to?.uid || body?.session_id || '';
+      return String(targetId) === String(sessionId);
+    });
+  }
+
+  _getLatestBuyerInfo(sessionId) {
+    const entry = this._getLatestSessionTraffic('/plateau/chat/list', sessionId);
+    const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
+    const messages = this._parseMessages(payload);
+    const buyerMessage = [...messages].reverse().find(item => item.isFromBuyer && item?.raw && typeof item.raw === 'object');
+    return buyerMessage?.raw?.user_info ? this._cloneJson(buyerMessage.raw.user_info) : null;
+  }
+
+  _getLatestMessageTemplate(sessionId) {
+    const entry = this._getLatestSessionTraffic('/plateau/chat/list', sessionId);
+    const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
+    const messages = this._parseMessages(payload);
+    const sellerMessage = [...messages].reverse().find(item => !item.isFromBuyer && item?.raw && typeof item.raw === 'object');
+    if (sellerMessage?.raw) {
+      return this._cloneJson(sellerMessage.raw);
+    }
+
+    const sessionListPayload = this._getLatestResponseBody('/plateau/chat/latest_conversations');
+    const sessions = this._parseSessionList(sessionListPayload);
+    const matchedSession = [...sessions].find(item => String(item.sessionId || '') === String(sessionId) && item?.raw && typeof item.raw === 'object');
+    if (matchedSession?.raw) {
+      return this._cloneJson(matchedSession.raw);
+    }
+
+    const latestSellerSession = [...sessions].find(item => !this._isBuyerMessage(item.raw) && item?.raw && typeof item.raw === 'object');
+    return latestSellerSession?.raw ? this._cloneJson(latestSellerSession.raw) : null;
+  }
+
+  _buildSendMessageTemplate(sessionId, text, ts, hash) {
+    const shop = this._getShopInfo();
+    const mallId = this._getMallId();
+    const template = this._getLatestMessageTemplate(sessionId) || {};
+    const buyerInfo = this._getLatestBuyerInfo(sessionId);
+    const from = { ...(template.from || {}) };
+    const to = { ...(template.to || {}) };
+
+    from.role = from.role || 'mall_cs';
+    if (!from.uid && mallId) from.uid = String(mallId);
+    if (!from.mall_id && mallId) from.mall_id = String(mallId);
+    if (!from.csid && shop?.name) from.csid = shop.name;
+    to.role = to.role || 'user';
+    to.uid = String(sessionId);
+
+    const message = {
+      ...template,
+      to,
+      from,
+      ts: String(ts),
+      content: text,
+      msg_id: null,
+      type: template.type ?? 0,
+      is_aut: 0,
+      manual_reply: 1,
+      status: template.status || 'read',
+      is_read: template.is_read ?? 1,
+      hash,
+    };
+
+    if (message.version === undefined) message.version = 1;
+    if (message.cs_type === undefined) message.cs_type = 2;
+    if (!message.mall_context) message.mall_context = { client_type: 2 };
+    if (!message.mallName && shop?.name) message.mallName = shop.name;
+    if (!message.pre_msg_id && template.msg_id) message.pre_msg_id = template.msg_id;
+    if (!message.user_info && buyerInfo) message.user_info = buyerInfo;
+
+    return message;
+  }
+
   _randomHex(length = 32) {
     return crypto.randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
   }
@@ -443,8 +563,7 @@ class PddApiClient extends EventEmitter {
       payload?.result?.data?.items ||
       payload?.result?.data ||
       payload?.result?.list ||
-      payload?.result?.conv_list ||
-      payload?.result?.conversation_list ||
+      payload?.result?.data ||
       payload?.result?.conversations ||
       payload?.result?.items ||
       payload?.conv_list ||
@@ -492,20 +611,18 @@ class PddApiClient extends EventEmitter {
       await this.initSession();
     }
 
-    const latestTraffic = this._findLatestTraffic('/plateau/chat/latest_conversations');
-    const templateBody = this._safeParseJson(latestTraffic?.requestBody);
+    const templateBody = this._getLatestConversationRequestBody();
     const antiContent = templateBody?.anti_content || this._getLatestAntiContent();
     const requestBody = templateBody
       ? {
           ...this._cloneJson(templateBody),
           data: {
-            ...(templateBody.data || {}),
+            ...templateBody.data,
             request_id: this._nextRequestId(),
             cmd: templateBody.data?.cmd || 'latest_conversations',
-            version: templateBody.data?.version || 2,
-            need_unreply_time: templateBody.data?.need_unreply_time ?? true,
-            page: page || templateBody.data?.page || 1,
-            size: pageSize || templateBody.data?.size || 20,
+            page: page || templateBody.data?.page,
+            offset: Math.max(0, (page - 1) * pageSize),
+            size: pageSize || templateBody.data?.size,
             anti_content: templateBody.data?.anti_content || antiContent,
           },
           client: templateBody.client || 'WEB',
@@ -525,6 +642,18 @@ class PddApiClient extends EventEmitter {
           client: 'WEB',
           anti_content: antiContent,
         };
+    if (requestBody?.data && 'chat_type_id' in requestBody.data) {
+      delete requestBody.data.chat_type_id;
+    }
+    this._log('[API] 拉取会话列表', {
+      page,
+      pageSize,
+      client: requestBody?.client,
+      hasTopAntiContent: !!requestBody?.anti_content,
+      hasBodyAntiContent: !!requestBody?.data?.anti_content,
+      chatTypeId: requestBody?.data?.chat_type_id,
+      templateSource: templateBody ? 'traffic' : 'fallback',
+    });
     try {
       const payload = await this._post('/plateau/chat/latest_conversations', requestBody);
       const sessions = this._parseSessionList(payload);
@@ -543,6 +672,10 @@ class PddApiClient extends EventEmitter {
         return this._sessionCache;
       }
       this._sessionCache = sessions;
+      this._log('[API] 会话列表拉取成功', {
+        count: sessions.length,
+        payloadKeys: Object.keys(payload?.result || payload?.data || {}),
+      });
       return sessions;
     } catch (error) {
       const { sessions: cachedSessions, source } = this._getCachedSessionFallback();
@@ -551,6 +684,12 @@ class PddApiClient extends EventEmitter {
         this._log('[API] latest_conversations 直调失败，回退页面抓取缓存', { message: error.message, source });
         return cachedSessions;
       }
+      this._log('[API] 会话列表拉取失败', {
+        message: error.message,
+        statusCode: error.statusCode || 0,
+        errorCode: error.errorCode || 0,
+        payload: error.payload || null,
+      });
       throw error;
     }
   }
@@ -665,11 +804,21 @@ class PddApiClient extends EventEmitter {
   _buildSendMessageBody(sessionId, text) {
     const latestTraffic = this._findLatestTraffic('/plateau/chat/send_message');
     const templateBody = this._safeParseJson(latestTraffic?.requestBody);
-    const antiContent = templateBody?.anti_content || this._getLatestAntiContent();
+    const latestListBody = this._getLatestRequestBody('/plateau/chat/list');
+    const latestConversationsBody = this._getLatestRequestBody('/plateau/chat/latest_conversations');
+    const bodyAntiContent = templateBody?.data?.anti_content
+      || latestListBody?.data?.anti_content
+      || latestConversationsBody?.data?.anti_content
+      || this._getLatestAntiContent();
+    const topAntiContent = templateBody?.anti_content
+      || latestListBody?.anti_content
+      || latestConversationsBody?.anti_content
+      || bodyAntiContent;
     const requestId = this._nextRequestId();
     const ts = Math.floor(Date.now() / 1000);
     const random = this._randomHex(32);
     const hash = this._buildMessageHash(sessionId, text, ts, random);
+    const message = this._buildSendMessageTemplate(sessionId, text, ts, hash);
 
     if (templateBody) {
       const body = this._cloneJson(templateBody);
@@ -677,55 +826,34 @@ class PddApiClient extends EventEmitter {
       body.data.request_id = requestId;
       body.data.cmd = body.data.cmd || 'send_message';
       body.data.random = random;
-      body.data.anti_content = body.data.anti_content || antiContent;
+      body.data.anti_content = bodyAntiContent || body.data.anti_content || '';
       body.data.message = {
         ...(body.data.message || {}),
+        ...message,
         to: {
           ...((body.data.message && body.data.message.to) || {}),
-          role: body.data.message?.to?.role || 'user',
-          uid: String(sessionId),
+          ...(message.to || {}),
         },
         from: {
           ...((body.data.message && body.data.message.from) || {}),
-          role: body.data.message?.from?.role || 'mall_cs',
+          ...(message.from || {}),
         },
-        ts,
-        content: text,
-        msg_id: null,
-        type: body.data.message?.type ?? 0,
-        is_aut: 0,
-        manual_reply: 1,
-        status: body.data.message?.status || 'read',
-        is_read: body.data.message?.is_read ?? 1,
-        hash,
       };
-      body.client = body.client || 'WEB';
-      body.anti_content = body.anti_content || antiContent;
+      body.client = body.client || this._getLatestClientValue();
+      body.anti_content = topAntiContent || body.anti_content || '';
       return body;
     }
 
     return {
       data: {
         cmd: 'send_message',
-        anti_content: antiContent,
+        anti_content: bodyAntiContent,
         request_id: requestId,
-        message: {
-          to: { role: 'user', uid: String(sessionId) },
-          from: { role: 'mall_cs' },
-          ts,
-          content: text,
-          msg_id: null,
-          type: 0,
-          is_aut: 0,
-          manual_reply: 1,
-          status: 'read',
-          is_read: 1,
-          hash,
-        },
+        message,
         random,
       },
-      client: 'WEB',
-      anti_content: antiContent,
+      client: this._getLatestClientValue(),
+      anti_content: topAntiContent,
     };
   }
 
@@ -734,7 +862,21 @@ class PddApiClient extends EventEmitter {
       await this.initSession();
     }
 
-    const payload = await this._post('/plateau/chat/send_message', this._buildSendMessageBody(sessionId, text));
+    const requestBody = this._buildSendMessageBody(sessionId, text);
+    this._log('[API] 发送消息', {
+      sessionId: String(sessionId),
+      textLength: String(text || '').length,
+      client: requestBody?.client,
+      hasTopAntiContent: !!requestBody?.anti_content,
+      hasBodyAntiContent: !!requestBody?.data?.anti_content,
+      hasUserInfo: !!requestBody?.data?.message?.user_info,
+      preMsgId: requestBody?.data?.message?.pre_msg_id || '',
+    });
+    const payload = await this._post('/plateau/chat/send_message', requestBody);
+    this._log('[API] 消息发送成功', {
+      sessionId: String(sessionId),
+      payloadKeys: Object.keys(payload?.result || payload?.data || payload || {}),
+    });
 
     const result = { sessionId, text, response: payload };
     this.emit('messageSent', result);

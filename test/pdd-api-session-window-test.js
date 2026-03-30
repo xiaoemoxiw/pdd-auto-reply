@@ -1,0 +1,407 @@
+const assert = require('assert');
+const Module = require('module');
+
+const originalLoad = Module._load;
+Module._load = function patchedLoad(request, parent, isMain) {
+  if (request === 'electron') {
+    return {
+      BrowserWindow: class {},
+      session: {
+        fromPartition() {
+          return {};
+        }
+      }
+    };
+  }
+  return originalLoad.call(this, request, parent, isMain);
+};
+
+const { PddApiClient } = require('../src/main/pdd-api');
+
+async function testResetStaleCursor() {
+  const traffic = [{
+    url: 'https://mms.pinduoduo.com/plateau/chat/list',
+    requestBody: JSON.stringify({
+      client: 1,
+      anti_content: 'top-anti',
+      data: {
+        anti_content: 'body-anti',
+        list: {
+          with: { role: 'user', id: 'session-1' },
+          start_msg_id: 'old-msg-id',
+          start_index: 20,
+          size: 30,
+        }
+      }
+    })
+  }];
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return traffic;
+    }
+  });
+
+  client._sessionInited = true;
+  let capturedBody = null;
+  client._post = async (url, body) => {
+    capturedBody = { url, body };
+    return {
+      data: {
+        msg_list: [{
+          msg_id: 'm1',
+          session_id: 'session-1',
+          content: 'latest',
+          send_time: 1,
+        }]
+      }
+    };
+  };
+
+  const messages = await client.getSessionMessages('session-1', 1, 30);
+  assert.strictEqual(messages.length, 1);
+  assert.strictEqual(capturedBody.url, '/plateau/chat/list');
+  assert.strictEqual(capturedBody.body.data.list.with.id, 'session-1');
+  assert.strictEqual(capturedBody.body.data.list.start_msg_id, null);
+  assert.strictEqual(capturedBody.body.data.list.start_index, 0);
+}
+
+async function testReuseLatestWindow() {
+  const traffic = [{
+    url: 'https://mms.pinduoduo.com/plateau/chat/list',
+    requestBody: JSON.stringify({
+      client: 1,
+      anti_content: 'top-anti',
+      data: {
+        anti_content: 'body-anti',
+        list: {
+          with: { role: 'user', id: 'session-1' },
+          start_msg_id: null,
+          start_index: 0,
+          size: 30,
+        }
+      }
+    })
+  }];
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return traffic;
+    }
+  });
+
+  client._sessionInited = true;
+  let capturedBody = null;
+  client._post = async (url, body) => {
+    capturedBody = { url, body };
+    return { data: { msg_list: [] } };
+  };
+
+  await client.getSessionMessages('session-1', 1, 30);
+  assert.strictEqual(capturedBody.body.data.list.start_msg_id, null);
+  assert.strictEqual(capturedBody.body.data.list.start_index, 0);
+}
+
+function testParseNestedSessionPreview() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const sessions = client._parseSessionList({
+    data: {
+      list: [{
+        session_id: 'session-2',
+        nick: '客户A',
+        last_msg: {
+          text: '00:40 最新消息',
+          send_time: 1743352800,
+        },
+      }]
+    }
+  });
+
+  assert.strictEqual(sessions.length, 1);
+  assert.strictEqual(sessions[0].lastMessage, '00:40 最新消息');
+  assert.strictEqual(sessions[0].lastMessageTime, 1743352800);
+}
+
+function testParseSessionListKeepsConversationIdentity() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const sessions = client._parseSessionList({
+    data: {
+      list: [{
+        conversation_id: 'conv-1',
+        buyer_id: 'buyer-1',
+        user_info: { uid: 'buyer-1', nickname: '客户B' },
+        last_msg: { text: '新消息', send_time: 1743352800 },
+      }]
+    }
+  });
+
+  assert.strictEqual(sessions[0].sessionId, 'conv-1');
+  assert.strictEqual(sessions[0].conversationId, 'conv-1');
+  assert.strictEqual(sessions[0].customerId, 'buyer-1');
+  assert.strictEqual(sessions[0].userUid, 'buyer-1');
+}
+
+function testFilterDisplaySessions() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0).getTime() / 1000;
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 10, 0, 0).getTime() / 1000;
+
+  const sessions = client._filterDisplaySessions([
+    { sessionId: 'today-chat', lastMessageTime: today, createdAt: yesterday },
+    { sessionId: 'today-created', lastMessageTime: yesterday, createdAt: today },
+    { sessionId: 'old-session', lastMessageTime: yesterday, createdAt: yesterday },
+  ]);
+
+  assert.deepStrictEqual(sessions.map(item => item.sessionId), ['today-chat', 'today-created']);
+}
+
+async function testGetSessionListFiltersOldSessions() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0).getTime() / 1000;
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 9, 0, 0).getTime() / 1000;
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  client._sessionInited = true;
+  client._post = async () => ({
+    data: {
+      list: [
+        { session_id: 'today-chat', nick: '客户1', last_msg: { text: '今天聊过', send_time: today } },
+        { session_id: 'today-created', nick: '客户2', last_msg_time: yesterday, create_time: today, content: '今天创建' },
+        { session_id: 'old-session', nick: '客户3', last_msg_time: yesterday, create_time: yesterday, content: '旧会话' },
+      ]
+    }
+  });
+
+  const sessions = await client.getSessionList(1, 20);
+  assert.deepStrictEqual(sessions.map(item => item.sessionId), ['today-chat', 'today-created']);
+}
+
+async function testGetSessionMessagesRetriesConversationIdentity() {
+  const traffic = [{
+    url: 'https://mms.pinduoduo.com/plateau/chat/list',
+    requestBody: JSON.stringify({
+      client: 1,
+      anti_content: 'top-anti',
+      data: {
+        anti_content: 'body-anti',
+        list: {
+          with: { role: 'user', id: 'buyer-1' },
+          start_msg_id: null,
+          start_index: 0,
+          size: 30,
+        }
+      }
+    })
+  }];
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return traffic;
+    }
+  });
+
+  client._sessionInited = true;
+  const attempts = [];
+  client._post = async (_url, body) => {
+    attempts.push(`${body.data.list.with.role}:${body.data.list.with.id}`);
+    if (body.data.list.with.id === 'conv-1') {
+      return {
+        data: {
+          msg_list: [{
+            msg_id: 'm1',
+            conversation_id: 'conv-1',
+            content: '客户今天新发的消息',
+            send_time: 1,
+          }]
+        }
+      };
+    }
+    return { data: { msg_list: [] } };
+  };
+
+  const messages = await client.getSessionMessages({
+    sessionId: 'buyer-1',
+    conversationId: 'conv-1',
+    customerId: 'buyer-1',
+    raw: {
+      conversation_id: 'conv-1',
+      user_info: { uid: 'buyer-1' },
+    }
+  }, 1, 30);
+
+  assert.strictEqual(messages.length, 1);
+  assert.ok(attempts.includes('user:conv-1'));
+}
+
+function testBuildSendImageBody() {
+  const traffic = [{
+    url: 'https://mms.pinduoduo.com/plateau/chat/send_message',
+    requestBody: JSON.stringify({
+      data: {
+        cmd: 'send_message',
+        anti_content: 'body-anti',
+        message: {
+          to: { role: 'user', uid: 'session-1' },
+          from: { role: 'mall_cs', uid: 'mall-1' },
+          type: 0,
+        },
+      },
+      client: 1,
+      anti_content: 'top-anti',
+    })
+  }];
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return traffic;
+    }
+  });
+
+  const body = client._buildSendImageBody('session-1', 'https://img.example.com/chat/test.png');
+  assert.strictEqual(body.data.message.type, 2);
+  assert.strictEqual(body.data.message.msg_type, 2);
+  assert.strictEqual(body.data.message.message_type, 2);
+  assert.strictEqual(body.data.message.content_type, 2);
+  assert.deepStrictEqual(JSON.parse(body.data.message.content), {
+    picture_url: 'https://img.example.com/chat/test.png',
+    url: 'https://img.example.com/chat/test.png',
+    type: 'image',
+  });
+  assert.strictEqual(body.data.message.extra.picture_url, 'https://img.example.com/chat/test.png');
+}
+
+function testGuessImageMimeType() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  assert.strictEqual(client._guessMimeType('/tmp/a.jpg'), 'image/jpeg');
+  assert.strictEqual(client._guessMimeType('/tmp/a.png'), 'image/png');
+  assert.strictEqual(client._guessMimeType('/tmp/a.webp'), 'image/webp');
+  assert.deepStrictEqual(client._getUploadBases(), [
+    'https://galerie-api.pdd.net',
+    'https://galerie-api.htj.pdd.net',
+    'https://mms-static-1.pddugc.com',
+  ]);
+}
+
+async function testRequestRawSanitizesCrossOriginHeaders() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    },
+    getShopInfo() {
+      return { loginMethod: 'cookie' };
+    }
+  });
+
+  client._buildHeaders = async () => ({
+    cookie: 'a=1',
+    pddid: 'pddid',
+    etag: 'etag',
+    'sec-fetch-site': 'same-origin',
+    'content-type': 'application/json',
+  });
+
+  let capturedHeaders = null;
+  client._getSession = () => ({
+    fetch: async (url, options) => {
+      capturedHeaders = options.headers;
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '{"signature":"sig"}',
+      };
+    }
+  });
+
+  await client._requestRaw('POST', 'https://mms-static-1.pddugc.com/get_signature', '{}');
+  assert.strictEqual(capturedHeaders.cookie, undefined);
+  assert.strictEqual(capturedHeaders.pddid, undefined);
+  assert.strictEqual(capturedHeaders.etag, undefined);
+  assert.strictEqual(capturedHeaders['sec-fetch-site'], 'cross-site');
+}
+
+async function testSendImageUrl() {
+  const traffic = [{
+    url: 'https://mms.pinduoduo.com/plateau/chat/send_message',
+    requestBody: JSON.stringify({
+      data: {
+        cmd: 'send_message',
+        anti_content: 'body-anti',
+        message: {
+          to: { role: 'user', uid: 'session-1' },
+          from: { role: 'mall_cs', uid: 'mall-1' },
+          type: 0,
+        },
+      },
+      client: 1,
+      anti_content: 'top-anti',
+    })
+  }];
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return traffic;
+    }
+  });
+
+  client._sessionInited = true;
+  client._post = async (url, body) => ({ ok: true, url, body });
+  const result = await client.sendImageUrl('session-1', 'https://img.example.com/chat/test.png', {
+    filePath: '/tmp/a.png',
+    uploadBaseUrl: 'embedded-pdd-page',
+  });
+
+  assert.strictEqual(result.imageUrl, 'https://img.example.com/chat/test.png');
+  assert.strictEqual(result.uploadBaseUrl, 'embedded-pdd-page');
+  assert.strictEqual(result.response.url, '/plateau/chat/send_message');
+  assert.strictEqual(JSON.parse(result.response.body.data.message.content).picture_url, 'https://img.example.com/chat/test.png');
+}
+
+async function main() {
+  try {
+    await testResetStaleCursor();
+    await testReuseLatestWindow();
+    testParseNestedSessionPreview();
+    testParseSessionListKeepsConversationIdentity();
+    testFilterDisplaySessions();
+    await testGetSessionListFiltersOldSessions();
+    await testGetSessionMessagesRetriesConversationIdentity();
+    testBuildSendImageBody();
+    testGuessImageMimeType();
+    await testRequestRawSanitizesCrossOriginHeaders();
+    await testSendImageUrl();
+    console.log('pdd-api-session-window-test passed');
+  } finally {
+    Module._load = originalLoad;
+  }
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

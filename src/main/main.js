@@ -200,12 +200,55 @@ let mailApiClients = new Map();
 let invoiceApiClients = new Map();
 let apiTrafficStore = new Map();
 let apiSessionStore = new Map();
+let rendererWatcher = null;
+let rendererReloadTimer = null;
 
 app.on('second-instance', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.focus();
 });
+
+function isDevelopmentMode() {
+  return process.env.NODE_ENV === 'development';
+}
+
+function clearRendererReloadTimer() {
+  if (!rendererReloadTimer) return;
+  clearTimeout(rendererReloadTimer);
+  rendererReloadTimer = null;
+}
+
+function cleanupRendererWatcher() {
+  clearRendererReloadTimer();
+  if (!rendererWatcher) return;
+  rendererWatcher.close();
+  rendererWatcher = null;
+}
+
+function setupDevelopmentRendererWatcher() {
+  if (!isDevelopmentMode() || rendererWatcher) return;
+
+  const rendererDir = path.join(__dirname, '..', 'renderer');
+
+  try {
+    rendererWatcher = fs.watch(rendererDir, (eventType, filename) => {
+      if (!filename || (eventType !== 'change' && eventType !== 'rename')) return;
+      if (!/\.(html|js|css)$/i.test(filename)) return;
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+
+      clearRendererReloadTimer();
+      rendererReloadTimer = setTimeout(() => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        console.log(`[PDD助手] 检测到渲染层文件变更，准备刷新窗口: ${filename}`);
+        mainWindow.webContents.reloadIgnoringCache();
+      }, 150);
+    });
+    console.log('[PDD助手] 开发模式已启用渲染层自动刷新');
+  } catch (error) {
+    console.error('[PDD助手] 启动渲染层自动刷新失败:', error.message);
+  }
+}
 
 function getPddChatUrl() {
   return store.get('chatUrl') || PDD_CHAT_URL;
@@ -433,7 +476,8 @@ function startNetworkMonitor(view, shopId) {
       handleNewCustomerMessage({
         message: msg.text,
         customer: msg.customer,
-        conversationId: msg.conversationId || Date.now().toString()
+        conversationId: msg.conversationId || Date.now().toString(),
+        source: 'network-monitor'
       });
     }
   });
@@ -449,7 +493,11 @@ function getApiClient(shopId) {
   const client = new PddApiClient(shopId, {
     onLog(message, extra) {
       sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
-      console.log(`[PDD接口:${shopId}] ${message}`);
+      if (extra && typeof extra === 'object' && Object.keys(extra).length) {
+        console.log(`[PDD接口:${shopId}] ${message}`, extra);
+      } else {
+        console.log(`[PDD接口:${shopId}] ${message}`);
+      }
     },
     getShopInfo() {
       const shops = store.get('shops') || [];
@@ -484,7 +532,9 @@ function getApiClient(shopId) {
     handleNewCustomerMessage({
       message: payload.text,
       customer: payload.customer,
-      conversationId: payload.sessionId
+      conversationId: payload.sessionId,
+      source: 'api-polling',
+      shopId
     });
   });
 
@@ -495,6 +545,352 @@ function getApiClient(shopId) {
 
   apiClients.set(shopId, client);
   return client;
+}
+
+function waitForViewLoad(view, targetUrl = '') {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('加载拼多多聊天页超时'));
+    }, 15000);
+    const cleanup = () => {
+      clearTimeout(timer);
+      view.webContents.removeListener('did-finish-load', onLoad);
+      view.webContents.removeListener('did-fail-load', onFail);
+    };
+    const onLoad = () => {
+      if (!targetUrl || view.webContents.getURL().includes(targetUrl)) {
+        cleanup();
+        resolve();
+      }
+    };
+    const onFail = (_event, _code, desc) => {
+      cleanup();
+      reject(new Error(desc || '加载拼多多聊天页失败'));
+    };
+    view.webContents.on('did-finish-load', onLoad);
+    view.webContents.on('did-fail-load', onFail);
+  });
+}
+
+function waitForMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function ensureViewDebugger(view) {
+  const debuggerInstance = view.webContents.debugger;
+  const attachedBefore = debuggerInstance.isAttached();
+  if (!attachedBefore) {
+    debuggerInstance.attach('1.3');
+  }
+  try {
+    await debuggerInstance.sendCommand('DOM.enable');
+  } catch {}
+  try {
+    await debuggerInstance.sendCommand('Network.enable', {
+      maxResourceBufferSize: 1024 * 1024 * 5,
+      maxTotalBufferSize: 1024 * 1024 * 20,
+    });
+  } catch {}
+  return { debuggerInstance, attachedBefore };
+}
+
+async function findFileInputNodeId(view) {
+  const ids = await listFileInputNodeIds(view);
+  return ids[0] || null;
+}
+
+async function listFileInputNodeIds(view) {
+  const { debuggerInstance, attachedBefore } = await ensureViewDebugger(view);
+  try {
+    const search = await debuggerInstance.sendCommand('DOM.performSearch', {
+      query: 'input[type="file"]',
+      includeUserAgentShadowDOM: true,
+    });
+    const resultCount = search?.resultCount || 0;
+    if (!resultCount) return [];
+    const { nodeIds = [] } = await debuggerInstance.sendCommand('DOM.getSearchResults', {
+      searchId: search.searchId,
+      fromIndex: 0,
+      toIndex: resultCount,
+    });
+    return nodeIds;
+  } finally {
+    if (!attachedBefore && debuggerInstance.isAttached()) {
+      debuggerInstance.detach();
+    }
+  }
+}
+
+async function describeFileInputNode(view, nodeId) {
+  const { debuggerInstance, attachedBefore } = await ensureViewDebugger(view);
+  try {
+    const { object } = await debuggerInstance.sendCommand('DOM.resolveNode', { nodeId });
+    if (!object?.objectId) return null;
+    const result = await debuggerInstance.sendCommand('Runtime.callFunctionOn', {
+      objectId: object.objectId,
+      returnByValue: true,
+      functionDeclaration: `
+        function() {
+          const rect = this.getBoundingClientRect();
+          const style = window.getComputedStyle(this);
+          const inputBox = document.querySelector('.middle-panel textarea')
+            || document.querySelector('.middle-panel [contenteditable="true"]')
+            || document.querySelector('textarea')
+            || document.querySelector('[contenteditable="true"]');
+          const inputRect = inputBox ? inputBox.getBoundingClientRect() : null;
+          return {
+            accept: this.accept || '',
+            className: this.className || '',
+            id: this.id || '',
+            multiple: !!this.multiple,
+            disabled: !!this.disabled,
+            rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+            style: { display: style.display, visibility: style.visibility },
+            nearInput: inputRect
+              ? Math.abs(rect.left - inputRect.left) < 320 && Math.abs(rect.top - inputRect.top) < 180
+              : false,
+          };
+        }
+      `,
+    });
+    return result?.result?.value || null;
+  } finally {
+    if (!attachedBefore && debuggerInstance.isAttached()) {
+      debuggerInstance.detach();
+    }
+  }
+}
+
+async function pickBestFileInputNodeId(view, nodeIds = []) {
+  let bestNodeId = null;
+  let bestScore = -Infinity;
+  for (const nodeId of nodeIds) {
+    const meta = await describeFileInputNode(view, nodeId);
+    if (!meta || meta.disabled) continue;
+    let score = 0;
+    if (String(meta.accept).includes('image')) score += 12;
+    if (/upload|image|img|pic|photo/i.test(`${meta.className} ${meta.id}`)) score += 8;
+    if (meta.nearInput) score += 8;
+    if (meta.style?.display !== 'none' && meta.style?.visibility !== 'hidden') score += 3;
+    if ((meta.rect?.width || 0) > 0 || (meta.rect?.height || 0) > 0) score += 2;
+    if (meta.multiple) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      bestNodeId = nodeId;
+    }
+  }
+  return bestNodeId;
+}
+
+async function probePddUploadInput(view) {
+  return view.webContents.executeJavaScript(`
+    (() => {
+      const isVisible = (node) => {
+        if (!node) return false;
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle(node);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      };
+      const inputs = Array.from(document.querySelectorAll('input[type="file"]')).filter(node => !node.disabled);
+      const imageInput = inputs.find(node => String(node.accept || '').includes('image')) || inputs[0];
+      if (imageInput) {
+        if (!imageInput.id) imageInput.id = 'pdd-upload-input-' + Date.now();
+        return { selector: '#' + imageInput.id, accept: imageInput.accept || '' };
+      }
+      const inputBox = document.querySelector('.middle-panel textarea')
+        || document.querySelector('.middle-panel [contenteditable="true"]')
+        || document.querySelector('textarea')
+        || document.querySelector('[contenteditable="true"]');
+      const inputRect = inputBox ? inputBox.getBoundingClientRect() : null;
+      const root = document.body;
+      const candidates = Array.from(root.querySelectorAll('button,[role="button"],span,div'))
+        .filter(isVisible)
+        .map(node => {
+          const rect = node.getBoundingClientRect();
+          const text = (node.textContent || '').trim();
+          const title = node.getAttribute('title') || node.getAttribute('aria-label') || '';
+          const cls = node.className || '';
+          let score = 0;
+          if (/图片|相册|上传/.test(text)) score += 8;
+          if (/图片|相册|上传/.test(title)) score += 8;
+          if (/upload|image|img|pic|photo/i.test(String(cls))) score += 6;
+          if (rect.top > window.innerHeight * 0.55) score += 3;
+          if (rect.left < window.innerWidth * 0.75) score += 2;
+          if (inputRect) {
+            const dx = Math.abs((rect.left + rect.width / 2) - inputRect.left);
+            const dy = Math.abs((rect.top + rect.height / 2) - (inputRect.top - 18));
+            if (dx < 280 && dy < 120) score += 6;
+            if (rect.left < inputRect.left && rect.top < inputRect.top + 40 && rect.bottom > inputRect.top - 80) score += 5;
+          }
+          if (rect.width <= 44 && rect.height <= 44) score += 2;
+          return {
+            x: Math.round(rect.left + rect.width / 2),
+            y: Math.round(rect.top + rect.height / 2),
+            score,
+            text,
+            title,
+            cls: String(cls).slice(0, 80),
+          };
+        })
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 8);
+      return { candidates, hasInputBox: !!inputBox };
+    })()
+  `, true);
+}
+
+function clickViewAt(view, x, y) {
+  view.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+  return waitForMs(80).then(() => {
+    view.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+  });
+}
+
+async function setViewFileInputFiles(view, target, filePath) {
+  const { debuggerInstance, attachedBefore } = await ensureViewDebugger(view);
+  try {
+    let nodeId = null;
+    if (typeof target === 'number') {
+      nodeId = target;
+    } else {
+      const { root } = await debuggerInstance.sendCommand('DOM.getDocument', { depth: -1, pierce: true });
+      const result = await debuggerInstance.sendCommand('DOM.querySelector', {
+        nodeId: root.nodeId,
+        selector: target,
+      });
+      nodeId = result?.nodeId || null;
+    }
+    if (!nodeId) {
+      throw new Error('PDD_UPLOAD_INPUT_MISSING');
+    }
+    await debuggerInstance.sendCommand('DOM.setFileInputFiles', {
+      nodeId,
+      files: [filePath],
+    });
+    const { object } = await debuggerInstance.sendCommand('DOM.resolveNode', { nodeId });
+    if (object?.objectId) {
+      await debuggerInstance.sendCommand('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: `
+          function() {
+            this.dispatchEvent(new Event('input', { bubbles: true }));
+            this.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        `,
+      });
+    }
+  } finally {
+    if (!attachedBefore && debuggerInstance.isAttached()) {
+      debuggerInstance.detach();
+    }
+  }
+}
+
+async function waitForViewUploadResult(view, filePath) {
+  const { debuggerInstance, attachedBefore } = await ensureViewDebugger(view);
+  const trackedRequestIds = new Set();
+  const uploadRequestPattern = /get_signature|store_image|general_file|upload|pddugc|galerie|cos/i;
+  return new Promise(async (resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error('PDD_UPLOAD_TIMEOUT'));
+    }, 20000);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      debuggerInstance.removeListener('message', onMessage);
+      if (!attachedBefore && debuggerInstance.isAttached()) {
+        debuggerInstance.detach();
+      }
+    };
+
+    const onMessage = async (_event, method, params) => {
+      try {
+        if (method === 'Network.requestWillBeSent') {
+          const url = params?.request?.url || '';
+          if (uploadRequestPattern.test(url)) {
+            trackedRequestIds.add(params.requestId);
+          }
+        }
+        if (method === 'Network.responseReceived') {
+          const url = params?.response?.url || '';
+          if (uploadRequestPattern.test(url)) {
+            trackedRequestIds.add(params.requestId);
+          }
+        }
+        if (method === 'Network.loadingFinished' && trackedRequestIds.has(params.requestId)) {
+          const body = await debuggerInstance.sendCommand('Network.getResponseBody', { requestId: params.requestId });
+          const raw = body?.base64Encoded ? Buffer.from(body.body, 'base64').toString('utf8') : body?.body || '';
+          let payload = null;
+          try {
+            payload = JSON.parse(raw || '{}');
+          } catch {}
+          if (payload?.url || payload?.processed_url) {
+            cleanup();
+            resolve({ ...payload, uploadBaseUrl: 'embedded-pdd-page' });
+          }
+        }
+        if (method === 'Network.loadingFailed' && trackedRequestIds.has(params.requestId)) {
+          cleanup();
+          reject(new Error(params?.errorText || 'PDD_UPLOAD_FAILED'));
+        }
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    };
+
+    debuggerInstance.on('message', onMessage);
+
+    try {
+      let target = await (async () => {
+        const initialNodeIds = await listFileInputNodeIds(view);
+        const directNodeId = await pickBestFileInputNodeId(view, initialNodeIds);
+        if (directNodeId) return directNodeId;
+        let probe = await probePddUploadInput(view);
+        if (probe?.selector) return probe.selector;
+        if (typeof selectConversationInView === 'function' && !probe?.hasInputBox) {
+          await selectConversationInView(view);
+          await waitForMs(400);
+          const nodeIdAfterSelect = await pickBestFileInputNodeId(view, await listFileInputNodeIds(view));
+          if (nodeIdAfterSelect) return nodeIdAfterSelect;
+          probe = await probePddUploadInput(view);
+          if (probe?.selector) return probe.selector;
+        }
+        const candidates = Array.isArray(probe?.candidates) ? probe.candidates : [];
+        for (const candidate of candidates) {
+          const beforeNodeIds = await listFileInputNodeIds(view);
+          await clickViewAt(view, candidate.x, candidate.y);
+          await waitForMs(500);
+          const afterNodeIds = await listFileInputNodeIds(view);
+          const newNodeIds = afterNodeIds.filter(id => !beforeNodeIds.includes(id));
+          const clickedNodeId = await pickBestFileInputNodeId(view, newNodeIds.length ? newNodeIds : afterNodeIds);
+          if (clickedNodeId) return clickedNodeId;
+          const nextProbe = await probePddUploadInput(view);
+          if (nextProbe?.selector) return nextProbe.selector;
+        }
+        throw new Error('PDD_UPLOAD_INPUT_MISSING');
+      })();
+      await setViewFileInputFiles(view, target, filePath);
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+  });
+}
+
+async function uploadImageViaPddPage(shopId, filePath) {
+  const view = shopManager?.getOrCreateView(shopId);
+  if (!view) throw new Error('未找到店铺网页实例');
+  const currentUrl = view.webContents.getURL();
+  if (!currentUrl || currentUrl === 'about:blank' || !currentUrl.includes('/chat-merchant/')) {
+    const waitTask = waitForViewLoad(view, '/chat-merchant/');
+    view.webContents.loadURL(PDD_CHAT_URL);
+    await waitTask;
+  }
+  return waitForViewUploadResult(view, filePath);
 }
 
 function destroyApiClient(shopId) {
@@ -512,7 +908,11 @@ function getMailApiClient(shopId) {
   const client = new MailApiClient(shopId, {
     onLog(message, extra) {
       sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
-      console.log(`[PDD站内信:${shopId}] ${message}`);
+      if (extra && typeof extra === 'object' && Object.keys(extra).length) {
+        console.log(`[PDD站内信:${shopId}] ${message}`, extra);
+      } else {
+        console.log(`[PDD站内信:${shopId}] ${message}`);
+      }
     },
     getShopInfo() {
       const shops = store.get('shops') || [];
@@ -588,9 +988,22 @@ function updateShopStatus(shopId, status) {
   mainWindow?.webContents.send('shop-list-updated', { shops });
 }
 
-function getApiShopList(shopId) {
+function hasRecoveredApiToken(shopId) {
+  return !!global.__pddTokens?.[shopId]?.raw;
+}
+
+function isApiReadyShop(shop) {
+  if (!shop?.id) return false;
+  if (shop.loginMethod !== 'token') return true;
+  return hasRecoveredApiToken(shop.id);
+}
+
+function getApiShopList(shopId, options = {}) {
+  const { apiReadyOnly = false } = options;
   const shops = getStoredShops().filter(item => item?.id);
-  if (shopId === API_ALL_SHOPS) return shops;
+  if (shopId === API_ALL_SHOPS) {
+    return apiReadyOnly ? shops.filter(isApiReadyShop) : shops;
+  }
   return shops.filter(item => item.id === shopId);
 }
 
@@ -632,10 +1045,29 @@ async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
 }
 
 async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
-  const targetShops = getApiShopList(shopId);
+  const targetShops = getApiShopList(shopId, { apiReadyOnly: shopId === API_ALL_SHOPS });
   if (!targetShops.length) {
-    if (shopId === API_ALL_SHOPS) return [];
+    if (shopId === API_ALL_SHOPS) {
+      const skippedShops = getApiShopList(API_ALL_SHOPS).filter(shop => !isApiReadyShop(shop));
+      if (skippedShops.length) {
+        const summary = skippedShops
+          .slice(0, 3)
+          .map(shop => `${shop.name || shop.id}`)
+          .join('、');
+        throw new Error(`显示所有店铺时，${skippedShops.length} 个店铺未恢复 Token：${summary}`);
+      }
+      return [];
+    }
     throw new Error('没有可用店铺');
+  }
+  if (shopId === API_ALL_SHOPS) {
+    const skippedShops = getApiShopList(API_ALL_SHOPS).filter(shop => !isApiReadyShop(shop));
+    if (skippedShops.length) {
+      sendToDebug('api-session-skip-token-missing', {
+        count: skippedShops.length,
+        shops: skippedShops.map(shop => ({ shopId: shop.id, shopName: shop.name || '' })),
+      });
+    }
   }
   if (shopId !== API_ALL_SHOPS) {
     const sessions = await loadShopApiSessions(targetShops[0].id, page, pageSize);
@@ -660,7 +1092,11 @@ async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
     .flat()
     .sort((a, b) => Number(b.lastMessageTime || 0) - Number(a.lastMessageTime || 0));
   if (!mergedSessions.length && failures.length) {
-    throw new Error(failures.map(item => `${item.shopName}：${item.message}`).join('；'));
+    const summary = failures
+      .slice(0, 3)
+      .map(item => `${item.shopName || item.shopId}：${item.message}`)
+      .join('；');
+    throw new Error(`接口会话加载失败，共 ${failures.length} 个店铺失败：${summary}`);
   }
   return mergedSessions;
 }
@@ -1168,10 +1604,21 @@ ipcMain.handle('api-get-messages', async (event, params = {}) => {
   if (!params.sessionId) return { error: '缺少 sessionId' };
   try {
     return await getApiClient(shopId).getSessionMessages(
-      params.sessionId,
+      params.session || params.sessionId,
       params.page || 1,
       params.pageSize || 30
     );
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('api-get-goods-card', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  if (!params.url) return { error: '缺少商品链接' };
+  try {
+    return await getApiClient(shopId).getGoodsCard(params);
   } catch (err) {
     return { error: err.message };
   }
@@ -1189,6 +1636,56 @@ ipcMain.handle('api-send-message', async (event, params = {}) => {
   }
 });
 
+ipcMain.handle('api-select-image', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      { name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
+    ],
+  });
+  if (result.canceled || !result.filePaths?.length) {
+    return { canceled: true };
+  }
+  return { canceled: false, filePath: result.filePaths[0] };
+});
+
+ipcMain.handle('api-send-image', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  if (!params.sessionId) return { error: '缺少 sessionId' };
+  if (!params.filePath) return { error: '缺少图片路径' };
+  const client = getApiClient(shopId);
+  try {
+    return await client.sendImage(params.sessionId, params.filePath);
+  } catch (err) {
+    if (err.step === 'upload' && /ERR_BLOCKED_BY_CLIENT/i.test(err.message || '')) {
+      try {
+        const uploadResult = await uploadImageViaPddPage(shopId, params.filePath);
+        const imageUrl = uploadResult?.processed_url || uploadResult?.url;
+        return await client.sendImageUrl(params.sessionId, imageUrl, {
+          filePath: params.filePath,
+          uploadBaseUrl: uploadResult?.uploadBaseUrl || 'embedded-pdd-page',
+        });
+      } catch (fallbackError) {
+        return {
+          error: fallbackError.message,
+          step: 'upload-fallback',
+          attempts: Array.isArray(err.attempts) ? err.attempts : [],
+          imageUrl: '',
+          uploadBaseUrl: 'embedded-pdd-page',
+        };
+      }
+    }
+    return {
+      error: err.message,
+      step: err.step || '',
+      attempts: Array.isArray(err.attempts) ? err.attempts : [],
+      imageUrl: err.imageUrl || '',
+      uploadBaseUrl: err.uploadBaseUrl || '',
+    };
+  }
+});
+
 ipcMain.handle('api-mark-latest-conversations', async (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有可用店铺' };
@@ -1203,7 +1700,10 @@ ipcMain.handle('api-start-polling', (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有可用店铺' };
   if (shopId === API_ALL_SHOPS) {
-    const targetShops = getApiShopList(API_ALL_SHOPS);
+    const targetShops = getApiShopList(API_ALL_SHOPS, { apiReadyOnly: true });
+    if (!targetShops.length) {
+      return { error: '显示所有店铺时，没有已恢复 Token 的店铺可用于接口轮询' };
+    }
     targetShops.forEach(shop => getApiClient(shop.id).startPolling());
     return { ok: true, shopId, count: targetShops.length };
   }
@@ -1922,7 +2422,7 @@ async function selectConversationInView(view) {
 
 /**
  * 统一消息处理管线：DOM 监听和网络监控共用
- * @param {{ message: string, customer: string, conversationId: string }} data
+ * @param {{ message: string, customer: string, conversationId: string, source?: string, shopId?: string }} data
  */
 async function handleNewCustomerMessage(data) {
   if (!store.get('autoReplyEnabled')) {
@@ -1981,6 +2481,10 @@ async function handleNewCustomerMessage(data) {
   const doSend = async () => {
     const view = shopManager?.getActiveView();
     if (!view) return;
+    if (data.source === 'api-polling' && data.shopId && shopManager?.getActiveShopId() !== data.shopId) {
+      console.log(`[PDD助手] 接口轮询消息来自店铺 ${data.shopId}，当前嵌入页店铺为 ${shopManager?.getActiveShopId() || '无'}，跳过嵌入页发送`);
+      return;
+    }
 
     // 确保有活跃会话（没有则自动选择）
     await selectConversationInView(view);
@@ -2170,6 +2674,7 @@ app.whenReady().then(async () => {
   setupAppMenu();
   initMockData();
   replyEngine = new ReplyEngine(store.get('rules'));
+  setupDevelopmentRendererWatcher();
 
   // 如果之前已下载模型且已启用，后台自动加载
   const aiCfg = store.get('aiIntent');
@@ -2357,6 +2862,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  cleanupRendererWatcher();
   if (shopManager) shopManager.saveAllCookies();
   for (const shopId of apiClients.keys()) {
     destroyApiClient(shopId);

@@ -2765,17 +2765,51 @@
       align-items: center;
     }
 
+    .api-session-item.reply-pending {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, #fff8e8 0%, #fff1cc 100%);
+    }
+
+    .api-session-item.reply-pending:hover {
+      background: linear-gradient(180deg, #fff3dc 0%, #ffebbc 100%);
+    }
+
+    .api-session-item.reply-pending.active {
+      background: linear-gradient(180deg, #ffefcb 0%, #ffe5ab 100%);
+    }
+
+    .api-session-item.reply-pending::after {
+      content: '待回复';
+      position: absolute;
+      right: 24px;
+      bottom: -4px;
+      font-size: 34px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 4px;
+      color: rgba(223, 177, 75, 0.12);
+      transform: rotate(-16deg);
+      pointer-events: none;
+    }
+
+    .api-session-item.reply-pending .api-session-avatar,
+    .api-session-item.reply-pending .api-session-main {
+      position: relative;
+      z-index: 1;
+    }
+
     .api-session-item:hover {
-      background: #fafafa;
+      background: #fff8ec;
     }
 
     .api-session-item.active {
-      background: #f8f8fb;
+      background: #fff0cc;
     }
 
     .api-session-avatar {
-      width: 50px;
-      height: 50px;
+      width: 42px;
+      height: 42px;
       border-radius: 50%;
       background: linear-gradient(135deg, #e5edf5, #cfd8e3);
       flex-shrink: 0;
@@ -2796,6 +2830,8 @@
       display: flex;
       flex-direction: column;
       justify-content: center;
+      position: relative;
+      padding-right: 58px;
     }
 
     .api-session-item-title {
@@ -2813,18 +2849,19 @@
     }
 
     .api-session-item-name {
-      font-size: 15px;
+      font-size: 13px;
       font-weight: 600;
       color: #333;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       min-width: 0;
-      flex-shrink: 1;
+      flex: 1;
     }
 
     .api-session-item-name-text {
       min-width: 0;
+      flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -2837,13 +2874,41 @@
       flex-shrink: 0;
     }
 
+    .api-session-item-wait {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      font-size: 10px;
+      line-height: 1.1;
+      color: #f08b00;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+
+    .api-session-item.reply-pending .api-session-item-text {
+      color: #7f5a18;
+    }
+
+    .api-session-item.reply-pending .api-session-main {
+      padding-bottom: 14px;
+    }
+
     .api-session-shop {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      align-items: flex-start;
+      gap: 6px;
       min-width: 0;
       flex-shrink: 0;
-      margin-left: auto;
+    }
+
+    .api-session-time-group {
+      position: absolute;
+      top: 0;
+      right: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+      flex-shrink: 0;
     }
 
     .api-session-shop-tag,
@@ -2860,6 +2925,7 @@
     .api-session-shop-tag {
       background: #eef3ff;
       color: #4d66a5;
+      font-size: 10px;
       max-width: 92px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -2894,13 +2960,24 @@
 
     .api-session-item-text {
       margin-top: 6px;
-      font-size: 14px;
+      font-size: 13px;
       color: #666;
       line-height: 1.5;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+    }
+
+    .api-session-item.has-unread .api-session-item-name-text,
+    .api-session-item.has-unread .api-session-item-text {
+      color: #333;
+      font-weight: 600;
+    }
+
+    .api-session-item.has-unread .api-session-item-time {
+      color: #f08b00;
+      font-weight: 700;
     }
 
     .api-unread-badge {
@@ -2920,7 +2997,7 @@
       flex: 1;
       overflow: auto;
       padding: 22px 24px;
-      background: linear-gradient(180deg, #fcfdff 0%, #f7f9fc 100%);
+      background: #f5f6fa;
       min-height: 0;
       scrollbar-gutter: stable;
     }
@@ -3023,6 +3100,11 @@
     .api-chat-follow-tag {
       background: #f2f7ff;
       color: #4f73ef;
+    }
+
+    .api-chat-follow-tag.is-unread {
+      background: #fff1f0;
+      color: #e24c3d;
     }
 
     .api-banner {
@@ -3155,10 +3237,10 @@
     }
 
     .api-message-body {
-      max-width: 72%;
+      max-width: 76%;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
     }
 
     .api-message-item.service .api-message-body {
@@ -3167,10 +3249,6 @@
 
     .api-message-item.buyer .api-message-body {
       align-items: flex-start;
-    }
-
-    .api-message-item.service .api-message-meta {
-      justify-content: flex-end;
     }
 
     .api-message-meta {
@@ -3182,25 +3260,185 @@
       line-height: 1;
     }
 
-    .api-message-bubble {
-      padding: 11px 13px;
-      border-radius: 14px;
+    .api-message-item.service .api-message-meta {
+      justify-content: flex-end;
+      padding-right: 4px;
+    }
+
+    .api-message-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .api-message-item.service .api-message-row {
+      justify-content: flex-end;
+    }
+
+    .api-message-row-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #999;
+      flex-shrink: 0;
+    }
+
+    .api-message-copy {
+      border: 0;
+      padding: 0 0 5px 0;
+      background: transparent;
+      color: #4f73ef;
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .api-message-copy:hover {
+      color: #3e63dd;
+    }
+
+    .api-goods-card-bubble {
+      width: 296px;
+      padding: 12px 14px;
+    }
+
+    .api-goods-card-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .api-goods-card-id {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .api-goods-card-copy {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: #4f73ef;
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .api-goods-card-divider {
+      height: 1px;
+      margin: 10px 0 12px;
+      background: #eceef2;
+    }
+
+    .api-goods-card-body {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .api-goods-card-image,
+    .api-goods-card-image-placeholder {
+      width: 84px;
+      height: 84px;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    .api-goods-card-image {
+      display: block;
+      object-fit: cover;
+      background: #f3f5f9;
+    }
+
+    .api-goods-card-image-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f3f5f9;
+      color: #b0b7c3;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .api-goods-card-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .api-goods-card-title {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #4f73ef;
+      max-height: 42px;
+      overflow: hidden;
+      word-break: break-word;
+    }
+
+    .api-goods-card-price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .api-goods-card-price {
+      color: #ff5a5f;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .api-goods-card-group {
+      color: #666;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .api-goods-card-spec {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-width: 128px;
+      height: 34px;
+      padding: 0 12px;
+      border: 1px solid #7690ef;
+      border-radius: 4px;
+      color: #4f73ef;
       background: #fff;
-      border: 1px solid #ececec;
-      box-shadow: 0 6px 18px rgba(18, 32, 74, 0.06);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .api-message-bubble {
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid #e4e7ee;
+      box-shadow: none;
     }
 
     .api-message-item.service .api-message-bubble {
-      background: #eaf4ff;
-      border-color: #cfe4ff;
+      background: #e9f4ff;
+      border-color: #cfe3fb;
     }
 
     .api-message-item.buyer .api-message-bubble {
-      border-top-left-radius: 4px;
+      border-top-left-radius: 8px;
     }
 
     .api-message-item.service .api-message-bubble {
-      border-top-right-radius: 4px;
+      border-top-right-radius: 8px;
     }
 
     .api-message-sender {
@@ -3240,15 +3478,26 @@
     }
 
     .api-message-status {
-      font-size: 11px;
-      color: #b3b3b3;
+      display: inline-block;
+      padding: 0;
+      color: #98a0ac;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .api-message-status.read {
+      color: #98a0ac;
+    }
+
+    .api-message-status.unread {
+      color: #4f73ef;
     }
 
     .api-message-divider {
+      margin: 18px auto 14px;
       text-align: center;
-      color: #b2b2b2;
+      color: #8e95a3;
       font-size: 12px;
-      margin: 18px 0 14px;
     }
 
     .api-composer {
@@ -5267,9 +5516,12 @@
             <div class="invoice-api-quick-row">
               <span class="invoice-api-quick-label">快速筛选发票</span>
               <div class="invoice-api-quick-tabs">
-                <button class="invoice-api-quick-tab active" data-invoice-quick="all">全部 <span id="invoiceApiQuickAllCount">0</span></button>
-                <button class="invoice-api-quick-tab" data-invoice-quick="quality">正品发票 <span id="invoiceApiQuickQualityCount">0</span></button>
-                <button class="invoice-api-quick-tab" data-invoice-quick="normal">普通发票 <span id="invoiceApiQuickNormalCount">0</span></button>
+                <button class="invoice-api-quick-tab active" data-invoice-quick="all">全部 <span
+                    id="invoiceApiQuickAllCount">0</span></button>
+                <button class="invoice-api-quick-tab" data-invoice-quick="quality">正品发票 <span
+                    id="invoiceApiQuickQualityCount">0</span></button>
+                <button class="invoice-api-quick-tab" data-invoice-quick="normal">普通发票 <span
+                    id="invoiceApiQuickNormalCount">0</span></button>
               </div>
             </div>
             <div class="invoice-api-filter-panel">
@@ -5327,10 +5579,14 @@
             </div>
             <div class="invoice-api-section-header invoice-api-table-toolbar">
               <div class="invoice-api-status-tabs">
-                <button class="invoice-api-status-tab active" id="invoiceApiPendingTab">待开票 <span id="invoiceApiPendingTabCount">0</span></button>
-                <button class="invoice-api-status-tab" id="invoiceApiInvoicedTab" disabled>开票成功 <span id="invoiceApiInvoicedTabCount">0</span></button>
-                <button class="invoice-api-status-tab" id="invoiceApiFailTab" disabled>开票失败 <span id="invoiceApiFailTabCount">0</span></button>
-                <button class="invoice-api-status-tab" id="invoiceApiHoldTab" disabled>暂不开票 <span id="invoiceApiHoldTabCount">0</span></button>
+                <button class="invoice-api-status-tab active" id="invoiceApiPendingTab">待开票 <span
+                    id="invoiceApiPendingTabCount">0</span></button>
+                <button class="invoice-api-status-tab" id="invoiceApiInvoicedTab" disabled>开票成功 <span
+                    id="invoiceApiInvoicedTabCount">0</span></button>
+                <button class="invoice-api-status-tab" id="invoiceApiFailTab" disabled>开票失败 <span
+                    id="invoiceApiFailTabCount">0</span></button>
+                <button class="invoice-api-status-tab" id="invoiceApiHoldTab" disabled>暂不开票 <span
+                    id="invoiceApiHoldTabCount">0</span></button>
               </div>
               <div class="invoice-api-toolbar">
                 <button class="btn btn-secondary" disabled>批量导出</button>
@@ -6163,6 +6419,8 @@
     let apiSideTab = 'personal';
     let apiSessionKeyword = '';
     let apiStarredSessions = [];
+    const apiGoodsCardCache = new Map();
+    const apiGoodsCardPending = new Set();
     if (typeof window.initOpsCenterViews === 'function') {
       window.initOpsCenterViews();
     }
@@ -6308,15 +6566,188 @@
 
     function formatApiDateTime(value) {
       const num = Number(value);
-      if (!num) return '-';
+      if (!num) return '';
       const ms = num < 1e12 ? num * 1000 : num;
       const date = new Date(ms);
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+      return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
     }
 
-    function formatApiAmount(value) {
-      const amount = Number(value || 0);
-      return Number.isFinite(amount) ? `¥${amount.toFixed(2)}` : '¥0.00';
+    function getApiMessageReadState(message = {}) {
+      const normalized = String(message?.readState || '').toLowerCase();
+      if (normalized === 'read') return 'read';
+      if (normalized === 'unread') return 'unread';
+      const candidates = [
+        message?.raw?.is_read,
+        message?.raw?.isRead,
+        message?.raw?.read_status,
+        message?.raw?.readStatus,
+        message?.raw?.read_state,
+        message?.raw?.readState,
+      ];
+      for (const value of candidates) {
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'boolean') return value ? 'read' : 'unread';
+        if (typeof value === 'number') return value > 0 ? 'read' : 'unread';
+        const text = String(value).trim().toLowerCase();
+        if (['1', 'true', 'read', '已读'].includes(text)) return 'read';
+        if (['0', 'false', 'unread', '未读'].includes(text)) return 'unread';
+      }
+      return '';
+    }
+
+    function extractApiGoodsLinkInfo(message = {}) {
+      const rawText = [
+        message?.content,
+        message?.raw?.content,
+        message?.raw?.msg_content,
+      ].filter(Boolean).join('\n');
+      const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
+        || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
+      if (!match?.[0]) return null;
+      const url = match[0].replace(/&amp;/gi, '&');
+      const goodsIdMatch = url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i);
+      const goodsId = goodsIdMatch?.[1] || '';
+      return {
+        url,
+        goodsId,
+        cacheKey: goodsId || url,
+      };
+    }
+
+    function pickApiGoodsText(sources = [], keys = []) {
+      for (const source of sources) {
+        if (!source || typeof source !== 'object') continue;
+        for (const key of keys) {
+          const value = source[key];
+          if (typeof value === 'string' && value.trim()) return value.trim();
+        }
+      }
+      return '';
+    }
+
+    function pickApiGoodsNumber(sources = [], keys = []) {
+      for (const source of sources) {
+        if (!source || typeof source !== 'object') continue;
+        for (const key of keys) {
+          const value = source[key];
+          const numeric = Number(value);
+          if (Number.isFinite(numeric) && numeric > 0) return numeric;
+        }
+      }
+      return 0;
+    }
+
+    function formatApiGoodsPrice(value) {
+      if (value === undefined || value === null || value === '') return '';
+      if (typeof value === 'string') {
+        const text = value.trim();
+        if (!text) return '';
+        if (text.includes('¥')) return text;
+        const numeric = Number(text);
+        if (!Number.isNaN(numeric)) return formatApiGoodsPrice(numeric);
+        return text;
+      }
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric <= 0) return '';
+      const amount = Number.isInteger(numeric) && numeric >= 1000 ? numeric / 100 : numeric;
+      return `¥${amount.toFixed(2)}`;
+    }
+
+    function normalizeApiGoodsCard(card = {}, fallback = {}) {
+      const goodsId = String(card.goodsId || fallback.goodsId || '');
+      return {
+        goodsId,
+        url: String(card.url || fallback.url || ''),
+        title: String(card.title || fallback.title || '拼多多商品'),
+        imageUrl: String(card.imageUrl || fallback.imageUrl || ''),
+        priceText: String(card.priceText || fallback.priceText || ''),
+        groupText: String(card.groupText || fallback.groupText || '2人团'),
+        specText: String(card.specText || fallback.specText || '查看商品规格'),
+      };
+    }
+
+    function buildApiGoodsCardFallback(linkInfo, message = {}, session = {}) {
+      const sources = [
+        message?.extra,
+        message?.raw?.extra,
+        message?.raw,
+        session?.goodsInfo,
+        session?.raw?.goods_info,
+        session?.raw?.goods,
+      ].filter(Boolean);
+      const priceText = pickApiGoodsText(sources, ['priceText', 'price_text', 'price'])
+        || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['group_price', 'min_group_price', 'price', 'min_price']));
+      const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
+      const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'group_member_count', 'group_count']);
+      return normalizeApiGoodsCard({
+        goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'id']),
+        url: linkInfo?.url || '',
+        title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'name']) || '拼多多商品',
+        imageUrl: pickApiGoodsText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'pic_url']),
+        priceText,
+        groupText: groupRawText || (groupCount > 0 ? `${groupCount}人团` : '2人团'),
+        specText: '查看商品规格',
+      });
+    }
+
+    function renderApiGoodsCardHtml(card = {}) {
+      const imageHtml = card.imageUrl
+        ? `<img class="api-goods-card-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">`
+        : `<div class="api-goods-card-image-placeholder">商品</div>`;
+      const goodsIdLabel = card.goodsId ? `商品ID：${card.goodsId}` : '拼多多商品';
+      const priceHtml = card.priceText
+        ? `<div class="api-goods-card-price-row"><span class="api-goods-card-price">${esc(card.priceText)}</span><span class="api-goods-card-group">${esc(card.groupText ? `/${card.groupText}` : '')}</span></div>`
+        : (card.groupText ? `<div class="api-goods-card-price-row"><span class="api-goods-card-group">${esc(card.groupText)}</span></div>` : '');
+      return `<div class="api-message-bubble api-goods-card-bubble">
+        <div class="api-goods-card-top">
+          <span class="api-goods-card-id">${esc(goodsIdLabel)}</span>
+          ${card.goodsId ? `<button class="api-goods-card-copy" type="button" data-goods-id="${esc(card.goodsId)}">复制</button>` : ''}
+        </div>
+        <div class="api-goods-card-divider"></div>
+        <div class="api-goods-card-body">
+          ${imageHtml}
+          <div class="api-goods-card-main">
+            <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
+            ${priceHtml}
+            <span class="api-goods-card-spec">${esc(card.specText || '查看商品规格')}</span>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    async function ensureApiGoodsCardLoaded(linkInfo, fallbackCard) {
+      if (!linkInfo?.url || apiGoodsCardCache.has(linkInfo.cacheKey) || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
+      if (!window.pddApi?.apiGetGoodsCard) return;
+      apiGoodsCardPending.add(linkInfo.cacheKey);
+      try {
+        const result = await window.pddApi.apiGetGoodsCard({
+          shopId: apiActiveSessionShopId,
+          url: linkInfo.url,
+          goodsId: linkInfo.goodsId,
+          fallback: fallbackCard,
+        });
+        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard(result, fallbackCard));
+      } catch {
+        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard({}, fallbackCard));
+      } finally {
+        apiGoodsCardPending.delete(linkInfo.cacheKey);
+        if (apiHasUserSelectedSession) renderApiMessages();
+      }
+    }
+
+    function shouldShowApiMessageDivider(currentTimestamp, previousTimestamp) {
+      const currentMs = getApiTimeMs(currentTimestamp);
+      if (!currentMs) return false;
+      if (!previousTimestamp) return true;
+      const previousMs = getApiTimeMs(previousTimestamp);
+      if (!previousMs) return true;
+      const currentDate = new Date(currentMs);
+      const previousDate = new Date(previousMs);
+      const isSameDay = currentDate.getFullYear() === previousDate.getFullYear()
+        && currentDate.getMonth() === previousDate.getMonth()
+        && currentDate.getDate() === previousDate.getDate();
+      if (!isSameDay) return true;
+      return currentMs - previousMs >= 5 * 60 * 1000;
     }
 
     function setApiHint(text) {
@@ -6483,6 +6914,69 @@
         return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
       }
       return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+
+    function getApiTimeMs(value) {
+      const num = Number(value || 0);
+      if (!num) return 0;
+      return num < 1e12 ? num * 1000 : num;
+    }
+
+    function getApiPendingReplyMinutes(session = {}) {
+      const waitValue = Number(session.waitTime || 0);
+      if (waitValue > 0) {
+        if (waitValue > 1e12) {
+          return Math.max(1, Math.floor((Date.now() - waitValue) / 60000));
+        }
+        if (waitValue > 1e9) {
+          return Math.max(1, Math.floor((Date.now() - waitValue * 1000) / 60000));
+        }
+        if (waitValue > 100000) {
+          return Math.max(1, Math.floor(waitValue / 60000));
+        }
+        if (waitValue > 1440) {
+          return Math.max(1, Math.floor(waitValue / 60));
+        }
+        return Math.max(1, Math.floor(waitValue));
+      }
+      if (!session.isTimeout && Number(session.unreadCount || 0) <= 0) return 0;
+      const lastMessageMs = getApiTimeMs(session.lastMessageTime);
+      if (!lastMessageMs) return 0;
+      return Math.max(1, Math.floor((Date.now() - lastMessageMs) / 60000));
+    }
+
+    function hasApiPendingReply(session = {}) {
+      return getApiPendingReplyMinutes(session) > 0;
+    }
+
+    function clearApiPendingReplyState(payload = {}) {
+      const shopId = String(payload.shopId || apiActiveSessionShopId || '');
+      const sessionId = String(payload.sessionId || apiActiveSessionId || '');
+      if (!shopId || !sessionId) return;
+      const sessionKey = getApiSessionKey(shopId, sessionId);
+      const now = Date.now();
+      const previewText = payload.text
+        ? String(payload.text)
+        : (payload.imageUrl ? '[图片]' : '');
+      let changed = false;
+      const patchSession = (session = {}) => {
+        if (getApiSessionKey(session) !== sessionKey) return session;
+        changed = true;
+        return buildApiSession({
+          ...session,
+          unreadCount: 0,
+          isTimeout: false,
+          waitTime: 0,
+          lastMessage: previewText || session.lastMessage,
+          lastMessageTime: now,
+          updatedAt: now,
+        });
+      };
+      apiSessions = apiSessions.map(patchSession);
+      apiStarredSessions = apiStarredSessions.map(patchSession);
+      if (!changed) return;
+      renderApiSessions();
+      renderApiMessages();
     }
 
     function getApiSessionKey(sessionOrShopId, maybeSessionId = '') {
@@ -6686,8 +7180,10 @@
       container.innerHTML = sessions.map(session => {
         const active = getApiSessionKey(session) === getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
         const unread = Number(session.unreadCount || 0);
+        const pendingReply = hasApiPendingReply(session);
+        const waitMinutes = pendingReply ? getApiPendingReplyMinutes(session) : 0;
         const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
-        return `<div class="api-session-item ${active ? 'active' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
+        return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
           <div class="api-session-avatar">${avatarHtml}</div>
           <div class="api-session-main">
             <div class="api-session-item-title">
@@ -6698,11 +7194,14 @@
                 </div>
                 <div class="api-session-shop">
                   <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
-                  <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
                 </div>
               </div>
             </div>
+            <div class="api-session-time-group">
+              <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
+            </div>
             <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
+            ${pendingReply ? `<span class="api-session-item-wait">已等待${waitMinutes}分钟</span>` : ''}
           </div>
         </div>`;
       }).join('');
@@ -6765,13 +7264,15 @@
       const shopName = activeSession?.shopName || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '未选择店铺');
       const unreadCount = Number(activeSession?.unreadCount || 0);
       const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
+      const followStatusEl = document.getElementById('apiChatFollowStatus');
       document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
       document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
-      document.getElementById('apiChatFollowStatus').textContent = !activeSession
+      followStatusEl.textContent = !activeSession
         ? '未选择会话'
         : unreadCount > 0
           ? `未读 ${unreadCount}`
           : '已关注本店';
+      followStatusEl.classList.toggle('is-unread', !!activeSession && unreadCount > 0);
       document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
       mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 
@@ -6786,43 +7287,83 @@
       }
 
       const sortedMessages = apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
-      let lastDayKey = '';
-      container.innerHTML = sortedMessages.map(message => {
+      let previousTimestamp = 0;
+      container.innerHTML = sortedMessages.map((message, index) => {
         const isBuyer = !!message.isFromBuyer;
-        const rawTs = Number(message.timestamp || 0);
-        const ts = rawTs < 1e12 ? rawTs * 1000 : rawTs;
-        const dayKey = ts ? new Date(ts).toISOString().slice(0, 10) : '';
         const buyerAvatar = activeSession?.customerAvatar || '';
-        const sellerText = (shopName || apiTokenStatus?.mallName || '店铺').slice(0, 4);
+        const sellerText = (shopName || apiTokenStatus?.mallName || '主账号').slice(0, 4);
         const avatarHtml = isBuyer
           ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((apiActiveSessionName || '客户').slice(0, 2)))
           : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
-        const senderName = isBuyer
-          ? (message.senderName || apiActiveSessionName || '客户')
-          : (shopName || message.senderName || '未选择店铺');
-        const metaHtml = isBuyer
-          ? `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span></div>`
-          : `<div class="api-message-meta"><span class="api-message-status">${message.raw?.is_read ? '已读' : ''}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span><span class="api-message-sender">${esc(senderName)}</span></div>`;
+        const senderName = shopName || message.senderName || '主账号';
+        const readState = isBuyer ? '' : getApiMessageReadState(message);
+        const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
+        const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
         const imageUrl = getApiImageMessageUrl(message);
-        const bubbleHtml = isApiImageMessage(message)
-          ? `<div class="api-message-bubble">
+        const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
+        const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
+        const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
+        const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
+        if (goodsLinkInfo && fallbackGoodsCard) {
+          void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
+        }
+        const imageMessage = isApiImageMessage(message);
+        const bubbleHtml = goodsLinkInfo
+          ? renderApiGoodsCardHtml(goodsCard)
+          : imageMessage
+            ? `<div class="api-message-bubble">
               <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
             </div>`
-          : `<div class="api-message-bubble">
+            : `<div class="api-message-bubble">
               <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
             </div>`;
-        const divider = dayKey && dayKey !== lastDayKey
-          ? `<div class="api-message-divider">${esc(formatApiDate(message.timestamp))}</div>`
+        const copyButtonHtml = isBuyer && !goodsLinkInfo && !imageMessage && String(message.content || '').trim()
+          ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
           : '';
-        lastDayKey = dayKey;
+        const footerHtml = !isBuyer
+          ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
+          : '';
+        const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
+          ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
+          : '';
+        previousTimestamp = message.timestamp;
         return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
           <div class="api-message-avatar">${avatarHtml}</div>
           <div class="api-message-body">
             ${metaHtml}
-            ${bubbleHtml}
+            <div class="api-message-row">
+              ${isBuyer ? `${bubbleHtml}${copyButtonHtml}` : `${footerHtml}${bubbleHtml}`}
+            </div>
           </div>
         </div>`;
       }).join('');
+      container.querySelectorAll('.api-message-copy').forEach(button => {
+        button.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          const messageIndex = Number(button.dataset.messageIndex);
+          const text = String(sortedMessages[messageIndex]?.content || '');
+          if (!text) return;
+          try {
+            await navigator.clipboard.writeText(text);
+            setApiHint('已复制客户消息');
+          } catch {
+            setApiHint('复制失败，请稍后重试');
+          }
+        });
+      });
+      container.querySelectorAll('.api-goods-card-copy').forEach(button => {
+        button.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          const goodsId = String(button.dataset.goodsId || '');
+          if (!goodsId) return;
+          try {
+            await navigator.clipboard.writeText(goodsId);
+            setApiHint('已复制商品ID');
+          } catch {
+            setApiHint('复制失败，请稍后重试');
+          }
+        });
+      });
       container.scrollTop = container.scrollHeight;
     }
 
@@ -7611,7 +8152,13 @@
       } catch (error) {
         recordApiSyncState('状态失败', error?.message || '读取 Token 状态失败');
       }
-      const result = await window.pddApi.apiGetMessages({ shopId: apiActiveSessionShopId, sessionId: apiActiveSessionId, page: 1, pageSize: 50 });
+      const result = await window.pddApi.apiGetMessages({
+        shopId: apiActiveSessionShopId,
+        sessionId: apiActiveSessionId,
+        session: currentSession || undefined,
+        page: 1,
+        pageSize: 50
+      });
       if (!Array.isArray(result)) {
         apiMessages = [];
         renderApiMessages();
@@ -7632,6 +8179,7 @@
 
     async function refreshApiAfterMessageSent(payload = {}) {
       if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
+      clearApiPendingReplyState(payload);
       if (apiPostSendRefreshTimer) {
         clearTimeout(apiPostSendRefreshTimer);
         apiPostSendRefreshTimer = null;
@@ -8037,6 +8585,7 @@
         setApiHint(`接口发送失败：${result.error}`);
         return;
       }
+      clearApiPendingReplyState(result);
       document.getElementById('apiMessageInput').value = '';
       setApiHint('接口发送成功，正在同步最新消息');
     });

@@ -127,6 +127,30 @@ function testParseNestedSessionPreview() {
   assert.strictEqual(sessions[0].lastMessageTime, 1743352800);
 }
 
+function testParseSessionListKeepsConversationIdentity() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const sessions = client._parseSessionList({
+    data: {
+      list: [{
+        conversation_id: 'conv-1',
+        buyer_id: 'buyer-1',
+        user_info: { uid: 'buyer-1', nickname: '客户B' },
+        last_msg: { text: '新消息', send_time: 1743352800 },
+      }]
+    }
+  });
+
+  assert.strictEqual(sessions[0].sessionId, 'conv-1');
+  assert.strictEqual(sessions[0].conversationId, 'conv-1');
+  assert.strictEqual(sessions[0].customerId, 'buyer-1');
+  assert.strictEqual(sessions[0].userUid, 'buyer-1');
+}
+
 function testFilterDisplaySessions() {
   const client = new PddApiClient('shop-1', {
     getApiTraffic() {
@@ -171,6 +195,63 @@ async function testGetSessionListFiltersOldSessions() {
 
   const sessions = await client.getSessionList(1, 20);
   assert.deepStrictEqual(sessions.map(item => item.sessionId), ['today-chat', 'today-created']);
+}
+
+async function testGetSessionMessagesRetriesConversationIdentity() {
+  const traffic = [{
+    url: 'https://mms.pinduoduo.com/plateau/chat/list',
+    requestBody: JSON.stringify({
+      client: 1,
+      anti_content: 'top-anti',
+      data: {
+        anti_content: 'body-anti',
+        list: {
+          with: { role: 'user', id: 'buyer-1' },
+          start_msg_id: null,
+          start_index: 0,
+          size: 30,
+        }
+      }
+    })
+  }];
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return traffic;
+    }
+  });
+
+  client._sessionInited = true;
+  const attempts = [];
+  client._post = async (_url, body) => {
+    attempts.push(`${body.data.list.with.role}:${body.data.list.with.id}`);
+    if (body.data.list.with.id === 'conv-1') {
+      return {
+        data: {
+          msg_list: [{
+            msg_id: 'm1',
+            conversation_id: 'conv-1',
+            content: '客户今天新发的消息',
+            send_time: 1,
+          }]
+        }
+      };
+    }
+    return { data: { msg_list: [] } };
+  };
+
+  const messages = await client.getSessionMessages({
+    sessionId: 'buyer-1',
+    conversationId: 'conv-1',
+    customerId: 'buyer-1',
+    raw: {
+      conversation_id: 'conv-1',
+      user_info: { uid: 'buyer-1' },
+    }
+  }, 1, 30);
+
+  assert.strictEqual(messages.length, 1);
+  assert.ok(attempts.includes('user:conv-1'));
 }
 
 function testBuildSendImageBody() {
@@ -306,8 +387,10 @@ async function main() {
     await testResetStaleCursor();
     await testReuseLatestWindow();
     testParseNestedSessionPreview();
+    testParseSessionListKeepsConversationIdentity();
     testFilterDisplaySessions();
     await testGetSessionListFiltersOldSessions();
+    await testGetSessionMessagesRetriesConversationIdentity();
     testBuildSendImageBody();
     testGuessImageMimeType();
     await testRequestRawSanitizesCrossOriginHeaders();

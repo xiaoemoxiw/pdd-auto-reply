@@ -1426,10 +1426,21 @@ ipcMain.handle('api-get-messages', async (event, params = {}) => {
   if (!params.sessionId) return { error: '缺少 sessionId' };
   try {
     return await getApiClient(shopId).getSessionMessages(
-      params.sessionId,
+      params.session || params.sessionId,
       params.page || 1,
       params.pageSize || 30
     );
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('api-get-goods-card', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  if (!params.url) return { error: '缺少商品链接' };
+  try {
+    return await getApiClient(shopId).getGoodsCard(params);
   } catch (err) {
     return { error: err.message };
   }

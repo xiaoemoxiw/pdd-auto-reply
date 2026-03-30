@@ -193,12 +193,98 @@ class PddApiClient extends EventEmitter {
   }
 
   _getLatestSessionTraffic(urlPart, sessionId) {
+    const ids = Array.isArray(sessionId) ? sessionId.map(item => String(item || '')).filter(Boolean) : [String(sessionId || '')].filter(Boolean);
+    if (!ids.length) return null;
     return this._findLatestTrafficEntry((entry) => {
       if (!String(entry?.url || '').includes(urlPart)) return false;
       const body = this._safeParseJson(entry?.requestBody);
       const targetId = body?.data?.list?.with?.id || body?.data?.message?.to?.uid || body?.session_id || '';
-      return String(targetId) === String(sessionId);
+      return ids.includes(String(targetId));
     });
+  }
+
+  _normalizeSessionMeta(sessionRef) {
+    if (sessionRef && typeof sessionRef === 'object' && !Array.isArray(sessionRef)) {
+      return this._cloneJson(sessionRef);
+    }
+    const target = String(sessionRef || '');
+    const cachedSessions = [
+      ...this._sessionCache,
+      ...this._parseSessionList(this._getLatestResponseBody('/plateau/chat/latest_conversations')),
+    ];
+    const matched = cachedSessions.find(item => {
+      const candidates = [
+        item?.sessionId,
+        item?.explicitSessionId,
+        item?.conversationId,
+        item?.chatId,
+        item?.rawId,
+        item?.customerId,
+        item?.userUid,
+        item?.raw?.session_id,
+        item?.raw?.conversation_id,
+        item?.raw?.chat_id,
+        item?.raw?.id,
+        item?.raw?.customer_id,
+        item?.raw?.buyer_id,
+        item?.raw?.uid,
+        item?.raw?.to?.uid,
+        item?.raw?.user_info?.uid,
+      ].map(value => String(value || '')).filter(Boolean);
+      return candidates.includes(target);
+    });
+    if (matched) return this._cloneJson(matched);
+    return {
+      sessionId: target,
+      explicitSessionId: '',
+      conversationId: '',
+      chatId: '',
+      rawId: '',
+      customerId: target,
+      userUid: target,
+      raw: {},
+    };
+  }
+
+  _buildSessionMessageCandidates(sessionMeta = {}, templateList = {}) {
+    const ids = [
+      sessionMeta.sessionId,
+      sessionMeta.explicitSessionId,
+      sessionMeta.conversationId,
+      sessionMeta.chatId,
+      sessionMeta.rawId,
+      sessionMeta.customerId,
+      sessionMeta.userUid,
+      templateList?.with?.id,
+      sessionMeta?.raw?.session_id,
+      sessionMeta?.raw?.conversation_id,
+      sessionMeta?.raw?.chat_id,
+      sessionMeta?.raw?.id,
+      sessionMeta?.raw?.customer_id,
+      sessionMeta?.raw?.buyer_id,
+      sessionMeta?.raw?.uid,
+      sessionMeta?.raw?.to?.uid,
+      sessionMeta?.raw?.user_info?.uid,
+    ].map(value => String(value || '')).filter(Boolean);
+    const roles = [
+      templateList?.with?.role,
+      sessionMeta?.raw?.to?.role,
+      sessionMeta?.raw?.with?.role,
+      'user',
+      'buyer',
+    ].map(value => String(value || '')).filter(Boolean);
+    const uniqueRoles = [...new Set(roles)];
+    const seen = new Set();
+    const candidates = [];
+    ids.forEach(id => {
+      uniqueRoles.forEach(role => {
+        const key = `${role}:${id}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        candidates.push({ id, role });
+      });
+    });
+    return candidates;
   }
 
   _shouldReuseSessionWindow(templateList, page) {
@@ -803,6 +889,25 @@ class PddApiClient extends EventEmitter {
     return sessions.filter(session => this._isTodayTimestamp(session?.lastMessageTime) || this._isTodayTimestamp(session?.createdAt));
   }
 
+  _parseSessionIdentity(item = {}) {
+    const conversationId = item.conversation_id || item.conversationId || '';
+    const chatId = item.chat_id || item.chatId || '';
+    const explicitSessionId = item.session_id || item.sessionId || '';
+    const rawId = item.id || '';
+    const customerId = item.customer_id || item.buyer_id || item.from_uid || item.uid || '';
+    const userUid = item?.to?.uid || item?.user_info?.uid || item?.from?.uid || '';
+    const sessionId = explicitSessionId || conversationId || chatId || rawId || customerId || userUid || '';
+    return {
+      sessionId,
+      explicitSessionId,
+      conversationId,
+      chatId,
+      rawId,
+      customerId: customerId || userUid || '',
+      userUid: userUid || customerId || '',
+    };
+  }
+
   _parseSessionList(payload) {
     const list = payload?.data?.list ||
       payload?.data?.conv_list ||
@@ -826,9 +931,16 @@ class PddApiClient extends EventEmitter {
       payload?.list ||
       [];
 
-    return list.map(item => ({
-      sessionId: item.session_id || item.conversation_id || item.chat_id || item.id || item?.to?.uid || item?.user_info?.uid || '',
-      customerId: item.customer_id || item.buyer_id || item.from_uid || item.uid || item?.to?.uid || item?.user_info?.uid || '',
+    return list.map(item => {
+      const identity = this._parseSessionIdentity(item);
+      return {
+      sessionId: identity.sessionId,
+      explicitSessionId: identity.explicitSessionId,
+      conversationId: identity.conversationId,
+      chatId: identity.chatId,
+      rawId: identity.rawId,
+      customerId: identity.customerId,
+      userUid: identity.userUid,
       customerName: item.nick || item.nickname || item.buyer_name || item.customer_name || item.name || item?.user_info?.nickname || '未知客户',
       customerAvatar: item.avatar || item.head_img || item.buyer_avatar || item?.user_info?.avatar || '',
       lastMessage: this._extractSessionPreviewText(item),
@@ -842,7 +954,7 @@ class PddApiClient extends EventEmitter {
       csUid: item?.from?.cs_uid || '',
       mallId: item?.from?.mall_id || '',
       raw: item,
-    }));
+    }});
   }
 
   _describeSessionListPayload(payload) {
@@ -1057,6 +1169,156 @@ class PddApiClient extends EventEmitter {
     return '';
   }
 
+  _extractMessageReadState(item = {}) {
+    const candidates = [
+      item?.is_read,
+      item?.isRead,
+      item?.read_status,
+      item?.readStatus,
+      item?.read_state,
+      item?.readState,
+      item?.extra?.is_read,
+      item?.extra?.isRead,
+      item?.extra?.read_status,
+      item?.extra?.readStatus,
+      item?.extra?.read_state,
+      item?.extra?.readState,
+      item?.ext?.is_read,
+      item?.ext?.isRead,
+      item?.ext?.read_status,
+      item?.ext?.readStatus,
+      item?.ext?.read_state,
+      item?.ext?.readState,
+    ];
+    for (const value of candidates) {
+      if (value === undefined || value === null || value === '') continue;
+      if (typeof value === 'boolean') return value ? 'read' : 'unread';
+      if (typeof value === 'number') return value > 0 ? 'read' : 'unread';
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) continue;
+        if (['1', 'true', 'read', 'has_read', 'already_read', '已读'].includes(normalized)) return 'read';
+        if (['0', 'false', 'unread', 'not_read', '未读'].includes(normalized)) return 'unread';
+      }
+    }
+    return '';
+  }
+
+  _decodeGoodsText(value = '') {
+    return String(value || '')
+      .replace(/\\u([\da-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+      .replace(/\\x([\da-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+      .replace(/\\"/g, '"')
+      .replace(/\\\//g, '/')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .trim();
+  }
+
+  _pickGoodsText(candidates = []) {
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim()) return this._decodeGoodsText(value);
+    }
+    return '';
+  }
+
+  _normalizeGoodsPrice(value) {
+    if (value === undefined || value === null || value === '') return '';
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (!text) return '';
+      if (text.includes('¥')) return text;
+      const numeric = Number(text);
+      if (!Number.isNaN(numeric)) return this._normalizeGoodsPrice(numeric);
+      return text;
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '';
+    const amount = Number.isInteger(numeric) && numeric >= 1000 ? numeric / 100 : numeric;
+    return `¥${amount.toFixed(2)}`;
+  }
+
+  _extractGoodsIdFromUrl(rawUrl = '') {
+    const urlText = String(rawUrl || '').trim();
+    if (!urlText) return '';
+    try {
+      const parsed = new URL(urlText);
+      return parsed.searchParams.get('goods_id') || parsed.searchParams.get('goodsId') || '';
+    } catch {
+      const match = urlText.match(/[?&]goods_id=(\d+)/i) || urlText.match(/[?&]goodsId=(\d+)/i);
+      return match?.[1] || '';
+    }
+  }
+
+  _extractGoodsCardFromHtml(html = '', fallback = {}) {
+    const source = String(html || '');
+    const matchFirst = (patterns = []) => {
+      for (const pattern of patterns) {
+        const matched = source.match(pattern);
+        if (matched?.[1]) return this._decodeGoodsText(matched[1]);
+      }
+      return '';
+    };
+    const goodsId = this._pickGoodsText([
+      matchFirst([
+        /[?&]goods_id=(\d+)/i,
+        /"goods_id"\s*:\s*"?(\\d+|\d+)"/i,
+        /"goodsId"\s*:\s*"?(\\d+|\d+)"/i,
+      ]),
+      fallback.goodsId,
+    ]);
+    const title = this._pickGoodsText([
+      matchFirst([
+        /<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i,
+        /<meta[^>]+name="og:title"[^>]+content="([^"]+)"/i,
+        /"goods_name"\s*:\s*"([^"]+)"/i,
+        /"goodsName"\s*:\s*"([^"]+)"/i,
+        /<title>([^<]+)<\/title>/i,
+      ]),
+      fallback.title,
+    ]);
+    const imageUrl = this._pickGoodsText([
+      matchFirst([
+        /<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i,
+        /<meta[^>]+name="og:image"[^>]+content="([^"]+)"/i,
+        /"hd_thumb_url"\s*:\s*"([^"]+)"/i,
+        /"thumb_url"\s*:\s*"([^"]+)"/i,
+        /"goods_thumb_url"\s*:\s*"([^"]+)"/i,
+        /"top_gallery"\s*:\s*\[\s*"([^"]+)"/i,
+      ]),
+      fallback.imageUrl,
+    ]);
+    const priceText = this._pickGoodsText([
+      this._normalizeGoodsPrice(matchFirst([
+        /"min_group_price"\s*:\s*"?(\\d+(?:\\.\\d+)?|\d+(?:\.\d+)?)"/i,
+        /"group_price"\s*:\s*"?(\\d+(?:\\.\\d+)?|\d+(?:\.\d+)?)"/i,
+        /"price"\s*:\s*"?(\\d+(?:\\.\\d+)?|\d+(?:\.\d+)?)"/i,
+      ])),
+      fallback.priceText,
+    ]);
+    const groupText = this._pickGoodsText([
+      matchFirst([
+        /"group_order_type_desc"\s*:\s*"([^"]+)"/i,
+        /"group_desc"\s*:\s*"([^"]+)"/i,
+        /"groupLabel"\s*:\s*"([^"]+)"/i,
+        /"customer_num"\s*:\s*"?(\\d+|\d+)"/i,
+      ]),
+      fallback.groupText,
+      '2人团',
+    ]);
+    return {
+      goodsId,
+      title: title.replace(/\s*-\s*拼多多.*$/i, '').trim(),
+      imageUrl,
+      priceText,
+      groupText: /^\d+$/.test(groupText) ? `${groupText}人团` : groupText,
+      specText: fallback.specText || '查看商品规格',
+    };
+  }
+
   _findMessageArray(payload) {
     const directCandidates = [
       payload?.data?.msg_list,
@@ -1126,109 +1388,145 @@ class PddApiClient extends EventEmitter {
       senderName: item.nick || item.nickname || item.sender_name || item.from_name || item?.from?.csid || '',
       senderId: item.from_uid || item.sender_id || item.from_id || item?.from?.uid || '',
       timestamp: item.send_time || item.time || item.ts || item.timestamp || item.created_at || 0,
+      readState: this._extractMessageReadState(item),
       extra: item.extra || item.ext || null,
       raw: item,
     }));
   }
 
-  async getSessionMessages(sessionId, page = 1, pageSize = 30) {
+  async getSessionMessages(sessionRef, page = 1, pageSize = 30) {
     if (!this._sessionInited) {
       await this.initSession();
     }
 
-    const sessionTraffic = this._getLatestSessionTraffic('/plateau/chat/list', sessionId);
+    const sessionMeta = this._normalizeSessionMeta(sessionRef);
+    const sessionIds = [
+      sessionMeta.sessionId,
+      sessionMeta.explicitSessionId,
+      sessionMeta.conversationId,
+      sessionMeta.chatId,
+      sessionMeta.rawId,
+      sessionMeta.customerId,
+      sessionMeta.userUid,
+    ].filter(Boolean);
+    const sessionTraffic = this._getLatestSessionTraffic('/plateau/chat/list', sessionIds);
     const latestTraffic = sessionTraffic || this._findLatestTraffic('/plateau/chat/list');
     const templateBody = this._safeParseJson(latestTraffic?.requestBody);
     const antiContent = templateBody?.anti_content || this._getLatestAntiContent();
     const templateList = templateBody?.data?.list || {};
-    const useSessionWindow = !!sessionTraffic && this._shouldReuseSessionWindow(templateList, page);
-    const requestList = useSessionWindow
-      ? {
-          ...templateList,
-          with: {
-            ...(templateList.with || {}),
-            role: templateList.with?.role || 'user',
-            id: String(sessionId),
-          },
-          start_msg_id: templateList.start_msg_id,
-          start_index: templateList.start_index,
-          size: pageSize || templateList.size,
-        }
-      : {
-          with: {
-            role: 'user',
-            id: String(sessionId),
-          },
-          start_msg_id: null,
-          start_index: Math.max(0, (page - 1) * pageSize),
-          size: pageSize || templateList.size || 30,
-        };
-    const requestBody = templateBody
-      ? {
-          ...this._cloneJson(templateBody),
-          data: {
-            ...(templateBody.data || {}),
-            request_id: this._nextRequestId(),
-            cmd: templateBody.data?.cmd || 'list',
-            anti_content: templateBody.data?.anti_content || antiContent,
-            list: requestList,
-          },
-          client: templateBody.client !== undefined && templateBody.client !== null && templateBody.client !== ''
-            ? templateBody.client
-            : this._getLatestClientValue(),
-          anti_content: templateBody.anti_content || antiContent,
-        }
-      : {
-          data: {
-            cmd: 'list',
-            request_id: this._nextRequestId(),
-            list: {
-              with: {
-                role: 'user',
-                id: String(sessionId),
-              },
-              start_msg_id: null,
-              start_index: Math.max(0, (page - 1) * pageSize),
-              size: pageSize,
+    const requestCandidates = this._buildSessionMessageCandidates(sessionMeta, templateList);
+    const buildRequestBody = (candidate, useSessionWindow) => {
+      const requestList = useSessionWindow
+        ? {
+            ...templateList,
+            with: {
+              ...(templateList.with || {}),
+              role: candidate.role || templateList.with?.role || 'user',
+              id: String(candidate.id),
             },
-            notUpdateUnreplyTs: true,
+            start_msg_id: templateList.start_msg_id,
+            start_index: templateList.start_index,
+            size: pageSize || templateList.size,
+          }
+        : {
+            with: {
+              role: candidate.role || templateList.with?.role || 'user',
+              id: String(candidate.id),
+            },
+            start_msg_id: null,
+            start_index: Math.max(0, (page - 1) * pageSize),
+            size: pageSize || templateList.size || 30,
+          };
+      return templateBody
+        ? {
+            ...this._cloneJson(templateBody),
+            data: {
+              ...(templateBody.data || {}),
+              request_id: this._nextRequestId(),
+              cmd: templateBody.data?.cmd || 'list',
+              anti_content: templateBody.data?.anti_content || antiContent,
+              list: requestList,
+            },
+            client: templateBody.client !== undefined && templateBody.client !== null && templateBody.client !== ''
+              ? templateBody.client
+              : this._getLatestClientValue(),
+            anti_content: templateBody.anti_content || antiContent,
+          }
+        : {
+            data: {
+              cmd: 'list',
+              request_id: this._nextRequestId(),
+              list: {
+                with: {
+                  role: candidate.role || 'user',
+                  id: String(candidate.id),
+                },
+                start_msg_id: null,
+                start_index: Math.max(0, (page - 1) * pageSize),
+                size: pageSize,
+              },
+              notUpdateUnreplyTs: true,
+              anti_content: antiContent,
+            },
+            client: this._getLatestClientValue(),
             anti_content: antiContent,
-          },
-          client: this._getLatestClientValue(),
-          anti_content: antiContent,
-        };
-    try {
-      const payload = await this._post('/plateau/chat/list', requestBody);
-      const messages = this._parseMessages(payload);
-      if (messages.length > 0) {
-        return messages;
-      }
-      const cachedPayload = sessionTraffic?.responseBody && typeof sessionTraffic.responseBody === 'object'
-        ? sessionTraffic.responseBody
-        : null;
-      if (cachedPayload) {
-        const cachedMessages = this._parseMessages(cachedPayload);
-        if (cachedMessages.length > 0) {
-          this._log('[API] chat/list 直调为空，回退页面抓取缓存', { sessionId: String(sessionId) });
-          return cachedMessages;
+          };
+    };
+    const cachedEntries = this._getApiTrafficEntries()
+      .filter(entry => String(entry?.url || '').includes('/plateau/chat/list'))
+      .filter(entry => {
+        const body = this._safeParseJson(entry?.requestBody);
+        const id = String(body?.data?.list?.with?.id || '');
+        return requestCandidates.some(candidate => String(candidate.id) === id);
+      });
+    let fallbackMessages = [];
+    let lastError = null;
+    for (let index = 0; index < requestCandidates.length; index++) {
+      const candidate = requestCandidates[index];
+      const useSessionWindow = index === 0
+        && !!sessionTraffic
+        && this._shouldReuseSessionWindow(templateList, page)
+        && String(templateList?.with?.id || '') === String(candidate.id);
+      const requestBody = buildRequestBody(candidate, useSessionWindow);
+      try {
+        const payload = await this._post('/plateau/chat/list', requestBody);
+        const messages = this._parseMessages(payload);
+        this._log('[API] chat/list 候选响应', {
+          candidateId: candidate.id,
+          candidateRole: candidate.role,
+          count: messages.length,
+        });
+        if (messages.length > 0) {
+          return messages;
         }
-      }
-      return messages;
-    } catch (error) {
-      const cachedEntry = sessionTraffic || this._findLatestTraffic('/plateau/chat/list');
-      const cachedPayload = cachedEntry?.responseBody && typeof cachedEntry.responseBody === 'object'
-        ? cachedEntry.responseBody
-        : null;
-      const cachedRequest = this._safeParseJson(cachedEntry?.requestBody);
-      if (cachedPayload && String(cachedRequest?.data?.list?.with?.id || '') === String(sessionId)) {
-        const cachedMessages = this._parseMessages(cachedPayload);
-        if (cachedMessages.length > 0) {
-          this._log('[API] chat/list 直调失败，回退页面抓取缓存', { message: error.message });
-          return cachedMessages;
+        if (!fallbackMessages.length) {
+          fallbackMessages = messages;
         }
+      } catch (error) {
+        lastError = error;
+        this._log('[API] chat/list 候选失败', {
+          candidateId: candidate.id,
+          candidateRole: candidate.role,
+          message: error.message,
+        });
       }
-      throw error;
     }
+    for (const entry of cachedEntries) {
+      const cachedPayload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
+      if (!cachedPayload) continue;
+      const cachedMessages = this._parseMessages(cachedPayload);
+      if (cachedMessages.length > 0) {
+        this._log('[API] chat/list 回退页面抓取缓存', {
+          sessionId: String(sessionMeta.sessionId || ''),
+          count: cachedMessages.length,
+        });
+        return cachedMessages;
+      }
+    }
+    if (lastError) {
+      throw lastError;
+    }
+    return fallbackMessages;
   }
 
   _buildSendMessageBody(sessionId, text) {
@@ -1488,6 +1786,53 @@ class PddApiClient extends EventEmitter {
     };
     this.emit('messageSent', result);
     return result;
+  }
+
+  async getGoodsCard(params = {}) {
+    const url = String(params.url || '').trim();
+    if (!url) {
+      throw new Error('缺少商品链接');
+    }
+    const fallback = params?.fallback && typeof params.fallback === 'object'
+      ? this._cloneJson(params.fallback)
+      : {};
+    const headers = await this._buildHeaders({
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'content-type': 'text/html;charset=UTF-8',
+      Referer: url,
+      Origin: 'https://mobile.yangkeduo.com',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'cross-site',
+      'upgrade-insecure-requests': '1',
+    });
+    delete headers['X-PDD-Token'];
+    delete headers['windows-app-shop-token'];
+    delete headers.VerifyAuthToken;
+    delete headers.etag;
+    const response = await this._getSession().fetch(url, {
+      method: 'GET',
+      headers,
+      redirect: 'follow',
+    });
+    const html = await response.text();
+    const parsed = this._extractGoodsCardFromHtml(html, {
+      ...fallback,
+      goodsId: fallback.goodsId || this._extractGoodsIdFromUrl(url),
+      specText: fallback.specText || '查看商品规格',
+    });
+    if (!response.ok && !parsed.title && !parsed.imageUrl) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return {
+      goodsId: parsed.goodsId || fallback.goodsId || this._extractGoodsIdFromUrl(url),
+      url,
+      title: parsed.title || fallback.title || '拼多多商品',
+      imageUrl: parsed.imageUrl || fallback.imageUrl || '',
+      priceText: parsed.priceText || fallback.priceText || '',
+      groupText: parsed.groupText || fallback.groupText || '2人团',
+      specText: parsed.specText || fallback.specText || '查看商品规格',
+    };
   }
 
   async markLatestConversations(size = 100) {

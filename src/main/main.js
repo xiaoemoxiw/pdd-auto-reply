@@ -10,12 +10,18 @@ const { InvoiceApiClient } = require('./invoice-api');
 const { createSettingsWindow } = require('./settings-window');
 const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
+const { TokenFileStore } = require('./token-file-store');
 const { SYSTEM_PHRASES, DEFAULT_SCENES, PHRASE_CATEGORIES, DEFAULT_AI_INTENTS } = require('./system-phrases');
 const { AIIntentEngine, MODEL_ID, MODEL_SOURCES } = require('./ai-intent');
 const { getApiTrafficLogPath } = require('./api-traffic-path');
 const Store = require('electron-store');
 
 app.disableHardwareAcceleration();
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
 
 const UNMATCHED_LOG_MAX = 200;
 const API_ALL_SHOPS = '__all__';
@@ -43,6 +49,8 @@ const store = new Store({
     apiStarredSessions: [],
     quickPhrases: [],
     shopCookies: {},
+    shopTokens: {},
+    shopTokenFiles: {},
     phraseLibrary: [],
     unmatchedLog: [],
     aiIntent: {
@@ -184,12 +192,20 @@ let currentView = 'chat';
 let mainWindow = null;
 let shopManager = null;
 let replyEngine = null;
+const tokenFileStore = new TokenFileStore(store);
 let aiIntentEngine = null;
 let networkMonitors = new Map();  // shopId -> NetworkMonitor
 let apiClients = new Map();
 let mailApiClients = new Map();
 let invoiceApiClients = new Map();
 let apiTrafficStore = new Map();
+let apiSessionStore = new Map();
+
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
 
 function getPddChatUrl() {
   return store.get('chatUrl') || PDD_CHAT_URL;
@@ -303,6 +319,73 @@ function detectChatPage(view, shopId) {
 
 // 网络监控提取的消息去重（避免与 DOM 监听重复触发）
 const networkMsgDedup = new Map(); // text -> timestamp
+const apiSessionTrafficSnapshot = new Map();
+
+function setApiSessionSnapshot(shopId, sessions = [], source = 'runtime') {
+  if (!shopId) return [];
+  const normalized = Array.isArray(sessions)
+    ? sessions.filter(item => item && item.sessionId)
+    : [];
+  if (normalized.length === 0) {
+    const existing = apiSessionStore.get(shopId) || [];
+    if (existing.length > 0 && source !== 'clear') {
+      return existing;
+    }
+  }
+  apiSessionStore.set(shopId, normalized);
+  sendToDebug('api-session-snapshot', { shopId, count: normalized.length, source });
+  return normalized;
+}
+
+function getApiSessionSnapshot(shopId) {
+  if (!shopId) return [];
+  return apiSessionStore.get(shopId) || [];
+}
+
+function extractApiSessionsFromTraffic(shopId) {
+  if (!shopId) return [];
+  const client = getApiClient(shopId);
+  const traffic = getApiTraffic(shopId);
+  const urlParts = ['/plateau/chat/latest_conversations', '/plateau/conv_list/status'];
+  for (const urlPart of urlParts) {
+    for (let i = traffic.length - 1; i >= 0; i--) {
+      const entry = traffic[i];
+      if (!String(entry?.url || '').includes(urlPart) || !entry?.responseBody) continue;
+      try {
+        const sessions = client._parseSessionList(entry.responseBody);
+        if (Array.isArray(sessions) && sessions.length > 0) {
+          return setApiSessionSnapshot(shopId, sessions, `traffic-fallback:${urlPart}`);
+        }
+      } catch {}
+    }
+  }
+  return [];
+}
+
+function pushApiSessionsFromTraffic(shopId, entry) {
+  if (!shopId || !entry?.url) return;
+  const url = String(entry.url || '');
+  if (!url.includes('/plateau/chat/latest_conversations') && !url.includes('/plateau/conv_list/status')) {
+    return;
+  }
+  const client = getApiClient(shopId);
+  if (!client || !entry.responseBody) return;
+  try {
+    const sessions = client._parseSessionList(entry.responseBody);
+    if (!Array.isArray(sessions) || sessions.length === 0) return;
+    const signature = sessions.map(item => `${item.sessionId}:${item.lastMessageTime || item.waitTime || 0}`).join('|');
+    if (apiSessionTrafficSnapshot.get(shopId) === signature) return;
+    apiSessionTrafficSnapshot.set(shopId, signature);
+    client._sessionCache = sessions;
+    setApiSessionSnapshot(shopId, sessions, 'traffic');
+    updateShopStatus(shopId, 'online');
+    mainWindow?.webContents.send('api-session-updated', { shopId, sessions });
+    sendToDebug('api-session-updated', { shopId, count: sessions.length, source: 'traffic' });
+    console.log(`[PDD接口:${shopId}] 已从页面抓包同步会话: ${sessions.length}`);
+  } catch (error) {
+    console.log(`[PDD接口:${shopId}] 页面抓包解析会话失败: ${error.message}`);
+  }
+}
 
 function startNetworkMonitor(view, shopId) {
   if (networkMonitors.has(shopId)) {
@@ -330,6 +413,7 @@ function startNetworkMonitor(view, shopId) {
       appendApiTrafficLog(shopId, entry);
       console.log(`[接口抓取:${shopId}] [${entry.method}] ${entry.url} -> ${entry.status}`);
       sendToDebug('api-traffic', { shopId, entry });
+      pushApiSessionsFromTraffic(shopId, entry);
     },
     onCustomerMessage(msg) {
       if (!store.get('autoReplyEnabled')) return;
@@ -383,12 +467,15 @@ function getApiClient(shopId) {
   });
 
   client.on('sessionUpdated', sessions => {
-    if (Array.isArray(sessions) && sessions.length >= 0) {
+    const stableSessions = Array.isArray(sessions) && sessions.length === 0
+      ? getApiSessionSnapshot(shopId)
+      : setApiSessionSnapshot(shopId, sessions, 'polling');
+    if (Array.isArray(stableSessions) && stableSessions.length >= 0) {
       updateShopStatus(shopId, 'online');
     }
-    const payload = { shopId, sessions };
+    const payload = { shopId, sessions: stableSessions };
     mainWindow?.webContents.send('api-session-updated', payload);
-    sendToDebug('api-session-updated', { shopId, count: sessions.length });
+    sendToDebug('api-session-updated', { shopId, count: stableSessions.length });
   });
 
   client.on('newMessage', payload => {
@@ -415,6 +502,8 @@ function destroyApiClient(shopId) {
   if (!client) return;
   client.destroy();
   apiClients.delete(shopId);
+  apiSessionTrafficSnapshot.delete(shopId);
+  apiSessionStore.delete(shopId);
 }
 
 function getMailApiClient(shopId) {
@@ -474,7 +563,15 @@ function destroyInvoiceApiClient(shopId) {
 }
 
 function getApiTraffic(shopId) {
-  return apiTrafficStore.get(shopId) || [];
+  const runtimeList = apiTrafficStore.get(shopId) || [];
+  if (runtimeList.length >= 20) return runtimeList;
+  const persistedList = getPersistedApiTraffic(shopId);
+  if (!persistedList.length) return runtimeList;
+  const merged = [...persistedList, ...runtimeList];
+  if (merged.length > 200) {
+    return merged.slice(merged.length - 200);
+  }
+  return merged;
 }
 
 function getStoredShops() {
@@ -507,6 +604,33 @@ function decorateApiSession(shopId, session) {
   };
 }
 
+async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
+  const client = getApiClient(shopId);
+  let sessions = await client.getSessionList(page, pageSize);
+  if (sessions.length > 0) {
+    setApiSessionSnapshot(shopId, sessions, 'request');
+    return sessions;
+  }
+  const trafficSessions = extractApiSessionsFromTraffic(shopId);
+  if (page === 1 && trafficSessions.length > 0) {
+    return trafficSessions.slice(0, pageSize);
+  }
+  const snapshot = getApiSessionSnapshot(shopId);
+  if (page === 1 && snapshot.length > 0) {
+    return snapshot.slice(0, pageSize);
+  }
+  const retry = await client.testConnection();
+  if (Array.isArray(retry?.sessions) && retry.sessions.length > 0) {
+    setApiSessionSnapshot(shopId, retry.sessions, 'test-connection');
+    return retry.sessions;
+  }
+  const retriedTrafficSessions = extractApiSessionsFromTraffic(shopId);
+  if (page === 1 && retriedTrafficSessions.length > 0) {
+    return retriedTrafficSessions.slice(0, pageSize);
+  }
+  return sessions;
+}
+
 async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
   const targetShops = getApiShopList(shopId);
   if (!targetShops.length) {
@@ -514,21 +638,31 @@ async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
     throw new Error('没有可用店铺');
   }
   if (shopId !== API_ALL_SHOPS) {
-    const sessions = await getApiClient(targetShops[0].id).getSessionList(page, pageSize);
+    const sessions = await loadShopApiSessions(targetShops[0].id, page, pageSize);
     return sessions.map(session => decorateApiSession(targetShops[0].id, session));
   }
+  const failures = [];
   const sessionGroups = await Promise.all(targetShops.map(async shop => {
     try {
-      const sessions = await getApiClient(shop.id).getSessionList(page, pageSize);
+      const sessions = await loadShopApiSessions(shop.id, page, pageSize);
       return sessions.map(session => decorateApiSession(shop.id, session));
     } catch (error) {
+      failures.push({
+        shopId: shop.id,
+        shopName: shop.name || '未命名店铺',
+        message: error.message || '接口会话拉取失败',
+      });
       sendToDebug('api-session-load-skipped', { shopId: shop.id, message: error.message });
       return [];
     }
   }));
-  return sessionGroups
+  const mergedSessions = sessionGroups
     .flat()
     .sort((a, b) => Number(b.lastMessageTime || 0) - Number(a.lastMessageTime || 0));
+  if (!mergedSessions.length && failures.length) {
+    throw new Error(failures.map(item => `${item.shopName}：${item.message}`).join('；'));
+  }
+  return mergedSessions;
 }
 
 function getApiTrafficByScope(shopId) {
@@ -552,6 +686,28 @@ function appendApiTrafficLog(shopId, entry) {
     fs.appendFileSync(apiTrafficLogPath, `${record}\n`, 'utf-8');
   } catch (error) {
     console.error('[PDD助手] 写入接口抓取日志失败:', error.message);
+  }
+}
+
+function getPersistedApiTraffic(shopId, limit = 200) {
+  try {
+    const apiTrafficLogPath = getApiTrafficLogPath();
+    if (!fs.existsSync(apiTrafficLogPath)) return [];
+    const lines = fs.readFileSync(apiTrafficLogPath, 'utf-8')
+      .split('\n')
+      .filter(Boolean);
+    const result = [];
+    for (let i = lines.length - 1; i >= 0 && result.length < limit; i--) {
+      try {
+        const parsed = JSON.parse(lines[i]);
+        if (parsed?.shopId !== shopId || !parsed?.entry) continue;
+        result.push(parsed.entry);
+      } catch {}
+    }
+    return result.reverse();
+  } catch (error) {
+    console.error('[PDD助手] 读取接口抓包日志失败:', error.message);
+    return [];
   }
 }
 
@@ -591,10 +747,17 @@ function createMainWindow() {
 
   // 创建 ShopManager
   shopManager = new ShopManager(mainWindow, store, {
+    tokenFileStore,
     onLog: (msg) => console.log(msg),
     onInjectScript: injectAutoReplyScript,
     onNetworkMonitor: startNetworkMonitor,
-    onDetectChat: detectChatPage
+    onDetectChat: detectChatPage,
+    onTokenUpdated: (shopId) => {
+      destroyApiClient(shopId);
+      destroyMailApiClient(shopId);
+      destroyInvoiceApiClient(shopId);
+      apiTrafficStore.set(shopId, []);
+    }
   });
 }
 
@@ -731,8 +894,19 @@ ipcMain.handle('open-settings', () => {
 });
 
 ipcMain.handle('open-devtools', () => {
-  const view = shopManager?.getActiveView();
-  if (view) view.webContents.openDevTools({ mode: 'detach' });
+  if (isEmbeddedPddView(currentView)) {
+    const view = shopManager?.getActiveView();
+    if (!view) {
+      return { error: '当前没有可调试的嵌入页' };
+    }
+    view.webContents.openDevTools({ mode: 'detach' });
+    return { ok: true, target: 'embedded' };
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { error: '主窗口不可用' };
+  }
+  mainWindow.webContents.openDevTools({ mode: 'detach' });
+  return { ok: true, target: 'renderer' };
 });
 
 ipcMain.handle('diagnose-page', async () => {
@@ -812,6 +986,13 @@ ipcMain.handle('diagnose-page', async () => {
 
 ipcMain.handle('open-debug-window', () => {
   createDebugWindow(mainWindow);
+});
+
+ipcMain.on('renderer-debug-log', (event, payload = {}) => {
+  const scope = payload?.scope || 'renderer';
+  const message = payload?.message || '';
+  const extra = payload?.extra ? ` ${JSON.stringify(payload.extra)}` : '';
+  console.log(`[页面调试:${scope}] ${message}${extra}`);
 });
 
 ipcMain.handle('reload-pdd', () => {
@@ -972,8 +1153,11 @@ ipcMain.handle('api-get-sessions', async (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return { error: '没有可用店铺' };
   try {
-    return await getApiSessionsByScope(shopId, params.page || 1, params.pageSize || 20);
+    const sessions = await getApiSessionsByScope(shopId, params.page || 1, params.pageSize || 20);
+    console.log(`[PDD接口:${shopId}] api-get-sessions 返回 ${Array.isArray(sessions) ? sessions.length : 0} 条`);
+    return sessions;
   } catch (err) {
+    console.log(`[PDD接口:${shopId}] api-get-sessions 失败: ${err.message}`);
     return { error: err.message };
   }
 });
@@ -1167,9 +1351,16 @@ ipcMain.handle('switch-view', (event, view) => {
 
 // ---- 店铺管理 IPC（列表/分组） ----
 
-ipcMain.handle('get-shops', () => store.get('shops'));
+ipcMain.handle('get-shops', async () => {
+  if (shopManager) {
+    const result = await shopManager.syncShopsFromTokenFiles({ broadcast: false });
+    return Array.isArray(result?.shops) ? result.shops : result;
+  }
+  return store.get('shops');
+});
 
 ipcMain.handle('save-shops', (event, shops) => {
+  if (shopManager) return shopManager.saveShopMetadata(shops);
   store.set('shops', shops);
   return true;
 });
@@ -1900,10 +2091,6 @@ function appendUnmatchedLog(data) {
 // ---- App Lifecycle ----
 
 function initMockData() {
-  const shops = store.get('shops');
-  if (!shops || shops.length === 0) {
-    store.set('shops', MOCK_SHOPS);
-  }
   if (!store.get('shopGroups') || store.get('shopGroups').length === 0) {
     store.set('shopGroups', MOCK_GROUPS);
   }
@@ -2000,17 +2187,9 @@ app.whenReady().then(async () => {
   await migrateOldData();
   createMainWindow();
 
+  await shopManager.syncShopsFromTokenFiles({ broadcast: false, forceApplyTokens: true });
+
   normalizeStoredPddUrls();
-
-  const devTokenPath = path.join(__dirname, '..', '..', 'test', 'tokens', 'sample-token.json');
-  const hasDevToken = fs.existsSync(devTokenPath);
-
-  console.log(`[PDD助手] NODE_ENV=${process.env.NODE_ENV}, devToken存在=${hasDevToken}`);
-
-  if (hasDevToken) {
-    console.log('[PDD助手] 检测到 test token，通过 ShopManager 导入');
-    await shopManager.addByToken(devTokenPath);
-  }
 
   // 启动后状态检查 + 页面结构诊断
   setTimeout(() => {
@@ -2163,20 +2342,16 @@ app.whenReady().then(async () => {
     });
   }, 15000);
 
-  if (!hasDevToken) {
-    // 恢复上次活跃的店铺
-    const activeId = store.get('activeShopId');
-    const shops = store.get('shops') || [];
-    if (activeId && shops.find(s => s.id === activeId)) {
-      await shopManager.restoreCookies(activeId);
-      shopManager.switchTo(activeId);
-    } else if (shops.length > 0) {
-      // 没有明确的 activeShopId，选第一个实际可用的店铺
-      const realShop = shops.find(s => s.mallId || s.loginMethod);
-      if (realShop) {
-        await shopManager.restoreCookies(realShop.id);
-        shopManager.switchTo(realShop.id);
-      }
+  const activeId = store.get('activeShopId');
+  const shops = store.get('shops') || [];
+  if (activeId && shops.find(s => s.id === activeId)) {
+    await shopManager.restoreCookies(activeId);
+    shopManager.switchTo(activeId);
+  } else if (shops.length > 0) {
+    const realShop = shops.find(s => s.mallId || s.loginMethod);
+    if (realShop) {
+      await shopManager.restoreCookies(realShop.id);
+      shopManager.switchTo(realShop.id);
     }
   }
 });

@@ -15,12 +15,14 @@ class ShopManager {
   constructor(mainWindow, store, options = {}) {
     this.mainWindow = mainWindow;
     this.store = store;
+    this.tokenFileStore = options.tokenFileStore || null;
     this.views = new Map();           // shopId -> BrowserView
     this.activeShopId = null;
     this.onLog = options.onLog || (() => {});
     this.onInjectScript = options.onInjectScript || (() => {});
     this.onNetworkMonitor = options.onNetworkMonitor || (() => {});
     this.onDetectChat = options.onDetectChat || (() => {});
+    this.onTokenUpdated = options.onTokenUpdated || (() => {});
     this._pendingQRShopId = null;     // 扫码登录中的临时 shopId
   }
 
@@ -32,6 +34,258 @@ class ShopManager {
 
   _getChatUrl() {
     return this.store.get('chatUrl') || PDD_CHAT_URL;
+  }
+
+  _getTokenStoreKey(shopId) {
+    return `shopTokens.${shopId}`;
+  }
+
+  _buildTokenInfo(tokenData = {}, mallId = '', userId = '', tokenStr = '') {
+    return {
+      token: tokenStr || '',
+      mallId: mallId ? String(mallId) : '',
+      userId: userId || '',
+      raw: tokenData.windowsAppShopToken || '',
+      userAgent: tokenData.userAgent || '',
+      pddid: tokenData.pddid || ''
+    };
+  }
+
+  _saveTokenInfo(shopId, tokenInfo) {
+    if (!shopId || !tokenInfo) return null;
+    const normalized = {
+      token: tokenInfo.token || '',
+      mallId: tokenInfo.mallId ? String(tokenInfo.mallId) : '',
+      userId: tokenInfo.userId || '',
+      raw: tokenInfo.raw || '',
+      userAgent: tokenInfo.userAgent || '',
+      pddid: tokenInfo.pddid || ''
+    };
+    if (!normalized.raw && !normalized.token && !normalized.mallId && !normalized.userAgent && !normalized.pddid) {
+      this.clearTokenInfo(shopId);
+      return null;
+    }
+    if (!global.__pddTokens) global.__pddTokens = {};
+    global.__pddTokens[shopId] = normalized;
+    this.store.set(this._getTokenStoreKey(shopId), normalized);
+    return normalized;
+  }
+
+  restoreAllTokenInfo() {
+    const shops = this.store.get('shops') || [];
+    global.__pddTokens = {};
+    let restored = 0;
+    for (const shop of shops) {
+      const tokenInfo = this.store.get(this._getTokenStoreKey(shop.id));
+      if (!tokenInfo) continue;
+      if (this._saveTokenInfo(shop.id, tokenInfo)) {
+        restored++;
+      }
+    }
+    if (restored > 0) {
+      this.onLog(`[PDD助手] 已恢复 ${restored} 个店铺 Token`);
+    }
+    return restored;
+  }
+
+  clearTokenInfo(shopId) {
+    if (global.__pddTokens) {
+      delete global.__pddTokens[shopId];
+    }
+    this.store.delete(this._getTokenStoreKey(shopId));
+  }
+
+  async _applyTokenDataToSession(shopId, tokenData = {}) {
+    const partition = this._getPartition(shopId);
+    const ses = session.fromPartition(partition);
+
+    await ses.clearStorageData();
+    await ses.clearCache();
+
+    let cookieCount = 0;
+    for (const cookieStr of (tokenData.mallCookies || [])) {
+      const eqIdx = cookieStr.indexOf('=');
+      if (eqIdx < 0) continue;
+      await ses.cookies.set({
+        url: 'https://mms.pinduoduo.com',
+        name: cookieStr.slice(0, eqIdx),
+        value: cookieStr.slice(eqIdx + 1),
+        domain: '.pinduoduo.com',
+        path: '/',
+        secure: true,
+        httpOnly: true
+      });
+      cookieCount++;
+    }
+
+    if (tokenData.pddid) {
+      await ses.cookies.set({
+        url: 'https://mms.pinduoduo.com',
+        name: 'pddid',
+        value: tokenData.pddid,
+        domain: '.pinduoduo.com',
+        path: '/'
+      });
+      cookieCount++;
+    }
+
+    return cookieCount;
+  }
+
+  _buildShopFromTokenRecord(record, previousShop = {}) {
+    const previousName = previousShop.name || '';
+    const autoNames = [
+      '扫码登录中...',
+      previousShop.mallId ? `店铺 ${previousShop.mallId}` : '',
+      previousShop.id ? `店铺 ${previousShop.id.slice(-6)}` : '',
+      previousShop.id ? `新店铺 ${previousShop.id.slice(-6)}` : ''
+    ].filter(Boolean);
+    const name = !previousName || autoNames.includes(previousName)
+      ? (record.tokenInfo.mallId ? `店铺 ${record.tokenInfo.mallId}` : previousName || `店铺 ${record.shopId.slice(-6)}`)
+      : previousName;
+
+    return {
+      id: record.shopId,
+      name,
+      account: previousShop.account || '',
+      mallId: record.tokenInfo.mallId || previousShop.mallId || '',
+      group: previousShop.group || '',
+      remark: previousShop.remark || '',
+      status: 'online',
+      loginMethod: 'token',
+      userAgent: record.tokenInfo.userAgent || previousShop.userAgent || '',
+      bindTime: previousShop.bindTime || record.bindTime,
+      category: previousShop.category || '待分类',
+      balance: Number(previousShop.balance || 0),
+      tokenFileName: record.fileName,
+      tokenUpdatedAt: record.updatedAt
+    };
+  }
+
+  _disposeView(shopId) {
+    const view = this.views.get(shopId);
+    if (!view) return;
+    if (this.activeShopId === shopId && this.mainWindow) {
+      try { this.mainWindow.removeBrowserView(view); } catch {}
+    }
+    try { view.webContents.close(); } catch {}
+    this.views.delete(shopId);
+  }
+
+  async syncShopsFromTokenFiles(options = {}) {
+    if (!this.tokenFileStore) {
+      return this.getShopList();
+    }
+
+    const broadcast = options.broadcast !== false;
+    const forceApplyTokens = options.forceApplyTokens === true;
+    const previousShops = this.store.get('shops') || [];
+    const previousById = new Map(previousShops.map(shop => [shop.id, shop]));
+    const previousByMallId = new Map(previousShops.filter(shop => shop.mallId).map(shop => [String(shop.mallId), shop]));
+    const previousFiles = this.store.get('shopTokenFiles') || {};
+    const records = this.tokenFileStore.listTokenRecords();
+    const nextFiles = {};
+    const nextShops = [];
+    const cookieCountByShopId = {};
+    const createdShopIds = [];
+    const refreshedShopIds = [];
+    const removedShopIds = new Set([
+      ...Object.keys(previousFiles),
+      ...previousShops.map(shop => shop.id)
+    ]);
+
+    for (const record of records) {
+      removedShopIds.delete(record.shopId);
+      const previousShop = previousById.get(record.shopId) || previousByMallId.get(record.tokenInfo.mallId) || {};
+      const nextShop = this._buildShopFromTokenRecord(record, previousShop);
+      nextShops.push(nextShop);
+      nextFiles[record.shopId] = {
+        fileName: record.fileName,
+        filePath: record.filePath,
+        updatedAt: record.updatedAt
+      };
+
+      const previousFile = previousFiles[record.shopId];
+      const shouldRefresh = forceApplyTokens || !previousFile
+        || previousFile.updatedAt !== record.updatedAt
+        || previousFile.filePath !== record.filePath;
+
+      this._saveTokenInfo(record.shopId, this._buildTokenInfo({
+        ...record.tokenData,
+        userAgent: nextShop.userAgent
+      }, nextShop.mallId, record.tokenInfo.userId, record.tokenInfo.token));
+
+      if (shouldRefresh) {
+        cookieCountByShopId[record.shopId] = await this._applyTokenDataToSession(record.shopId, record.tokenData);
+        const view = this.views.get(record.shopId);
+        if (view && nextShop.userAgent) {
+          view.webContents.setUserAgent(nextShop.userAgent);
+        }
+        this.onTokenUpdated(record.shopId);
+        if (previousFile) refreshedShopIds.push(record.shopId);
+        else createdShopIds.push(record.shopId);
+      }
+    }
+
+    for (const shopId of removedShopIds) {
+      this._disposeView(shopId);
+      this.clearTokenInfo(shopId);
+      this.store.delete(`shopCookies.${shopId}`);
+      this.onTokenUpdated(shopId);
+    }
+
+    this.store.set('shopTokenFiles', nextFiles);
+    this.store.set('shops', nextShops);
+
+    const activeShopRemoved = this.activeShopId && !nextShops.find(shop => shop.id === this.activeShopId);
+    if (activeShopRemoved) {
+      this.activeShopId = null;
+      this.store.set('activeShopId', '');
+    }
+
+    if (!this.activeShopId && nextShops.length > 0) {
+      if (broadcast && this.mainWindow) {
+        this.switchTo(nextShops[0].id);
+      } else {
+        this.activeShopId = nextShops[0].id;
+        this.store.set('activeShopId', nextShops[0].id);
+      }
+    }
+
+    if (broadcast && this.mainWindow) {
+      this.mainWindow.webContents.send('shop-list-updated', { shops: nextShops });
+    }
+
+    return {
+      shops: nextShops,
+      cookieCountByShopId,
+      createdShopIds,
+      refreshedShopIds
+    };
+  }
+
+  saveShopMetadata(shops = []) {
+    const currentShops = this.store.get('shops') || [];
+    const updates = new Map((shops || []).map(shop => [shop.id, shop]));
+    const merged = currentShops.map(shop => {
+      const next = updates.get(shop.id);
+      if (!next) return shop;
+      return {
+        ...shop,
+        name: next.name || shop.name,
+        account: next.account || '',
+        group: next.group || '',
+        remark: next.remark || '',
+        category: next.category || shop.category,
+        balance: Number(next.balance || 0),
+        status: next.status || shop.status
+      };
+    });
+    this.store.set('shops', merged);
+    if (this.mainWindow) {
+      this.mainWindow.webContents.send('shop-list-updated', { shops: merged });
+    }
+    return true;
   }
 
   _isMerchantUrl(url) {
@@ -223,6 +477,37 @@ class ShopManager {
   // ---- 添加店铺: Token 导入 ----
 
   async addByToken(filePath) {
+    if (this.tokenFileStore) {
+      if (!filePath) {
+        const { canceled, filePaths } = await dialog.showOpenDialog(this.mainWindow, {
+          title: '选择 Token 文件',
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+          properties: ['openFile']
+        });
+        if (canceled || !filePaths.length) return { canceled: true };
+        filePath = filePaths[0];
+      }
+
+      const imported = this.tokenFileStore.importTokenFile(filePath);
+      const { shops, cookieCountByShopId, createdShopIds } = await this.syncShopsFromTokenFiles({ broadcast: true });
+      const targetShop = shops.find(shop => shop.id === imported.shopId) || null;
+      if (targetShop) {
+        this.switchTo(targetShop.id);
+        this._detectShopName(targetShop.id);
+      }
+      if (createdShopIds.includes(imported.shopId) && targetShop) {
+        this.mainWindow.webContents.send('shop-added', { shop: targetShop });
+      }
+      this.onLog(`[PDD助手] Token 文件已纳入管理: ${imported.fileName}, mallId=${imported.tokenInfo.mallId || '未知'}, shopId=${imported.shopId}`);
+      return {
+        shopId: imported.shopId,
+        cookieCount: cookieCountByShopId[imported.shopId] || 0,
+        mallId: imported.tokenInfo.mallId || '',
+        refreshed: !createdShopIds.includes(imported.shopId),
+        fileName: imported.fileName
+      };
+    }
+
     if (!filePath) {
       const { canceled, filePaths } = await dialog.showOpenDialog(this.mainWindow, {
         title: '选择 Token 文件',
@@ -307,18 +592,7 @@ class ShopManager {
     shops.push(shop);
     this.store.set('shops', shops);
 
-    // 保存 token 信息到全局供 API 调用使用
-    if (!global.__pddTokens) global.__pddTokens = {};
-    if (mallId) {
-      global.__pddTokens[shopId] = {
-        token: tokenStr,
-        mallId,
-        userId,
-        raw: tokenData.windowsAppShopToken,
-        userAgent: tokenData.userAgent || '',
-        pddid: tokenData.pddid || ''
-      };
-    }
+    this._saveTokenInfo(shopId, this._buildTokenInfo(tokenData, mallId, userId, tokenStr));
 
     this.switchTo(shopId);
 
@@ -333,38 +607,7 @@ class ShopManager {
   }
 
   async _refreshTokenForShop(shopId, tokenData, mallId, userId, tokenStr) {
-    const partition = this._getPartition(shopId);
-    const ses = session.fromPartition(partition);
-
-    await ses.clearStorageData();
-    await ses.clearCache();
-
-    let cookieCount = 0;
-    for (const cookieStr of (tokenData.mallCookies || [])) {
-      const eqIdx = cookieStr.indexOf('=');
-      if (eqIdx < 0) continue;
-      await ses.cookies.set({
-        url: 'https://mms.pinduoduo.com',
-        name: cookieStr.slice(0, eqIdx),
-        value: cookieStr.slice(eqIdx + 1),
-        domain: '.pinduoduo.com',
-        path: '/',
-        secure: true,
-        httpOnly: true
-      });
-      cookieCount++;
-    }
-
-    if (tokenData.pddid) {
-      await ses.cookies.set({
-        url: 'https://mms.pinduoduo.com',
-        name: 'pddid',
-        value: tokenData.pddid,
-        domain: '.pinduoduo.com',
-        path: '/'
-      });
-      cookieCount++;
-    }
+    const cookieCount = await this._applyTokenDataToSession(shopId, tokenData);
 
     // 更新 UA
     const shops = this.store.get('shops') || [];
@@ -381,15 +624,11 @@ class ShopManager {
       view.webContents.setUserAgent(tokenData.userAgent);
     }
 
-    if (!global.__pddTokens) global.__pddTokens = {};
-    global.__pddTokens[shopId] = {
-      token: tokenStr,
-      mallId,
-      userId,
-      raw: tokenData.windowsAppShopToken,
-      userAgent: tokenData.userAgent || shop?.userAgent || '',
-      pddid: tokenData.pddid || ''
-    };
+    this._saveTokenInfo(shopId, this._buildTokenInfo({
+      ...tokenData,
+      userAgent: tokenData.userAgent || shop?.userAgent || ''
+    }, mallId || shop?.mallId || '', userId, tokenStr));
+    this.onTokenUpdated(shopId);
 
     this.switchTo(shopId);
     if (view) view.webContents.loadURL(this._getChatUrl());
@@ -403,6 +642,10 @@ class ShopManager {
   // ---- 添加店铺: 扫码登录 ----
 
   async addByQRCode() {
+    if (this.tokenFileStore) {
+      return { error: '当前店铺管理仅支持 Token 文件模式' };
+    }
+
     const shopId = 'shop_' + Date.now();
 
     const shop = {
@@ -493,6 +736,19 @@ class ShopManager {
   // ---- 店铺管理 ----
 
   removeShop(shopId) {
+    if (this.tokenFileStore) {
+      const removed = this.tokenFileStore.removeTokenFile(shopId);
+      if (!removed) return false;
+      this._disposeView(shopId);
+      this.clearTokenInfo(shopId);
+      this.store.delete(`shopCookies.${shopId}`);
+      this.onTokenUpdated(shopId);
+      this.syncShopsFromTokenFiles({ broadcast: true }).catch(err => {
+        this.onLog(`[PDD助手] 同步 Token 店铺失败: ${err.message}`);
+      });
+      return true;
+    }
+
     // 不能删除当前活跃且唯一的店铺...或者可以
     const view = this.views.get(shopId);
     if (view) {
@@ -522,7 +778,8 @@ class ShopManager {
     }
 
     this.mainWindow.webContents.send('shop-list-updated', { shops });
-    if (global.__pddTokens) delete global.__pddTokens[shopId];
+    this.onTokenUpdated(shopId);
+    this.clearTokenInfo(shopId);
     return true;
   }
 

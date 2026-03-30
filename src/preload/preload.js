@@ -99,6 +99,7 @@ contextBridge.exposeInMainWorld('pddApi', {
 
   // 调试窗口
   openDebugWindow: () => ipcRenderer.invoke('open-debug-window'),
+  debugLog: (payload) => ipcRenderer.send('renderer-debug-log', payload),
 
   // 测试自动回复
   testAutoReply: () => ipcRenderer.invoke('test-auto-reply'),

@@ -3216,6 +3216,24 @@
       white-space: pre-wrap;
     }
 
+    .api-message-image {
+      display: block;
+      max-width: 180px;
+      max-height: 180px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .api-inline-emoji {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.4em;
+      font-size: 20px;
+      line-height: 1;
+      vertical-align: text-bottom;
+    }
+
     .api-message-time {
       font-size: 11px;
       color: #999;
@@ -3258,6 +3276,107 @@
 
     .api-composer-toolbar span:hover {
       color: #e02e24;
+    }
+
+    .api-composer-tool {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .api-composer-tool:hover,
+    .api-composer-tool.active {
+      color: #e02e24;
+    }
+
+    .api-composer-tool.is-muted {
+      color: #777;
+    }
+
+    .api-emoji-panel {
+      display: none;
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 340px;
+      background: #fff;
+      border: 1px solid #d9dee8;
+      border-radius: 10px;
+      box-shadow: 0 12px 28px rgba(52, 74, 104, 0.2);
+      overflow: hidden;
+      z-index: 2000;
+    }
+
+    .api-emoji-panel.visible {
+      display: block;
+    }
+
+    .api-emoji-panel::after {
+      content: '';
+      position: absolute;
+      left: 24px;
+      top: 100%;
+      width: 12px;
+      height: 12px;
+      background: #fff;
+      border-right: 1px solid #d9dee8;
+      border-bottom: 1px solid #d9dee8;
+      transform: translateY(-7px) rotate(45deg);
+    }
+
+    .api-emoji-content {
+      padding: 14px 12px;
+      background: #fff;
+      overflow-y: auto;
+      min-height: 292px;
+      max-height: 320px;
+    }
+
+    .api-emoji-grid {
+      display: grid;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .api-emoji-item {
+      width: 100%;
+      height: 34px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: #fff;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .api-emoji-item:hover {
+      background: #fff5ee;
+      border-color: #ffd5c4;
+      transform: translateY(-1px);
+    }
+
+    .api-emoji-glyph {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .api-emoji-image {
+      width: 22px;
+      height: 22px;
+      object-fit: contain;
+      pointer-events: none;
+      user-select: none;
     }
 
     .api-compose-notice {
@@ -3390,6 +3509,63 @@
 
     .api-side-order-empty {
       color: #b8bec8;
+      word-break: break-word;
+    }
+
+    .api-side-debug-card {
+      padding: 12px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #e6ebf2;
+      margin-bottom: 14px;
+    }
+
+    .api-side-debug-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #5d6472;
+      margin-bottom: 10px;
+    }
+
+    .api-side-debug-list {
+      max-height: 70%;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .api-side-debug-item {
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #f7f9fc;
+      border: 1px solid #edf1f6;
+    }
+
+    .api-side-debug-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+      color: #5d6472;
+      margin-bottom: 4px;
+    }
+
+    .api-side-debug-label {
+      font-weight: 600;
+      color: #4f46e5;
+    }
+
+    .api-side-debug-time {
+      color: #9aa3b2;
+      white-space: nowrap;
+    }
+
+    .api-side-debug-detail {
+      font-size: 12px;
+      line-height: 1.6;
+      color: #7f8796;
       word-break: break-word;
     }
 
@@ -4878,10 +5054,10 @@
               <span class="api-session-summary-count" id="apiTodoHint">当前没有待处理接口会话</span>
             </div>
             <div class="api-session-list" id="apiSessionList"></div>
-            <div class="api-group-link" id="apiLoadMoreSessions">刷新当前列表 》</div>
+            <div class="api-group-link" id="apiLoadMoreSessions">刷新当前列表 ...</div>
           </div>
           <div class="api-chat-main">
-            <div class="api-chat-main-inner">
+            <div class="api-chat-main-inner is-empty-session">
               <div class="api-conversation-header">
                 <div>
                   <div class="api-conversation-title">
@@ -4897,10 +5073,16 @@
               <div class="api-message-list" id="apiMessageList"></div>
               <div class="api-composer">
                 <div class="api-composer-toolbar">
-                  <span>😊</span>
-                  <span>🖼️</span>
-                  <span>📁</span>
-                  <span>🎫</span>
+                  <button class="api-composer-tool" id="btnApiEmojiToggle" type="button" aria-label="打开表情面板">😊</button>
+                  <div class="api-emoji-panel" id="apiEmojiPanel">
+                    <div class="api-emoji-content">
+                      <div class="api-emoji-grid" id="apiEmojiGrid"></div>
+                    </div>
+                  </div>
+                  <button class="api-composer-tool is-muted" id="btnApiSendImage" type="button"
+                    aria-label="选择图片发送">🖼️</button>
+                  <!-- <span>📁</span>
+                  <span>🎫</span> -->
                   <span>🔗</span>
                   <span>⤴</span>
                   <span>🛡</span>
@@ -4910,9 +5092,8 @@
                   <span style="color:#999;">小额打款</span>
                 </div>
                 <div class="api-compose-inputbar">
-                  <textarea id="apiMessageInput" placeholder="输入要通过接口发送的消息..."></textarea>
+                  <textarea id="apiMessageInput" placeholder="输入要发送的消息..."></textarea>
                   <div class="api-composer-actions">
-                    <span class="api-panel-subtitle" id="apiComposerHint">当前用于测试抓到的接口实现</span>
                     <button class="btn btn-primary" id="btnApiSendMessage">发送</button>
                   </div>
                 </div>
@@ -4938,6 +5119,10 @@
                 <button class="api-side-tab" data-api-side-tab="pending">店铺待支付</button>
               </div>
               <div class="api-side-order-stage">
+                <div class="api-side-debug-card">
+                  <div class="api-side-debug-title">接口同步状态</div>
+                  <div class="api-side-debug-list" id="apiSideSyncState"></div>
+                </div>
                 <div class="api-side-order-empty" id="apiSideOrderEmpty">近90天无订单，更早订单请在管理后台查看</div>
               </div>
             </div>
@@ -5855,6 +6040,86 @@
     let examQuestions = [];
     let scannedShops = [];
     const API_ALL_SHOPS = '__all__';
+    const API_EMOJI_GROUPS = [
+      {
+        key: 'face',
+        icon: '😊',
+        label: '表情',
+        items: [
+          { name: '嘻嘻', preview: '😁' },
+          { name: '撇嘴', preview: '🥺' },
+          { name: '大爱', preview: '😍' },
+          { name: '呆住', preview: '😳' },
+          { name: '酷', preview: '😎' },
+          { name: '流泪', preview: '😭' },
+          { name: '害羞', preview: '😌' },
+          { name: '困', preview: '🙄' },
+          { name: '大哭', preview: '😫' },
+          { name: '耶', preview: '😜' },
+          { name: '惊讶', preview: '😲' },
+          { name: '难过', preview: '😔' },
+          { name: '囧', preview: '😳' },
+          { name: '抓狂', preview: '😂' },
+          { name: '偷笑', preview: '🤭' },
+          { name: '愉快', preview: '😊' },
+          { name: '偷看', preview: '🫣' },
+          { name: '馋', preview: '😋' },
+          { name: '羡慕', preview: '🥹' },
+          { name: '汗', preview: '😅' },
+          { name: '大笑', preview: '😄' },
+          { name: 'skr', preview: '😎' },
+          { name: '奋斗', preview: '😤' },
+          { name: '疑问', preview: '😕' },
+          { name: '嘘', preview: '🤫' },
+          { name: '晕', preview: '🌀' },
+          { name: '衰', preview: '😵' },
+          { name: '生病', preview: '😷' },
+          { name: '再见', preview: '😔' },
+          { name: '擦汗', preview: '😓' },
+          { name: '抠鼻', preview: '🤔' },
+          { name: '鼓掌', preview: '👏' },
+          { name: '坏笑', preview: '😏' },
+          { name: '左哼哼', preview: '😤' },
+          { name: '右哼哼', preview: '😤' },
+          { name: '皱眉', preview: '😣' },
+          { name: '委屈', preview: '🥺' },
+          { name: '哭了', preview: '😢' },
+          { name: '阴险', preview: '😼' },
+          { name: '亲亲', preview: '😘' },
+          { name: '可怜', preview: '🥹' },
+          { name: '笑哭', preview: '😂' },
+          { name: '捂脸', preview: '🤦' },
+          { name: '吐舌头', preview: '😝' },
+          { name: '头疼', preview: '😣' },
+          { name: '吃手', preview: '🤭' },
+          { name: '吃手手', preview: '🫣' },
+          { name: '小心心', preview: '🥰' }
+        ]
+      },
+      {
+        key: 'action',
+        icon: '👍',
+        label: '动作',
+        items: [
+          { name: '好的', preview: '👌' },
+          { name: '点赞', preview: '👍' },
+          { name: '握手', preview: '🤝' },
+          { name: '强壮', preview: '💪' },
+          { name: '拥抱', preview: '🤗' },
+          { name: '玫瑰', preview: '🌹', previewImage: './assets/pdd-emoji/rose.svg' },
+          { name: '凋谢', preview: '🥀', previewImage: './assets/pdd-emoji/wilted-rose.svg' },
+          { name: '爱心', preview: '❤️' },
+          { name: '心碎', preview: '💔' },
+          { name: '买买买', preview: '🛍️' },
+          { name: '加油', preview: '⛽' },
+          { name: '好有钱', preview: '🤑' }
+        ]
+      }
+    ];
+    const API_EMOJI_MAP = new Map(
+      API_EMOJI_GROUPS.flatMap(group => group.items.map(item => [item.name, item]))
+    );
+    const API_EMOJIS = API_EMOJI_GROUPS.flatMap(group => group.items);
     let activeShopId = null;
     let apiSelectedShopId = API_ALL_SHOPS;
     let apiSessions = [];
@@ -5862,9 +6127,16 @@
     let apiActiveSessionId = '';
     let apiActiveSessionName = '';
     let apiActiveSessionShopId = '';
+    let apiHasUserSelectedSession = false;
     let apiPolling = false;
+    let apiPollingScope = '';
     let apiTokenStatus = null;
     let apiTrafficEntries = [];
+    let apiInitialLoadRetryTimer = null;
+    let apiInitialLoadRetryCount = 0;
+    let apiWarmupRefreshTimers = [];
+    let apiPostSendRefreshTimer = null;
+    let apiSyncStateEntries = [];
     let mailApiEntries = [];
     let mailApiOverview = null;
     let mailApiList = [];
@@ -5919,9 +6191,10 @@
       await window.pddApi.switchView(view);
 
       if (previousView === 'chat-api' && view !== 'chat-api' && apiPolling) {
-        const pollingScope = apiSelectedShopId === API_ALL_SHOPS ? API_ALL_SHOPS : (apiSelectedShopId || activeShopId);
-        await window.pddApi.apiStopPolling({ shopId: pollingScope });
-        apiPolling = false;
+        await stopApiPollingScope();
+      }
+      if (previousView === 'chat-api' && view !== 'chat-api') {
+        clearApiWarmupRefreshTimers();
       }
 
       if (view === 'chat') {
@@ -6047,7 +6320,138 @@
     }
 
     function setApiHint(text) {
-      document.getElementById('apiComposerHint').textContent = text;
+      const hintEl = document.getElementById('apiComposerHint');
+      if (!hintEl) return;
+      hintEl.textContent = text;
+    }
+
+    function toggleApiEmojiPanel(forceVisible) {
+      const panel = document.getElementById('apiEmojiPanel');
+      const button = document.getElementById('btnApiEmojiToggle');
+      if (!panel || !button) return false;
+      const visible = typeof forceVisible === 'boolean' ? forceVisible : !panel.classList.contains('visible');
+      panel.classList.toggle('visible', visible);
+      button.classList.toggle('active', visible);
+      if (visible) {
+        requestAnimationFrame(syncApiEmojiPanelPosition);
+      }
+      return visible;
+    }
+
+    function syncApiEmojiPanelPosition() {
+      const panel = document.getElementById('apiEmojiPanel');
+      const button = document.getElementById('btnApiEmojiToggle');
+      if (!panel || !button || !panel.classList.contains('visible')) return;
+      const rect = button.getBoundingClientRect();
+      const panelWidth = panel.offsetWidth || 310;
+      const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12);
+      const left = Math.min(Math.max(12, rect.left - 8), maxLeft);
+      const top = Math.max(12, rect.top - panel.offsetHeight - 14);
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+    }
+
+    function insertApiMessageText(text) {
+      const input = document.getElementById('apiMessageInput');
+      if (!input || !text) return;
+      const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
+      const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
+      const value = input.value;
+      input.value = value.slice(0, start) + text + value.slice(end);
+      input.focus();
+      const cursor = start + text.length;
+      input.setSelectionRange(cursor, cursor);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function renderApiPddEmojiHtml(text = '') {
+      const source = String(text || '');
+      if (!source) return '';
+      const pattern = /\[([^[\]]+)\]/g;
+      let lastIndex = 0;
+      let html = '';
+      source.replace(pattern, (match, name, offset) => {
+        html += esc(source.slice(lastIndex, offset));
+        const item = API_EMOJI_MAP.get(name);
+        html += item
+          ? `<span class="api-inline-emoji" title="${esc(match)}">${esc(item.preview)}</span>`
+          : esc(match);
+        lastIndex = offset + match.length;
+        return match;
+      });
+      html += esc(source.slice(lastIndex));
+      return html;
+    }
+
+    function renderApiEmojiPanel() {
+      const grid = document.getElementById('apiEmojiGrid');
+      if (!grid) return;
+      grid.innerHTML = API_EMOJIS
+        .map(item => `<button class="api-emoji-item" type="button" data-emoji-value="[${item.name}]" data-emoji-name="${item.name}" title="${item.name}">${item.previewImage ? `<img class="api-emoji-image" src="${esc(item.previewImage)}" alt="${esc(item.name)}">` : `<span class="api-emoji-glyph">${esc(item.preview)}</span>`}</button>`)
+        .join('');
+      grid.querySelectorAll('.api-emoji-item').forEach(item => {
+        item.addEventListener('click', event => {
+          event.stopPropagation();
+          insertApiMessageText(item.dataset.emojiValue || '');
+          toggleApiEmojiPanel(false);
+        });
+      });
+    }
+
+    function recordApiSyncState(label, detail = '') {
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      apiSyncStateEntries.unshift({ label, detail, time });
+      apiSyncStateEntries = apiSyncStateEntries.slice(0, 8);
+      renderApiSyncState();
+    }
+
+    function renderApiSyncState() {
+      const container = document.getElementById('apiSideSyncState');
+      if (!container) return;
+      if (!apiSyncStateEntries.length) {
+        container.innerHTML = '<div class="api-side-debug-item"><div class="api-side-debug-detail">等待进入接口页后同步状态。</div></div>';
+        return;
+      }
+      container.innerHTML = apiSyncStateEntries.map(item => `
+        <div class="api-side-debug-item">
+          <div class="api-side-debug-head">
+            <span class="api-side-debug-label">${esc(item.label)}</span>
+            <span class="api-side-debug-time">${esc(item.time)}</span>
+          </div>
+          <div class="api-side-debug-detail">${esc(item.detail || '执行中')}</div>
+        </div>
+      `).join('');
+    }
+
+    function getLatestApiTrafficEntry(urlPart) {
+      for (const entry of apiTrafficEntries) {
+        if (String(entry?.url || '').includes(urlPart)) {
+          return entry;
+        }
+      }
+      return null;
+    }
+
+    function formatApiTrafficDiag(urlPart, label) {
+      const entry = getLatestApiTrafficEntry(urlPart);
+      if (!entry) return `${label}未见请求`;
+      const status = Number(entry.status || 0);
+      if (status >= 400) return `${label}${status}`;
+      if (status > 0) return `${label}${status}`;
+      return `${label}已发起`;
+    }
+
+    function getApiTrafficDiagText() {
+      return [
+        formatApiTrafficDiag('/plateau/chat/latest_conversations', '会话'),
+        formatApiTrafficDiag('/plateau/chat/list', '消息'),
+      ].join(' · ');
+    }
+
+    function withApiTrafficDiag(text) {
+      const diagText = getApiTrafficDiagText();
+      return diagText ? `${text}（${diagText}）` : text;
     }
 
     function isEmbeddedPddView(view) {
@@ -6125,6 +6529,17 @@
       if (preferActiveSession && apiActiveSessionShopId) return apiActiveSessionShopId;
       if (apiSelectedShopId !== API_ALL_SHOPS) return apiSelectedShopId;
       return activeShopId || shops[0]?.id || '';
+    }
+
+    function getApiAuthStatusText() {
+      if (!apiTokenStatus) return '未读取';
+      if (apiTokenStatus.error) return apiTokenStatus.error;
+      if (!apiTokenStatus.hasToken) return '未导入';
+      if (apiTokenStatus.authHint) return apiTokenStatus.authHint;
+      if (apiTokenStatus.authState === 'token_missing') return '缺少 Token';
+      if (apiTokenStatus.authState === 'expired' || apiTokenStatus.authExpired) return '登录已失效';
+      if (!apiTokenStatus.sessionInited) return '待初始化';
+      return '正常';
     }
 
     function getApiScopedSessions() {
@@ -6226,23 +6641,24 @@
       renderApiSessions();
     }
 
+    function clearApiActiveSession() {
+      apiActiveSessionId = '';
+      apiActiveSessionName = '';
+      apiActiveSessionShopId = '';
+      apiMessages = [];
+      apiHasUserSelectedSession = false;
+    }
+
     async function syncApiSelectionWithFilter() {
       const sessions = getVisibleApiSessions();
       const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
       const currentVisible = sessions.find(item => item.sessionKey === currentKey);
       renderApiSessions();
       if (currentVisible) return;
-      if (!sessions.length) {
-        apiActiveSessionId = '';
-        apiActiveSessionName = '';
-        apiActiveSessionShopId = '';
-        apiMessages = [];
-        renderApiMessages();
-        await loadApiTokenStatus(getApiStatusShopId(false));
-        await loadApiTraffic(getApiStatusShopId(true));
-        return;
-      }
-      await openApiSession(sessions[0].sessionId, sessions[0].customerName, sessions[0].shopId);
+      clearApiActiveSession();
+      renderApiMessages();
+      await loadApiTokenStatus(getApiStatusShopId(false));
+      await loadApiTraffic(getApiStatusShopId(true));
     }
 
     function renderApiSessions() {
@@ -6286,7 +6702,7 @@
                 </div>
               </div>
             </div>
-            <div class="api-session-item-text">${esc(session.lastMessage || '暂无消息')}</div>
+            <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
           </div>
         </div>`;
       }).join('');
@@ -6312,11 +6728,40 @@
       });
     }
 
+    function isApiImageMessage(message = {}) {
+      const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
+      if (['2', 'image', 'img', 'pic', 'picture'].includes(msgType)) return true;
+      const extraType = String(message?.extra?.type || message?.raw?.extra?.type || message?.raw?.ext?.type || '').toLowerCase();
+      if (['image', 'img', 'pic', 'picture'].includes(extraType)) return true;
+      const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
+      if (/\[(图片|image)\]/.test(rawContent)) return true;
+      if (/picture_url/.test(rawContent)) return true;
+      if (/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/.test(rawContent)) return true;
+      return false;
+    }
+
+    function getApiImageMessageUrl(message = {}) {
+      const candidates = [
+        message?.extra?.url,
+        message?.extra?.picture_url,
+        message?.raw?.extra?.url,
+        message?.raw?.extra?.picture_url,
+        message?.raw?.ext?.url,
+        message?.raw?.ext?.picture_url,
+      ].filter(Boolean);
+      if (candidates.length) return candidates[0];
+      const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
+      const urlMatch = rawText.match(/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/i);
+      if (urlMatch) return urlMatch[0];
+      const jsonMatch = rawText.match(/\{[^{}]*"picture_url"\s*:\s*"([^"]+)"[^{}]*\}/);
+      return jsonMatch?.[1] || '';
+    }
+
     function renderApiMessages() {
       const container = document.getElementById('apiMessageList');
       const mainInner = document.querySelector('.api-chat-main-inner');
-      const activeSession = getApiActiveSession();
-      const hasActiveSession = !!(apiActiveSessionId && activeSession);
+      const activeSession = apiHasUserSelectedSession ? getApiActiveSession() : null;
+      const hasActiveSession = !!(apiHasUserSelectedSession && apiActiveSessionId && activeSession);
       const shopName = activeSession?.shopName || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '未选择店铺');
       const unreadCount = Number(activeSession?.unreadCount || 0);
       const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
@@ -6358,10 +6803,13 @@
         const metaHtml = isBuyer
           ? `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span></div>`
           : `<div class="api-message-meta"><span class="api-message-status">${message.raw?.is_read ? '已读' : ''}</span><span class="api-message-time">${formatApiTime(message.timestamp)}</span><span class="api-message-sender">${esc(senderName)}</span></div>`;
+        const imageUrl = getApiImageMessageUrl(message);
         const bubbleHtml = isApiImageMessage(message)
-          ? ''
+          ? `<div class="api-message-bubble">
+              <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
+            </div>`
           : `<div class="api-message-bubble">
-              <div class="api-message-content">${esc(message.content || '')}</div>
+              <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
             </div>`;
         const divider = dayKey && dayKey !== lastDayKey
           ? `<div class="api-message-divider">${esc(formatApiDate(message.timestamp))}</div>`
@@ -6393,6 +6841,7 @@
         ['会话初始化', apiTokenStatus?.sessionInited ? '已建立' : '未建立'],
         ['认证状态', getApiAuthStatusText()],
         ['抓包记录', `${apiTrafficEntries.length} 条`],
+        ['最近接口', getApiTrafficDiagText()],
       ];
       statusEl.innerHTML = items.map(([label, value]) => `<div class="api-status-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join('');
       renderApiSideCards();
@@ -6410,10 +6859,11 @@
         pending: '暂无待支付订单，请在管理后台查看',
       };
       emptyEl.textContent = emptyTextMap[apiSideTab] || emptyTextMap.personal;
+      renderApiSyncState();
     }
 
     function renderApiTraffic() {
-      document.getElementById('apiTrafficSummary').textContent = `${apiTrafficEntries.length} 条抓包`;
+      document.getElementById('apiTrafficSummary').textContent = `${apiTrafficEntries.length} 条抓包 · ${getApiTrafficDiagText()}`;
       renderApiSideCards();
     }
 
@@ -7114,29 +7564,24 @@
     }
 
     async function loadApiSessions(options = {}) {
+      recordApiSyncState('拉取会话', `范围：${getApiScopeShopId() === API_ALL_SHOPS ? '显示所有店铺' : getApiScopeShopId() || '未选择店铺'}`);
       const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 50 });
       if (!Array.isArray(result)) {
-        setApiHint(result?.error || '获取接口会话失败');
+        recordApiSyncState('拉取失败', result?.error || '获取接口会话失败');
+        setApiHint(withApiTrafficDiag(result?.error || '获取接口会话失败'));
         return [];
       }
+      recordApiSyncState('拉取完成', `会话数：${result.length}`);
       apiSessions = result.map(item => buildApiSession(item));
       const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
       if (currentKey !== '::' && !apiSessions.find(item => item.sessionKey === currentKey)) {
-        apiActiveSessionId = '';
-        apiActiveSessionName = '';
-        apiActiveSessionShopId = '';
-        apiMessages = [];
+        clearApiActiveSession();
       }
       renderApiSessions();
-      if (options.keepCurrent && apiActiveSessionId && apiActiveSessionShopId) {
+      if (options.keepCurrent && apiHasUserSelectedSession && apiActiveSessionId && apiActiveSessionShopId) {
         await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId);
       } else {
-        const firstVisible = getVisibleApiSessions()[0];
-        if (firstVisible?.sessionId) {
-          await openApiSession(firstVisible.sessionId, firstVisible.customerName, firstVisible.shopId);
-        } else {
-          renderApiMessages();
-        }
+        renderApiMessages();
       }
       return result;
     }
@@ -7147,28 +7592,138 @@
         || apiStarredSessions.find(item => String(item.sessionId) === String(sessionId) && (!shopId || item.shopId === shopId))
         || null;
       const targetShopId = shopId || currentSession?.shopId || apiActiveSessionShopId || activeShopId;
+      const sessionDisplayName = customerName || currentSession?.customerName || sessionId;
       if (!targetShopId) {
+        recordApiSyncState('消息失败', `会话：${sessionDisplayName}，未找到可用店铺`);
         setApiHint('请先选择一个可用店铺');
         return;
       }
       apiActiveSessionId = String(sessionId);
       apiActiveSessionShopId = String(targetShopId);
       apiActiveSessionName = customerName || currentSession?.customerName || '';
+      apiHasUserSelectedSession = true;
+      apiMessages = [];
       renderApiSessions();
-      await loadApiTokenStatus(apiActiveSessionShopId);
-      setApiHint('正在通过接口加载消息...');
+      renderApiMessages();
+      recordApiSyncState('消息请求', `会话：${sessionDisplayName}，店铺：${currentSession?.shopName || apiActiveSessionShopId || '未知店铺'}`);
+      try {
+        await loadApiTokenStatus(apiActiveSessionShopId);
+      } catch (error) {
+        recordApiSyncState('状态失败', error?.message || '读取 Token 状态失败');
+      }
       const result = await window.pddApi.apiGetMessages({ shopId: apiActiveSessionShopId, sessionId: apiActiveSessionId, page: 1, pageSize: 50 });
       if (!Array.isArray(result)) {
         apiMessages = [];
         renderApiMessages();
-        setApiHint(result?.error || '获取接口消息失败');
+        recordApiSyncState('消息失败', `会话：${sessionDisplayName}，${result?.error || '获取接口消息失败'}`);
+        setApiHint(withApiTrafficDiag(result?.error || '获取接口消息失败'));
         return;
       }
       apiMessages = result;
       renderApiMessages();
+      recordApiSyncState(
+        apiMessages.length ? '消息返回' : '消息为空',
+        `会话：${sessionDisplayName}，返回 ${apiMessages.length} 条`
+      );
       await window.pddApi.apiMarkLatestConversations({ shopId: apiActiveSessionShopId, size: 100 });
       await loadApiTraffic(apiActiveSessionShopId);
       setApiHint(`已载入 ${apiMessages.length} 条接口消息`);
+    }
+
+    async function refreshApiAfterMessageSent(payload = {}) {
+      if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
+      if (apiPostSendRefreshTimer) {
+        clearTimeout(apiPostSendRefreshTimer);
+        apiPostSendRefreshTimer = null;
+      }
+      await loadApiSessions({ keepCurrent: true });
+      apiPostSendRefreshTimer = setTimeout(async () => {
+        if (currentView !== 'chat-api') return;
+        if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
+        await loadApiSessions({ keepCurrent: true });
+      }, 1200);
+    }
+
+    async function stopApiPollingScope(scope = apiPollingScope || getApiScopeShopId()) {
+      if (!scope) return true;
+      recordApiSyncState('停止轮询', scope === API_ALL_SHOPS ? '显示所有店铺' : scope);
+      const result = await window.pddApi.apiStopPolling({ shopId: scope });
+      if (result?.error) {
+        recordApiSyncState('停止失败', result.error);
+        setApiHint(result.error);
+        return false;
+      }
+      apiPolling = false;
+      apiPollingScope = '';
+      renderApiStatus();
+      return true;
+    }
+
+    async function ensureApiPollingScope(scope) {
+      if (!scope) return false;
+      if (apiPolling && apiPollingScope && apiPollingScope !== scope) {
+        const stopped = await stopApiPollingScope(apiPollingScope);
+        if (!stopped) return false;
+      }
+      if (apiPolling && apiPollingScope === scope) {
+        recordApiSyncState('轮询已就绪', scope === API_ALL_SHOPS ? '显示所有店铺' : scope);
+        return true;
+      }
+      recordApiSyncState('启动轮询', scope === API_ALL_SHOPS ? '显示所有店铺' : scope);
+      const result = await window.pddApi.apiStartPolling({ shopId: scope });
+      if (result?.error) {
+        recordApiSyncState('轮询失败', result.error);
+        setApiHint(result.error);
+        return false;
+      }
+      apiPolling = true;
+      apiPollingScope = scope;
+      renderApiStatus();
+      return true;
+    }
+
+    async function retryInitialApiSessions(keepCurrent = false) {
+      if (currentView !== 'chat-api') return;
+      apiInitialLoadRetryCount += 1;
+      recordApiSyncState('自动重试', `第 ${apiInitialLoadRetryCount} 次`);
+      await loadApiTraffic(getApiStatusShopId(true));
+      const sessions = await loadApiSessions({ keepCurrent });
+      if (Array.isArray(sessions) && sessions.length > 0) {
+        setApiHint(`已自动同步 ${sessions.length} 条接口会话`);
+        return;
+      }
+      if (apiInitialLoadRetryCount >= 3) {
+        setApiHint(withApiTrafficDiag('接口会话仍在同步中，可稍后再试或手动刷新'));
+        return;
+      }
+      setApiHint(withApiTrafficDiag(`正在同步接口会话（第 ${apiInitialLoadRetryCount + 1} 次）...`));
+      apiInitialLoadRetryTimer = setTimeout(() => {
+        retryInitialApiSessions(keepCurrent);
+      }, 1200);
+    }
+
+    function clearApiWarmupRefreshTimers() {
+      apiWarmupRefreshTimers.forEach(timer => clearTimeout(timer));
+      apiWarmupRefreshTimers = [];
+    }
+
+    function scheduleApiWarmupRefreshes(keepCurrent = false) {
+      clearApiWarmupRefreshTimers();
+      [1500, 3200, 5200, 8000, 11000, 15000].forEach((delay, index) => {
+        const timer = setTimeout(async () => {
+          if (currentView !== 'chat-api') return;
+          recordApiSyncState('延迟补刷', `第 ${index + 1} 轮，延迟 ${delay}ms`);
+          if (!apiSessions.length) {
+            setApiHint(withApiTrafficDiag(`正在同步接口会话（补刷 ${index + 1}）...`));
+          }
+          await loadApiSessions({ keepCurrent });
+          await loadApiTraffic(getApiStatusShopId(true));
+          if (apiSessions.length > 0) {
+            setApiHint(`已自动同步 ${apiSessions.length} 条接口会话`);
+          }
+        }, delay);
+        apiWarmupRefreshTimers.push(timer);
+      });
     }
 
     async function loadApiTokenStatus(shopId = getApiStatusShopId(false)) {
@@ -7185,27 +7740,53 @@
     }
 
     async function loadApiChatView(options = {}) {
+      if (apiInitialLoadRetryTimer) {
+        clearTimeout(apiInitialLoadRetryTimer);
+        apiInitialLoadRetryTimer = null;
+      }
+      clearApiWarmupRefreshTimers();
+      apiInitialLoadRetryCount = 0;
+      apiSyncStateEntries = [];
+      recordApiSyncState('进入接口页', options.keepCurrent ? '保持当前会话' : '首次进入');
+      if (!options.keepCurrent) {
+        clearApiActiveSession();
+      }
       renderApiShopFilter();
       renderApiShopHeader();
-      await loadApiStarredSessions();
-      await loadApiTokenStatus();
-      await loadApiTraffic();
-      await loadApiSessions({ keepCurrent: options.keepCurrent });
       const pollingScope = getApiScopeShopId();
-      if (!apiPolling && (pollingScope === API_ALL_SHOPS ? shops.length > 0 : !!pollingScope)) {
-        const pollingResult = await window.pddApi.apiStartPolling({ shopId: pollingScope });
-        if (!pollingResult?.error) {
-          apiPolling = true;
-          renderApiStatus();
-        }
+      recordApiSyncState('加载收藏', '开始读取收藏会话');
+      loadApiStarredSessions()
+        .then(() => recordApiSyncState('收藏完成', `收藏数：${apiStarredSessions.length}`))
+        .catch(err => recordApiSyncState('收藏失败', err.message || '未知错误'));
+      recordApiSyncState('加载状态', '开始读取店铺 Token 状态');
+      loadApiTokenStatus()
+        .then(() => recordApiSyncState('状态完成', getApiAuthStatusText()))
+        .catch(err => recordApiSyncState('状态失败', err.message || '未知错误'));
+      if (pollingScope === API_ALL_SHOPS ? shops.length > 0 : !!pollingScope) {
+        ensureApiPollingScope(pollingScope)
+          .then(ok => {
+            if (!ok) recordApiSyncState('轮询未启动', pollingScope === API_ALL_SHOPS ? '显示所有店铺' : pollingScope);
+          })
+          .catch(err => recordApiSyncState('轮询异常', err.message || '未知错误'));
       }
+      recordApiSyncState('加载抓包', '开始读取接口抓包');
+      loadApiTraffic()
+        .then(() => recordApiSyncState('抓包完成', `${apiTrafficEntries.length} 条`))
+        .catch(err => recordApiSyncState('抓包失败', err.message || '未知错误'));
+      const sessions = await loadApiSessions({ keepCurrent: options.keepCurrent });
       renderApiMessages();
       const authHint = getApiAuthHintText();
       if (authHint) {
         setApiHint(authHint);
       } else if (!shops.length) {
         setApiHint('请先添加店铺，再测试接口对话。');
+      } else if (Array.isArray(sessions) && sessions.length === 0) {
+        setApiHint(withApiTrafficDiag('正在同步接口会话（第 1 次）...'));
+        apiInitialLoadRetryTimer = setTimeout(() => {
+          retryInitialApiSessions(options.keepCurrent);
+        }, 1200);
       }
+      scheduleApiWarmupRefreshes(options.keepCurrent);
     }
 
     // 工具栏 + 添加按钮
@@ -7371,16 +7952,16 @@
       await loadApiTraffic(getApiStatusShopId(true));
       setApiHint('已刷新服务助手与接口记录');
     });
-    document.getElementById('btnApiToolInviteFollow').addEventListener('click', () => {
+    document.getElementById('btnApiToolInviteFollow')?.addEventListener('click', () => {
       setApiHint('已预留邀请关注动作，后续可接入真实接口能力');
     });
-    document.getElementById('btnApiToolInviteOrder').addEventListener('click', () => {
+    document.getElementById('btnApiToolInviteOrder')?.addEventListener('click', () => {
       setApiHint('已预留邀请下单动作，当前可结合右侧订单概览继续跟进');
     });
-    document.getElementById('btnApiToolSendCoupon').addEventListener('click', () => {
+    document.getElementById('btnApiToolSendCoupon')?.addEventListener('click', () => {
       setApiHint('优惠动作入口已预留，后续可按真实营销接口补齐');
     });
-    document.getElementById('btnApiToolCopySession').addEventListener('click', async () => {
+    document.getElementById('btnApiToolCopySession')?.addEventListener('click', async () => {
       if (!apiActiveSessionId) {
         setApiHint('请先选择一个接口会话');
         return;
@@ -7392,7 +7973,7 @@
         setApiHint(`会话标识：${apiActiveSessionShopId || ''}::${apiActiveSessionId}`);
       }
     });
-    document.getElementById('btnApiToolRefreshDetail').addEventListener('click', async () => {
+    document.getElementById('btnApiToolRefreshDetail')?.addEventListener('click', async () => {
       if (!apiActiveSessionId || !apiActiveSessionShopId) {
         setApiHint('请先选择一个接口会话');
         return;
@@ -7402,25 +7983,13 @@
     });
 
     document.getElementById('btnApiStartPolling').addEventListener('click', async () => {
-      const result = await window.pddApi.apiStartPolling({ shopId: getApiScopeShopId() });
-      if (result?.error) {
-        setApiHint(result.error);
-        return;
-      }
-      apiPolling = true;
-      renderApiStatus();
-      setApiHint('已开启接口轮询');
+      const ok = await ensureApiPollingScope(getApiScopeShopId());
+      if (ok) setApiHint('已开启接口轮询');
     });
 
     document.getElementById('btnApiStopPolling').addEventListener('click', async () => {
-      const result = await window.pddApi.apiStopPolling({ shopId: getApiScopeShopId() });
-      if (result?.error) {
-        setApiHint(result.error);
-        return;
-      }
-      apiPolling = false;
-      renderApiStatus();
-      setApiHint('已停止接口轮询');
+      const stopped = await stopApiPollingScope();
+      if (stopped) setApiHint('已停止接口轮询');
     });
 
     document.getElementById('btnApiTestConnection').addEventListener('click', async () => {
@@ -7469,12 +8038,57 @@
         return;
       }
       document.getElementById('apiMessageInput').value = '';
-      setApiHint('接口发送成功，正在刷新消息');
-      await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId);
-      await loadApiTraffic(apiActiveSessionShopId);
+      setApiHint('接口发送成功，正在同步最新消息');
+    });
+    document.getElementById('btnApiSendImage').addEventListener('click', async () => {
+      if (!apiActiveSessionId) {
+        setApiHint('请先选择一个接口会话');
+        return;
+      }
+      toggleApiEmojiPanel(false);
+      recordApiSyncState('选择图片', `会话：${apiActiveSessionName || apiActiveSessionId}`);
+      const selected = await window.pddApi.apiSelectImage();
+      if (selected?.canceled) {
+        recordApiSyncState('图片取消', '用户取消选择图片');
+        setApiHint('已取消选择图片');
+        return;
+      }
+      if (!selected?.filePath) {
+        recordApiSyncState('图片失败', '未拿到图片路径');
+        setApiHint('未选择图片文件');
+        return;
+      }
+      const fileName = String(selected.filePath).split(/[\\/]/).pop() || '图片';
+      recordApiSyncState('图片上传', `文件：${fileName}`);
+      setApiHint('正在上传并发送图片，请稍候...');
+      const result = await window.pddApi.apiSendImage({
+        shopId: apiActiveSessionShopId,
+        sessionId: apiActiveSessionId,
+        filePath: selected.filePath,
+      });
+      if (result?.error) {
+        const attemptText = Array.isArray(result?.attempts) && result.attempts.length
+          ? result.attempts.map(item => `${item.baseUrl} → ${item.error}`).join('；')
+          : '';
+        const detail = [
+          result?.step ? `阶段：${result.step}` : '',
+          result?.uploadBaseUrl ? `上传域：${result.uploadBaseUrl}` : '',
+          attemptText,
+          result?.error || ''
+        ].filter(Boolean).join('；');
+        recordApiSyncState('图片失败', detail || '图片发送失败');
+        setApiHint(`图片发送失败：${detail || result.error}`);
+        return;
+      }
+      recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
+      await refreshApiAfterMessageSent(result);
+      if (apiActiveSessionId) {
+        await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId);
+      }
+      setApiHint('图片已发送，正在同步最新消息');
     });
 
-    document.getElementById('btnApiTransfer').addEventListener('click', async () => {
+    document.getElementById('btnApiTransfer')?.addEventListener('click', async () => {
       if (!apiActiveSessionId) {
         setApiHint('请先选择一个接口会话');
         return;
@@ -7548,11 +8162,7 @@
     });
 
     window.pddApi.onApiMessageSent(async (payload) => {
-      if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-      await loadApiTraffic(getApiStatusShopId(true));
-      if (String(payload?.sessionId || '') === String(apiActiveSessionId) && String(payload?.shopId || '') === String(apiActiveSessionShopId || '')) {
-        await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId);
-      }
+      await refreshApiAfterMessageSent(payload);
     });
 
     window.pddApi.onApiAuthExpired((payload) => {
@@ -8492,6 +9102,8 @@
       });
     }
 
+    renderApiEmojiPanel();
+
     document.getElementById('btnTogglePhrases').addEventListener('click', () => {
       const panel = document.getElementById('phrasePanel');
       panel.classList.toggle('visible');
@@ -8535,6 +9147,7 @@
     });
     document.getElementById('btnApiQuickReply').addEventListener('click', async () => {
       const panel = document.getElementById('apiPhrasePanel');
+      toggleApiEmojiPanel(false);
       panel.classList.toggle('visible');
       if (panel.classList.contains('visible')) {
         await loadQuickPhrases();
@@ -8543,11 +9156,30 @@
     });
     document.getElementById('btnApiTogglePhrases').addEventListener('click', async () => {
       const panel = document.getElementById('apiPhrasePanel');
+      toggleApiEmojiPanel(false);
       panel.classList.toggle('visible');
       if (panel.classList.contains('visible')) {
         await loadQuickPhrases();
         renderApiPhrasePanel();
       }
+    });
+    document.getElementById('btnApiEmojiToggle').addEventListener('click', event => {
+      event.stopPropagation();
+      document.getElementById('apiPhrasePanel')?.classList.remove('visible');
+      toggleApiEmojiPanel();
+    });
+    document.getElementById('apiEmojiPanel').addEventListener('click', event => {
+      event.stopPropagation();
+    });
+    document.addEventListener('click', event => {
+      const panel = document.getElementById('apiEmojiPanel');
+      const button = document.getElementById('btnApiEmojiToggle');
+      if (!panel || !button) return;
+      if (panel.contains(event.target) || button.contains(event.target)) return;
+      toggleApiEmojiPanel(false);
+    });
+    window.addEventListener('resize', () => {
+      syncApiEmojiPanelPosition();
     });
     document.getElementById('btnOrderInfo').addEventListener('click', () => alert('订单查询功能开发中'));
     document.getElementById('btnProductInfo').addEventListener('click', () => alert('商品信息功能开发中'));

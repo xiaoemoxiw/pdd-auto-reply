@@ -6572,6 +6572,11 @@
       return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
     }
 
+    function formatApiAmount(value) {
+      const amount = Number(value || 0);
+      return Number.isFinite(amount) ? `¥${amount.toFixed(2)}` : '¥0.00';
+    }
+
     function getApiMessageReadState(message = {}) {
       const normalized = String(message?.readState || '').toLowerCase();
       if (normalized === 'read') return 'read';

@@ -3749,11 +3749,15 @@
     .api-side-order-stage {
       flex: 1;
       min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
       padding: 18px 16px;
       background: #eef2f5;
       color: #b6bcc7;
       font-size: 13px;
       line-height: 1.7;
+      overflow: hidden;
     }
 
     .api-side-order-empty {
@@ -3762,11 +3766,14 @@
     }
 
     .api-side-debug-card {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
       padding: 12px;
       border-radius: 10px;
       background: #fff;
       border: 1px solid #e6ebf2;
-      margin-bottom: 14px;
     }
 
     .api-side-debug-title {
@@ -3777,11 +3784,12 @@
     }
 
     .api-side-debug-list {
-      max-height: 70%;
-      overflow-y: auto;
       display: flex;
+      flex: 1;
+      min-height: 0;
       flex-direction: column;
       gap: 8px;
+      overflow-y: auto;
     }
 
     .api-side-debug-item {
@@ -6837,9 +6845,19 @@
     }
 
     function recordApiSyncState(label, detail = '') {
+      const nowMs = Date.now();
+      const latest = apiSyncStateEntries[0];
+      if (
+        latest
+        && latest.label === label
+        && latest.detail === detail
+        && nowMs - Number(latest.timestamp || 0) < 1500
+      ) {
+        return;
+      }
       const now = new Date();
       const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-      apiSyncStateEntries.unshift({ label, detail, time });
+      apiSyncStateEntries.unshift({ label, detail, time, timestamp: nowMs });
       apiSyncStateEntries = apiSyncStateEntries.slice(0, 8);
       renderApiSyncState();
     }
@@ -6983,6 +7001,24 @@
       apiStarredSessions = apiStarredSessions.map(patchSession);
       if (!changed) return;
       renderApiSessions();
+      renderApiMessages();
+    }
+
+    function appendApiLocalServiceMessage(payload = {}) {
+      const shopId = String(payload.shopId || apiActiveSessionShopId || '');
+      const sessionId = String(payload.sessionId || apiActiveSessionId || '');
+      const text = String(payload.text || '').trim();
+      if (!shopId || !sessionId || !text) return;
+      if (shopId !== String(apiActiveSessionShopId || '') || sessionId !== String(apiActiveSessionId || '')) return;
+      apiMessages = apiMessages.concat([{
+        sessionId,
+        content: text,
+        timestamp: Date.now(),
+        isFromBuyer: false,
+        senderName: getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号',
+        readState: '',
+        raw: {},
+      }]);
       renderApiMessages();
     }
 
@@ -7492,7 +7528,9 @@
         ['抓包记录', `${apiTrafficEntries.length} 条`],
         ['最近接口', getApiTrafficDiagText()],
       ];
-      statusEl.innerHTML = items.map(([label, value]) => `<div class="api-status-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join('');
+      if (statusEl) {
+        statusEl.innerHTML = items.map(([label, value]) => `<div class="api-status-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join('');
+      }
       renderApiSideCards();
     }
 
@@ -8215,7 +8253,9 @@
     }
 
     async function loadApiSessions(options = {}) {
-      recordApiSyncState('拉取会话', `范围：${getApiScopeShopId() === API_ALL_SHOPS ? '显示所有店铺' : getApiScopeShopId() || '未选择店铺'}`);
+      if (!options.silentStatus) {
+        recordApiSyncState('拉取会话', `范围：${getApiScopeShopId() === API_ALL_SHOPS ? '显示所有店铺' : getApiScopeShopId() || '未选择店铺'}`);
+      }
       const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 50 });
       if (!Array.isArray(result)) {
         apiSessionLoadError = result?.error || '获取接口会话失败';
@@ -8223,8 +8263,10 @@
         clearApiActiveSession();
         renderApiSessions();
         renderApiMessages();
-        recordApiSyncState('拉取失败', apiSessionLoadError);
-        setApiHint(apiSessionLoadError);
+        if (!options.silentStatus) {
+          recordApiSyncState('拉取失败', apiSessionLoadError);
+        }
+        setApiHint(withApiTrafficDiag(apiSessionLoadError));
         return [];
       }
       if (!result.length && !options.autoBootstrapped) {
@@ -8249,7 +8291,9 @@
         keepCurrent: !!options.keepCurrent,
         autoBootstrapped: !!options.autoBootstrapped
       });
-      recordApiSyncState('拉取完成', `会话数：${result.length || fallbackTrafficSessions.length}`);
+      if (!options.silentStatus) {
+        recordApiSyncState('拉取完成', `会话数：${result.length || fallbackTrafficSessions.length}`);
+      }
       apiSessionLoadError = '';
       apiSessions = (result.length ? result : fallbackTrafficSessions).map(item => buildApiSession(item));
       const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
@@ -8258,14 +8302,14 @@
       }
       renderApiSessions();
       if (options.keepCurrent && apiHasUserSelectedSession && apiActiveSessionId && apiActiveSessionShopId) {
-        await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId);
+        await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId, options);
       } else {
         renderApiMessages();
       }
       return result;
     }
 
-    async function openApiSession(sessionId, customerName = '', shopId = '') {
+    async function openApiSession(sessionId, customerName = '', shopId = '', options = {}) {
       if (!sessionId) return;
       const currentSession = apiSessions.find(item => String(item.sessionId) === String(sessionId) && (!shopId || item.shopId === shopId))
         || apiStarredSessions.find(item => String(item.sessionId) === String(sessionId) && (!shopId || item.shopId === shopId))
@@ -8273,7 +8317,9 @@
       const targetShopId = shopId || currentSession?.shopId || apiActiveSessionShopId || activeShopId;
       const sessionDisplayName = customerName || currentSession?.customerName || sessionId;
       if (!targetShopId) {
-        recordApiSyncState('消息失败', `会话：${sessionDisplayName}，未找到可用店铺`);
+        if (!options.silentStatus) {
+          recordApiSyncState('消息失败', `会话：${sessionDisplayName}，未找到可用店铺`);
+        }
         setApiHint('请先选择一个可用店铺');
         return;
       }
@@ -8284,11 +8330,15 @@
       apiMessages = [];
       renderApiSessions();
       renderApiMessages();
-      recordApiSyncState('消息请求', `会话：${sessionDisplayName}，店铺：${currentSession?.shopName || apiActiveSessionShopId || '未知店铺'}`);
+      if (!options.silentStatus) {
+        recordApiSyncState('消息请求', `会话：${sessionDisplayName}，店铺：${currentSession?.shopName || apiActiveSessionShopId || '未知店铺'}`);
+      }
       try {
         await loadApiTokenStatus(apiActiveSessionShopId);
       } catch (error) {
-        recordApiSyncState('状态失败', error?.message || '读取 Token 状态失败');
+        if (!options.silentStatus) {
+          recordApiSyncState('状态失败', error?.message || '读取 Token 状态失败');
+        }
       }
       const result = await window.pddApi.apiGetMessages({
         shopId: apiActiveSessionShopId,
@@ -8300,16 +8350,20 @@
       if (!Array.isArray(result)) {
         apiMessages = [];
         renderApiMessages();
-        recordApiSyncState('消息失败', `会话：${sessionDisplayName}，${result?.error || '获取接口消息失败'}`);
+        if (!options.silentStatus) {
+          recordApiSyncState('消息失败', `会话：${sessionDisplayName}，${result?.error || '获取接口消息失败'}`);
+        }
         setApiHint(withApiTrafficDiag(result?.error || '获取接口消息失败'));
         return;
       }
       apiMessages = result;
       renderApiMessages();
-      recordApiSyncState(
-        apiMessages.length ? '消息返回' : '消息为空',
-        `会话：${sessionDisplayName}，返回 ${apiMessages.length} 条`
-      );
+      if (!options.silentStatus) {
+        recordApiSyncState(
+          apiMessages.length ? '消息返回' : '消息为空',
+          `会话：${sessionDisplayName}，返回 ${apiMessages.length} 条`
+        );
+      }
       await window.pddApi.apiMarkLatestConversations({ shopId: apiActiveSessionShopId, size: 100 });
       await loadApiTraffic(apiActiveSessionShopId);
       setApiHint(`已载入 ${apiMessages.length} 条接口消息`);
@@ -8318,15 +8372,16 @@
     async function refreshApiAfterMessageSent(payload = {}) {
       if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
       clearApiPendingReplyState(payload);
+      recordApiSyncState('消息回刷', `会话：${apiActiveSessionName || payload.sessionId || '未知会话'}`);
       if (apiPostSendRefreshTimer) {
         clearTimeout(apiPostSendRefreshTimer);
         apiPostSendRefreshTimer = null;
       }
-      await loadApiSessions({ keepCurrent: true });
+      await loadApiSessions({ keepCurrent: true, silentStatus: true });
       apiPostSendRefreshTimer = setTimeout(async () => {
         if (currentView !== 'chat-api') return;
         if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-        await loadApiSessions({ keepCurrent: true });
+        await loadApiSessions({ keepCurrent: true, silentStatus: true });
       }, 1200);
     }
 
@@ -8723,6 +8778,7 @@
 
     document.getElementById('btnApiSendMessage').addEventListener('click', async () => {
       const text = document.getElementById('apiMessageInput').value.trim();
+      const activeSession = getApiActiveSession();
       if (!apiActiveSessionId) {
         setApiHint('请先选择一个接口会话');
         return;
@@ -8731,16 +8787,27 @@
         setApiHint('请输入要发送的消息');
         return;
       }
+      recordApiSyncState('消息发送', `会话：${apiActiveSessionName || apiActiveSessionId}`);
       const result = await window.pddApi.apiSendMessage({
         shopId: apiActiveSessionShopId,
         sessionId: apiActiveSessionId,
+        session: activeSession || undefined,
         text,
       });
       if (result?.error) {
+        recordApiSyncState('发送失败', result.error);
         setApiHint(`接口发送失败：${result.error}`);
         return;
       }
-      clearApiPendingReplyState(result);
+      const successPayload = {
+        ...result,
+        shopId: apiActiveSessionShopId,
+        sessionId: apiActiveSessionId,
+        text,
+      };
+      recordApiSyncState('发送成功', `会话：${apiActiveSessionName || apiActiveSessionId}`);
+      clearApiPendingReplyState(successPayload);
+      appendApiLocalServiceMessage(successPayload);
       document.getElementById('apiMessageInput').value = '';
       setApiHint('接口发送成功，正在同步最新消息');
     });
@@ -8768,6 +8835,7 @@
       const result = await window.pddApi.apiSendImage({
         shopId: apiActiveSessionShopId,
         sessionId: apiActiveSessionId,
+        session: getApiActiveSession() || undefined,
         filePath: selected.filePath,
       });
       if (result?.error) {
@@ -8785,10 +8853,6 @@
         return;
       }
       recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
-      await refreshApiAfterMessageSent(result);
-      if (apiActiveSessionId) {
-        await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId);
-      }
       setApiHint('图片已发送，正在同步最新消息');
     });
 

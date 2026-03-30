@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   setChatUrl: (url) => ipcRenderer.invoke('set-chat-url', url),
   getMailUrl: () => ipcRenderer.invoke('get-mail-url'),
   setMailUrl: (url) => ipcRenderer.invoke('set-mail-url', url),
+  getInvoiceUrl: () => ipcRenderer.invoke('get-invoice-url'),
+  setInvoiceUrl: (url) => ipcRenderer.invoke('set-invoice-url', url),
   getCurrentUrl: () => ipcRenderer.invoke('get-current-url'),
 
   // Cookie 注入
@@ -77,6 +79,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   mailGetOverview: (params) => ipcRenderer.invoke('mail-get-overview', params),
   mailGetList: (params) => ipcRenderer.invoke('mail-get-list', params),
   mailGetDetail: (params) => ipcRenderer.invoke('mail-get-detail', params),
+  invoiceGetOverview: (params) => ipcRenderer.invoke('invoice-get-overview', params),
+  invoiceGetList: (params) => ipcRenderer.invoke('invoice-get-list', params),
   getApiStarredSessions: () => ipcRenderer.invoke('get-api-starred-sessions'),
   toggleApiStarredSession: (session) => ipcRenderer.invoke('toggle-api-starred-session', session),
 

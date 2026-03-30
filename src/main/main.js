@@ -6,6 +6,7 @@ const { ReplyEngine } = require('./reply-engine');
 const { NetworkMonitor } = require('./network-monitor');
 const { PddApiClient } = require('./pdd-api');
 const { MailApiClient } = require('./mail-api');
+const { InvoiceApiClient } = require('./invoice-api');
 const { createSettingsWindow } = require('./settings-window');
 const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
@@ -33,6 +34,7 @@ const store = new Store({
     windowBounds: { width: 1400, height: 900 },
     chatUrl: '',
     mailUrl: '',
+    invoiceUrl: '',
     shops: [],
     activeShopId: '',
     shopGroups: [],
@@ -61,6 +63,7 @@ const messageDedup = new Map(); // "customer|message" -> timestamp
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
 const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=441077635572';
+const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav';
 
 const MOCK_SHOPS = [
   { id: 'shop_1', name: '环球优品旗舰店', account: 'huanqiu_001', mallId: '', group: 'group_1', remark: '主力店铺', status: 'online', loginMethod: 'token', userAgent: '', bindTime: '2025-10-15', category: '日用百货', balance: 15280.50 },
@@ -183,6 +186,7 @@ let aiIntentEngine = null;
 let networkMonitors = new Map();  // shopId -> NetworkMonitor
 let apiClients = new Map();
 let mailApiClients = new Map();
+let invoiceApiClients = new Map();
 let apiTrafficStore = new Map();
 
 function getPddChatUrl() {
@@ -193,12 +197,26 @@ function getPddMailUrl() {
   return store.get('mailUrl') || PDD_MAIL_URL;
 }
 
+function getPddInvoiceUrl() {
+  return store.get('invoiceUrl') || PDD_INVOICE_URL;
+}
+
 function isEmbeddedPddView(view) {
-  return view === 'chat' || view === 'mail';
+  return view === 'chat' || view === 'mail' || view === 'invoice';
 }
 
 function isMailRelatedView(view) {
   return view === 'mail' || view === 'mail-api';
+}
+
+function isInvoiceRelatedView(view) {
+  return view === 'invoice' || view === 'invoice-api';
+}
+
+function getEmbeddedViewUrl(view) {
+  if (isMailRelatedView(view)) return getPddMailUrl();
+  if (isInvoiceRelatedView(view)) return getPddInvoiceUrl();
+  return getPddChatUrl();
 }
 
 function isMailPageUrl(url) {
@@ -207,6 +225,25 @@ function isMailPageUrl(url) {
 
 function isChatPageUrl(url) {
   return String(url || '').includes('chat-merchant');
+}
+
+function isInvoicePageUrl(url) {
+  return String(url || '').includes('/invoice/');
+}
+
+function normalizeStoredPddUrls() {
+  const storedChatUrl = store.get('chatUrl');
+  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl)) {
+    store.set('chatUrl', PDD_CHAT_URL);
+  }
+  const storedMailUrl = store.get('mailUrl');
+  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl)) {
+    store.set('mailUrl', PDD_MAIL_URL);
+  }
+  const storedInvoiceUrl = store.get('invoiceUrl');
+  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl)) {
+    store.set('invoiceUrl', PDD_INVOICE_URL);
+  }
 }
 
 // ---- 注入脚本 ----
@@ -233,6 +270,10 @@ function detectChatPage(view, shopId) {
   if (isMailPageUrl(currentUrl) && currentUrl !== store.get('mailUrl')) {
     store.set('mailUrl', currentUrl);
     console.log('[PDD助手] 自动检测到站内信页面，已保存:', currentUrl);
+  }
+  if (isInvoicePageUrl(currentUrl) && currentUrl !== store.get('invoiceUrl')) {
+    store.set('invoiceUrl', currentUrl);
+    console.log('[PDD助手] 自动检测到待开票页面，已保存:', currentUrl);
   }
 
   view.webContents.executeJavaScript(`
@@ -400,6 +441,34 @@ function getMailApiClient(shopId) {
 function destroyMailApiClient(shopId) {
   if (!mailApiClients.has(shopId)) return;
   mailApiClients.delete(shopId);
+}
+
+function getInvoiceApiClient(shopId) {
+  if (!shopId) return null;
+  if (invoiceApiClients.has(shopId)) return invoiceApiClients.get(shopId);
+  const client = new InvoiceApiClient(shopId, {
+    onLog(message, extra) {
+      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      console.log(`[PDD待开票:${shopId}] ${message}`);
+    },
+    getShopInfo() {
+      const shops = store.get('shops') || [];
+      return shops.find(item => item.id === shopId) || null;
+    },
+    getApiTraffic() {
+      return getApiTraffic(shopId);
+    },
+    getInvoiceUrl() {
+      return getPddInvoiceUrl();
+    }
+  });
+  invoiceApiClients.set(shopId, client);
+  return client;
+}
+
+function destroyInvoiceApiClient(shopId) {
+  if (!invoiceApiClients.has(shopId)) return;
+  invoiceApiClients.delete(shopId);
 }
 
 function getApiTraffic(shopId) {
@@ -746,7 +815,7 @@ ipcMain.handle('open-debug-window', () => {
 ipcMain.handle('reload-pdd', () => {
   const view = shopManager?.getActiveView();
   if (!view) return;
-  view.webContents.loadURL(isMailRelatedView(currentView) ? getPddMailUrl() : getPddChatUrl());
+  view.webContents.loadURL(getEmbeddedViewUrl(currentView));
 });
 
 ipcMain.handle('get-chat-url', () => store.get('chatUrl'));
@@ -760,6 +829,13 @@ ipcMain.handle('get-mail-url', () => store.get('mailUrl'));
 
 ipcMain.handle('set-mail-url', (event, url) => {
   store.set('mailUrl', url);
+  return true;
+});
+
+ipcMain.handle('get-invoice-url', () => store.get('invoiceUrl'));
+
+ipcMain.handle('set-invoice-url', (event, url) => {
+  store.set('invoiceUrl', url);
   return true;
 });
 
@@ -833,6 +909,8 @@ ipcMain.handle('add-shop-by-qrcode', async () => {
 ipcMain.handle('remove-shop', (event, shopId) => {
   if (!shopManager) return false;
   destroyApiClient(shopId);
+  destroyMailApiClient(shopId);
+  destroyInvoiceApiClient(shopId);
   return shopManager.removeShop(shopId);
 });
 
@@ -996,6 +1074,26 @@ ipcMain.handle('mail-get-detail', async (event, params = {}) => {
   }
 });
 
+ipcMain.handle('invoice-get-overview', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  try {
+    return await getInvoiceApiClient(shopId).getOverview();
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('invoice-get-list', async (event, params = {}) => {
+  const shopId = params.shopId || shopManager?.getActiveShopId();
+  if (!shopId) return { error: '没有可用店铺' };
+  try {
+    return await getInvoiceApiClient(shopId).getList(params);
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('clear-api-traffic', (event, params = {}) => {
   const shopId = params.shopId || shopManager?.getActiveShopId();
   if (!shopId) return false;
@@ -1051,6 +1149,9 @@ ipcMain.handle('switch-view', (event, view) => {
       const currentUrl = activeView.webContents.getURL();
       if (view === 'mail' && !isMailPageUrl(currentUrl)) {
         activeView.webContents.loadURL(getPddMailUrl());
+      }
+      if (view === 'invoice' && !isInvoicePageUrl(currentUrl)) {
+        activeView.webContents.loadURL(getPddInvoiceUrl());
       }
       if (view === 'chat' && !isChatPageUrl(currentUrl)) {
         activeView.webContents.loadURL(getPddChatUrl());
@@ -1897,13 +1998,7 @@ app.whenReady().then(async () => {
   await migrateOldData();
   createMainWindow();
 
-  const savedChatUrl = store.get('chatUrl');
-  if (!savedChatUrl || isMailPageUrl(savedChatUrl)) {
-    store.set('chatUrl', PDD_CHAT_URL);
-  }
-  if (!store.get('mailUrl')) {
-    store.set('mailUrl', PDD_MAIL_URL);
-  }
+  normalizeStoredPddUrls();
 
   const devTokenPath = path.join(__dirname, '..', '..', 'test', 'tokens', 'sample-token.json');
   const hasDevToken = fs.existsSync(devTokenPath);
@@ -2091,6 +2186,9 @@ app.on('before-quit', () => {
   }
   for (const shopId of mailApiClients.keys()) {
     destroyMailApiClient(shopId);
+  }
+  for (const shopId of invoiceApiClients.keys()) {
+    destroyInvoiceApiClient(shopId);
   }
 });
 

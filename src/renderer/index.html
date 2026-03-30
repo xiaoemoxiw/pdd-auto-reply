@@ -4145,6 +4145,435 @@
       font-size: 11px;
       font-weight: 600;
     }
+
+    .invoice-api-page {
+      flex: 1;
+      overflow: auto;
+      padding: 16px 20px 24px;
+      background: #f5f5f5;
+    }
+
+    .invoice-api-tutorial-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: #fff;
+      border: 1px solid #ebeef5;
+      border-radius: 6px;
+      color: #666;
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+
+    .invoice-api-tutorial-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-right: 6px;
+    }
+
+    .invoice-api-tutorial-step {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #666;
+      white-space: nowrap;
+    }
+
+    .invoice-api-tutorial-step strong {
+      color: #999;
+      font-weight: 600;
+    }
+
+    .invoice-api-more-link {
+      margin-left: auto;
+      color: #1d4ed8;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .invoice-api-section {
+      margin-top: 12px;
+      background: #fff;
+      border: 1px solid #ebeef5;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .invoice-api-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid #f0f0f0;
+      background: #fff;
+      flex-wrap: wrap;
+    }
+
+    .invoice-api-section-heading {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .invoice-api-section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .invoice-api-section-meta,
+    .invoice-api-section-extra,
+    .invoice-api-selection-summary {
+      font-size: 12px;
+      color: #999;
+      line-height: 1.6;
+    }
+
+    .invoice-api-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .invoice-api-metrics {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(140px, 1fr));
+      background: #fff;
+    }
+
+    .invoice-api-metric {
+      min-width: 0;
+      padding: 18px;
+      border-right: 1px solid #f0f0f0;
+    }
+
+    .invoice-api-metric:last-child {
+      border-right: none;
+    }
+
+    .invoice-api-metric-label {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+      min-height: 42px;
+    }
+
+    .invoice-api-metric-value {
+      margin-top: 12px;
+      font-size: 28px;
+      font-weight: 600;
+      color: #333;
+      letter-spacing: 0.5px;
+    }
+
+    .invoice-api-tip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 18px;
+      border-top: 1px solid #f0f0f0;
+      background: #fafafa;
+      color: #888;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .invoice-api-quick-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      background: #fafafa;
+      border-bottom: 1px solid #f0f0f0;
+      flex-wrap: wrap;
+    }
+
+    .invoice-api-quick-label {
+      font-size: 13px;
+      color: #666;
+      white-space: nowrap;
+    }
+
+    .invoice-api-quick-tabs,
+    .invoice-api-status-tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .invoice-api-quick-tab,
+    .invoice-api-status-tab {
+      min-width: 132px;
+      padding: 8px 16px;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      background: #fff;
+      color: #666;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .invoice-api-quick-tab.active,
+    .invoice-api-status-tab.active {
+      border-color: #4f7cff;
+      color: #4f7cff;
+      background: #f4f7ff;
+      font-weight: 600;
+    }
+
+    .invoice-api-status-tab[disabled] {
+      cursor: not-allowed;
+      opacity: 0.75;
+    }
+
+    .invoice-api-filter-panel {
+      padding: 16px 18px;
+      border-bottom: 1px solid #f0f0f0;
+      background: #fff;
+    }
+
+    .invoice-api-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px 24px;
+    }
+
+    .invoice-api-filter-item {
+      display: grid;
+      grid-template-columns: 78px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .invoice-api-filter-label {
+      font-size: 13px;
+      color: #666;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .invoice-api-filter-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .invoice-api-link-btn {
+      border: none;
+      background: transparent;
+      color: #4f7cff;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0;
+    }
+
+    .invoice-api-advanced-row {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed #ededed;
+    }
+
+    .invoice-api-advanced-row.hidden {
+      display: none;
+    }
+
+    .invoice-api-table-toolbar {
+      background: #fff;
+    }
+
+    .invoice-api-table-wrap {
+      overflow: auto;
+      background: #fff;
+    }
+
+    .invoice-api-table {
+      min-width: 1180px;
+      border-radius: 0;
+    }
+
+    .invoice-api-table th,
+    .invoice-api-table td {
+      text-align: left;
+    }
+
+    .invoice-api-table tbody tr.active td {
+      background: #f4f7ff;
+    }
+
+    .invoice-api-table tbody tr.selected td {
+      background: #fafcff;
+    }
+
+    .invoice-api-table .invoice-api-op-btn {
+      padding: 4px 10px;
+    }
+
+    .invoice-api-cell-em {
+      color: #333;
+      font-weight: 500;
+    }
+
+    .invoice-api-cell-muted {
+      color: #999;
+    }
+
+    .invoice-api-amount {
+      color: #e02e24;
+      font-weight: 600;
+    }
+
+    .invoice-api-table-footer {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      border-top: 1px solid #f0f0f0;
+      background: #fff;
+      flex-wrap: wrap;
+    }
+
+    .invoice-api-check-all {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #666;
+      cursor: pointer;
+    }
+
+    .invoice-api-table-footer .spacer {
+      flex: 1;
+    }
+
+    .invoice-api-detail-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+      gap: 0;
+    }
+
+    .invoice-api-detail-main,
+    .invoice-api-detail-side {
+      min-width: 0;
+    }
+
+    .invoice-api-detail-side {
+      border-left: 1px solid #f0f0f0;
+      background: #fafafa;
+    }
+
+    .invoice-api-detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid #f0f0f0;
+      background: #fff;
+      flex-wrap: wrap;
+    }
+
+    .invoice-api-detail-head {
+      padding: 20px 24px 0;
+      background: #fff;
+    }
+
+    .invoice-api-detail-panel {
+      padding: 20px 24px 24px;
+      background: #fff;
+    }
+
+    .invoice-api-detail-empty {
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      text-align: center;
+      line-height: 1.8;
+    }
+
+    .invoice-api-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px 18px;
+    }
+
+    .invoice-api-detail-item {
+      padding: 14px 16px;
+      border: 1px solid #f0f0f0;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+
+    .invoice-api-detail-item-label {
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 6px;
+    }
+
+    .invoice-api-detail-item-value {
+      font-size: 14px;
+      color: #333;
+      line-height: 1.7;
+      word-break: break-word;
+    }
+
+    .invoice-api-traffic-panel {
+      padding: 16px 18px 20px;
+    }
+
+    .invoice-api-traffic-list {
+      justify-content: flex-start;
+    }
+
+    @media (max-width: 1380px) {
+      .invoice-api-metrics {
+        grid-template-columns: repeat(3, minmax(140px, 1fr));
+      }
+
+      .invoice-api-filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .invoice-api-detail-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .invoice-api-detail-side {
+        border-left: none;
+        border-top: 1px solid #f0f0f0;
+      }
+    }
+
+    @media (max-width: 980px) {
+      .invoice-api-metrics {
+        grid-template-columns: repeat(2, minmax(140px, 1fr));
+      }
+
+      .invoice-api-filter-grid,
+      .invoice-api-detail-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .invoice-api-filter-item {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+
+      .invoice-api-filter-label {
+        text-align: left;
+      }
+    }
   </style>
 </head>
 
@@ -4218,6 +4647,27 @@
             <path d="M8 19h8"></path>
           </svg>
           <span>站内信（接口对接）</span>
+        </div>
+        <div class="nav-item" data-view="invoice">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
+            <path d="M14 2v6h6"></path>
+            <path d="M8 13h8"></path>
+            <path d="M8 17h8"></path>
+          </svg>
+          <span>待开票（嵌入网页）</span>
+        </div>
+        <div class="nav-item" data-view="invoice-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
+            <path d="M14 2v6h6"></path>
+            <path d="M8 13h8"></path>
+            <path d="M8 17h5"></path>
+            <path d="M8 9h2"></path>
+          </svg>
+          <span>待开票（接口对接）</span>
         </div>
         <div class="nav-item" data-view="shops">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -4350,6 +4800,23 @@
           <div class="chat-placeholder">
             <p>拼多多站内信页面加载中...</p>
             <p style="margin-top:8px;color:#999;">进入列表后可切换未读、打开详情、翻页并观察抓包。</p>
+          </div>
+        </div>
+      </div>
+      <div class="view-page" id="viewInvoice">
+        <div class="chat-bar">
+          <button class="chat-bar-btn" id="btnInvoiceListTip">待开票列表</button>
+          <button class="chat-bar-btn" id="btnInvoiceActionTip">立即开票</button>
+          <button class="chat-bar-btn" id="btnInvoiceSkipTip">暂不开票</button>
+          <div class="chat-bar-sep"></div>
+          <button class="chat-bar-btn" id="btnInvoiceOpenDebug">调试窗口</button>
+          <div style="flex:1"></div>
+          <span class="api-panel-subtitle" id="invoiceCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开待开票后台</span>
+        </div>
+        <div style="position:relative;flex:1;">
+          <div class="chat-placeholder">
+            <p>拼多多待开票页面加载中...</p>
+            <p style="margin-top:8px;color:#999;">进入列表后可切换筛选、点击立即开票并观察抓包。</p>
           </div>
         </div>
       </div>
@@ -4538,6 +5005,215 @@
                 <div class="mail-api-traffic-summary" id="mailApiTrafficSummary">0 条抓包记录</div>
                 <div class="mail-api-traffic-list" id="mailApiTrafficList">
                   <span class="mail-api-traffic-chip">暂无抓包</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="view-page" id="viewInvoiceApi">
+        <div class="invoice-api-page">
+          <div class="invoice-api-tutorial-bar">
+            <span class="invoice-api-tutorial-title">发票教程</span>
+            <span class="invoice-api-tutorial-step"><strong>1</strong>自动开票系统入驻流程</span>
+            <span class="invoice-api-tutorial-step"><strong>2</strong>正品发票操作指南</span>
+            <span class="invoice-api-tutorial-step"><strong>3</strong>普通订单开票</span>
+            <span class="invoice-api-tutorial-step"><strong>4</strong>发票违规课程</span>
+            <span class="invoice-api-more-link">更多</span>
+          </div>
+
+          <div class="invoice-api-section">
+            <div class="invoice-api-section-header">
+              <div class="invoice-api-section-heading">
+                <div class="invoice-api-section-title">店铺开票数据</div>
+                <div class="invoice-api-section-meta" id="invoiceApiHeaderMeta">统计时间：--</div>
+              </div>
+              <div class="invoice-api-toolbar">
+                <button class="btn btn-secondary" id="btnInvoiceApiRefreshList">刷新列表</button>
+                <button class="btn btn-secondary" id="btnInvoiceApiRefreshPage">刷新待开票页</button>
+                <button class="btn btn-secondary" id="btnInvoiceApiReloadTraffic">刷新抓包</button>
+                <button class="btn btn-secondary" id="btnInvoiceApiOpenDebug">调试窗口</button>
+                <button class="btn btn-secondary" id="btnInvoiceApiClearTraffic">清空记录</button>
+              </div>
+            </div>
+            <div class="invoice-api-metrics">
+              <div class="invoice-api-metric">
+                <div class="invoice-api-metric-label">待开票订单数</div>
+                <div class="invoice-api-metric-value" id="invoiceApiPendingNum">-</div>
+              </div>
+              <div class="invoice-api-metric">
+                <div class="invoice-api-metric-label">已开票订单数</div>
+                <div class="invoice-api-metric-value" id="invoiceApiInvoicedNum">-</div>
+              </div>
+              <div class="invoice-api-metric">
+                <div class="invoice-api-metric-label">申请中订单数</div>
+                <div class="invoice-api-metric-value" id="invoiceApiApplyingNum">-</div>
+              </div>
+              <div class="invoice-api-metric">
+                <div class="invoice-api-metric-label">待开票总金额</div>
+                <div class="invoice-api-metric-value" id="invoiceApiAmount">-</div>
+              </div>
+              <div class="invoice-api-metric">
+                <div class="invoice-api-metric-label">正品发票待处理</div>
+                <div class="invoice-api-metric-value" id="invoiceApiQualityTotal">-</div>
+              </div>
+              <div class="invoice-api-metric">
+                <div class="invoice-api-metric-label">普通发票待处理</div>
+                <div class="invoice-api-metric-value" id="invoiceApiNormalTotal">-</div>
+              </div>
+            </div>
+            <div class="invoice-api-tip">ⓘ 发票指标是品牌黑标店铺的重要考量，请及时处理避免影响店铺流量</div>
+          </div>
+
+          <div class="invoice-api-section">
+            <div class="invoice-api-section-header">
+              <div class="invoice-api-section-heading">
+                <div class="invoice-api-section-title">开票列表</div>
+                <div class="invoice-api-section-extra">
+                  <span id="invoiceApiListMeta">0 条记录</span>
+                  <span id="invoiceApiListStatus">默认拉取待开票列表</span>
+                </div>
+              </div>
+            </div>
+            <div class="invoice-api-quick-row">
+              <span class="invoice-api-quick-label">快速筛选发票</span>
+              <div class="invoice-api-quick-tabs">
+                <button class="invoice-api-quick-tab active" data-invoice-quick="all">全部 <span id="invoiceApiQuickAllCount">0</span></button>
+                <button class="invoice-api-quick-tab" data-invoice-quick="quality">正品发票 <span id="invoiceApiQuickQualityCount">0</span></button>
+                <button class="invoice-api-quick-tab" data-invoice-quick="normal">普通发票 <span id="invoiceApiQuickNormalCount">0</span></button>
+              </div>
+            </div>
+            <div class="invoice-api-filter-panel">
+              <div class="invoice-api-filter-grid">
+                <div class="invoice-api-filter-item">
+                  <label class="invoice-api-filter-label" for="invoiceApiKeyword">订单号</label>
+                  <input class="form-input" id="invoiceApiKeyword" placeholder="请输入订单编号">
+                </div>
+                <div class="invoice-api-filter-item">
+                  <label class="invoice-api-filter-label" for="invoiceApiOrderStatus">订单状态</label>
+                  <select class="form-select" id="invoiceApiOrderStatus">
+                    <option value="">全部</option>
+                  </select>
+                </div>
+                <div class="invoice-api-filter-item">
+                  <label class="invoice-api-filter-label" for="invoiceApiLetterheadKeyword">买家抬头</label>
+                  <input class="form-input" id="invoiceApiLetterheadKeyword" placeholder="请输入买家抬头">
+                </div>
+                <div class="invoice-api-filter-item">
+                  <label class="invoice-api-filter-label" for="invoiceApiModeFilter">开票方式</label>
+                  <select class="form-select" id="invoiceApiModeFilter">
+                    <option value="">全部</option>
+                  </select>
+                </div>
+                <div class="invoice-api-filter-item">
+                  <label class="invoice-api-filter-label" for="invoiceApiTypeFilter">发票种类</label>
+                  <select class="form-select" id="invoiceApiTypeFilter">
+                    <option value="">全部</option>
+                  </select>
+                </div>
+                <div class="invoice-api-filter-actions">
+                  <button class="btn btn-primary" id="btnInvoiceApiApplyFilters">查询</button>
+                  <button class="btn btn-secondary" id="btnInvoiceApiResetFilters">重置</button>
+                  <button class="invoice-api-link-btn" id="btnInvoiceApiToggleMore">展开</button>
+                </div>
+              </div>
+              <div class="invoice-api-advanced-row hidden" id="invoiceApiAdvancedFilters">
+                <div class="invoice-api-filter-grid">
+                  <div class="invoice-api-filter-item">
+                    <label class="invoice-api-filter-label" for="invoiceApiLetterheadTypeFilter">抬头类型</label>
+                    <select class="form-select" id="invoiceApiLetterheadTypeFilter">
+                      <option value="">全部</option>
+                    </select>
+                  </div>
+                  <div class="invoice-api-filter-item">
+                    <label class="invoice-api-filter-label">快捷概览</label>
+                    <input class="form-input" id="invoiceApiQuickSummary" value="待加载统计概览" readonly>
+                  </div>
+                  <div class="invoice-api-filter-item">
+                    <label class="invoice-api-filter-label">接口范围</label>
+                    <input class="form-input" id="invoiceApiScopeHint" value="当前仅展示待开票接口返回结果" readonly>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="invoice-api-section-header invoice-api-table-toolbar">
+              <div class="invoice-api-status-tabs">
+                <button class="invoice-api-status-tab active" id="invoiceApiPendingTab">待开票 <span id="invoiceApiPendingTabCount">0</span></button>
+                <button class="invoice-api-status-tab" id="invoiceApiInvoicedTab" disabled>开票成功 <span id="invoiceApiInvoicedTabCount">0</span></button>
+                <button class="invoice-api-status-tab" id="invoiceApiFailTab" disabled>开票失败 <span id="invoiceApiFailTabCount">0</span></button>
+                <button class="invoice-api-status-tab" id="invoiceApiHoldTab" disabled>暂不开票 <span id="invoiceApiHoldTabCount">0</span></button>
+              </div>
+              <div class="invoice-api-toolbar">
+                <button class="btn btn-secondary" disabled>批量导出</button>
+                <button class="btn btn-secondary" disabled>自动开票</button>
+                <button class="btn btn-secondary" disabled>更多</button>
+              </div>
+            </div>
+            <div class="invoice-api-table-wrap">
+              <table class="data-table invoice-api-table">
+                <thead>
+                  <tr>
+                    <th style="width:36px"><input type="checkbox" id="invoiceApiSelectAllHead"></th>
+                    <th>订单号</th>
+                    <th>订单状态</th>
+                    <th>售后状态</th>
+                    <th>申请时间</th>
+                    <th>承诺开票时间</th>
+                    <th>发票金额</th>
+                    <th>开票方式</th>
+                    <th>发票种类</th>
+                    <th>抬头类型</th>
+                    <th>抬头</th>
+                    <th style="width:88px">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="invoiceApiList"></tbody>
+              </table>
+            </div>
+            <div class="invoice-api-table-footer">
+              <label class="invoice-api-check-all">
+                <input type="checkbox" id="invoiceApiSelectAll">
+                <span>全选</span>
+              </label>
+              <button class="btn btn-secondary" id="btnInvoiceApiBatchAction" disabled>批量自动开票</button>
+              <span class="invoice-api-selection-summary" id="invoiceApiSelectionSummary">未选择记录</span>
+              <span class="spacer"></span>
+              <span class="invoice-api-selection-summary" id="invoiceApiFooterTotal">共 0 条</span>
+            </div>
+          </div>
+
+          <div class="invoice-api-section">
+            <div class="invoice-api-detail-shell">
+              <div class="invoice-api-detail-main">
+                <div class="invoice-api-detail-header">
+                  <div class="invoice-api-section-heading">
+                    <div class="invoice-api-section-title">记录详情</div>
+                    <div class="invoice-api-section-meta" id="invoiceApiDetailMeta">点击表格中的“查看”打开详情</div>
+                  </div>
+                  <button class="btn btn-secondary" id="btnInvoiceApiBackToInvoice">切回待开票页</button>
+                </div>
+                <div class="invoice-api-detail-head" id="invoiceApiDetailHead">
+                  <div class="mail-api-detail-title">请选择一条待开票记录</div>
+                  <div class="mail-api-detail-meta">
+                    <span>订单号：-</span>
+                    <span>申请时间：-</span>
+                  </div>
+                </div>
+                <div class="invoice-api-detail-panel" id="invoiceApiDetailPanel">
+                  <div class="invoice-api-detail-empty">请选择一条待开票记录查看详情</div>
+                </div>
+              </div>
+              <div class="invoice-api-detail-side">
+                <div class="invoice-api-detail-header">
+                  <div class="invoice-api-section-heading">
+                    <div class="invoice-api-section-title">接口抓包</div>
+                    <div class="invoice-api-section-meta" id="invoiceApiTrafficSummary">0 条抓包记录</div>
+                  </div>
+                </div>
+                <div class="invoice-api-traffic-panel">
+                  <div class="mail-api-traffic-list invoice-api-traffic-list" id="invoiceApiTrafficList">
+                    <span class="mail-api-traffic-chip">暂无抓包</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -5193,6 +5869,20 @@
     let mailApiActiveDetail = null;
     let mailApiKeyword = '';
     let mailApiUnreadOnly = false;
+    let invoiceApiEntries = [];
+    let invoiceApiOverview = null;
+    let invoiceApiList = [];
+    let invoiceApiKeyword = '';
+    let invoiceApiQuickFilter = 'all';
+    let invoiceApiOrderStatus = '';
+    let invoiceApiModeFilter = '';
+    let invoiceApiTypeFilter = '';
+    let invoiceApiLetterheadTypeFilter = '';
+    let invoiceApiLetterheadKeyword = '';
+    let invoiceApiFiltersExpanded = false;
+    let invoiceApiActiveSerialNo = '';
+    let invoiceApiActiveDetail = null;
+    const invoiceApiSelectedSerialNos = new Set();
     let apiSessionTab = 'latest';
     let apiSideTab = 'personal';
     let apiSessionKeyword = '';
@@ -5234,12 +5924,17 @@
         document.getElementById('viewChat').classList.add('active');
       } else if (view === 'mail') {
         document.getElementById('viewMail').classList.add('active');
+      } else if (view === 'invoice') {
+        document.getElementById('viewInvoice').classList.add('active');
       } else if (view === 'chat-api') {
         document.getElementById('viewChatApi').classList.add('active');
         await loadApiChatView();
       } else if (view === 'mail-api') {
         document.getElementById('viewMailApi').classList.add('active');
         await loadMailApiView({ keepCurrent: true });
+      } else if (view === 'invoice-api') {
+        document.getElementById('viewInvoiceApi').classList.add('active');
+        await loadInvoiceApiView({ keepCurrent: true });
       } else if (view === 'shops') {
         document.getElementById('viewShops').classList.add('active');
         await loadShops();
@@ -5300,7 +5995,6 @@
           await window.pddApi.switchShop(shopId);
           shopDropdown.classList.remove('visible');
           shopSwitcherBtn.classList.remove('open');
-          if (!isEmbeddedPddView(currentView)) await switchView('chat');
         });
       });
     }
@@ -5335,12 +6029,37 @@
       return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
     }
 
+    function formatApiDateTime(value) {
+      const num = Number(value);
+      if (!num) return '-';
+      const ms = num < 1e12 ? num * 1000 : num;
+      const date = new Date(ms);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+
+    function formatApiAmount(value) {
+      const amount = Number(value || 0);
+      return Number.isFinite(amount) ? `¥${amount.toFixed(2)}` : '¥0.00';
+    }
+
     function setApiHint(text) {
       document.getElementById('apiComposerHint').textContent = text;
     }
 
     function isEmbeddedPddView(view) {
-      return view === 'chat' || view === 'mail';
+      return view === 'chat' || view === 'mail' || view === 'invoice';
+    }
+
+    function isMailPageUrl(url) {
+      return String(url || '').includes('/other/mail/');
+    }
+
+    function isChatPageUrl(url) {
+      return String(url || '').includes('chat-merchant');
+    }
+
+    function isInvoicePageUrl(url) {
+      return String(url || '').includes('/invoice/');
     }
 
     function formatApiListTime(value) {
@@ -5997,6 +6716,413 @@
       await loadMailApiTraffic(shopId);
     }
 
+    function getInvoiceTrafficType(entry) {
+      const text = `${entry?.fullUrl || entry?.url || ''} ${entry?.requestBody || ''}`.toLowerCase();
+      if (text.includes('/invoice/center')) return '页面入口';
+      if (text.includes('/omaisms/invoice/invoice_list')) return '待开票列表';
+      if (text.includes('/omaisms/invoice/invoice_statistic')) return '统计概览';
+      if (text.includes('/omaisms/invoice/invoice_quick_filter')) return '快捷筛选';
+      if (text.includes('/omaisms/invoice/pop_notice')) return '弹窗公告';
+      if (text.includes('/omaisms/invoice/invoice_tutorials')) return '开票教程';
+      if (text.includes('/omaisms/invoice/is_third_party_entity_sub_mall')) return '主体校验';
+      if (text.includes('/voice/api/mms/invoice/mall/verify2')) return '开票校验';
+      if (text.includes('/orderinvoice/mall/mallcontrolinfo')) return '店铺控制';
+      if (text.includes('/orderinvoice/mall/showinvoicemarktab')) return '页签配置';
+      if (text.includes('/invoice/')) return '待开票接口';
+      return '';
+    }
+
+    function isInvoiceTrafficEntry(entry) {
+      return !!getInvoiceTrafficType(entry);
+    }
+
+    function resetInvoiceApiState() {
+      invoiceApiOverview = null;
+      invoiceApiList = [];
+      invoiceApiEntries = [];
+      invoiceApiActiveSerialNo = '';
+      invoiceApiActiveDetail = null;
+      invoiceApiKeyword = '';
+      invoiceApiQuickFilter = 'all';
+      invoiceApiOrderStatus = '';
+      invoiceApiModeFilter = '';
+      invoiceApiTypeFilter = '';
+      invoiceApiLetterheadTypeFilter = '';
+      invoiceApiLetterheadKeyword = '';
+      invoiceApiFiltersExpanded = false;
+      invoiceApiSelectedSerialNos.clear();
+      const keywordInput = document.getElementById('invoiceApiKeyword');
+      if (keywordInput) keywordInput.value = '';
+      const letterheadInput = document.getElementById('invoiceApiLetterheadKeyword');
+      if (letterheadInput) letterheadInput.value = '';
+      ['invoiceApiOrderStatus', 'invoiceApiModeFilter', 'invoiceApiTypeFilter', 'invoiceApiLetterheadTypeFilter'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.value = '';
+      });
+      renderInvoiceApiOverview();
+      renderInvoiceApiSummary();
+      renderInvoiceApiList();
+      renderInvoiceApiDetail();
+      renderInvoiceApiTraffic();
+    }
+
+    function getInvoiceQuickType(item = {}) {
+      const text = `${item.invoiceType || ''} ${item.raw?.invoice_type_desc || ''} ${item.raw?.invoice_kind_desc || ''}`.toLowerCase();
+      if (text.includes('正品')) return 'quality';
+      if (text.includes('普通')) return 'normal';
+      return 'all';
+    }
+
+    function getInvoiceQuickCounts() {
+      const counts = invoiceApiList.reduce((acc, item) => {
+        const type = getInvoiceQuickType(item);
+        acc.all += 1;
+        if (type === 'quality') acc.quality += 1;
+        if (type === 'normal') acc.normal += 1;
+        return acc;
+      }, { all: 0, quality: 0, normal: 0 });
+      return {
+        all: counts.all || Number(invoiceApiOverview?.quickPendingTotal || invoiceApiOverview?.pendingNum || 0),
+        quality: counts.quality || Number(invoiceApiOverview?.qualityPendingTotal || 0),
+        normal: counts.normal || Number(invoiceApiOverview?.normalPendingTotal || 0),
+      };
+    }
+
+    function renderInvoiceApiFilterOptions() {
+      const renderSelect = (id, values, currentValue = '') => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        const options = ['<option value="">全部</option>'].concat(values.map(value => `<option value="${esc(value)}">${esc(value)}</option>`));
+        element.innerHTML = options.join('');
+        element.value = values.includes(currentValue) ? currentValue : '';
+      };
+      const getValues = key => Array.from(new Set(invoiceApiList.map(item => String(item[key] || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      renderSelect('invoiceApiOrderStatus', getValues('orderStatus'), invoiceApiOrderStatus);
+      renderSelect('invoiceApiModeFilter', getValues('invoiceMode'), invoiceApiModeFilter);
+      renderSelect('invoiceApiTypeFilter', getValues('invoiceType'), invoiceApiTypeFilter);
+      renderSelect('invoiceApiLetterheadTypeFilter', getValues('letterheadType'), invoiceApiLetterheadTypeFilter);
+    }
+
+    function getInvoiceVisibleList() {
+      const keyword = invoiceApiKeyword.trim().toLowerCase();
+      const letterheadKeyword = invoiceApiLetterheadKeyword.trim().toLowerCase();
+      return invoiceApiList.filter(item => {
+        if (invoiceApiQuickFilter !== 'all' && getInvoiceQuickType(item) !== invoiceApiQuickFilter) return false;
+        if (invoiceApiOrderStatus && item.orderStatus !== invoiceApiOrderStatus) return false;
+        if (invoiceApiModeFilter && item.invoiceMode !== invoiceApiModeFilter) return false;
+        if (invoiceApiTypeFilter && item.invoiceType !== invoiceApiTypeFilter) return false;
+        if (invoiceApiLetterheadTypeFilter && item.letterheadType !== invoiceApiLetterheadTypeFilter) return false;
+        if (keyword) {
+          const text = `${item.orderSn || ''} ${item.serialNo || ''}`.toLowerCase();
+          if (!text.includes(keyword)) return false;
+        }
+        if (letterheadKeyword) {
+          const text = `${item.letterhead || ''}`.toLowerCase();
+          if (!text.includes(letterheadKeyword)) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderInvoiceApiOverview() {
+      document.getElementById('invoiceApiPendingNum').textContent = invoiceApiOverview ? String(invoiceApiOverview.pendingNum || 0) : '-';
+      document.getElementById('invoiceApiInvoicedNum').textContent = invoiceApiOverview ? String(invoiceApiOverview.invoicedNum || 0) : '-';
+      document.getElementById('invoiceApiApplyingNum').textContent = invoiceApiOverview ? String(invoiceApiOverview.applyingNum || 0) : '-';
+      document.getElementById('invoiceApiAmount').textContent = invoiceApiOverview ? formatApiAmount(invoiceApiOverview.invoiceAmount || 0) : '-';
+      document.getElementById('invoiceApiQualityTotal').textContent = invoiceApiOverview ? String(invoiceApiOverview.qualityPendingTotal || 0) : '-';
+      document.getElementById('invoiceApiNormalTotal').textContent = invoiceApiOverview ? String(invoiceApiOverview.normalPendingTotal || 0) : '-';
+      const quickSummary = document.getElementById('invoiceApiQuickSummary');
+      if (quickSummary) {
+        quickSummary.value = invoiceApiOverview
+          ? `快捷待开票 ${invoiceApiOverview.quickPendingTotal || 0}，全国票确认 ${invoiceApiOverview.nationalInvoiceConfirmTotal || 0}`
+          : '待加载统计概览';
+      }
+      const scopeHint = document.getElementById('invoiceApiScopeHint');
+      if (scopeHint) {
+        scopeHint.value = invoiceApiOverview
+          ? `标记页签：${invoiceApiOverview.showInvoiceMarkTab ? '显示' : '隐藏'}，第三方主体分店：${invoiceApiOverview.isThirdPartySubMall ? '是' : '否'}`
+          : '当前仅展示待开票接口返回结果';
+      }
+    }
+
+    function renderInvoiceApiSummary() {
+      const quickCounts = getInvoiceQuickCounts();
+      document.getElementById('invoiceApiQuickAllCount').textContent = String(quickCounts.all || 0);
+      document.getElementById('invoiceApiQuickQualityCount').textContent = String(quickCounts.quality || 0);
+      document.getElementById('invoiceApiQuickNormalCount').textContent = String(quickCounts.normal || 0);
+      document.getElementById('invoiceApiPendingTabCount').textContent = String(invoiceApiOverview?.pendingNum || quickCounts.all || 0);
+      document.getElementById('invoiceApiInvoicedTabCount').textContent = String(invoiceApiOverview?.invoicedNum || 0);
+      document.getElementById('invoiceApiFailTabCount').textContent = '0';
+      document.getElementById('invoiceApiHoldTabCount').textContent = String(invoiceApiOverview?.applyingNum || 0);
+      document.querySelectorAll('[data-invoice-quick]').forEach(button => {
+        button.classList.toggle('active', button.dataset.invoiceQuick === invoiceApiQuickFilter);
+      });
+      const advancedFilters = document.getElementById('invoiceApiAdvancedFilters');
+      const toggleButton = document.getElementById('btnInvoiceApiToggleMore');
+      if (advancedFilters) advancedFilters.classList.toggle('hidden', !invoiceApiFiltersExpanded);
+      if (toggleButton) toggleButton.textContent = invoiceApiFiltersExpanded ? '收起' : '展开';
+      renderInvoiceApiFilterOptions();
+    }
+
+    function syncInvoiceApiSelectAllState(visibleList = getInvoiceVisibleList()) {
+      const visibleSelectedCount = visibleList.filter(item => invoiceApiSelectedSerialNos.has(String(item.serialNo))).length;
+      const allSelected = !!visibleList.length && visibleSelectedCount === visibleList.length;
+      const partialSelected = visibleSelectedCount > 0 && visibleSelectedCount < visibleList.length;
+      ['invoiceApiSelectAllHead', 'invoiceApiSelectAll'].forEach(id => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        element.checked = allSelected;
+        element.indeterminate = partialSelected;
+      });
+      document.getElementById('invoiceApiSelectionSummary').textContent = invoiceApiSelectedSerialNos.size
+        ? `已选择 ${invoiceApiSelectedSerialNos.size} 条记录`
+        : '未选择记录';
+      document.getElementById('invoiceApiFooterTotal').textContent = `共 ${visibleList.length} 条`;
+      document.getElementById('btnInvoiceApiBatchAction').disabled = invoiceApiSelectedSerialNos.size === 0;
+    }
+
+    async function syncInvoiceApiDetailWithVisible() {
+      const visibleList = getInvoiceVisibleList();
+      if (invoiceApiActiveSerialNo && visibleList.some(item => String(item.serialNo) === String(invoiceApiActiveSerialNo))) {
+        renderInvoiceApiList();
+        renderInvoiceApiDetail();
+        return;
+      }
+      renderInvoiceApiList();
+      if (visibleList[0]?.serialNo) {
+        await openInvoiceApiDetail(visibleList[0].serialNo, { skipTraffic: true });
+        return;
+      }
+      invoiceApiActiveSerialNo = '';
+      invoiceApiActiveDetail = null;
+      renderInvoiceApiDetail();
+    }
+
+    function renderInvoiceApiList() {
+      const container = document.getElementById('invoiceApiList');
+      const visibleList = getInvoiceVisibleList();
+      document.getElementById('invoiceApiListMeta').textContent = `${visibleList.length} / ${invoiceApiList.length} 条记录`;
+      const filterLabels = [];
+      if (invoiceApiQuickFilter === 'quality') filterLabels.push('正品发票');
+      if (invoiceApiQuickFilter === 'normal') filterLabels.push('普通发票');
+      if (invoiceApiOrderStatus) filterLabels.push(`订单状态：${invoiceApiOrderStatus}`);
+      if (invoiceApiModeFilter) filterLabels.push(`开票方式：${invoiceApiModeFilter}`);
+      if (invoiceApiTypeFilter) filterLabels.push(`发票种类：${invoiceApiTypeFilter}`);
+      if (invoiceApiLetterheadTypeFilter) filterLabels.push(`抬头类型：${invoiceApiLetterheadTypeFilter}`);
+      if (invoiceApiKeyword) filterLabels.push(`订单号：${invoiceApiKeyword}`);
+      if (invoiceApiLetterheadKeyword) filterLabels.push(`买家抬头：${invoiceApiLetterheadKeyword}`);
+      document.getElementById('invoiceApiListStatus').textContent = filterLabels.length
+        ? filterLabels.join(' · ')
+        : '默认拉取待开票列表';
+      if (!visibleList.length) {
+        container.innerHTML = '<tr><td colspan="12"><div class="mail-api-list-empty">当前没有待开票记录，或没有匹配到搜索结果。</div></td></tr>';
+        syncInvoiceApiSelectAllState(visibleList);
+        return;
+      }
+      container.innerHTML = visibleList.map(item => {
+        const serialNo = String(item.serialNo || '');
+        const active = serialNo === String(invoiceApiActiveSerialNo);
+        const selected = invoiceApiSelectedSerialNos.has(serialNo);
+        return `
+          <tr class="${active ? 'active' : ''} ${selected ? 'selected' : ''}" data-invoice-serial-no="${esc(serialNo)}">
+            <td><input type="checkbox" class="invoice-api-row-check" data-invoice-check="${esc(serialNo)}" ${selected ? 'checked' : ''}></td>
+            <td class="invoice-api-cell-em" title="${esc(item.orderSn || serialNo || '-')}">${esc(item.orderSn || serialNo || '-')}</td>
+            <td title="${esc(item.orderStatus || '-')}">${esc(item.orderStatus || '-')}</td>
+            <td title="${esc(item.afterSalesStatus || '-')}">${esc(item.afterSalesStatus || '-')}</td>
+            <td>${esc(formatApiDateTime(item.applyTime))}</td>
+            <td class="invoice-api-cell-muted">-</td>
+            <td class="invoice-api-amount">${esc(formatApiAmount(item.invoiceAmount))}</td>
+            <td title="${esc(item.invoiceMode || '-')}">${esc(item.invoiceMode || '-')}</td>
+            <td title="${esc(item.invoiceType || '-')}">${esc(item.invoiceType || '-')}</td>
+            <td title="${esc(item.letterheadType || '-')}">${esc(item.letterheadType || '-')}</td>
+            <td title="${esc(item.letterhead || '-')}">${esc(item.letterhead || '-')}</td>
+            <td><button class="btn btn-secondary btn-sm invoice-api-op-btn" data-invoice-detail="${esc(serialNo)}">查看</button></td>
+          </tr>
+        `;
+      }).join('');
+      container.querySelectorAll('tr[data-invoice-serial-no]').forEach(row => {
+        row.addEventListener('click', async event => {
+          if (event.target.closest('button') || event.target.closest('input')) return;
+          await openInvoiceApiDetail(row.dataset.invoiceSerialNo, { skipTraffic: true });
+        });
+      });
+      container.querySelectorAll('[data-invoice-detail]').forEach(button => {
+        button.addEventListener('click', async event => {
+          event.stopPropagation();
+          await openInvoiceApiDetail(button.dataset.invoiceDetail, { skipTraffic: true });
+        });
+      });
+      container.querySelectorAll('[data-invoice-check]').forEach(input => {
+        input.addEventListener('click', event => event.stopPropagation());
+        input.addEventListener('change', event => {
+          const serialNo = String(event.target.dataset.invoiceCheck || '');
+          if (!serialNo) return;
+          if (event.target.checked) {
+            invoiceApiSelectedSerialNos.add(serialNo);
+          } else {
+            invoiceApiSelectedSerialNos.delete(serialNo);
+          }
+          const row = event.target.closest('tr');
+          if (row) row.classList.toggle('selected', event.target.checked);
+          syncInvoiceApiSelectAllState(visibleList);
+        });
+      });
+      syncInvoiceApiSelectAllState(visibleList);
+    }
+
+    function renderInvoiceApiDetail() {
+      const head = document.getElementById('invoiceApiDetailHead');
+      const panel = document.getElementById('invoiceApiDetailPanel');
+      if (!invoiceApiActiveDetail?.serialNo) {
+        head.innerHTML = `
+          <div class="mail-api-detail-title">请选择一条待开票记录</div>
+          <div class="mail-api-detail-meta"><span>订单号：-</span><span>申请时间：-</span></div>
+        `;
+        panel.innerHTML = '<div class="invoice-api-detail-empty">请选择一条待开票记录查看详情</div>';
+        document.getElementById('invoiceApiDetailMeta').textContent = '点击表格中的“查看”打开详情';
+        return;
+      }
+      head.innerHTML = `
+        <div class="mail-api-detail-title">${esc(invoiceApiActiveDetail.orderSn || invoiceApiActiveDetail.serialNo || '待开票记录')}</div>
+        <div class="mail-api-detail-meta">
+          <span>流水号：${esc(invoiceApiActiveDetail.serialNo || '-')}</span>
+          <span>申请时间：${esc(formatApiDateTime(invoiceApiActiveDetail.applyTime))}</span>
+        </div>
+      `;
+      const detailItems = [
+        ['店铺', invoiceApiActiveDetail.shopName || '-'],
+        ['流水号', invoiceApiActiveDetail.serialNo || '-'],
+        ['订单状态', invoiceApiActiveDetail.orderStatus || '-'],
+        ['售后状态', invoiceApiActiveDetail.afterSalesStatus || '-'],
+        ['开票金额', formatApiAmount(invoiceApiActiveDetail.invoiceAmount)],
+        ['开票方式', invoiceApiActiveDetail.invoiceMode || '-'],
+        ['发票种类', invoiceApiActiveDetail.invoiceType || '-'],
+        ['抬头类型', invoiceApiActiveDetail.letterheadType || '-'],
+        ['发票抬头', invoiceApiActiveDetail.letterhead || '-'],
+      ];
+      panel.innerHTML = `
+        <div class="invoice-api-detail-grid">
+          ${detailItems.map(([label, value]) => `
+            <div class="invoice-api-detail-item">
+              <div class="invoice-api-detail-item-label">${esc(label)}</div>
+              <div class="invoice-api-detail-item-value">${esc(value)}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      document.getElementById('invoiceApiDetailMeta').textContent = `已打开记录：${invoiceApiActiveDetail.serialNo || invoiceApiActiveDetail.orderSn}`;
+    }
+
+    function renderInvoiceApiTraffic() {
+      const container = document.getElementById('invoiceApiTrafficList');
+      document.getElementById('invoiceApiTrafficSummary').textContent = `${invoiceApiEntries.length} 条抓包记录`;
+      if (!invoiceApiEntries.length) {
+        container.innerHTML = '<span class="mail-api-traffic-chip">暂无抓包</span>';
+        return;
+      }
+      container.innerHTML = invoiceApiEntries.slice(0, 10).map(entry => {
+        const typeTag = getInvoiceTrafficType(entry);
+        const summary = `${typeTag} · ${entry.method || 'GET'} ${entry.url}`;
+        return `<span class="mail-api-traffic-chip" title="${esc(summary)}">${esc(summary)}</span>`;
+      }).join('');
+    }
+
+    async function loadInvoiceApiTraffic(shopId = activeShopId) {
+      if (!shopId) {
+        invoiceApiEntries = [];
+        renderInvoiceApiTraffic();
+        return;
+      }
+      const list = await window.pddApi.getApiTraffic({ shopId });
+      invoiceApiEntries = Array.isArray(list) ? list.slice().reverse().filter(isInvoiceTrafficEntry) : [];
+      renderInvoiceApiTraffic();
+    }
+
+    async function loadInvoiceApiOverview(shopId = activeShopId) {
+      const result = await window.pddApi.invoiceGetOverview({ shopId });
+      if (!result || result.error) {
+        invoiceApiOverview = null;
+        renderInvoiceApiOverview();
+        renderInvoiceApiSummary();
+        document.getElementById('invoiceApiHeaderMeta').textContent = result?.error || '加载待开票统计失败';
+        return false;
+      }
+      invoiceApiOverview = result;
+      renderInvoiceApiOverview();
+      renderInvoiceApiSummary();
+      document.getElementById('invoiceApiHeaderMeta').textContent = `统计口径：当前接口返回 · 待开票 ${result.pendingNum || 0} 条，已开票 ${result.invoicedNum || 0} 条`;
+      return true;
+    }
+
+    async function openInvoiceApiDetail(serialNo, options = {}) {
+      if (!serialNo) return;
+      invoiceApiActiveSerialNo = String(serialNo);
+      invoiceApiActiveDetail = invoiceApiList.find(item => String(item.serialNo) === String(serialNo)) || null;
+      renderInvoiceApiList();
+      renderInvoiceApiDetail();
+      if (!options.skipTraffic) {
+        await loadInvoiceApiTraffic();
+      }
+    }
+
+    async function loadInvoiceApiList(options = {}) {
+      if (!activeShopId) {
+        invoiceApiList = [];
+        invoiceApiActiveSerialNo = '';
+        invoiceApiActiveDetail = null;
+        renderInvoiceApiFilterOptions();
+        renderInvoiceApiSummary();
+        renderInvoiceApiList();
+        renderInvoiceApiDetail();
+        return false;
+      }
+      const result = await window.pddApi.invoiceGetList({
+        shopId: activeShopId,
+        pageNo: 1,
+        pageSize: 20,
+        keyword: invoiceApiKeyword,
+      });
+      if (!result || result.error) {
+        invoiceApiList = [];
+        invoiceApiActiveSerialNo = '';
+        invoiceApiActiveDetail = null;
+        renderInvoiceApiFilterOptions();
+        renderInvoiceApiSummary();
+        renderInvoiceApiList();
+        renderInvoiceApiDetail();
+        addLog(result?.error || '加载待开票列表失败', 'error');
+        return false;
+      }
+      invoiceApiList = Array.isArray(result.list) ? result.list : [];
+      renderInvoiceApiFilterOptions();
+      renderInvoiceApiSummary();
+      renderInvoiceApiList();
+      const visibleList = getInvoiceVisibleList();
+      const keepCurrent = options.keepCurrent && visibleList.some(item => String(item.serialNo) === String(invoiceApiActiveSerialNo));
+      if (keepCurrent && invoiceApiActiveSerialNo) {
+        await openInvoiceApiDetail(invoiceApiActiveSerialNo, { skipTraffic: true });
+      } else if (visibleList[0]?.serialNo) {
+        await openInvoiceApiDetail(visibleList[0].serialNo, { skipTraffic: true });
+      } else {
+        invoiceApiActiveSerialNo = '';
+        invoiceApiActiveDetail = null;
+        renderInvoiceApiDetail();
+      }
+      return true;
+    }
+
+    async function loadInvoiceApiView(options = {}) {
+      const shopId = activeShopId;
+      if (!shopId) {
+        document.getElementById('invoiceApiHeaderMeta').textContent = '当前没有活跃店铺';
+        resetInvoiceApiState();
+        return;
+      }
+      await loadInvoiceApiOverview(shopId);
+      await loadInvoiceApiList({ keepCurrent: options.keepCurrent });
+      await loadInvoiceApiTraffic(shopId);
+    }
+
     async function loadApiSessions(options = {}) {
       const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 50 });
       if (!Array.isArray(result)) {
@@ -6143,7 +7269,7 @@
     window.pddApi.onShopSwitched(async (data) => {
       updateShopSwitcherDisplay(data.shop);
       addLog(`已切换到: ${data.shop?.name || '未知店铺'}`, 'info');
-      if (currentView === 'mail' || currentView === 'mail-api') {
+      if (currentView === 'mail' || currentView === 'mail-api' || currentView === 'invoice' || currentView === 'invoice-api') {
         await window.pddApi.reloadPdd();
       }
       if (currentView === 'chat-api') {
@@ -6151,6 +7277,9 @@
       }
       if (currentView === 'mail-api') {
         loadMailApiView();
+      }
+      if (currentView === 'invoice-api') {
+        loadInvoiceApiView();
       }
     });
 
@@ -6180,6 +7309,9 @@
       }
       if (currentView === 'mail-api') {
         loadMailApiView();
+      }
+      if (currentView === 'invoice-api') {
+        loadInvoiceApiView();
       }
     });
 
@@ -7461,8 +8593,11 @@
     document.getElementById('btnReload').addEventListener('click', () => window.pddApi.reloadPdd());
     document.getElementById('btnDevTools').addEventListener('click', () => window.pddApi.openDevTools());
     document.getElementById('btnMailOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
+    document.getElementById('btnInvoiceOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
     document.getElementById('btnMailApiOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
+    document.getElementById('btnInvoiceApiOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
     document.getElementById('btnMailApiRefreshPage').addEventListener('click', () => window.pddApi.reloadPdd());
+    document.getElementById('btnInvoiceApiRefreshPage').addEventListener('click', () => window.pddApi.reloadPdd());
     document.getElementById('btnMailApiRefreshList').addEventListener('click', async () => {
       await loadMailApiOverview();
       await loadMailApiList({ keepCurrent: true });
@@ -7488,6 +8623,107 @@
       addLog('已清空当前范围的抓包记录', 'info');
     });
     document.getElementById('btnMailApiBackToMail').addEventListener('click', () => switchView('mail'));
+    document.getElementById('btnInvoiceApiRefreshList').addEventListener('click', async () => {
+      await loadInvoiceApiOverview();
+      await loadInvoiceApiList({ keepCurrent: true });
+      await loadInvoiceApiTraffic();
+      addLog('已刷新待开票列表', 'info');
+    });
+    document.getElementById('btnInvoiceApiReloadTraffic').addEventListener('click', async () => {
+      await loadInvoiceApiTraffic();
+      addLog('已刷新待开票抓包记录', 'info');
+    });
+    document.getElementById('btnInvoiceApiClearTraffic').addEventListener('click', async () => {
+      const shopId = activeShopId || API_ALL_SHOPS;
+      await window.pddApi.clearApiTraffic({ shopId });
+      await loadInvoiceApiTraffic();
+      addLog('已清空当前范围的待开票抓包记录', 'info');
+    });
+    document.getElementById('btnInvoiceApiBackToInvoice').addEventListener('click', () => switchView('invoice'));
+    document.getElementById('btnInvoiceApiApplyFilters').addEventListener('click', async () => {
+      invoiceApiKeyword = document.getElementById('invoiceApiKeyword').value || '';
+      await loadInvoiceApiList({ keepCurrent: true });
+    });
+    document.getElementById('btnInvoiceApiResetFilters').addEventListener('click', async () => {
+      invoiceApiKeyword = '';
+      invoiceApiQuickFilter = 'all';
+      invoiceApiOrderStatus = '';
+      invoiceApiModeFilter = '';
+      invoiceApiTypeFilter = '';
+      invoiceApiLetterheadTypeFilter = '';
+      invoiceApiLetterheadKeyword = '';
+      invoiceApiSelectedSerialNos.clear();
+      document.getElementById('invoiceApiKeyword').value = '';
+      document.getElementById('invoiceApiLetterheadKeyword').value = '';
+      ['invoiceApiOrderStatus', 'invoiceApiModeFilter', 'invoiceApiTypeFilter', 'invoiceApiLetterheadTypeFilter'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.value = '';
+      });
+      renderInvoiceApiSummary();
+      await loadInvoiceApiList({ keepCurrent: true });
+    });
+    document.getElementById('btnInvoiceApiToggleMore').addEventListener('click', () => {
+      invoiceApiFiltersExpanded = !invoiceApiFiltersExpanded;
+      renderInvoiceApiSummary();
+    });
+    document.querySelectorAll('[data-invoice-quick]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const nextFilter = button.dataset.invoiceQuick || 'all';
+        if (nextFilter === invoiceApiQuickFilter) return;
+        invoiceApiQuickFilter = nextFilter;
+        renderInvoiceApiSummary();
+        await syncInvoiceApiDetailWithVisible();
+      });
+    });
+    document.getElementById('invoiceApiOrderStatus').addEventListener('change', async event => {
+      invoiceApiOrderStatus = event.target.value || '';
+      await syncInvoiceApiDetailWithVisible();
+    });
+    document.getElementById('invoiceApiModeFilter').addEventListener('change', async event => {
+      invoiceApiModeFilter = event.target.value || '';
+      await syncInvoiceApiDetailWithVisible();
+    });
+    document.getElementById('invoiceApiTypeFilter').addEventListener('change', async event => {
+      invoiceApiTypeFilter = event.target.value || '';
+      await syncInvoiceApiDetailWithVisible();
+    });
+    document.getElementById('invoiceApiLetterheadTypeFilter').addEventListener('change', async event => {
+      invoiceApiLetterheadTypeFilter = event.target.value || '';
+      await syncInvoiceApiDetailWithVisible();
+    });
+    document.getElementById('invoiceApiLetterheadKeyword').addEventListener('input', async event => {
+      invoiceApiLetterheadKeyword = event.target.value || '';
+      await syncInvoiceApiDetailWithVisible();
+    });
+    ['invoiceApiKeyword', 'invoiceApiLetterheadKeyword'].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', async event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        if (id === 'invoiceApiKeyword') {
+          invoiceApiKeyword = document.getElementById('invoiceApiKeyword').value || '';
+          await loadInvoiceApiList({ keepCurrent: true });
+          return;
+        }
+        invoiceApiLetterheadKeyword = document.getElementById('invoiceApiLetterheadKeyword').value || '';
+        await syncInvoiceApiDetailWithVisible();
+      });
+    });
+    ['invoiceApiSelectAllHead', 'invoiceApiSelectAll'].forEach(id => {
+      document.getElementById(id).addEventListener('change', event => {
+        const checked = !!event.target.checked;
+        const visibleList = getInvoiceVisibleList();
+        visibleList.forEach(item => {
+          const serialNo = String(item.serialNo || '');
+          if (!serialNo) return;
+          if (checked) {
+            invoiceApiSelectedSerialNos.add(serialNo);
+          } else {
+            invoiceApiSelectedSerialNos.delete(serialNo);
+          }
+        });
+        renderInvoiceApiList();
+      });
+    });
     document.getElementById('mailApiKeyword').addEventListener('input', async (event) => {
       mailApiKeyword = event.target.value || '';
       renderMailApiList();
@@ -7536,6 +8772,9 @@
       }
       await openMailApiDetail(visibleList[index + 1].messageId);
     });
+    document.getElementById('btnInvoiceListTip').addEventListener('click', () => addLog('请在嵌入网页中查看待开票列表并观察抓包', 'info'));
+    document.getElementById('btnInvoiceActionTip').addEventListener('click', () => addLog('请在嵌入网页中点击“立即开票”，当前接口版先完成列表与统计对接', 'info'));
+    document.getElementById('btnInvoiceSkipTip').addEventListener('click', () => addLog('请在嵌入网页中处理“暂不开票”动作，当前接口版保留抓包观察能力', 'info'));
 
     document.getElementById('btnTestReply').addEventListener('click', async () => {
       const btn = document.getElementById('btnTestReply');
@@ -7563,9 +8802,24 @@
       const url = await window.pddApi.getCurrentUrl();
       if (url && !url.includes('/other/404')) {
         if (currentView === 'mail' || currentView === 'mail-api') {
+          if (!isMailPageUrl(url)) {
+            addLog('当前不是站内信页面，未保存入口', 'error');
+            return;
+          }
           await window.pddApi.setMailUrl(url);
           addLog(`已保存站内信入口: ${url}`, 'info');
+        } else if (currentView === 'invoice' || currentView === 'invoice-api') {
+          if (!isInvoicePageUrl(url)) {
+            addLog('当前不是待开票页面，未保存入口', 'error');
+            return;
+          }
+          await window.pddApi.setInvoiceUrl(url);
+          addLog(`已保存待开票入口: ${url}`, 'info');
         } else {
+          if (!isChatPageUrl(url)) {
+            addLog('当前不是客户对话页面，未保存入口', 'error');
+            return;
+          }
           await window.pddApi.setChatUrl(url);
           addLog(`已保存客服首页: ${url}`, 'info');
         }

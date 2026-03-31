@@ -1630,7 +1630,7 @@ ipcMain.handle('api-send-message', async (event, params = {}) => {
   if (!params.sessionId) return { error: '缺少 sessionId' };
   if (!params.text) return { error: '缺少发送内容' };
   try {
-    return await getApiClient(shopId).sendMessage(params.sessionId, params.text);
+    return await getApiClient(shopId).sendMessage(params.session || params.sessionId, params.text);
   } catch (err) {
     return { error: err.message };
   }
@@ -1656,13 +1656,13 @@ ipcMain.handle('api-send-image', async (event, params = {}) => {
   if (!params.filePath) return { error: '缺少图片路径' };
   const client = getApiClient(shopId);
   try {
-    return await client.sendImage(params.sessionId, params.filePath);
+    return await client.sendImage(params.session || params.sessionId, params.filePath);
   } catch (err) {
     if (err.step === 'upload' && /ERR_BLOCKED_BY_CLIENT/i.test(err.message || '')) {
       try {
         const uploadResult = await uploadImageViaPddPage(shopId, params.filePath);
         const imageUrl = uploadResult?.processed_url || uploadResult?.url;
-        return await client.sendImageUrl(params.sessionId, imageUrl, {
+        return await client.sendImageUrl(params.session || params.sessionId, imageUrl, {
           filePath: params.filePath,
           uploadBaseUrl: uploadResult?.uploadBaseUrl || 'embedded-pdd-page',
         });

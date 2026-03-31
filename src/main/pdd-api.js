@@ -246,6 +246,32 @@ class PddApiClient extends EventEmitter {
     };
   }
 
+  _getSessionIdentityCandidates(sessionRef) {
+    const sessionMeta = this._normalizeSessionMeta(sessionRef);
+    const ids = [
+      sessionMeta.sessionId,
+      sessionMeta.explicitSessionId,
+      sessionMeta.conversationId,
+      sessionMeta.chatId,
+      sessionMeta.rawId,
+      sessionMeta.customerId,
+      sessionMeta.userUid,
+      sessionMeta?.raw?.session_id,
+      sessionMeta?.raw?.conversation_id,
+      sessionMeta?.raw?.chat_id,
+      sessionMeta?.raw?.id,
+      sessionMeta?.raw?.customer_id,
+      sessionMeta?.raw?.buyer_id,
+      sessionMeta?.raw?.uid,
+      sessionMeta?.raw?.to?.uid,
+      sessionMeta?.raw?.user_info?.uid,
+    ].map(value => String(value || '')).filter(Boolean);
+    return {
+      sessionMeta,
+      ids: [...new Set(ids)],
+    };
+  }
+
   _buildSessionMessageCandidates(sessionMeta = {}, templateList = {}) {
     const ids = [
       sessionMeta.sessionId,
@@ -295,16 +321,19 @@ class PddApiClient extends EventEmitter {
     return startIndex <= 0 && !hasPinnedCursor;
   }
 
-  _getLatestBuyerInfo(sessionId) {
-    const entry = this._getLatestSessionTraffic('/plateau/chat/list', sessionId);
+  _getLatestBuyerInfo(sessionRef) {
+    const { ids } = this._getSessionIdentityCandidates(sessionRef);
+    const entry = this._getLatestSessionTraffic('/plateau/chat/list', ids);
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
     const messages = this._parseMessages(payload);
     const buyerMessage = [...messages].reverse().find(item => item.isFromBuyer && item?.raw && typeof item.raw === 'object');
     return buyerMessage?.raw?.user_info ? this._cloneJson(buyerMessage.raw.user_info) : null;
   }
 
-  _getLatestMessageTemplate(sessionId) {
-    const entry = this._getLatestSessionTraffic('/plateau/chat/list', sessionId);
+  _getLatestMessageTemplate(sessionRef) {
+    const { ids } = this._getSessionIdentityCandidates(sessionRef);
+    const identitySet = new Set(ids);
+    const entry = this._getLatestSessionTraffic('/plateau/chat/list', ids);
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
     const messages = this._parseMessages(payload);
     const sellerMessage = [...messages].reverse().find(item => !item.isFromBuyer && item?.raw && typeof item.raw === 'object');
@@ -314,7 +343,28 @@ class PddApiClient extends EventEmitter {
 
     const sessionListPayload = this._getLatestResponseBody('/plateau/chat/latest_conversations');
     const sessions = this._parseSessionList(sessionListPayload);
-    const matchedSession = [...sessions].find(item => String(item.sessionId || '') === String(sessionId) && item?.raw && typeof item.raw === 'object');
+    const matchedSession = [...sessions].find(item => {
+      if (!item?.raw || typeof item.raw !== 'object') return false;
+      const candidates = [
+        item?.sessionId,
+        item?.explicitSessionId,
+        item?.conversationId,
+        item?.chatId,
+        item?.rawId,
+        item?.customerId,
+        item?.userUid,
+        item?.raw?.session_id,
+        item?.raw?.conversation_id,
+        item?.raw?.chat_id,
+        item?.raw?.id,
+        item?.raw?.customer_id,
+        item?.raw?.buyer_id,
+        item?.raw?.uid,
+        item?.raw?.to?.uid,
+        item?.raw?.user_info?.uid,
+      ].map(value => String(value || '')).filter(Boolean);
+      return candidates.some(value => identitySet.has(value));
+    });
     if (matchedSession?.raw) {
       return this._cloneJson(matchedSession.raw);
     }
@@ -323,11 +373,13 @@ class PddApiClient extends EventEmitter {
     return latestSellerSession?.raw ? this._cloneJson(latestSellerSession.raw) : null;
   }
 
-  _buildSendMessageTemplate(sessionId, text, ts, hash) {
+  _buildSendMessageTemplate(sessionRef, text, ts, hash) {
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
     const shop = this._getShopInfo();
     const mallId = this._getMallId();
-    const template = this._getLatestMessageTemplate(sessionId) || {};
-    const buyerInfo = this._getLatestBuyerInfo(sessionId);
+    const template = this._getLatestMessageTemplate(sessionMeta) || {};
+    const buyerInfo = this._getLatestBuyerInfo(sessionMeta);
+    const targetUid = String(sessionMeta.userUid || sessionMeta.customerId || sessionMeta.sessionId || '');
     const from = { ...(template.from || {}) };
     const to = { ...(template.to || {}) };
 
@@ -336,7 +388,7 @@ class PddApiClient extends EventEmitter {
     if (!from.mall_id && mallId) from.mall_id = String(mallId);
     if (!from.csid && shop?.name) from.csid = shop.name;
     to.role = to.role || 'user';
-    to.uid = String(sessionId);
+    to.uid = targetUid;
 
     const message = {
       ...template,
@@ -1529,10 +1581,12 @@ class PddApiClient extends EventEmitter {
     return fallbackMessages;
   }
 
-  _buildSendMessageBody(sessionId, text) {
-    const latestTraffic = this._findLatestTraffic('/plateau/chat/send_message');
+  _buildSendMessageBody(sessionRef, text) {
+    const { sessionMeta, ids } = this._getSessionIdentityCandidates(sessionRef);
+    const latestTraffic = this._getLatestSessionTraffic('/plateau/chat/send_message', ids);
     const templateBody = this._safeParseJson(latestTraffic?.requestBody);
-    const latestListBody = this._getLatestRequestBody('/plateau/chat/list');
+    const latestListTraffic = this._getLatestSessionTraffic('/plateau/chat/list', ids);
+    const latestListBody = this._safeParseJson(latestListTraffic?.requestBody) || this._getLatestRequestBody('/plateau/chat/list');
     const latestConversationsBody = this._getLatestRequestBody('/plateau/chat/latest_conversations');
     const bodyAntiContent = templateBody?.data?.anti_content
       || latestListBody?.data?.anti_content
@@ -1545,8 +1599,8 @@ class PddApiClient extends EventEmitter {
     const requestId = this._nextRequestId();
     const ts = Math.floor(Date.now() / 1000);
     const random = this._randomHex(32);
-    const hash = this._buildMessageHash(sessionId, text, ts, random);
-    const message = this._buildSendMessageTemplate(sessionId, text, ts, hash);
+    const hash = this._buildMessageHash(sessionMeta.sessionId || sessionMeta.userUid || sessionMeta.customerId || '', text, ts, random);
+    const message = this._buildSendMessageTemplate(sessionMeta, text, ts, hash);
 
     if (templateBody) {
       const body = this._cloneJson(templateBody);
@@ -1631,10 +1685,12 @@ class PddApiClient extends EventEmitter {
     throw this._createStepError('upload', attempts[0]?.error || '图片上传失败', { attempts });
   }
 
-  _buildSendImageBody(sessionId, imageUrl) {
-    const latestTraffic = this._findLatestTraffic('/plateau/chat/send_message');
+  _buildSendImageBody(sessionRef, imageUrl) {
+    const { sessionMeta, ids } = this._getSessionIdentityCandidates(sessionRef);
+    const latestTraffic = this._getLatestSessionTraffic('/plateau/chat/send_message', ids);
     const templateBody = this._safeParseJson(latestTraffic?.requestBody);
-    const latestListBody = this._getLatestRequestBody('/plateau/chat/list');
+    const latestListTraffic = this._getLatestSessionTraffic('/plateau/chat/list', ids);
+    const latestListBody = this._safeParseJson(latestListTraffic?.requestBody) || this._getLatestRequestBody('/plateau/chat/list');
     const latestConversationsBody = this._getLatestRequestBody('/plateau/chat/latest_conversations');
     const bodyAntiContent = templateBody?.data?.anti_content
       || latestListBody?.data?.anti_content
@@ -1647,8 +1703,8 @@ class PddApiClient extends EventEmitter {
     const requestId = this._nextRequestId();
     const ts = Math.floor(Date.now() / 1000);
     const random = this._randomHex(32);
-    const hash = this._buildMessageHash(sessionId, imageUrl, ts, random);
-    const message = this._buildSendImageTemplate(sessionId, imageUrl, ts, hash);
+    const hash = this._buildMessageHash(sessionMeta.sessionId || sessionMeta.userUid || sessionMeta.customerId || '', imageUrl, ts, random);
+    const message = this._buildSendImageTemplate(sessionMeta, imageUrl, ts, hash);
 
     if (templateBody) {
       const body = this._cloneJson(templateBody);
@@ -1687,14 +1743,16 @@ class PddApiClient extends EventEmitter {
     };
   }
 
-  async sendMessage(sessionId, text) {
+  async sendMessage(sessionRef, text) {
     if (!this._sessionInited) {
       await this.initSession();
     }
 
-    const requestBody = this._buildSendMessageBody(sessionId, text);
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const requestBody = this._buildSendMessageBody(sessionMeta, text);
     this._log('[API] 发送消息', {
-      sessionId: String(sessionId),
+      sessionId: String(sessionMeta.sessionId || ''),
+      targetUid: String(requestBody?.data?.message?.to?.uid || ''),
       textLength: String(text || '').length,
       client: requestBody?.client,
       hasTopAntiContent: !!requestBody?.anti_content,
@@ -1704,16 +1762,23 @@ class PddApiClient extends EventEmitter {
     });
     const payload = await this._post('/plateau/chat/send_message', requestBody);
     this._log('[API] 消息发送成功', {
-      sessionId: String(sessionId),
+      sessionId: String(sessionMeta.sessionId || ''),
+      targetUid: String(requestBody?.data?.message?.to?.uid || ''),
       payloadKeys: Object.keys(payload?.result || payload?.data || payload || {}),
     });
 
-    const result = { sessionId, text, response: payload };
+    const result = {
+      sessionId: String(sessionMeta.sessionId || ''),
+      customerId: String(sessionMeta.customerId || ''),
+      userUid: String(sessionMeta.userUid || ''),
+      text,
+      response: payload
+    };
     this.emit('messageSent', result);
     return result;
   }
 
-  async sendImage(sessionId, filePath) {
+  async sendImage(sessionRef, filePath) {
     if (!this._sessionInited) {
       await this.initSession();
     }
@@ -1727,10 +1792,12 @@ class PddApiClient extends EventEmitter {
       }
       throw error;
     }
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
     const imageUrl = uploadResult?.processed_url || uploadResult?.url;
-    const requestBody = this._buildSendImageBody(sessionId, imageUrl);
+    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl);
     this._log('[API] 发送图片', {
-      sessionId: String(sessionId),
+      sessionId: String(sessionMeta.sessionId || ''),
+      targetUid: String(requestBody?.data?.message?.to?.uid || ''),
       filePath: path.basename(filePath || ''),
       imageUrl,
       client: requestBody?.client,
@@ -1746,7 +1813,9 @@ class PddApiClient extends EventEmitter {
       });
     }
     const result = {
-      sessionId,
+      sessionId: String(sessionMeta.sessionId || ''),
+      customerId: String(sessionMeta.customerId || ''),
+      userUid: String(sessionMeta.userUid || ''),
       filePath,
       imageUrl,
       uploadBaseUrl: uploadResult?.uploadBaseUrl,
@@ -1756,13 +1825,15 @@ class PddApiClient extends EventEmitter {
     return result;
   }
 
-  async sendImageUrl(sessionId, imageUrl, extra = {}) {
+  async sendImageUrl(sessionRef, imageUrl, extra = {}) {
     if (!this._sessionInited) {
       await this.initSession();
     }
-    const requestBody = this._buildSendImageBody(sessionId, imageUrl);
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl);
     this._log('[API] 发送图片', {
-      sessionId: String(sessionId),
+      sessionId: String(sessionMeta.sessionId || ''),
+      targetUid: String(requestBody?.data?.message?.to?.uid || ''),
       filePath: extra?.filePath ? path.basename(extra.filePath) : '',
       imageUrl,
       client: requestBody?.client,
@@ -1778,7 +1849,9 @@ class PddApiClient extends EventEmitter {
       });
     }
     const result = {
-      sessionId,
+      sessionId: String(sessionMeta.sessionId || ''),
+      customerId: String(sessionMeta.customerId || ''),
+      userUid: String(sessionMeta.userUid || ''),
       filePath: extra?.filePath || '',
       imageUrl,
       uploadBaseUrl: extra?.uploadBaseUrl || '',

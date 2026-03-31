@@ -4297,9 +4297,12 @@
 
   <script src="./renderer-module-runtime.js"></script>
   <script src="./ai-module.js"></script>
+  <script src="./chat-api-module.js"></script>
+  <script src="./quick-phrases-module.js"></script>
   <script src="./mail-api-module.js"></script>
   <script src="./invoice-api-module.js"></script>
   <script src="./qa-module.js"></script>
+  <script src="./shops-module.js"></script>
   <script src="./test-flow-module.js"></script>
   <script src="./ops-center-views.js"></script>
   <script src="./ops-center-runtime.js"></script>
@@ -4426,6 +4429,155 @@
     let apiStarredSessions = [];
     const apiGoodsCardCache = new Map();
     const apiGoodsCardPending = new Set();
+    window.__chatApiModuleAccess = {
+      getState() {
+        return {
+          currentView,
+          shops,
+          quickPhrases,
+          activeShopId,
+          apiSelectedShopId,
+          apiSessions,
+          apiMessages,
+          apiSessionTab,
+          apiSideTab,
+          apiSessionKeyword,
+          apiStarredSessions,
+          apiTokenStatus,
+          apiSessionLoadError,
+          apiActiveSessionId,
+          apiActiveSessionName,
+          apiActiveSessionShopId,
+          apiHasUserSelectedSession,
+          apiGoodsCardCache,
+          apiGoodsCardPending,
+          API_ALL_SHOPS,
+          API_EMOJI_MAP,
+          API_EMOJIS,
+          getVisibleApiSessions,
+          isApiSessionStarred,
+        };
+      },
+      esc,
+      addLog,
+      formatApiDateTime,
+      formatApiListTime,
+      getApiTimeMs,
+      getApiSessionKey,
+      getApiActiveSession,
+      getApiSelectedShop,
+      getApiScopedSessions,
+      getLatestApiSessionsForDisplay,
+      getStarredApiSessionsForDisplay,
+      getVisibleApiSessions,
+      hasApiPendingReply,
+      getApiPendingReplyMinutes,
+      emitRendererDebug,
+      openApiSession,
+      loadApiSessions,
+      loadApiTraffic,
+      loadApiTokenStatus,
+      loadApiChatView,
+      getApiStatusShopId,
+      clearApiActiveSession,
+      recordApiSyncState,
+      clearApiPendingReplyState,
+      appendApiLocalServiceMessage,
+      refreshApiAfterMessageSent,
+      mergeApiSessionsForShop,
+      renderApiStatus,
+      getApiAuthHintText() {
+        return apiTokenStatus?.authHint || '';
+      },
+      renderApiSideCards,
+      loadQuickPhrases(...args) {
+        return window.loadQuickPhrases?.(...args);
+      },
+      setApiSelectedShopId(value) {
+        apiSelectedShopId = value;
+      },
+      setApiSessionKeyword(value) {
+        apiSessionKeyword = value;
+      },
+      setApiSessionTab(value) {
+        apiSessionTab = value;
+      },
+      setApiSideTab(value) {
+        apiSideTab = value;
+      },
+      setApiStarredSessions(value) {
+        apiStarredSessions = Array.isArray(value) ? value.map(item => buildApiSession(item)) : apiStarredSessions;
+      },
+      setApiTokenStatus(value) {
+        apiTokenStatus = value;
+      },
+    };
+    window.__quickPhrasesModuleAccess = {
+      getState() {
+        return {
+          quickPhrases,
+        };
+      },
+      esc,
+      addLog,
+      showModal,
+      hideModal,
+      setQuickPhrases(value) {
+        quickPhrases = Array.isArray(value) ? value : [];
+      },
+    };
+    window.__shopsModuleAccess = {
+      getState() {
+        return {
+          shops,
+          shopGroups,
+          selectedShopIds,
+          activeGroup,
+          shopSearchText,
+          remarkShopId,
+          scannedShops,
+          examAnswers,
+          examQuestions,
+          activeShopId,
+          currentView,
+        };
+      },
+      esc,
+      addLog,
+      refreshShopContext,
+      switchView,
+      showModal,
+      hideModal,
+      handleAddShopByToken,
+      handleAddShopByQR,
+      setSelectedShopIds(value) {
+        selectedShopIds = value instanceof Set ? value : new Set(value || []);
+      },
+      setActiveGroup(value) {
+        activeGroup = value || 'all';
+      },
+      setShopSearchText(value) {
+        shopSearchText = value || '';
+      },
+      setRemarkShopId(value) {
+        remarkShopId = value || null;
+      },
+      setScannedShops(value) {
+        scannedShops = Array.isArray(value) ? value : [];
+      },
+      setShopGroups(value) {
+        shopGroups = Array.isArray(value) ? value : [];
+      },
+      setShops(value) {
+        shops = Array.isArray(value) ? value : [];
+      },
+      setExamQuestions(value) {
+        examQuestions = Array.isArray(value) ? value : [];
+      },
+      setExamAnswers(value) {
+        examAnswers = value && typeof value === 'object' ? value : {};
+      },
+    };
     if (typeof window.initOpsCenterViews === 'function') {
       window.initOpsCenterViews();
     }
@@ -4634,169 +4786,6 @@
       return Number.isFinite(amount) ? `¥${amount.toFixed(2)}` : '¥0.00';
     }
 
-    function getApiMessageReadState(message = {}) {
-      const normalized = String(message?.readState || '').toLowerCase();
-      if (normalized === 'read') return 'read';
-      if (normalized === 'unread') return 'unread';
-      const candidates = [
-        message?.raw?.is_read,
-        message?.raw?.isRead,
-        message?.raw?.read_status,
-        message?.raw?.readStatus,
-        message?.raw?.read_state,
-        message?.raw?.readState,
-      ];
-      for (const value of candidates) {
-        if (value === undefined || value === null || value === '') continue;
-        if (typeof value === 'boolean') return value ? 'read' : 'unread';
-        if (typeof value === 'number') return value > 0 ? 'read' : 'unread';
-        const text = String(value).trim().toLowerCase();
-        if (['1', 'true', 'read', '已读'].includes(text)) return 'read';
-        if (['0', 'false', 'unread', '未读'].includes(text)) return 'unread';
-      }
-      return '';
-    }
-
-    function extractApiGoodsLinkInfo(message = {}) {
-      const rawText = [
-        message?.content,
-        message?.raw?.content,
-        message?.raw?.msg_content,
-      ].filter(Boolean).join('\n');
-      const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
-        || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
-      if (!match?.[0]) return null;
-      const url = match[0].replace(/&amp;/gi, '&');
-      const goodsIdMatch = url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i);
-      const goodsId = goodsIdMatch?.[1] || '';
-      return {
-        url,
-        goodsId,
-        cacheKey: goodsId || url,
-      };
-    }
-
-    function pickApiGoodsText(sources = [], keys = []) {
-      for (const source of sources) {
-        if (!source || typeof source !== 'object') continue;
-        for (const key of keys) {
-          const value = source[key];
-          if (typeof value === 'string' && value.trim()) return value.trim();
-        }
-      }
-      return '';
-    }
-
-    function pickApiGoodsNumber(sources = [], keys = []) {
-      for (const source of sources) {
-        if (!source || typeof source !== 'object') continue;
-        for (const key of keys) {
-          const value = source[key];
-          const numeric = Number(value);
-          if (Number.isFinite(numeric) && numeric > 0) return numeric;
-        }
-      }
-      return 0;
-    }
-
-    function formatApiGoodsPrice(value) {
-      if (value === undefined || value === null || value === '') return '';
-      if (typeof value === 'string') {
-        const text = value.trim();
-        if (!text) return '';
-        if (text.includes('¥')) return text;
-        const numeric = Number(text);
-        if (!Number.isNaN(numeric)) return formatApiGoodsPrice(numeric);
-        return text;
-      }
-      const numeric = Number(value);
-      if (!Number.isFinite(numeric) || numeric <= 0) return '';
-      const amount = Number.isInteger(numeric) && numeric >= 1000 ? numeric / 100 : numeric;
-      return `¥${amount.toFixed(2)}`;
-    }
-
-    function normalizeApiGoodsCard(card = {}, fallback = {}) {
-      const goodsId = String(card.goodsId || fallback.goodsId || '');
-      return {
-        goodsId,
-        url: String(card.url || fallback.url || ''),
-        title: String(card.title || fallback.title || '拼多多商品'),
-        imageUrl: String(card.imageUrl || fallback.imageUrl || ''),
-        priceText: String(card.priceText || fallback.priceText || ''),
-        groupText: String(card.groupText || fallback.groupText || '2人团'),
-        specText: String(card.specText || fallback.specText || '查看商品规格'),
-      };
-    }
-
-    function buildApiGoodsCardFallback(linkInfo, message = {}, session = {}) {
-      const sources = [
-        message?.extra,
-        message?.raw?.extra,
-        message?.raw,
-        session?.goodsInfo,
-        session?.raw?.goods_info,
-        session?.raw?.goods,
-      ].filter(Boolean);
-      const priceText = pickApiGoodsText(sources, ['priceText', 'price_text', 'price'])
-        || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['group_price', 'min_group_price', 'price', 'min_price']));
-      const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
-      const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'group_member_count', 'group_count']);
-      return normalizeApiGoodsCard({
-        goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'id']),
-        url: linkInfo?.url || '',
-        title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'name']) || '拼多多商品',
-        imageUrl: pickApiGoodsText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'pic_url']),
-        priceText,
-        groupText: groupRawText || (groupCount > 0 ? `${groupCount}人团` : '2人团'),
-        specText: '查看商品规格',
-      });
-    }
-
-    function renderApiGoodsCardHtml(card = {}) {
-      const imageHtml = card.imageUrl
-        ? `<img class="api-goods-card-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">`
-        : `<div class="api-goods-card-image-placeholder">商品</div>`;
-      const goodsIdLabel = card.goodsId ? `商品ID：${card.goodsId}` : '拼多多商品';
-      const priceHtml = card.priceText
-        ? `<div class="api-goods-card-price-row"><span class="api-goods-card-price">${esc(card.priceText)}</span><span class="api-goods-card-group">${esc(card.groupText ? `/${card.groupText}` : '')}</span></div>`
-        : (card.groupText ? `<div class="api-goods-card-price-row"><span class="api-goods-card-group">${esc(card.groupText)}</span></div>` : '');
-      return `<div class="api-message-bubble api-goods-card-bubble">
-        <div class="api-goods-card-top">
-          <span class="api-goods-card-id">${esc(goodsIdLabel)}</span>
-          ${card.goodsId ? `<button class="api-goods-card-copy" type="button" data-goods-id="${esc(card.goodsId)}">复制</button>` : ''}
-        </div>
-        <div class="api-goods-card-divider"></div>
-        <div class="api-goods-card-body">
-          ${imageHtml}
-          <div class="api-goods-card-main">
-            <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
-            ${priceHtml}
-            <span class="api-goods-card-spec">${esc(card.specText || '查看商品规格')}</span>
-          </div>
-        </div>
-      </div>`;
-    }
-
-    async function ensureApiGoodsCardLoaded(linkInfo, fallbackCard) {
-      if (!linkInfo?.url || apiGoodsCardCache.has(linkInfo.cacheKey) || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
-      if (!window.pddApi?.apiGetGoodsCard) return;
-      apiGoodsCardPending.add(linkInfo.cacheKey);
-      try {
-        const result = await window.pddApi.apiGetGoodsCard({
-          shopId: apiActiveSessionShopId,
-          url: linkInfo.url,
-          goodsId: linkInfo.goodsId,
-          fallback: fallbackCard,
-        });
-        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard(result, fallbackCard));
-      } catch {
-        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard({}, fallbackCard));
-      } finally {
-        apiGoodsCardPending.delete(linkInfo.cacheKey);
-        if (apiHasUserSelectedSession) renderApiMessages();
-      }
-    }
-
     function shouldShowApiMessageDivider(currentTimestamp, previousTimestamp) {
       const currentMs = getApiTimeMs(currentTimestamp);
       if (!currentMs) return false;
@@ -4810,85 +4799,6 @@
         && currentDate.getDate() === previousDate.getDate();
       if (!isSameDay) return true;
       return currentMs - previousMs >= 5 * 60 * 1000;
-    }
-
-    function setApiHint(text) {
-      const hintEl = document.getElementById('apiComposerHint');
-      if (!hintEl) return;
-      hintEl.textContent = text;
-    }
-
-    function toggleApiEmojiPanel(forceVisible) {
-      const panel = document.getElementById('apiEmojiPanel');
-      const button = document.getElementById('btnApiEmojiToggle');
-      if (!panel || !button) return false;
-      const visible = typeof forceVisible === 'boolean' ? forceVisible : !panel.classList.contains('visible');
-      panel.classList.toggle('visible', visible);
-      button.classList.toggle('active', visible);
-      if (visible) {
-        requestAnimationFrame(syncApiEmojiPanelPosition);
-      }
-      return visible;
-    }
-
-    function syncApiEmojiPanelPosition() {
-      const panel = document.getElementById('apiEmojiPanel');
-      const button = document.getElementById('btnApiEmojiToggle');
-      if (!panel || !button || !panel.classList.contains('visible')) return;
-      const rect = button.getBoundingClientRect();
-      const panelWidth = panel.offsetWidth || 310;
-      const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12);
-      const left = Math.min(Math.max(12, rect.left - 8), maxLeft);
-      const top = Math.max(12, rect.top - panel.offsetHeight - 14);
-      panel.style.left = `${left}px`;
-      panel.style.top = `${top}px`;
-    }
-
-    function insertApiMessageText(text) {
-      const input = document.getElementById('apiMessageInput');
-      if (!input || !text) return;
-      const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
-      const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
-      const value = input.value;
-      input.value = value.slice(0, start) + text + value.slice(end);
-      input.focus();
-      const cursor = start + text.length;
-      input.setSelectionRange(cursor, cursor);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-
-    function renderApiPddEmojiHtml(text = '') {
-      const source = String(text || '');
-      if (!source) return '';
-      const pattern = /\[([^[\]]+)\]/g;
-      let lastIndex = 0;
-      let html = '';
-      source.replace(pattern, (match, name, offset) => {
-        html += esc(source.slice(lastIndex, offset));
-        const item = API_EMOJI_MAP.get(name);
-        html += item
-          ? `<span class="api-inline-emoji" title="${esc(match)}">${esc(item.preview)}</span>`
-          : esc(match);
-        lastIndex = offset + match.length;
-        return match;
-      });
-      html += esc(source.slice(lastIndex));
-      return html;
-    }
-
-    function renderApiEmojiPanel() {
-      const grid = document.getElementById('apiEmojiGrid');
-      if (!grid) return;
-      grid.innerHTML = API_EMOJIS
-        .map(item => `<button class="api-emoji-item" type="button" data-emoji-value="[${item.name}]" data-emoji-name="${item.name}" title="${item.name}">${item.previewImage ? `<img class="api-emoji-image" src="${esc(item.previewImage)}" alt="${esc(item.name)}">` : `<span class="api-emoji-glyph">${esc(item.preview)}</span>`}</button>`)
-        .join('');
-      grid.querySelectorAll('.api-emoji-item').forEach(item => {
-        item.addEventListener('click', event => {
-          event.stopPropagation();
-          insertApiMessageText(item.dataset.emojiValue || '');
-          toggleApiEmojiPanel(false);
-        });
-      });
     }
 
     function recordApiSyncState(label, detail = '') {
@@ -5268,26 +5178,6 @@
       apiSelectedShopId = select.value || API_ALL_SHOPS;
     }
 
-    function renderApiShopHeader() {
-      const avatarEl = document.getElementById('apiShopAvatar');
-      const selectedShop = getApiSelectedShop();
-      const sessionShop = shops.find(item => item.id === apiActiveSessionShopId) || null;
-      const title = apiSelectedShopId === API_ALL_SHOPS
-        ? '全部店铺会话'
-        : (selectedShop?.name || '未命名店铺');
-      const meta = apiSelectedShopId === API_ALL_SHOPS
-        ? `已接入 ${shops.length} 家店铺，左侧展示所有店铺的咨询客户会话`
-        : `当前筛选 ${selectedShop?.name || '店铺'}，右侧优先展示当前会话所属店铺信息`;
-      document.getElementById('apiShopName').textContent = title;
-      document.getElementById('apiShopHeaderMeta').textContent = meta;
-      document.getElementById('apiShopCurrentText').textContent = `当前：${apiSelectedShopId === API_ALL_SHOPS ? '显示所有店铺' : `仅看 ${selectedShop?.name || '店铺'}`}`;
-      if (apiTokenStatus?.serviceAvatar && sessionShop && sessionShop.id === apiTokenStatus.shopId) {
-        avatarEl.innerHTML = `<img src="${esc(apiTokenStatus.serviceAvatar)}" alt="">`;
-      } else {
-        avatarEl.textContent = (apiSelectedShopId === API_ALL_SHOPS ? '全部店铺' : title).slice(0, 6);
-      }
-    }
-
     async function loadApiStarredSessions() {
       const result = await window.pddApi.getApiStarredSessions();
       apiStarredSessions = Array.isArray(result) ? result.map(item => buildApiSession(item)) : [];
@@ -5300,270 +5190,6 @@
       apiActiveSessionShopId = '';
       apiMessages = [];
       apiHasUserSelectedSession = false;
-    }
-
-    async function syncApiSelectionWithFilter() {
-      const sessions = getVisibleApiSessions();
-      const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
-      const currentVisible = sessions.find(item => item.sessionKey === currentKey);
-      renderApiSessions();
-      if (currentVisible) return;
-      clearApiActiveSession();
-      renderApiMessages();
-      await loadApiTokenStatus(getApiStatusShopId(false));
-      await loadApiTraffic(getApiStatusShopId(true));
-    }
-
-    function renderApiSessions() {
-      const container = document.getElementById('apiSessionList');
-      try {
-        const latestSessions = getLatestApiSessionsForDisplay();
-        const starredSessions = getStarredApiSessionsForDisplay();
-        const sessions = apiSessionTab === 'starred' ? starredSessions : latestSessions;
-        emitRendererDebug('chat-api', 'renderApiSessions', {
-          currentView,
-          apiSessionTab,
-          activeShopId,
-          apiSelectedShopId,
-          totalSessions: apiSessions.length,
-          latestCount: latestSessions.length,
-          starredCount: starredSessions.length,
-          visibleCount: sessions.length,
-          keyword: apiSessionKeyword || ''
-        });
-        const unreadTotal = getApiScopedSessions().reduce((sum, item) => sum + Number(item.unreadCount || 0), 0);
-        document.getElementById('apiLatestSessionCount').textContent = String(latestSessions.length);
-        document.getElementById('apiStarredSessionCount').textContent = String(starredSessions.length);
-        document.getElementById('apiSessionSummary').textContent = apiSessionTab === 'starred'
-          ? `已收藏 ${starredSessions.length} 条会话`
-          : `${sessions.length}/${getApiScopedSessions().length} 条会话`;
-        document.getElementById('apiTodoHint').textContent = unreadTotal > 0
-          ? `当前有 ${unreadTotal} 条未读待处理消息`
-          : (apiSessionTab === 'starred' ? '当前没有收藏会话' : '当前没有待处理接口会话');
-        document.getElementById('apiSidebarLatest').classList.toggle('active', apiSessionTab === 'latest');
-        document.getElementById('apiSidebarStarred').classList.toggle('active', apiSessionTab === 'starred');
-        renderApiShopHeader();
-        if (!sessions.length) {
-          const emptyText = apiSessionTab === 'starred'
-            ? '暂无收藏会话，可在右侧按钮中添加收藏。'
-            : (apiSessionLoadError || '暂无接口会话数据，请先操作嵌入网页或刷新接口会话。');
-          container.innerHTML = `<div class="api-empty">${esc(emptyText)}</div>`;
-          emitRendererDebug('chat-api', 'renderApiSessions empty-dom', { htmlLength: container.innerHTML.length });
-          return;
-        }
-
-        container.innerHTML = sessions.map(session => {
-          const active = getApiSessionKey(session) === getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
-          const unread = Number(session.unreadCount || 0);
-          const pendingReply = hasApiPendingReply(session);
-          const waitMinutes = pendingReply ? getApiPendingReplyMinutes(session) : 0;
-          const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
-          return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
-            <div class="api-session-avatar">${avatarHtml}</div>
-            <div class="api-session-main">
-              <div class="api-session-item-title">
-                <div class="api-session-item-info-row">
-                  <div class="api-session-item-name">
-                    <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
-                    ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
-                  </div>
-                  <div class="api-session-shop">
-                    <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
-                  </div>
-                </div>
-                <div class="api-session-time-group">
-                  <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
-                </div>
-              </div>
-              <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
-              ${pendingReply ? `<span class="api-session-item-wait">已等待${waitMinutes}分钟</span>` : ''}
-            </div>
-          </div>`;
-        }).join('');
-        emitRendererDebug('chat-api', 'renderApiSessions dom-ready', {
-          itemCount: container.querySelectorAll('.api-session-item').length,
-          htmlLength: container.innerHTML.length
-        });
-
-        container.querySelectorAll('.api-session-item').forEach(item => {
-          item.addEventListener('click', async () => {
-            await openApiSession(item.dataset.sessionId, item.dataset.customerName, item.dataset.shopId);
-          });
-        });
-        container.querySelectorAll('.api-session-star').forEach(button => {
-          button.addEventListener('click', async (event) => {
-            event.stopPropagation();
-            const session = getVisibleApiSessions().find(item => item.sessionKey === button.dataset.sessionKey);
-            if (!session) return;
-            const result = await window.pddApi.toggleApiStarredSession(session);
-            if (!result?.error) {
-              apiStarredSessions = Array.isArray(result.sessions) ? result.sessions.map(item => buildApiSession(item)) : apiStarredSessions;
-              renderApiSessions();
-              renderApiMessages();
-              setApiHint(result.starred ? '已收藏当前会话' : '已取消收藏会话');
-            }
-          });
-        });
-      } catch (error) {
-        emitRendererDebug('chat-api', 'renderApiSessions error', {
-          message: error.message,
-          stack: error.stack
-        });
-        container.innerHTML = `<div class="api-empty">渲染会话列表失败：${esc(error.message || '未知错误')}</div>`;
-      }
-    }
-
-    function isApiImageMessage(message = {}) {
-      const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
-      if (['2', 'image', 'img', 'pic', 'picture'].includes(msgType)) return true;
-      const extraType = String(message?.extra?.type || message?.raw?.extra?.type || message?.raw?.ext?.type || '').toLowerCase();
-      if (['image', 'img', 'pic', 'picture'].includes(extraType)) return true;
-      const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
-      if (/\[(图片|image)\]/.test(rawContent)) return true;
-      if (/picture_url/.test(rawContent)) return true;
-      if (/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/.test(rawContent)) return true;
-      return false;
-    }
-
-    function getApiImageMessageUrl(message = {}) {
-      const candidates = [
-        message?.extra?.url,
-        message?.extra?.picture_url,
-        message?.raw?.extra?.url,
-        message?.raw?.extra?.picture_url,
-        message?.raw?.ext?.url,
-        message?.raw?.ext?.picture_url,
-      ].filter(Boolean);
-      if (candidates.length) return candidates[0];
-      const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
-      const urlMatch = rawText.match(/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/i);
-      if (urlMatch) return urlMatch[0];
-      const jsonMatch = rawText.match(/\{[^{}]*"picture_url"\s*:\s*"([^"]+)"[^{}]*\}/);
-      return jsonMatch?.[1] || '';
-    }
-
-    function renderApiMessages() {
-      try {
-        const container = document.getElementById('apiMessageList');
-        const mainInner = document.querySelector('.api-chat-main-inner');
-        const activeSession = apiHasUserSelectedSession ? getApiActiveSession() : null;
-        const hasActiveSession = !!(apiHasUserSelectedSession && apiActiveSessionId && activeSession);
-        const shopName = activeSession?.shopName || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '未选择店铺');
-        const unreadCount = Number(activeSession?.unreadCount || 0);
-        const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
-        const followStatusEl = document.getElementById('apiChatFollowStatus');
-        document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
-        document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
-        followStatusEl.textContent = !activeSession
-          ? '未选择会话'
-          : unreadCount > 0
-            ? `未读 ${unreadCount}`
-            : '已关注本店';
-        followStatusEl.classList.toggle('is-unread', !!activeSession && unreadCount > 0);
-        document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
-        mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
-
-        if (!hasActiveSession) {
-          const emptyText = apiSessionLoadError
-            || apiTokenStatus?.authHint
-            || (getVisibleApiSessions().length
-              ? '请先从左侧选择一个会话查看详情。'
-              : '暂无接口会话，请先点击“接口连通测试”或刷新接口会话。');
-          container.innerHTML = `<div class="api-empty">${esc(emptyText)}</div>`;
-          return;
-        }
-
-        if (!apiMessages.length) {
-          container.innerHTML = '<div class="api-empty">当前会话暂无消息，或尚未从接口拿到消息数据。</div>';
-          return;
-        }
-
-        const sortedMessages = apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
-        let previousTimestamp = 0;
-        container.innerHTML = sortedMessages.map((message, index) => {
-          const isBuyer = !!message.isFromBuyer;
-          const buyerAvatar = activeSession?.customerAvatar || '';
-          const sellerText = (shopName || apiTokenStatus?.mallName || '主账号').slice(0, 4);
-          const avatarHtml = isBuyer
-            ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((apiActiveSessionName || '客户').slice(0, 2)))
-            : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
-          const senderName = shopName || message.senderName || '主账号';
-          const readState = isBuyer ? '' : getApiMessageReadState(message);
-          const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
-          const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
-          const imageUrl = getApiImageMessageUrl(message);
-          const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
-          const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
-          const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
-          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
-          if (goodsLinkInfo && fallbackGoodsCard) {
-            void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
-          }
-          const imageMessage = isApiImageMessage(message);
-          const bubbleHtml = goodsLinkInfo
-            ? renderApiGoodsCardHtml(goodsCard)
-            : imageMessage
-              ? `<div class="api-message-bubble">
-                <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
-              </div>`
-              : `<div class="api-message-bubble">
-                <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
-              </div>`;
-          const copyButtonHtml = isBuyer && !goodsLinkInfo && !imageMessage && String(message.content || '').trim()
-            ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
-            : '';
-          const footerHtml = !isBuyer
-            ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
-            : '';
-          const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
-            ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
-            : '';
-          previousTimestamp = message.timestamp;
-          return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
-            <div class="api-message-avatar">${avatarHtml}</div>
-            <div class="api-message-body">
-              ${metaHtml}
-              <div class="api-message-row">
-                ${isBuyer ? `${bubbleHtml}${copyButtonHtml}` : `${footerHtml}${bubbleHtml}`}
-              </div>
-            </div>
-          </div>`;
-        }).join('');
-        container.querySelectorAll('.api-message-copy').forEach(button => {
-          button.addEventListener('click', async (event) => {
-            event.stopPropagation();
-            const messageIndex = Number(button.dataset.messageIndex);
-            const text = String(sortedMessages[messageIndex]?.content || '');
-            if (!text) return;
-            try {
-              await navigator.clipboard.writeText(text);
-              setApiHint('已复制客户消息');
-            } catch {
-              setApiHint('复制失败，请稍后重试');
-            }
-          });
-        });
-        container.querySelectorAll('.api-goods-card-copy').forEach(button => {
-          button.addEventListener('click', async (event) => {
-            event.stopPropagation();
-            const goodsId = String(button.dataset.goodsId || '');
-            if (!goodsId) return;
-            try {
-              await navigator.clipboard.writeText(goodsId);
-              setApiHint('已复制商品ID');
-            } catch {
-              setApiHint('复制失败，请稍后重试');
-            }
-          });
-        });
-        container.scrollTop = container.scrollHeight;
-      } catch (error) {
-        const container = document.getElementById('apiMessageList');
-        if (container) {
-          container.innerHTML = `<div class="api-empty">${esc(error.message || '渲染会话消息失败')}</div>`;
-        }
-        addLog(`渲染客户对话失败: ${error.message || error}`, 'error');
-      }
     }
 
     function renderApiStatus() {
@@ -5953,10 +5579,6 @@
       await handleAddShopByQR();
     });
 
-    // 店铺管理页的添加按钮
-    document.getElementById('btnAddShopTokenPage').addEventListener('click', () => handleAddShopByToken());
-    document.getElementById('btnAddShopQRPage').addEventListener('click', () => handleAddShopByQR());
-
     async function handleAddShopByToken() {
       addLog('正在导入 Token...', 'info');
       try {
@@ -6041,72 +5663,6 @@
       }
     });
 
-    document.getElementById('apiShopFilter').addEventListener('change', async (e) => {
-      apiSelectedShopId = e.target.value || API_ALL_SHOPS;
-      await loadApiChatView({ keepCurrent: true });
-      setApiHint(apiSelectedShopId === API_ALL_SHOPS ? '已切换为显示所有店铺会话' : '已切换店铺会话范围');
-    });
-
-    document.getElementById('btnApiRefreshSessions').addEventListener('click', async () => {
-      await loadApiSessions({ keepCurrent: true });
-      await loadApiTraffic(getApiStatusShopId(true));
-      setApiHint('已刷新接口会话');
-    });
-
-    document.getElementById('apiSessionSearch').addEventListener('input', (e) => {
-      apiSessionKeyword = e.target.value || '';
-      syncApiSelectionWithFilter();
-    });
-    document.getElementById('apiSessionSearch').addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        document.getElementById('btnApiPlus').click();
-      }
-    });
-    document.getElementById('apiSidebarLatest').addEventListener('click', () => {
-      apiSessionTab = 'latest';
-      syncApiSelectionWithFilter();
-    });
-    document.getElementById('apiSidebarStarred').addEventListener('click', () => {
-      apiSessionTab = 'starred';
-      syncApiSelectionWithFilter();
-    });
-    document.querySelectorAll('.api-side-tab').forEach(button => {
-      button.addEventListener('click', () => {
-        apiSideTab = button.dataset.apiSideTab || 'personal';
-        renderApiSideCards();
-      });
-    });
-    document.getElementById('btnApiPlus').addEventListener('click', async () => {
-      const keyword = apiSessionKeyword.trim().toLowerCase();
-      if (!keyword) {
-        setApiHint('请输入订单号、客户名或会话关键词');
-        return;
-      }
-      const target = getLatestApiSessionsForDisplay().find(session => {
-        const orderText = String(session.orderId || '').toLowerCase();
-        return orderText === keyword
-          || String(session.sessionId || '').toLowerCase() === keyword
-          || String(session.customerId || '').toLowerCase() === keyword
-          || String(session.customerName || '').toLowerCase().includes(keyword);
-      });
-      if (!target) {
-        setApiHint('当前列表未找到匹配会话，可先刷新会话再尝试搜索');
-        return;
-      }
-      apiSessionTab = 'latest';
-      await openApiSession(target.sessionId, target.customerName, target.shopId);
-      setApiHint(`已定位会话：${target.customerName || target.customerId || target.sessionId}`);
-    });
-    document.getElementById('apiLoadMoreSessions').addEventListener('click', async () => {
-      await loadApiSessions({ keepCurrent: true });
-      setApiHint('已按当前筛选范围刷新会话列表');
-    });
-
-    document.getElementById('btnApiReloadTraffic').addEventListener('click', async () => {
-      await loadApiTraffic(getApiStatusShopId(true));
-      setApiHint('已刷新服务助手与接口记录');
-    });
     document.getElementById('btnApiToolInviteFollow')?.addEventListener('click', () => {
       setApiHint('已预留邀请关注动作，后续可接入真实接口能力');
     });
@@ -6163,657 +5719,7 @@
       setApiHint(`接口测试成功，当前拿到 ${result.sessions?.length || 0} 条会话`);
     });
 
-    document.getElementById('btnApiOrderInfo').addEventListener('click', async () => {
-      await loadApiTraffic(getApiStatusShopId(true));
-      setApiHint('右侧已更新最新订单辅助信息，可结合抓包继续补接口。');
-    });
-
-    document.getElementById('btnApiProductInfo').addEventListener('click', async () => {
-      await loadApiTraffic(getApiStatusShopId(true));
-      setApiHint('商品信息区已预留，后续可继续从抓包中补真实接口。');
-    });
-
-    document.getElementById('btnApiSendMessage').addEventListener('click', async () => {
-      const text = document.getElementById('apiMessageInput').value.trim();
-      const activeSession = getApiActiveSession();
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      if (!text) {
-        setApiHint('请输入要发送的消息');
-        return;
-      }
-      recordApiSyncState('消息发送', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-      const result = await window.pddApi.apiSendMessage({
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        session: activeSession || undefined,
-        text,
-      });
-      if (result?.error) {
-        recordApiSyncState('发送失败', result.error);
-        setApiHint(`接口发送失败：${result.error}`);
-        return;
-      }
-      const successPayload = {
-        ...result,
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        text,
-      };
-      recordApiSyncState('发送成功', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-      clearApiPendingReplyState(successPayload);
-      appendApiLocalServiceMessage(successPayload);
-      document.getElementById('apiMessageInput').value = '';
-      setApiHint('接口发送成功，正在同步最新消息');
-    });
-    document.getElementById('btnApiSendImage').addEventListener('click', async () => {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      toggleApiEmojiPanel(false);
-      recordApiSyncState('选择图片', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-      const selected = await window.pddApi.apiSelectImage();
-      if (selected?.canceled) {
-        recordApiSyncState('图片取消', '用户取消选择图片');
-        setApiHint('已取消选择图片');
-        return;
-      }
-      if (!selected?.filePath) {
-        recordApiSyncState('图片失败', '未拿到图片路径');
-        setApiHint('未选择图片文件');
-        return;
-      }
-      const fileName = String(selected.filePath).split(/[\\/]/).pop() || '图片';
-      recordApiSyncState('图片上传', `文件：${fileName}`);
-      setApiHint('正在上传并发送图片，请稍候...');
-      const result = await window.pddApi.apiSendImage({
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        session: getApiActiveSession() || undefined,
-        filePath: selected.filePath,
-      });
-      if (result?.error) {
-        const attemptText = Array.isArray(result?.attempts) && result.attempts.length
-          ? result.attempts.map(item => `${item.baseUrl} → ${item.error}`).join('；')
-          : '';
-        const detail = [
-          result?.step ? `阶段：${result.step}` : '',
-          result?.uploadBaseUrl ? `上传域：${result.uploadBaseUrl}` : '',
-          attemptText,
-          result?.error || ''
-        ].filter(Boolean).join('；');
-        recordApiSyncState('图片失败', detail || '图片发送失败');
-        setApiHint(`图片发送失败：${detail || result.error}`);
-        return;
-      }
-      recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
-      setApiHint('图片已发送，正在同步最新消息');
-    });
-
-    document.getElementById('btnApiTransfer')?.addEventListener('click', async () => {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      await window.pddApi.apiMarkLatestConversations({ shopId: apiActiveSessionShopId, size: 100 });
-      await loadApiTraffic(apiActiveSessionShopId);
-      setApiHint('已模拟执行会话处理动作，当前先复用已读链路。');
-    });
-
-    document.getElementById('btnApiRisk').addEventListener('click', async () => {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(apiActiveSessionId);
-        setApiHint(`已复制会话ID：${apiActiveSessionId}`);
-      } catch {
-        setApiHint(`会话ID：${apiActiveSessionId}`);
-      }
-    });
-    document.getElementById('btnApiStar').addEventListener('click', async () => {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      const activeSession = getApiActiveSession();
-      const result = await window.pddApi.toggleApiStarredSession(activeSession || {
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        customerName: apiActiveSessionName,
-      });
-      if (result?.error) {
-        setApiHint(result.error);
-        return;
-      }
-      apiStarredSessions = Array.isArray(result.sessions) ? result.sessions.map(item => buildApiSession(item)) : apiStarredSessions;
-      renderApiSessions();
-      renderApiMessages();
-      setApiHint(result.starred ? '已收藏当前会话' : '已取消收藏当前会话');
-    });
-
-    document.getElementById('apiMessageInput').addEventListener('keydown', async (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
-        document.getElementById('btnApiSendMessage').click();
-      }
-    });
-
-    window.pddApi.onApiSessionUpdated(async (payload) => {
-      emitRendererDebug('chat-api', 'onApiSessionUpdated', {
-        currentView,
-        payloadShopId: payload?.shopId || '',
-        payloadCount: Array.isArray(payload?.sessions) ? payload.sessions.length : -1,
-        apiSelectedShopId,
-        beforeCount: apiSessions.length
-      });
-      if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-      if (Array.isArray(payload?.sessions) && payload.sessions.length > 0) {
-        mergeApiSessionsForShop(payload.shopId, payload.sessions);
-      }
-      if (Array.isArray(payload?.sessions)) {
-        await syncApiSelectionWithFilter();
-        renderApiSideCards();
-      }
-      if (currentView === 'chat-api') {
-        await loadApiTraffic(getApiStatusShopId(true));
-      }
-    });
-
-    window.pddApi.onApiNewMessage(async (payload) => {
-      if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-      await loadApiTraffic(getApiStatusShopId(true));
-      if (String(payload?.sessionId || '') === String(apiActiveSessionId) && String(payload?.shopId || '') === String(apiActiveSessionShopId || '')) {
-        await openApiSession(apiActiveSessionId, apiActiveSessionName || payload.customer || '', apiActiveSessionShopId);
-      } else {
-        await loadApiSessions({ keepCurrent: true });
-      }
-      setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
-    });
-
-    window.pddApi.onApiMessageSent(async (payload) => {
-      await refreshApiAfterMessageSent(payload);
-    });
-
-    window.pddApi.onApiAuthExpired((payload) => {
-      if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-      apiTokenStatus = {
-        ...(apiTokenStatus || {}),
-        authExpired: true,
-        authState: payload?.authState || 'expired',
-        authHint: payload?.errorMsg || '',
-      };
-      renderApiStatus();
-      setApiHint(payload?.errorMsg || getApiAuthHintText() || '接口认证已过期，请重新导入 Token 或刷新登录态');
-    });
-
-    // ==================== 店铺管理 ====================
-    async function loadShops() {
-      await refreshShopContext({ loadGroups: true });
-      renderGroupTabs();
-      renderShops();
-      updateBalanceTotal();
-    }
-
-    function updateBalanceTotal() {
-      const total = shops.reduce((sum, s) => sum + (s.balance || 0), 0);
-      document.querySelector('#balanceTotal .amount').textContent = '¥' + total.toFixed(2);
-    }
-
-    function renderGroupTabs() {
-      const container = document.getElementById('shopGroupTabs');
-      let html = `<button class="group-tab ${activeGroup === 'all' ? 'active' : ''}" data-group="all">全部分组</button>`;
-      shopGroups.forEach(g => {
-        const count = shops.filter(s => s.group === g.id).length;
-        html += `<button class="group-tab ${activeGroup === g.id ? 'active' : ''}" data-group="${g.id}">${esc(g.name)} (${count})</button>`;
-      });
-      container.innerHTML = html;
-      container.querySelectorAll('.group-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          activeGroup = tab.dataset.group;
-          renderGroupTabs();
-          renderShops();
-        });
-      });
-    }
-
-    function getFilteredShops() {
-      return shops.filter(s => {
-        if (activeGroup !== 'all' && s.group !== activeGroup) return false;
-        if (shopSearchText) {
-          const kw = shopSearchText.toLowerCase();
-          return s.name.toLowerCase().includes(kw)
-            || s.account.toLowerCase().includes(kw)
-            || String(s.tokenFileName || '').toLowerCase().includes(kw);
-        }
-        return true;
-      });
-    }
-
-    function renderShops() {
-      const filtered = getFilteredShops();
-      const tbody = document.getElementById('shopTableBody');
-      const empty = document.getElementById('shopEmpty');
-
-      if (filtered.length === 0) {
-        tbody.innerHTML = '';
-        empty.style.display = 'block';
-        return;
-      }
-      empty.style.display = 'none';
-
-      tbody.innerHTML = filtered.map((s, i) => {
-        const groupName = shopGroups.find(g => g.id === s.group)?.name || '未分组';
-        const statusMap = { online: '登录成功', offline: '已离线', expired: '已过期' };
-        const isActive = s.id === activeShopId;
-        return `<tr>
-          <td><input type="checkbox" data-id="${s.id}" class="shop-check" ${selectedShopIds.has(s.id) ? 'checked' : ''}></td>
-          <td>${i + 1}</td>
-          <td>
-            <a href="#" class="shop-name-link" data-shop-id="${s.id}" style="color:${isActive ? '#e02e24' : '#1890ff'};cursor:pointer;text-decoration:none;font-weight:${isActive ? '600' : 'normal'}" title="点击切换到此店铺">${esc(s.name)}</a>
-            ${isActive ? '<span style="font-size:11px;color:#e02e24;margin-left:4px">(当前)</span>' : ''}
-          </td>
-          <td title="${esc(s.tokenFileName || '')}">${esc(s.tokenFileName) || '<span style="color:#ccc">-</span>'}</td>
-          <td>${esc(groupName)}</td>
-          <td title="${esc(s.remark)}">${esc(s.remark) || '<span style="color:#ccc">-</span>'}</td>
-          <td>${s.bindTime}</td>
-          <td>${esc(s.category)}</td>
-          <td><span class="status-tag ${s.status}">${statusMap[s.status] || s.status}</span></td>
-          <td style="text-align:right;font-weight:500">${(s.balance || 0).toFixed(2)}</td>
-          <td><button class="btn btn-sm btn-secondary" onclick="openRemarkModal('${s.id}')">备注</button></td>
-        </tr>`;
-      }).join('');
-
-      tbody.querySelectorAll('.shop-check').forEach(cb => {
-        cb.addEventListener('change', () => {
-          if (cb.checked) selectedShopIds.add(cb.dataset.id);
-          else selectedShopIds.delete(cb.dataset.id);
-        });
-      });
-
-      tbody.querySelectorAll('.shop-name-link').forEach(link => {
-        link.addEventListener('click', async (e) => {
-          e.preventDefault();
-          const shopId = link.dataset.shopId;
-          if (shopId === activeShopId) {
-            await switchView('chat');
-            return;
-          }
-          await window.pddApi.switchShop(shopId);
-          await switchView('chat');
-        });
-      });
-    }
-
-    document.getElementById('shopSearch').addEventListener('input', (e) => {
-      shopSearchText = e.target.value;
-      renderShops();
-    });
-
-    document.getElementById('shopSelectAll').addEventListener('change', (e) => {
-      const filtered = getFilteredShops();
-      if (e.target.checked) {
-        filtered.forEach(s => selectedShopIds.add(s.id));
-      } else {
-        selectedShopIds.clear();
-      }
-      renderShops();
-    });
-
-    // 设置分组
-    document.getElementById('btnSetGroup').addEventListener('click', () => {
-      if (selectedShopIds.size === 0) return alert('请先选择店铺');
-      const sel = document.getElementById('groupSelect');
-      sel.innerHTML = shopGroups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
-      document.getElementById('newGroupName').value = '';
-      showModal('modalGroup');
-    });
-
-    document.getElementById('btnConfirmGroup').addEventListener('click', async () => {
-      let groupId = document.getElementById('groupSelect').value;
-      const newName = document.getElementById('newGroupName').value.trim();
-
-      if (newName) {
-        groupId = 'group_' + Date.now();
-        shopGroups.push({ id: groupId, name: newName });
-        await window.pddApi.saveShopGroups(shopGroups);
-      }
-
-      shops.forEach(s => {
-        if (selectedShopIds.has(s.id)) s.group = groupId;
-      });
-      await window.pddApi.saveShops(shops);
-      selectedShopIds.clear();
-      hideModal('modalGroup');
-      renderGroupTabs();
-      renderShops();
-    });
-
-    // 备注
-    function openRemarkModal(shopId) {
-      remarkShopId = shopId;
-      const shop = shops.find(s => s.id === shopId);
-      document.getElementById('remarkInput').value = shop?.remark || '';
-      showModal('modalRemark');
-    }
-
-    document.getElementById('btnConfirmRemark').addEventListener('click', async () => {
-      const remark = document.getElementById('remarkInput').value.trim();
-      const shop = shops.find(s => s.id === remarkShopId);
-      if (shop) {
-        shop.remark = remark;
-        await window.pddApi.saveShops(shops);
-        renderShops();
-      }
-      hideModal('modalRemark');
-    });
-
-    // 同步/刷新/解绑
-    document.getElementById('btnSyncShops').addEventListener('click', async () => {
-      await loadShops();
-      addLog('已按 Token 文件同步店铺列表', 'info');
-    });
-
-    document.getElementById('btnRefreshShops').addEventListener('click', async () => {
-      await loadShops();
-      addLog('店铺列表已刷新', 'info');
-    });
-
-    document.getElementById('btnUnbindShops').addEventListener('click', async () => {
-      if (selectedShopIds.size === 0) return alert('请先选择店铺');
-      if (!confirm(`确定解绑 ${selectedShopIds.size} 个店铺？`)) return;
-      const shopIds = Array.from(selectedShopIds);
-      for (const shopId of shopIds) {
-        await window.pddApi.removeShop(shopId);
-      }
-      selectedShopIds.clear();
-      await loadShops();
-      addLog(`已删除 ${shopIds.length} 个 Token 店铺`, 'info');
-    });
-
-    // ==================== 批量绑定 ====================
-    document.getElementById('btnBindShops').addEventListener('click', () => {
-      document.getElementById('bindStep1').style.display = '';
-      document.getElementById('bindStep2').style.display = 'none';
-      document.getElementById('btnConfirmBind').style.display = 'none';
-      document.getElementById('scanStatus').innerHTML = '<div class="scan-icon">🔍</div><div class="scan-text">点击下方按钮开始扫描可绑定的店铺</div>';
-      scannedShops = [];
-      showModal('modalBind');
-    });
-
-    document.getElementById('btnStartScan').addEventListener('click', async () => {
-      const status = document.getElementById('scanStatus');
-      status.innerHTML = '<div class="scan-icon" style="animation:pulse 1s infinite">📡</div><div class="scan-text">正在扫描，请稍候...</div>';
-      document.getElementById('btnStartScan').disabled = true;
-
-      await new Promise(r => setTimeout(r, 1500));
-      scannedShops = await window.pddApi.scanShops();
-
-      document.getElementById('btnStartScan').disabled = false;
-      document.getElementById('bindStep1').style.display = 'none';
-      document.getElementById('bindStep2').style.display = '';
-      document.getElementById('btnConfirmBind').style.display = '';
-
-      const list = document.getElementById('scanResultList');
-      list.innerHTML = scannedShops.map((s, i) => `
-        <div class="scan-result-item">
-          <input type="checkbox" class="bind-check" data-idx="${i}" checked>
-          <div>
-            <div class="shop-name">${esc(s.name)}</div>
-            <div class="shop-account">${esc(s.account)}</div>
-          </div>
-        </div>
-      `).join('');
-    });
-
-    document.getElementById('bindSelectAll').addEventListener('change', (e) => {
-      document.querySelectorAll('.bind-check').forEach(cb => cb.checked = e.target.checked);
-    });
-
-    document.getElementById('btnConfirmBind').addEventListener('click', async () => {
-      const selected = [...document.querySelectorAll('.bind-check:checked')].map(cb => scannedShops[cb.dataset.idx]);
-      if (selected.length === 0) return alert('请至少选择一个店铺');
-      await window.pddApi.bindShops(selected);
-      hideModal('modalBind');
-      addLog(`成功绑定 ${selected.length} 个店铺`, 'reply');
-      if (currentView === 'shops') await loadShops();
-    });
-
-    // ==================== 店铺考试 ====================
-    document.getElementById('btnExamShop').addEventListener('click', async () => {
-      examQuestions = await window.pddApi.getExamQuestions();
-      examAnswers = {};
-      renderExam();
-      document.getElementById('btnSubmitExam').style.display = '';
-      document.getElementById('btnRetakeExam').style.display = 'none';
-      showModal('modalExam');
-    });
-
-    function renderExam() {
-      const body = document.getElementById('examBody');
-      body.innerHTML = examQuestions.map((q, i) => {
-        const typeLabel = q.type === 'judge' ? '判断题' : '单选题';
-        return `<div class="exam-question" data-qid="${q.id}">
-          <div class="exam-question-title">
-            <span class="q-num">${i + 1}</span>
-            ${esc(q.question)}
-            <span class="q-type">[${typeLabel}]</span>
-          </div>
-          <div class="exam-options">
-            ${q.options.map((opt, oi) => `
-              <label class="exam-option" data-qid="${q.id}" data-oi="${oi}">
-                <input type="radio" name="exam_${q.id}" value="${oi}">
-                ${esc(opt)}
-              </label>
-            `).join('')}
-          </div>
-        </div>`;
-      }).join('');
-
-      updateExamProgress();
-
-      body.querySelectorAll('.exam-option').forEach(opt => {
-        opt.addEventListener('click', () => {
-          const qid = opt.dataset.qid;
-          const oi = parseInt(opt.dataset.oi);
-          examAnswers[qid] = oi;
-
-          body.querySelectorAll(`.exam-option[data-qid="${qid}"]`).forEach(o => o.classList.remove('selected'));
-          opt.classList.add('selected');
-          updateExamProgress();
-        });
-      });
-    }
-
-    function updateExamProgress() {
-      const answered = Object.keys(examAnswers).length;
-      const total = examQuestions.length;
-      document.getElementById('examProgressText').textContent = `${answered}/${total}`;
-      document.getElementById('examProgressFill').style.width = total ? (answered / total * 100) + '%' : '0%';
-    }
-
-    document.getElementById('btnSubmitExam').addEventListener('click', async () => {
-      if (Object.keys(examAnswers).length < examQuestions.length) {
-        if (!confirm(`还有 ${examQuestions.length - Object.keys(examAnswers).length} 题未作答，确定提交？`)) return;
-      }
-
-      const result = await window.pddApi.submitExam(examAnswers);
-
-      examQuestions.forEach(q => {
-        const opts = document.querySelectorAll(`.exam-option[data-qid="${q.id}"]`);
-        opts.forEach(o => {
-          o.style.pointerEvents = 'none';
-          const oi = parseInt(o.dataset.oi);
-          if (oi === q.answer) o.classList.add('correct');
-          else if (examAnswers[q.id] === oi) o.classList.add('wrong');
-        });
-      });
-
-      const scoreHtml = document.createElement('div');
-      scoreHtml.className = 'exam-score';
-      scoreHtml.innerHTML = `
-        <div class="score-num">${result.score}</div>
-        <div class="score-label">考试得分</div>
-        <div class="score-detail">共 ${result.total} 题，答对 ${result.correct} 题</div>
-      `;
-      document.getElementById('examBody').prepend(scoreHtml);
-
-      document.getElementById('btnSubmitExam').style.display = 'none';
-      document.getElementById('btnRetakeExam').style.display = '';
-      addLog(`考试完成: ${result.score}分 (${result.correct}/${result.total})`, 'info');
-    });
-
-    document.getElementById('btnRetakeExam').addEventListener('click', async () => {
-      examAnswers = {};
-      renderExam();
-      document.getElementById('btnSubmitExam').style.display = '';
-      document.getElementById('btnRetakeExam').style.display = 'none';
-    });
-
-    // ==================== 快捷短语 ====================
-    async function loadQuickPhrases() {
-      quickPhrases = await window.pddApi.getQuickPhrases();
-      renderPhrasePanel();
-    }
-
-    function renderPhrasePanel() {
-      const body = document.getElementById('phrasePanelBody');
-      const grouped = {};
-      quickPhrases.forEach(p => {
-        const cat = p.category || '通用';
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(p);
-      });
-
-      let html = '';
-      for (const [cat, items] of Object.entries(grouped)) {
-        html += `<div class="phrase-category">${esc(cat)}</div>`;
-        items.forEach(p => {
-          html += `<div class="phrase-item" data-text="${esc(p.text)}">${esc(p.text)}</div>`;
-        });
-      }
-      body.innerHTML = html || '<div style="padding:20px;text-align:center;color:#bbb">暂无快捷短语</div>';
-
-      body.querySelectorAll('.phrase-item').forEach(item => {
-        item.addEventListener('click', async () => {
-          await window.pddApi.sendQuickPhrase(item.dataset.text);
-          addLog(`发送快捷短语: ${item.dataset.text}`, 'reply');
-        });
-      });
-    }
-
-    function renderApiPhrasePanel() {
-      const body = document.getElementById('apiPhrasePanelBody');
-      if (!body) return;
-      const grouped = {};
-      quickPhrases.forEach(p => {
-        const cat = p.category || '通用';
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(p);
-      });
-
-      let html = '';
-      for (const [cat, items] of Object.entries(grouped)) {
-        html += `<div class="phrase-category">${esc(cat)}</div>`;
-        items.forEach(p => {
-          html += `<div class="phrase-item" data-text="${esc(p.text)}">${esc(p.text)}</div>`;
-        });
-      }
-      body.innerHTML = html || '<div style="padding:20px;text-align:center;color:#bbb">暂无快捷短语</div>';
-
-      body.querySelectorAll('.phrase-item').forEach(item => {
-        item.addEventListener('click', () => {
-          const input = document.getElementById('apiMessageInput');
-          input.value = item.dataset.text;
-          input.focus();
-          setApiHint('已将快捷短语填入接口发送输入框');
-        });
-      });
-    }
-
-    renderApiEmojiPanel();
-
-    document.getElementById('btnTogglePhrases').addEventListener('click', () => {
-      const panel = document.getElementById('phrasePanel');
-      panel.classList.toggle('visible');
-      if (panel.classList.contains('visible')) loadQuickPhrases();
-    });
-
-    document.getElementById('btnManagePhrases').addEventListener('click', () => {
-      const editor = document.getElementById('phrasesEditor');
-      editor.value = quickPhrases.map(p => `${p.category || '通用'}|${p.text}`).join('\n');
-      showModal('modalPhrases');
-    });
-
-    document.getElementById('btnApiManagePhrases').addEventListener('click', () => {
-      const editor = document.getElementById('phrasesEditor');
-      editor.value = quickPhrases.map(p => `${p.category || '通用'}|${p.text}`).join('\n');
-      showModal('modalPhrases');
-    });
-
-    document.getElementById('btnSavePhrases').addEventListener('click', async () => {
-      const lines = document.getElementById('phrasesEditor').value.split('\n').filter(l => l.trim());
-      quickPhrases = lines.map((line, i) => {
-        const parts = line.split('|');
-        return {
-          id: 'qp_' + Date.now() + '_' + i,
-          category: parts.length > 1 ? parts[0].trim() : '通用',
-          text: (parts.length > 1 ? parts.slice(1).join('|') : parts[0]).trim()
-        };
-      }).filter(p => p.text);
-
-      await window.pddApi.saveQuickPhrases(quickPhrases);
-      renderPhrasePanel();
-      renderApiPhrasePanel();
-      hideModal('modalPhrases');
-      addLog('快捷短语已更新', 'info');
-    });
-
     // 聊天功能栏按钮（暂为提示）
-    document.getElementById('btnQuickReply').addEventListener('click', () => {
-      document.getElementById('phrasePanel').classList.toggle('visible');
-      if (document.getElementById('phrasePanel').classList.contains('visible')) loadQuickPhrases();
-    });
-    document.getElementById('btnApiQuickReply').addEventListener('click', async () => {
-      const panel = document.getElementById('apiPhrasePanel');
-      toggleApiEmojiPanel(false);
-      panel.classList.toggle('visible');
-      if (panel.classList.contains('visible')) {
-        await loadQuickPhrases();
-        renderApiPhrasePanel();
-      }
-    });
-    document.getElementById('btnApiTogglePhrases').addEventListener('click', async () => {
-      const panel = document.getElementById('apiPhrasePanel');
-      toggleApiEmojiPanel(false);
-      panel.classList.toggle('visible');
-      if (panel.classList.contains('visible')) {
-        await loadQuickPhrases();
-        renderApiPhrasePanel();
-      }
-    });
-    document.getElementById('btnApiEmojiToggle').addEventListener('click', event => {
-      event.stopPropagation();
-      document.getElementById('apiPhrasePanel')?.classList.remove('visible');
-      toggleApiEmojiPanel();
-    });
-    document.getElementById('apiEmojiPanel').addEventListener('click', event => {
-      event.stopPropagation();
-    });
-    document.addEventListener('click', event => {
-      const panel = document.getElementById('apiEmojiPanel');
-      const button = document.getElementById('btnApiEmojiToggle');
-      if (!panel || !button) return;
-      if (panel.contains(event.target) || button.contains(event.target)) return;
-      toggleApiEmojiPanel(false);
-    });
-    window.addEventListener('resize', () => {
-      syncApiEmojiPanelPosition();
-    });
     document.getElementById('btnOrderInfo').addEventListener('click', () => alert('订单查询功能开发中'));
     document.getElementById('btnProductInfo').addEventListener('click', () => alert('商品信息功能开发中'));
     document.getElementById('btnTransfer').addEventListener('click', () => alert('转接功能开发中'));

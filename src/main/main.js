@@ -12,8 +12,14 @@ const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
 const { TokenFileStore } = require('./token-file-store');
 const { SYSTEM_PHRASES, DEFAULT_SCENES, PHRASE_CATEGORIES, DEFAULT_AI_INTENTS } = require('./system-phrases');
-const { AIIntentEngine, MODEL_ID, MODEL_SOURCES } = require('./ai-intent');
+const { AIIntentEngine } = require('./ai-intent');
 const { getApiTrafficLogPath } = require('./api-traffic-path');
+const { registerAiIpc, autoLoadAiIntentEngine } = require('./register-ai-ipc');
+const { registerShopIpc } = require('./register-shop-ipc');
+const { registerApiIpc } = require('./register-api-ipc');
+const { registerReplyIpc } = require('./register-reply-ipc');
+const { registerDebugIpc } = require('./register-debug-ipc');
+const { registerEmbeddedViewIpc } = require('./register-embedded-view-ipc');
 const Store = require('electron-store');
 
 app.disableHardwareAcceleration();
@@ -1240,234 +1246,6 @@ async function migrateOldData() {
 
 // ---- IPC Handlers ----
 
-ipcMain.handle('get-rules', () => store.get('rules'));
-
-ipcMain.handle('save-rules', (event, rules) => {
-  store.set('rules', rules);
-  if (replyEngine) replyEngine.updateRules(rules);
-  return true;
-});
-
-ipcMain.handle('get-auto-reply-enabled', () => store.get('autoReplyEnabled'));
-
-ipcMain.handle('set-auto-reply-enabled', (event, enabled) => {
-  store.set('autoReplyEnabled', enabled);
-  // 向所有已创建的 BrowserView 广播
-  if (shopManager) {
-    for (const view of shopManager.views.values()) {
-      view.webContents.send('auto-reply-toggle', enabled);
-    }
-  }
-  return true;
-});
-
-// ---- 兜底回复 ----
-
-ipcMain.handle('get-default-reply', () => {
-  const cfg = store.get('defaultReply');
-  // 向后兼容：旧版 text 迁移到 texts
-  if (cfg && !cfg.texts && cfg.text) {
-    cfg.texts = [cfg.text];
-  }
-  if (cfg && !cfg.scenes) {
-    cfg.scenes = DEFAULT_SCENES;
-  }
-  return cfg;
-});
-
-ipcMain.handle('save-default-reply', (event, config) => {
-  store.set('defaultReply', config);
-  return true;
-});
-
-// ---- 话术库 ----
-
-ipcMain.handle('get-system-phrases', () => SYSTEM_PHRASES);
-ipcMain.handle('get-phrase-categories', () => PHRASE_CATEGORIES);
-
-ipcMain.handle('get-phrase-library', () => store.get('phraseLibrary') || []);
-
-ipcMain.handle('save-phrase-library', (event, phrases) => {
-  store.set('phraseLibrary', phrases);
-  return true;
-});
-
-// 将话术添加到兜底配置的 texts 数组
-ipcMain.handle('add-phrase-to-fallback', (event, text) => {
-  const cfg = store.get('defaultReply');
-  if (!cfg.texts) cfg.texts = [];
-  if (!cfg.texts.includes(text)) {
-    cfg.texts.push(text);
-    store.set('defaultReply', cfg);
-  }
-  return true;
-});
-
-// 将话术添加到指定场景的 replies 数组
-ipcMain.handle('add-phrase-to-scene', (event, { sceneId, text }) => {
-  const cfg = store.get('defaultReply');
-  const scene = cfg.scenes?.find(s => s.id === sceneId);
-  if (scene) {
-    if (!scene.replies.includes(text)) {
-      scene.replies.push(text);
-      store.set('defaultReply', cfg);
-    }
-  }
-  return true;
-});
-
-// ---- 未匹配消息记录 ----
-
-ipcMain.handle('get-unmatched-log', () => store.get('unmatchedLog') || []);
-
-ipcMain.handle('clear-unmatched-log', () => {
-  store.set('unmatchedLog', []);
-  return true;
-});
-
-ipcMain.handle('open-settings', () => {
-  createSettingsWindow(mainWindow, store);
-});
-
-ipcMain.handle('open-devtools', () => {
-  if (isEmbeddedPddView(currentView)) {
-    const view = shopManager?.getActiveView();
-    if (!view) {
-      return { error: '当前没有可调试的嵌入页' };
-    }
-    view.webContents.openDevTools({ mode: 'detach' });
-    return { ok: true, target: 'embedded' };
-  }
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return { error: '主窗口不可用' };
-  }
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
-  return { ok: true, target: 'renderer' };
-});
-
-ipcMain.handle('diagnose-page', async () => {
-  const view = shopManager?.getActiveView();
-  if (!view) return { error: '没有活跃的 BrowserView' };
-  return view.webContents.executeJavaScript(`(function(){
-    var r = {};
-    r.url = location.href;
-    r.title = document.title;
-
-    // body 直接子元素
-    r.bodyChildren = [];
-    var body = document.body;
-    if (body) {
-      for (var i = 0; i < Math.min(body.children.length, 30); i++) {
-        var el = body.children[i];
-        var rect = el.getBoundingClientRect();
-        r.bodyChildren.push({
-          tag: el.tagName, id: el.id || '',
-          cls: (el.className || '').toString().slice(0, 100),
-          w: Math.round(rect.width), h: Math.round(rect.height)
-        });
-      }
-    }
-
-    // 深层布局：找到所有宽度 > 100px 的直接子元素及其子元素
-    r.layoutTree = [];
-    function walkLayout(parent, depth) {
-      if (depth > 3) return;
-      for (var c = 0; c < parent.children.length && r.layoutTree.length < 80; c++) {
-        var el = parent.children[c];
-        var rect = el.getBoundingClientRect();
-        if (rect.width < 50 || rect.height < 50) continue;
-        r.layoutTree.push({
-          depth: depth,
-          tag: el.tagName, id: el.id || '',
-          cls: (el.className || '').toString().slice(0, 100),
-          x: Math.round(rect.left), y: Math.round(rect.top),
-          w: Math.round(rect.width), h: Math.round(rect.height),
-          children: el.children.length
-        });
-        walkLayout(el, depth + 1);
-      }
-    }
-    if (body) walkLayout(body, 0);
-
-    // iframe
-    r.iframes = [];
-    document.querySelectorAll('iframe').forEach(function(f){
-      var rect = f.getBoundingClientRect();
-      r.iframes.push({
-        src: (f.src || '').slice(0, 300), id: f.id || '',
-        w: Math.round(rect.width), h: Math.round(rect.height),
-        visible: rect.width > 0 && rect.height > 0
-      });
-    });
-
-    // Shadow DOM
-    r.shadowRoots = 0;
-    document.querySelectorAll('*').forEach(function(el){ if (el.shadowRoot) r.shadowRoots++; });
-
-    // 微前端
-    r.singleSpa = typeof window.singleSpa !== 'undefined';
-    r.qiankun = typeof window.__POWERED_BY_QIANKUN__ !== 'undefined';
-
-    // guide 状态
-    r.layerCount = document.querySelectorAll('.layer').length;
-    r.layerVisible = false;
-    document.querySelectorAll('.layer').forEach(function(el){
-      var rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) r.layerVisible = true;
-    });
-
-    return r;
-  })()`);
-});
-
-ipcMain.handle('open-debug-window', () => {
-  createDebugWindow(mainWindow);
-});
-
-ipcMain.on('renderer-debug-log', (event, payload = {}) => {
-  const scope = payload?.scope || 'renderer';
-  const message = payload?.message || '';
-  const extra = payload?.extra ? ` ${JSON.stringify(payload.extra)}` : '';
-  console.log(`[页面调试:${scope}] ${message}${extra}`);
-});
-
-ipcMain.handle('reload-pdd', () => {
-  const view = shopManager?.getActiveView();
-  if (!view) return;
-  view.webContents.loadURL(getEmbeddedViewUrl(currentView));
-});
-
-ipcMain.handle('get-chat-url', () => store.get('chatUrl'));
-
-ipcMain.handle('set-chat-url', (event, url) => {
-  store.set('chatUrl', url);
-  return true;
-});
-
-ipcMain.handle('get-mail-url', () => store.get('mailUrl'));
-
-ipcMain.handle('set-mail-url', (event, url) => {
-  store.set('mailUrl', url);
-  return true;
-});
-
-ipcMain.handle('get-invoice-url', () => store.get('invoiceUrl'));
-
-ipcMain.handle('set-invoice-url', (event, url) => {
-  store.set('invoiceUrl', url);
-  return true;
-});
-
-ipcMain.handle('get-current-url', () => {
-  const view = shopManager?.getActiveView();
-  return view ? view.webContents.getURL() : '';
-});
-
-ipcMain.handle('navigate-pdd', (event, url) => {
-  const view = shopManager?.getActiveView();
-  if (view) view.webContents.loadURL(url);
-});
-
 ipcMain.handle('inject-cookies', async (event, cookies) => {
   const shopId = shopManager?.getActiveShopId();
   if (!shopId) return false;
@@ -1482,698 +1260,91 @@ ipcMain.handle('inject-cookies', async (event, cookies) => {
   return true;
 });
 
-// ---- 多店铺管理 IPC ----
-
-ipcMain.handle('get-active-shop', () => {
-  if (!shopManager) return null;
-  const shop = shopManager.getActiveShop();
-  return shop ? { shopId: shopManager.getActiveShopId(), shop } : null;
+registerShopIpc({
+  ipcMain,
+  store,
+  getShopManager: () => shopManager,
+  destroyApiClient,
+  destroyMailApiClient,
+  destroyInvoiceApiClient
 });
 
-ipcMain.handle('switch-shop', (event, shopId) => {
-  if (!shopManager) return false;
-  return shopManager.switchTo(shopId);
-});
-
-ipcMain.handle('add-shop-by-token', async () => {
-  if (!shopManager) return { error: '店铺管理器未初始化' };
-  try {
-    return await shopManager.addByToken();
-  } catch (err) {
-    console.error('[PDD助手] Token 添加店铺失败:', err.message);
-    return { error: err.message };
+registerApiIpc({
+  ipcMain,
+  dialog,
+  store,
+  API_ALL_SHOPS,
+  getMainWindow: () => mainWindow,
+  getShopManager: () => shopManager,
+  getApiClient,
+  getApiSessionsByScope,
+  uploadImageViaPddPage,
+  getApiShopList,
+  destroyApiClient,
+  getApiTrafficByScope,
+  getMailApiClient,
+  getInvoiceApiClient,
+  setApiTrafficEntries: (shopId, entries) => {
+    apiTrafficStore.set(shopId, entries);
   }
 });
 
-ipcMain.handle('add-shop-by-token-path', async (event, filePath) => {
-  if (!shopManager) return { error: '店铺管理器未初始化' };
-  try {
-    return await shopManager.addByToken(filePath);
-  } catch (err) {
-    console.error('[PDD助手] Token 添加店铺失败:', err.message);
-    return { error: err.message };
+registerReplyIpc({
+  ipcMain,
+  store,
+  DEFAULT_SCENES,
+  SYSTEM_PHRASES,
+  PHRASE_CATEGORIES,
+  ReplyEngine,
+  getReplyEngine: () => replyEngine,
+  setReplyEngine: engine => {
+    replyEngine = engine;
+  },
+  getAiIntentEngine: () => aiIntentEngine,
+  getShopManager: () => shopManager
+});
+
+registerDebugIpc({
+  ipcMain,
+  store,
+  getMainWindow: () => mainWindow,
+  getCurrentView: () => currentView,
+  getShopManager: () => shopManager,
+  isEmbeddedPddView,
+  createSettingsWindow,
+  createDebugWindow
+});
+
+registerEmbeddedViewIpc({
+  ipcMain,
+  store,
+  getCurrentView: () => currentView,
+  setCurrentView: view => {
+    currentView = view;
+  },
+  getShopManager: () => shopManager,
+  isEmbeddedPddView,
+  isMailPageUrl,
+  isInvoicePageUrl,
+  isChatPageUrl,
+  getPddMailUrl,
+  getPddInvoiceUrl,
+  getPddChatUrl,
+  getEmbeddedViewUrl
+});
+
+registerAiIpc({
+  ipcMain,
+  app,
+  dialog,
+  store,
+  DEFAULT_AI_INTENTS,
+  AIIntentEngine,
+  getMainWindow: () => mainWindow,
+  getAiIntentEngine: () => aiIntentEngine,
+  setAiIntentEngine: engine => {
+    aiIntentEngine = engine;
   }
-});
-
-ipcMain.handle('add-shop-by-qrcode', async () => {
-  if (!shopManager) return { error: '店铺管理器未初始化' };
-  try {
-    return await shopManager.addByQRCode();
-  } catch (err) {
-    console.error('[PDD助手] 扫码添加店铺失败:', err.message);
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('remove-shop', (event, shopId) => {
-  if (!shopManager) return false;
-  destroyApiClient(shopId);
-  destroyMailApiClient(shopId);
-  destroyInvoiceApiClient(shopId);
-  return shopManager.removeShop(shopId);
-});
-
-// 兼容旧的 import-token-file IPC（现在内部走 ShopManager）
-ipcMain.handle('import-token-file', async () => {
-  if (!shopManager) return { error: '店铺管理器未初始化' };
-  try {
-    return await shopManager.addByToken();
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('import-token-from-path', async (event, filePath) => {
-  if (!shopManager) return { error: '店铺管理器未初始化' };
-  try {
-    return await shopManager.addByToken(filePath);
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('get-token-info', () => {
-  const shopId = shopManager?.getActiveShopId();
-  return (global.__pddTokens && shopId) ? global.__pddTokens[shopId] || null : null;
-});
-
-ipcMain.handle('api-get-token-status', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有活跃店铺' };
-  if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
-  return await getApiClient(shopId).getTokenStatus();
-});
-
-ipcMain.handle('api-init-session', async () => {
-  const shopId = shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有活跃店铺' };
-  try {
-    return await getApiClient(shopId).initSession(true);
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-test-connection', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有活跃店铺' };
-  if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
-  try {
-    return await getApiClient(shopId).testConnection();
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-get-sessions', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  try {
-    const sessions = await getApiSessionsByScope(shopId, params.page || 1, params.pageSize || 20);
-    console.log(`[PDD接口:${shopId}] api-get-sessions 返回 ${Array.isArray(sessions) ? sessions.length : 0} 条`);
-    return sessions;
-  } catch (err) {
-    console.log(`[PDD接口:${shopId}] api-get-sessions 失败: ${err.message}`);
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-get-messages', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  if (!params.sessionId) return { error: '缺少 sessionId' };
-  try {
-    return await getApiClient(shopId).getSessionMessages(
-      params.session || params.sessionId,
-      params.page || 1,
-      params.pageSize || 30
-    );
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-get-goods-card', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  if (!params.url) return { error: '缺少商品链接' };
-  try {
-    return await getApiClient(shopId).getGoodsCard(params);
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-send-message', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  if (!params.sessionId) return { error: '缺少 sessionId' };
-  if (!params.text) return { error: '缺少发送内容' };
-  try {
-    return await getApiClient(shopId).sendMessage(params.session || params.sessionId, params.text);
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-select-image', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
-    filters: [
-      { name: '图片文件', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
-    ],
-  });
-  if (result.canceled || !result.filePaths?.length) {
-    return { canceled: true };
-  }
-  return { canceled: false, filePath: result.filePaths[0] };
-});
-
-ipcMain.handle('api-send-image', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  if (!params.sessionId) return { error: '缺少 sessionId' };
-  if (!params.filePath) return { error: '缺少图片路径' };
-  const client = getApiClient(shopId);
-  try {
-    return await client.sendImage(params.session || params.sessionId, params.filePath);
-  } catch (err) {
-    if (err.step === 'upload' && /ERR_BLOCKED_BY_CLIENT/i.test(err.message || '')) {
-      try {
-        const uploadResult = await uploadImageViaPddPage(shopId, params.filePath);
-        const imageUrl = uploadResult?.processed_url || uploadResult?.url;
-        return await client.sendImageUrl(params.session || params.sessionId, imageUrl, {
-          filePath: params.filePath,
-          uploadBaseUrl: uploadResult?.uploadBaseUrl || 'embedded-pdd-page',
-        });
-      } catch (fallbackError) {
-        return {
-          error: fallbackError.message,
-          step: 'upload-fallback',
-          attempts: Array.isArray(err.attempts) ? err.attempts : [],
-          imageUrl: '',
-          uploadBaseUrl: 'embedded-pdd-page',
-        };
-      }
-    }
-    return {
-      error: err.message,
-      step: err.step || '',
-      attempts: Array.isArray(err.attempts) ? err.attempts : [],
-      imageUrl: err.imageUrl || '',
-      uploadBaseUrl: err.uploadBaseUrl || '',
-    };
-  }
-});
-
-ipcMain.handle('api-mark-latest-conversations', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  try {
-    return await getApiClient(shopId).markLatestConversations(params.size || 100);
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('api-start-polling', (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  if (shopId === API_ALL_SHOPS) {
-    const targetShops = getApiShopList(API_ALL_SHOPS, { apiReadyOnly: true });
-    if (!targetShops.length) {
-      return { error: '显示所有店铺时，没有已恢复 Token 的店铺可用于接口轮询' };
-    }
-    targetShops.forEach(shop => getApiClient(shop.id).startPolling());
-    return { ok: true, shopId, count: targetShops.length };
-  }
-  getApiClient(shopId).startPolling();
-  return { ok: true, shopId };
-});
-
-ipcMain.handle('api-stop-polling', (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  if (shopId === API_ALL_SHOPS) {
-    const targetShops = getApiShopList(API_ALL_SHOPS);
-    targetShops.forEach(shop => destroyApiClient(shop.id));
-    return { ok: true, shopId, count: targetShops.length };
-  }
-  destroyApiClient(shopId);
-  return { ok: true, shopId };
-});
-
-ipcMain.handle('get-api-traffic', (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return [];
-  return getApiTrafficByScope(shopId);
-});
-
-ipcMain.handle('mail-get-overview', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  try {
-    return await getMailApiClient(shopId).getOverview();
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('mail-get-list', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  try {
-    return await getMailApiClient(shopId).getList(params);
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('mail-get-detail', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  if (!params.messageId) return { error: '缺少 messageId' };
-  try {
-    return await getMailApiClient(shopId).getDetail(params.messageId);
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('invoice-get-overview', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  try {
-    return await getInvoiceApiClient(shopId).getOverview();
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('invoice-get-list', async (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return { error: '没有可用店铺' };
-  try {
-    return await getInvoiceApiClient(shopId).getList(params);
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('clear-api-traffic', (event, params = {}) => {
-  const shopId = params.shopId || shopManager?.getActiveShopId();
-  if (!shopId) return false;
-  if (shopId === API_ALL_SHOPS) {
-    getApiShopList(API_ALL_SHOPS).forEach(shop => apiTrafficStore.set(shop.id, []));
-    return true;
-  }
-  apiTrafficStore.set(shopId, []);
-  return true;
-});
-
-ipcMain.handle('get-api-starred-sessions', () => store.get('apiStarredSessions') || []);
-
-ipcMain.handle('toggle-api-starred-session', (event, session = {}) => {
-  const sessions = store.get('apiStarredSessions') || [];
-  const sessionKey = String(session.sessionKey || `${session.shopId || ''}::${session.sessionId || ''}`);
-  if (!session.shopId || !session.sessionId || !sessionKey) {
-    return { error: '缺少收藏会话标识', sessions };
-  }
-  const currentIndex = sessions.findIndex(item => item.sessionKey === sessionKey);
-  if (currentIndex >= 0) {
-    sessions.splice(currentIndex, 1);
-    store.set('apiStarredSessions', sessions);
-    return { starred: false, sessions };
-  }
-  const nextSession = {
-    sessionKey,
-    shopId: session.shopId,
-    sessionId: session.sessionId,
-    shopName: session.shopName || '',
-    customerName: session.customerName || '',
-    customerId: session.customerId || '',
-    customerAvatar: session.customerAvatar || '',
-    lastMessage: session.lastMessage || '',
-    lastMessageTime: session.lastMessageTime || 0,
-    unreadCount: session.unreadCount || 0,
-    orderId: session.orderId || '',
-    updatedAt: Date.now(),
-  };
-  sessions.unshift(nextSession);
-  store.set('apiStarredSessions', sessions);
-  return { starred: true, sessions };
-});
-
-// ---- 视图切换 ----
-
-ipcMain.handle('switch-view', (event, view) => {
-  currentView = view;
-  if (isEmbeddedPddView(view)) {
-    const activeView = shopManager?.getActiveView();
-    if (shopManager) shopManager.showActiveView();
-    if (activeView) {
-      const currentUrl = activeView.webContents.getURL();
-      if (view === 'mail' && !isMailPageUrl(currentUrl)) {
-        activeView.webContents.loadURL(getPddMailUrl());
-      }
-      if (view === 'invoice' && !isInvoicePageUrl(currentUrl)) {
-        activeView.webContents.loadURL(getPddInvoiceUrl());
-      }
-      if (view === 'chat' && !isChatPageUrl(currentUrl)) {
-        activeView.webContents.loadURL(getPddChatUrl());
-      }
-    }
-  } else {
-    if (shopManager) shopManager.hideActiveView();
-  }
-  return true;
-});
-
-ipcMain.handle('get-current-view', () => currentView);
-
-// ---- 店铺管理 IPC（列表/分组） ----
-
-ipcMain.handle('get-shops', async () => {
-  if (shopManager) {
-    const result = await shopManager.syncShopsFromTokenFiles({ broadcast: false });
-    return Array.isArray(result?.shops) ? result.shops : result;
-  }
-  return store.get('shops');
-});
-
-ipcMain.handle('save-shops', (event, shops) => {
-  if (shopManager) return shopManager.saveShopMetadata(shops);
-  store.set('shops', shops);
-  return true;
-});
-
-ipcMain.handle('get-shop-groups', () => store.get('shopGroups'));
-
-ipcMain.handle('save-shop-groups', (event, groups) => {
-  store.set('shopGroups', groups);
-  return true;
-});
-
-// ---- 规则测试 ----
-
-ipcMain.handle('test-rule', (event, message) => {
-  if (!replyEngine) replyEngine = new ReplyEngine(store.get('rules'));
-  return replyEngine.testMatch(message);
-});
-
-// ---- 模拟消息流水线（完整流程测试） ----
-
-ipcMain.handle('simulate-message-flow', async (event, { message, customerName }) => {
-  if (!replyEngine) replyEngine = new ReplyEngine(store.get('rules'));
-
-  const steps = [];
-  const t0 = Date.now();
-
-  // 第一步：关键词匹配
-  const kwStart = Date.now();
-  const kwResult = replyEngine.testMatch(message);
-  steps.push({
-    name: '关键词匹配',
-    duration: Date.now() - kwStart,
-    matched: kwResult.matched,
-    detail: kwResult.matched
-      ? { ruleName: kwResult.ruleName, score: kwResult.score, reply: kwResult.reply }
-      : null
-  });
-
-  // 如果关键词命中，直接返回
-  if (kwResult.matched) {
-    return {
-      steps,
-      finalReply: kwResult.reply,
-      finalSource: '关键词匹配',
-      finalSourceRule: kwResult.ruleName,
-      totalDuration: Date.now() - t0
-    };
-  }
-
-  // 第二步：AI 意图识别
-  const aiCfg = store.get('aiIntent');
-  const aiEnabled = aiCfg.enabled && aiIntentEngine?.isReady();
-  const aiStart = Date.now();
-
-  if (aiEnabled) {
-    try {
-      const threshold = aiCfg.threshold || 0.65;
-      const aiResult = await aiIntentEngine.testMatch(message, threshold);
-      steps.push({
-        name: 'AI 意图识别',
-        duration: Date.now() - aiStart,
-        matched: aiResult.matched,
-        detail: aiResult.matched && aiResult.bestMatch
-          ? { intentName: aiResult.bestMatch.intentName, similarity: aiResult.bestMatch.similarity, reply: aiResult.bestMatch.reply, ranking: aiResult.ranking }
-          : { ranking: aiResult.ranking, threshold }
-      });
-
-      if (aiResult.matched && aiResult.bestMatch?.reply) {
-        return {
-          steps,
-          finalReply: aiResult.bestMatch.reply,
-          finalSource: 'AI 意图识别',
-          finalSourceRule: `AI·${aiResult.bestMatch.intentName}`,
-          totalDuration: Date.now() - t0
-        };
-      }
-    } catch (err) {
-      steps.push({
-        name: 'AI 意图识别',
-        duration: Date.now() - aiStart,
-        matched: false,
-        detail: { error: err.message }
-      });
-    }
-  } else {
-    steps.push({
-      name: 'AI 意图识别',
-      duration: 0,
-      matched: false,
-      skipped: true,
-      detail: { reason: !aiCfg.enabled ? '未启用' : '模型未加载' }
-    });
-  }
-
-  // 第三步：兜底回复
-  const fbStart = Date.now();
-  const defaultReply = store.get('defaultReply');
-  const fbResult = replyEngine.matchWithFallback(message, { defaultReply });
-  const fbMatched = !fbResult.matched && !!fbResult.reply;
-  steps.push({
-    name: '兜底回复',
-    duration: Date.now() - fbStart,
-    matched: fbMatched,
-    detail: fbMatched
-      ? { ruleName: fbResult.ruleName, reply: fbResult.reply, sceneId: fbResult.sceneId }
-      : { reason: defaultReply?.enabled ? '无可用兜底话术' : '兜底回复未启用' }
-  });
-
-  return {
-    steps,
-    finalReply: fbResult.reply || null,
-    finalSource: fbMatched ? '兜底回复' : '无匹配',
-    finalSourceRule: fbResult.ruleName || null,
-    totalDuration: Date.now() - t0
-  };
-});
-
-// ---- AI 意图识别 ----
-
-ipcMain.handle('ai-get-system-info', () => {
-  const os = require('os');
-  const totalMemGB = os.totalmem() / (1024 ** 3);
-  const freeMemGB = os.freemem() / (1024 ** 3);
-  const cpus = os.cpus();
-  const cpuModel = cpus[0]?.model || '未知';
-  const cpuCores = cpus.length;
-  const platform = os.platform();
-  const arch = os.arch();
-
-  // 检查磁盘可用空间（模型缓存目录所在分区）
-  let diskFreeGB = null;
-  try {
-    const { execSync } = require('child_process');
-    const cacheDir = path.join(app.getPath('userData'), 'ai-models');
-    if (platform === 'win32') {
-      const drive = cacheDir.charAt(0).toUpperCase();
-      const out = execSync(`wmic logicaldisk where "DeviceID='${drive}:'" get FreeSpace /format:value`, { encoding: 'utf-8' });
-      const m = out.match(/FreeSpace=(\d+)/);
-      if (m) diskFreeGB = parseInt(m[1]) / (1024 ** 3);
-    } else {
-      const out = execSync(`df -k "${app.getPath('userData')}"`, { encoding: 'utf-8' });
-      const lines = out.trim().split('\n');
-      if (lines.length >= 2) {
-        const parts = lines[1].split(/\s+/);
-        diskFreeGB = parseInt(parts[3]) / (1024 ** 2);
-      }
-    }
-  } catch { /* 无法获取磁盘信息 */ }
-
-  // 评估是否适合运行 AI 模型
-  let recommendation = 'good';
-  const issues = [];
-
-  if (totalMemGB < 4) {
-    recommendation = 'poor';
-    issues.push(`内存仅 ${totalMemGB.toFixed(1)} GB，低于最低要求 4 GB`);
-  } else if (totalMemGB < 8) {
-    if (recommendation !== 'poor') recommendation = 'fair';
-    issues.push(`内存 ${totalMemGB.toFixed(1)} GB，可运行但可能偶尔卡顿`);
-  }
-
-  if (freeMemGB < 1) {
-    recommendation = 'poor';
-    issues.push(`当前可用内存仅 ${freeMemGB.toFixed(1)} GB，建议关闭部分程序后再使用`);
-  }
-
-  if (cpuCores < 2) {
-    if (recommendation !== 'poor') recommendation = 'fair';
-    issues.push(`CPU 仅 ${cpuCores} 核，推理速度可能较慢`);
-  }
-
-  if (diskFreeGB !== null && diskFreeGB < 0.5) {
-    recommendation = 'poor';
-    issues.push(`磁盘剩余空间仅 ${diskFreeGB.toFixed(1)} GB，不足以存放模型文件`);
-  }
-
-  if (issues.length === 0) {
-    issues.push('您的电脑配置满足 AI 模型运行要求');
-  }
-
-  return {
-    cpu: { model: cpuModel, cores: cpuCores },
-    memory: { total: Math.round(totalMemGB * 10) / 10, free: Math.round(freeMemGB * 10) / 10 },
-    disk: diskFreeGB !== null ? { free: Math.round(diskFreeGB * 10) / 10 } : null,
-    platform, arch,
-    recommendation,
-    issues
-  };
-});
-
-ipcMain.handle('ai-get-config', () => {
-  const cfg = store.get('aiIntent');
-  if (!cfg.intents) cfg.intents = DEFAULT_AI_INTENTS;
-  return cfg;
-});
-
-ipcMain.handle('ai-save-config', (event, config) => {
-  store.set('aiIntent', config);
-  if (aiIntentEngine) {
-    aiIntentEngine.updateIntents(
-      config.intents.filter(i => i.enabled)
-    );
-  }
-  return true;
-});
-
-ipcMain.handle('ai-reset-intents', () => {
-  store.set('aiIntent.intents', DEFAULT_AI_INTENTS);
-  if (aiIntentEngine) {
-    aiIntentEngine.updateIntents(DEFAULT_AI_INTENTS.filter(i => i.enabled));
-  }
-  return DEFAULT_AI_INTENTS;
-});
-
-ipcMain.handle('ai-get-status', () => {
-  if (!aiIntentEngine) {
-    aiIntentEngine = new AIIntentEngine();
-  }
-  return aiIntentEngine.getStatus();
-});
-
-ipcMain.handle('ai-get-sources', () => MODEL_SOURCES);
-
-ipcMain.handle('ai-download-model', async (event, { source, customMirror, localPath } = {}) => {
-  if (!aiIntentEngine) aiIntentEngine = new AIIntentEngine();
-
-  const src = source || store.get('aiIntent.modelSource') || 'mirror';
-  const mirror = customMirror || store.get('aiIntent.customMirror') || '';
-
-  store.set('aiIntent.modelSource', src);
-  if (mirror) store.set('aiIntent.customMirror', mirror);
-
-  try {
-    await aiIntentEngine.downloadModel({
-      source: src,
-      customMirror: mirror,
-      localPath,
-      onProgress(progress) {
-        mainWindow?.webContents.send('ai-download-progress', progress);
-      }
-    });
-
-    store.set('aiIntent.modelStatus', 'ready');
-
-    const intents = store.get('aiIntent.intents') || DEFAULT_AI_INTENTS;
-    await aiIntentEngine.updateIntents(intents.filter(i => i.enabled));
-
-    return { success: true };
-  } catch (err) {
-    store.set('aiIntent.modelStatus', 'none');
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('ai-select-local-model', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: '选择本地模型文件夹',
-    message: '请选择包含 ONNX 模型文件的文件夹（需包含 config.json 和 .onnx 文件）',
-    properties: ['openDirectory']
-  });
-  if (result.canceled || !result.filePaths.length) return { canceled: true };
-  return { path: result.filePaths[0] };
-});
-
-ipcMain.handle('ai-load-model', async () => {
-  if (!aiIntentEngine) aiIntentEngine = new AIIntentEngine();
-
-  try {
-    await aiIntentEngine.loadModel();
-    store.set('aiIntent.modelStatus', 'ready');
-
-    const intents = store.get('aiIntent.intents') || DEFAULT_AI_INTENTS;
-    await aiIntentEngine.updateIntents(intents.filter(i => i.enabled));
-
-    return { success: true };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-ipcMain.handle('ai-unload-model', () => {
-  if (aiIntentEngine) aiIntentEngine.unloadModel();
-  store.set('aiIntent.modelStatus', 'none');
-  store.set('aiIntent.enabled', false);
-  return true;
-});
-
-ipcMain.handle('ai-test-match', async (event, message) => {
-  if (!aiIntentEngine?.isReady()) return { error: '模型未加载' };
-  const threshold = store.get('aiIntent.threshold') || 0.65;
-  return aiIntentEngine.testMatch(message, threshold);
-});
-
-ipcMain.handle('ai-set-enabled', (event, enabled) => {
-  store.set('aiIntent.enabled', enabled);
-  return true;
-});
-
-// ---- 快捷短语 ----
-
-ipcMain.handle('get-quick-phrases', () => store.get('quickPhrases'));
-
-ipcMain.handle('save-quick-phrases', (event, phrases) => {
-  store.set('quickPhrases', phrases);
-  return true;
-});
-
-ipcMain.handle('send-quick-phrase', (event, text) => {
-  const view = shopManager?.getActiveView();
-  if (view) view.webContents.send('send-reply', { message: text });
-  return true;
 });
 
 // ---- 店铺考试 ----
@@ -2678,18 +1849,15 @@ app.whenReady().then(async () => {
   replyEngine = new ReplyEngine(store.get('rules'));
   setupDevelopmentRendererWatcher();
 
-  // 如果之前已下载模型且已启用，后台自动加载
-  const aiCfg = store.get('aiIntent');
-  if (aiCfg.modelStatus === 'ready' || aiCfg.enabled) {
-    aiIntentEngine = new AIIntentEngine();
-    aiIntentEngine.loadModel().then(() => {
-      const intents = store.get('aiIntent.intents') || DEFAULT_AI_INTENTS;
-      aiIntentEngine.updateIntents(intents.filter(i => i.enabled));
-      console.log('[PDD助手] AI 意图引擎已自动加载');
-    }).catch(err => {
-      console.error('[PDD助手] AI 意图引擎自动加载失败:', err.message);
-    });
-  }
+  autoLoadAiIntentEngine({
+    store,
+    DEFAULT_AI_INTENTS,
+    AIIntentEngine,
+    getAiIntentEngine: () => aiIntentEngine,
+    setAiIntentEngine: engine => {
+      aiIntentEngine = engine;
+    }
+  });
 
   await migrateOldData();
   createMainWindow();

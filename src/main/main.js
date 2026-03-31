@@ -1849,6 +1849,8 @@ ipcMain.handle('switch-view', (event, view) => {
   return true;
 });
 
+ipcMain.handle('get-current-view', () => currentView);
+
 // ---- 店铺管理 IPC（列表/分组） ----
 
 ipcMain.handle('get-shops', async () => {

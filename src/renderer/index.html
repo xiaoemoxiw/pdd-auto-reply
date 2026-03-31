@@ -6437,54 +6437,103 @@
       });
     });
 
+    function setActiveNavItem(view) {
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      const activeNav = document.querySelector(`.nav-item[data-view="${view}"]`);
+      if (activeNav) activeNav.classList.add('active');
+    }
+
+    function activateViewPage(view) {
+      document.querySelectorAll('.view-page').forEach(p => p.classList.remove('active'));
+      const pageByView = {
+        chat: 'viewChat',
+        mail: 'viewMail',
+        invoice: 'viewInvoice',
+        'chat-api': 'viewChatApi',
+        'mail-api': 'viewMailApi',
+        'invoice-api': 'viewInvoiceApi',
+        shops: 'viewShops',
+        qa: 'viewQA',
+        ai: 'viewAI',
+        test: 'viewTest'
+      };
+      const pageId = pageByView[view];
+      if (pageId) {
+        const page = document.getElementById(pageId);
+        if (page) page.classList.add('active');
+        return;
+      }
+      if (typeof window.hasOpsCenterView === 'function' && window.hasOpsCenterView(view)) {
+        window.activateOpsCenterView(view);
+      }
+    }
+
+    async function loadViewContent(view, options = {}) {
+      if (view === 'chat-api') {
+        await loadApiChatView(options);
+      } else if (view === 'mail-api') {
+        await loadMailApiView(options);
+      } else if (view === 'invoice-api') {
+        await loadInvoiceApiView(options);
+      } else if (view === 'shops') {
+        await loadShops();
+      } else if (view === 'qa') {
+        await loadRules();
+      } else if (view === 'ai') {
+        loadAIConfig();
+      }
+    }
+
+    async function syncViewStateFromMain() {
+      let nextView = 'chat';
+      try {
+        const savedView = await window.pddApi.getCurrentView();
+        if (savedView) {
+          nextView = savedView;
+        }
+      } catch (error) {
+        addLog(`读取当前页面状态失败: ${error.message || error}`, 'error');
+      }
+
+      currentView = nextView;
+      setActiveNavItem(nextView);
+      activateViewPage(nextView);
+      await loadViewContent(nextView, { keepCurrent: true });
+    }
+
     async function switchView(view) {
       if (view === currentView) return;
       const previousView = currentView;
       currentView = view;
 
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      const activeNav = document.querySelector(`.nav-item[data-view="${view}"]`);
-      if (activeNav) activeNav.classList.add('active');
+      setActiveNavItem(view);
+      activateViewPage(view);
 
-      document.querySelectorAll('.view-page').forEach(p => p.classList.remove('active'));
+      try {
+        await window.pddApi.switchView(view);
 
-      await window.pddApi.switchView(view);
+        if (previousView === 'chat-api' && view !== 'chat-api') {
+          if (apiPolling) {
+            try {
+              await stopApiPollingScope();
+            } catch (error) {
+              addLog(`停止接口轮询失败: ${error.message || error}`, 'error');
+            }
+          }
+          clearApiWarmupRefreshTimers();
+        }
 
-      if (previousView === 'chat-api' && view !== 'chat-api' && apiPolling) {
-        await stopApiPollingScope();
-      }
-      if (previousView === 'chat-api' && view !== 'chat-api') {
-        clearApiWarmupRefreshTimers();
-      }
-
-      if (view === 'chat') {
-        document.getElementById('viewChat').classList.add('active');
-      } else if (view === 'mail') {
-        document.getElementById('viewMail').classList.add('active');
-      } else if (view === 'invoice') {
-        document.getElementById('viewInvoice').classList.add('active');
-      } else if (view === 'chat-api') {
-        document.getElementById('viewChatApi').classList.add('active');
-        await loadApiChatView();
-      } else if (view === 'mail-api') {
-        document.getElementById('viewMailApi').classList.add('active');
-        await loadMailApiView({ keepCurrent: true });
-      } else if (view === 'invoice-api') {
-        document.getElementById('viewInvoiceApi').classList.add('active');
-        await loadInvoiceApiView({ keepCurrent: true });
-      } else if (view === 'shops') {
-        document.getElementById('viewShops').classList.add('active');
-        await loadShops();
-      } else if (view === 'qa') {
-        document.getElementById('viewQA').classList.add('active');
-        await loadRules();
-      } else if (view === 'ai') {
-        document.getElementById('viewAI').classList.add('active');
-        loadAIConfig();
-      } else if (view === 'test') {
-        document.getElementById('viewTest').classList.add('active');
-      } else if (typeof window.hasOpsCenterView === 'function' && window.hasOpsCenterView(view)) {
-        window.activateOpsCenterView(view);
+        await loadViewContent(view);
+      } catch (error) {
+        addLog(`切换页面失败: ${error.message || error}`, 'error');
+        try {
+          await window.pddApi.switchView(previousView);
+        } catch (restoreError) {
+          addLog(`恢复页面失败: ${restoreError.message || restoreError}`, 'error');
+        }
+        currentView = previousView;
+        setActiveNavItem(previousView);
+        activateViewPage(previousView);
       }
     }
 
@@ -7360,119 +7409,127 @@
     }
 
     function renderApiMessages() {
-      const container = document.getElementById('apiMessageList');
-      const mainInner = document.querySelector('.api-chat-main-inner');
-      const activeSession = apiHasUserSelectedSession ? getApiActiveSession() : null;
-      const hasActiveSession = !!(apiHasUserSelectedSession && apiActiveSessionId && activeSession);
-      const shopName = activeSession?.shopName || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '未选择店铺');
-      const unreadCount = Number(activeSession?.unreadCount || 0);
-      const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
-      const followStatusEl = document.getElementById('apiChatFollowStatus');
-      document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
-      document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
-      followStatusEl.textContent = !activeSession
-        ? '未选择会话'
-        : unreadCount > 0
-          ? `未读 ${unreadCount}`
-          : '已关注本店';
-      followStatusEl.classList.toggle('is-unread', !!activeSession && unreadCount > 0);
-      document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
-      mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
+      try {
+        const container = document.getElementById('apiMessageList');
+        const mainInner = document.querySelector('.api-chat-main-inner');
+        const activeSession = apiHasUserSelectedSession ? getApiActiveSession() : null;
+        const hasActiveSession = !!(apiHasUserSelectedSession && apiActiveSessionId && activeSession);
+        const shopName = activeSession?.shopName || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '未选择店铺');
+        const unreadCount = Number(activeSession?.unreadCount || 0);
+        const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
+        const followStatusEl = document.getElementById('apiChatFollowStatus');
+        document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
+        document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
+        followStatusEl.textContent = !activeSession
+          ? '未选择会话'
+          : unreadCount > 0
+            ? `未读 ${unreadCount}`
+            : '已关注本店';
+        followStatusEl.classList.toggle('is-unread', !!activeSession && unreadCount > 0);
+        document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
+        mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 
-      if (!hasActiveSession) {
-        const emptyText = apiSessionLoadError
-          || apiTokenStatus?.authHint
-          || (getVisibleApiSessions().length
-            ? '请先从左侧选择一个会话查看详情。'
-            : '暂无接口会话，请先点击“接口连通测试”或刷新接口会话。');
-        container.innerHTML = `<div class="api-empty">${esc(emptyText)}</div>`;
-        return;
-      }
-
-      if (!apiMessages.length) {
-        container.innerHTML = '<div class="api-empty">当前会话暂无消息，或尚未从接口拿到消息数据。</div>';
-        return;
-      }
-
-      const sortedMessages = apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
-      let previousTimestamp = 0;
-      container.innerHTML = sortedMessages.map((message, index) => {
-        const isBuyer = !!message.isFromBuyer;
-        const buyerAvatar = activeSession?.customerAvatar || '';
-        const sellerText = (shopName || apiTokenStatus?.mallName || '主账号').slice(0, 4);
-        const avatarHtml = isBuyer
-          ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((apiActiveSessionName || '客户').slice(0, 2)))
-          : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
-        const senderName = shopName || message.senderName || '主账号';
-        const readState = isBuyer ? '' : getApiMessageReadState(message);
-        const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
-        const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
-        const imageUrl = getApiImageMessageUrl(message);
-        const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
-        const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
-        const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
-        const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
-        if (goodsLinkInfo && fallbackGoodsCard) {
-          void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
+        if (!hasActiveSession) {
+          const emptyText = apiSessionLoadError
+            || apiTokenStatus?.authHint
+            || (getVisibleApiSessions().length
+              ? '请先从左侧选择一个会话查看详情。'
+              : '暂无接口会话，请先点击“接口连通测试”或刷新接口会话。');
+          container.innerHTML = `<div class="api-empty">${esc(emptyText)}</div>`;
+          return;
         }
-        const imageMessage = isApiImageMessage(message);
-        const bubbleHtml = goodsLinkInfo
-          ? renderApiGoodsCardHtml(goodsCard)
-          : imageMessage
-            ? `<div class="api-message-bubble">
-              <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
-            </div>`
-            : `<div class="api-message-bubble">
-              <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
-            </div>`;
-        const copyButtonHtml = isBuyer && !goodsLinkInfo && !imageMessage && String(message.content || '').trim()
-          ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
-          : '';
-        const footerHtml = !isBuyer
-          ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
-          : '';
-        const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
-          ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
-          : '';
-        previousTimestamp = message.timestamp;
-        return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
-          <div class="api-message-avatar">${avatarHtml}</div>
-          <div class="api-message-body">
-            ${metaHtml}
-            <div class="api-message-row">
-              ${isBuyer ? `${bubbleHtml}${copyButtonHtml}` : `${footerHtml}${bubbleHtml}`}
+
+        if (!apiMessages.length) {
+          container.innerHTML = '<div class="api-empty">当前会话暂无消息，或尚未从接口拿到消息数据。</div>';
+          return;
+        }
+
+        const sortedMessages = apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+        let previousTimestamp = 0;
+        container.innerHTML = sortedMessages.map((message, index) => {
+          const isBuyer = !!message.isFromBuyer;
+          const buyerAvatar = activeSession?.customerAvatar || '';
+          const sellerText = (shopName || apiTokenStatus?.mallName || '主账号').slice(0, 4);
+          const avatarHtml = isBuyer
+            ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((apiActiveSessionName || '客户').slice(0, 2)))
+            : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
+          const senderName = shopName || message.senderName || '主账号';
+          const readState = isBuyer ? '' : getApiMessageReadState(message);
+          const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
+          const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
+          const imageUrl = getApiImageMessageUrl(message);
+          const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
+          const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
+          const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
+          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
+          if (goodsLinkInfo && fallbackGoodsCard) {
+            void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
+          }
+          const imageMessage = isApiImageMessage(message);
+          const bubbleHtml = goodsLinkInfo
+            ? renderApiGoodsCardHtml(goodsCard)
+            : imageMessage
+              ? `<div class="api-message-bubble">
+                <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
+              </div>`
+              : `<div class="api-message-bubble">
+                <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
+              </div>`;
+          const copyButtonHtml = isBuyer && !goodsLinkInfo && !imageMessage && String(message.content || '').trim()
+            ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
+            : '';
+          const footerHtml = !isBuyer
+            ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
+            : '';
+          const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
+            ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
+            : '';
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
+            <div class="api-message-avatar">${avatarHtml}</div>
+            <div class="api-message-body">
+              ${metaHtml}
+              <div class="api-message-row">
+                ${isBuyer ? `${bubbleHtml}${copyButtonHtml}` : `${footerHtml}${bubbleHtml}`}
+              </div>
             </div>
-          </div>
-        </div>`;
-      }).join('');
-      container.querySelectorAll('.api-message-copy').forEach(button => {
-        button.addEventListener('click', async (event) => {
-          event.stopPropagation();
-          const messageIndex = Number(button.dataset.messageIndex);
-          const text = String(sortedMessages[messageIndex]?.content || '');
-          if (!text) return;
-          try {
-            await navigator.clipboard.writeText(text);
-            setApiHint('已复制客户消息');
-          } catch {
-            setApiHint('复制失败，请稍后重试');
-          }
+          </div>`;
+        }).join('');
+        container.querySelectorAll('.api-message-copy').forEach(button => {
+          button.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            const messageIndex = Number(button.dataset.messageIndex);
+            const text = String(sortedMessages[messageIndex]?.content || '');
+            if (!text) return;
+            try {
+              await navigator.clipboard.writeText(text);
+              setApiHint('已复制客户消息');
+            } catch {
+              setApiHint('复制失败，请稍后重试');
+            }
+          });
         });
-      });
-      container.querySelectorAll('.api-goods-card-copy').forEach(button => {
-        button.addEventListener('click', async (event) => {
-          event.stopPropagation();
-          const goodsId = String(button.dataset.goodsId || '');
-          if (!goodsId) return;
-          try {
-            await navigator.clipboard.writeText(goodsId);
-            setApiHint('已复制商品ID');
-          } catch {
-            setApiHint('复制失败，请稍后重试');
-          }
+        container.querySelectorAll('.api-goods-card-copy').forEach(button => {
+          button.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            const goodsId = String(button.dataset.goodsId || '');
+            if (!goodsId) return;
+            try {
+              await navigator.clipboard.writeText(goodsId);
+              setApiHint('已复制商品ID');
+            } catch {
+              setApiHint('复制失败，请稍后重试');
+            }
+          });
         });
-      });
-      container.scrollTop = container.scrollHeight;
+        container.scrollTop = container.scrollHeight;
+      } catch (error) {
+        const container = document.getElementById('apiMessageList');
+        if (container) {
+          container.innerHTML = `<div class="api-empty">${esc(error.message || '渲染会话消息失败')}</div>`;
+        }
+        addLog(`渲染客户对话失败: ${error.message || error}`, 'error');
+      }
     }
 
     function renderApiStatus() {
@@ -8215,54 +8272,66 @@
     }
 
     async function loadApiSessions(options = {}) {
-      recordApiSyncState('拉取会话', `范围：${getApiScopeShopId() === API_ALL_SHOPS ? '显示所有店铺' : getApiScopeShopId() || '未选择店铺'}`);
-      const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 50 });
-      if (!Array.isArray(result)) {
-        apiSessionLoadError = result?.error || '获取接口会话失败';
+      try {
+        recordApiSyncState('拉取会话', `范围：${getApiScopeShopId() === API_ALL_SHOPS ? '显示所有店铺' : getApiScopeShopId() || '未选择店铺'}`);
+        const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 50 });
+        if (!Array.isArray(result)) {
+          apiSessionLoadError = result?.error || '获取接口会话失败';
+          apiSessions = [];
+          clearApiActiveSession();
+          renderApiSessions();
+          renderApiMessages();
+          recordApiSyncState('拉取失败', apiSessionLoadError);
+          setApiHint(apiSessionLoadError);
+          return [];
+        }
+        if (!result.length && !options.autoBootstrapped) {
+          const bootstrapShopId = getApiStatusShopId(false);
+          if (bootstrapShopId && bootstrapShopId !== API_ALL_SHOPS) {
+            setApiHint('接口会话为空，正在自动初始化客户对话...');
+            const bootstrapResult = await window.pddApi.apiTestConnection({ shopId: bootstrapShopId });
+            if (!bootstrapResult?.error) {
+              await loadApiTokenStatus(bootstrapShopId);
+              return loadApiSessions({ ...options, autoBootstrapped: true });
+            }
+          }
+        }
+        const fallbackTrafficSessions = !result.length
+          ? parseApiSessionsFromTrafficEntries(await window.pddApi.getApiTraffic({ shopId: getApiScopeShopId() }))
+          : [];
+        emitRendererDebug('chat-api', 'loadApiSessions result', {
+          currentView,
+          apiSelectedShopId,
+          resultCount: Array.isArray(result) ? result.length : -1,
+          fallbackTrafficCount: fallbackTrafficSessions.length,
+          keepCurrent: !!options.keepCurrent,
+          autoBootstrapped: !!options.autoBootstrapped
+        });
+        recordApiSyncState('拉取完成', `会话数：${result.length || fallbackTrafficSessions.length}`);
+        apiSessionLoadError = '';
+        apiSessions = (result.length ? result : fallbackTrafficSessions).map(item => buildApiSession(item));
+        const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
+        if (currentKey !== '::' && !apiSessions.find(item => item.sessionKey === currentKey)) {
+          clearApiActiveSession();
+        }
+        renderApiSessions();
+        if (options.keepCurrent && apiHasUserSelectedSession && apiActiveSessionId && apiActiveSessionShopId) {
+          await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId);
+        } else {
+          renderApiMessages();
+        }
+        return result;
+      } catch (error) {
+        apiSessionLoadError = error.message || '获取接口会话失败';
         apiSessions = [];
         clearApiActiveSession();
         renderApiSessions();
         renderApiMessages();
-        recordApiSyncState('拉取失败', apiSessionLoadError);
+        recordApiSyncState('拉取异常', apiSessionLoadError);
         setApiHint(apiSessionLoadError);
+        addLog(`加载接口会话失败: ${apiSessionLoadError}`, 'error');
         return [];
       }
-      if (!result.length && !options.autoBootstrapped) {
-        const bootstrapShopId = getApiStatusShopId(false);
-        if (bootstrapShopId && bootstrapShopId !== API_ALL_SHOPS) {
-          setApiHint('接口会话为空，正在自动初始化客户对话...');
-          const bootstrapResult = await window.pddApi.apiTestConnection({ shopId: bootstrapShopId });
-          if (!bootstrapResult?.error) {
-            await loadApiTokenStatus(bootstrapShopId);
-            return loadApiSessions({ ...options, autoBootstrapped: true });
-          }
-        }
-      }
-      const fallbackTrafficSessions = !result.length
-        ? parseApiSessionsFromTrafficEntries(await window.pddApi.getApiTraffic({ shopId: getApiScopeShopId() }))
-        : [];
-      emitRendererDebug('chat-api', 'loadApiSessions result', {
-        currentView,
-        apiSelectedShopId,
-        resultCount: Array.isArray(result) ? result.length : -1,
-        fallbackTrafficCount: fallbackTrafficSessions.length,
-        keepCurrent: !!options.keepCurrent,
-        autoBootstrapped: !!options.autoBootstrapped
-      });
-      recordApiSyncState('拉取完成', `会话数：${result.length || fallbackTrafficSessions.length}`);
-      apiSessionLoadError = '';
-      apiSessions = (result.length ? result : fallbackTrafficSessions).map(item => buildApiSession(item));
-      const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
-      if (currentKey !== '::' && !apiSessions.find(item => item.sessionKey === currentKey)) {
-        clearApiActiveSession();
-      }
-      renderApiSessions();
-      if (options.keepCurrent && apiHasUserSelectedSession && apiActiveSessionId && apiActiveSessionShopId) {
-        await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId);
-      } else {
-        renderApiMessages();
-      }
-      return result;
     }
 
     async function openApiSession(sessionId, customerName = '', shopId = '') {
@@ -8430,62 +8499,74 @@
     }
 
     async function loadApiChatView(options = {}) {
-      await refreshShopContext();
-      emitRendererDebug('chat-api', 'loadApiChatView start', {
-        currentView,
-        activeShopId,
-        apiSelectedShopId,
-        keepCurrent: !!options.keepCurrent
-      });
-      if (apiInitialLoadRetryTimer) {
-        clearTimeout(apiInitialLoadRetryTimer);
-        apiInitialLoadRetryTimer = null;
-      }
-      clearApiWarmupRefreshTimers();
-      apiInitialLoadRetryCount = 0;
-      apiSyncStateEntries = [];
-      recordApiSyncState('进入接口页', options.keepCurrent ? '保持当前会话' : '首次进入');
-      if (!options.keepCurrent) {
+      try {
+        await refreshShopContext();
+        emitRendererDebug('chat-api', 'loadApiChatView start', {
+          currentView,
+          activeShopId,
+          apiSelectedShopId,
+          keepCurrent: !!options.keepCurrent
+        });
+        if (apiInitialLoadRetryTimer) {
+          clearTimeout(apiInitialLoadRetryTimer);
+          apiInitialLoadRetryTimer = null;
+        }
+        clearApiWarmupRefreshTimers();
+        apiInitialLoadRetryCount = 0;
+        apiSyncStateEntries = [];
+        recordApiSyncState('进入接口页', options.keepCurrent ? '保持当前会话' : '首次进入');
+        if (!options.keepCurrent) {
+          clearApiActiveSession();
+        }
+        renderApiShopFilter();
+        renderApiShopHeader();
+        const pollingScope = getApiScopeShopId();
+        recordApiSyncState('加载收藏', '开始读取收藏会话');
+        const starredPromise = loadApiStarredSessions()
+          .then(() => recordApiSyncState('收藏完成', `收藏数：${apiStarredSessions.length}`))
+          .catch(err => recordApiSyncState('收藏失败', err.message || '未知错误'));
+        recordApiSyncState('加载状态', '开始读取店铺 Token 状态');
+        const tokenStatusPromise = loadApiTokenStatus()
+          .then(() => recordApiSyncState('状态完成', getApiAuthStatusText()))
+          .catch(err => recordApiSyncState('状态失败', err.message || '未知错误'));
+        let pollingPromise = Promise.resolve();
+        if (pollingScope === API_ALL_SHOPS ? shops.length > 0 : !!pollingScope) {
+          pollingPromise = ensureApiPollingScope(pollingScope)
+            .then(ok => {
+              if (!ok) recordApiSyncState('轮询未启动', pollingScope === API_ALL_SHOPS ? '显示所有店铺' : pollingScope);
+            })
+            .catch(err => recordApiSyncState('轮询异常', err.message || '未知错误'));
+        }
+        recordApiSyncState('加载抓包', '开始读取接口抓包');
+        const trafficPromise = loadApiTraffic()
+          .then(() => recordApiSyncState('抓包完成', `${apiTrafficEntries.length} 条`))
+          .catch(err => recordApiSyncState('抓包失败', err.message || '未知错误'));
+        const sessions = await loadApiSessions({ keepCurrent: options.keepCurrent });
+        await Promise.allSettled([starredPromise, tokenStatusPromise, trafficPromise, pollingPromise]);
+        renderApiMessages();
+        const authHint = getApiAuthHintText();
+        if (authHint) {
+          setApiHint(authHint);
+        } else if (!shops.length) {
+          setApiHint('请先添加店铺，再测试接口对话。');
+        } else if (Array.isArray(sessions) && sessions.length === 0) {
+          setApiHint(withApiTrafficDiag('正在同步接口会话（第 1 次）...'));
+          apiInitialLoadRetryTimer = setTimeout(() => {
+            retryInitialApiSessions(options.keepCurrent);
+          }, 1200);
+        }
+        scheduleApiWarmupRefreshes(options.keepCurrent);
+      } catch (error) {
+        apiSessionLoadError = error.message || '加载客户对话失败';
         clearApiActiveSession();
+        renderApiShopFilter();
+        renderApiShopHeader();
+        renderApiStatus();
+        renderApiSessions();
+        renderApiMessages();
+        setApiHint(apiSessionLoadError);
+        addLog(`加载客户对话失败: ${apiSessionLoadError}`, 'error');
       }
-      renderApiShopFilter();
-      renderApiShopHeader();
-      const pollingScope = getApiScopeShopId();
-      recordApiSyncState('加载收藏', '开始读取收藏会话');
-      const starredPromise = loadApiStarredSessions()
-        .then(() => recordApiSyncState('收藏完成', `收藏数：${apiStarredSessions.length}`))
-        .catch(err => recordApiSyncState('收藏失败', err.message || '未知错误'));
-      recordApiSyncState('加载状态', '开始读取店铺 Token 状态');
-      const tokenStatusPromise = loadApiTokenStatus()
-        .then(() => recordApiSyncState('状态完成', getApiAuthStatusText()))
-        .catch(err => recordApiSyncState('状态失败', err.message || '未知错误'));
-      let pollingPromise = Promise.resolve();
-      if (pollingScope === API_ALL_SHOPS ? shops.length > 0 : !!pollingScope) {
-        pollingPromise = ensureApiPollingScope(pollingScope)
-          .then(ok => {
-            if (!ok) recordApiSyncState('轮询未启动', pollingScope === API_ALL_SHOPS ? '显示所有店铺' : pollingScope);
-          })
-          .catch(err => recordApiSyncState('轮询异常', err.message || '未知错误'));
-      }
-      recordApiSyncState('加载抓包', '开始读取接口抓包');
-      const trafficPromise = loadApiTraffic()
-        .then(() => recordApiSyncState('抓包完成', `${apiTrafficEntries.length} 条`))
-        .catch(err => recordApiSyncState('抓包失败', err.message || '未知错误'));
-      const sessions = await loadApiSessions({ keepCurrent: options.keepCurrent });
-      await Promise.allSettled([starredPromise, tokenStatusPromise, trafficPromise, pollingPromise]);
-      renderApiMessages();
-      const authHint = getApiAuthHintText();
-      if (authHint) {
-        setApiHint(authHint);
-      } else if (!shops.length) {
-        setApiHint('请先添加店铺，再测试接口对话。');
-      } else if (Array.isArray(sessions) && sessions.length === 0) {
-        setApiHint(withApiTrafficDiag('正在同步接口会话（第 1 次）...'));
-        apiInitialLoadRetryTimer = setTimeout(() => {
-          retryInitialApiSessions(options.keepCurrent);
-        }, 1200);
-      }
-      scheduleApiWarmupRefreshes(options.keepCurrent);
     }
 
     // 工具栏 + 添加按钮
@@ -9922,6 +10003,7 @@
 
       // 初始化店铺列表和切换器
       await refreshShopContext();
+      await syncViewStateFromMain();
     })();
 
     toggle.addEventListener('change', async () => {

@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('pddApi', {
 
   // 视图切换
   switchView: (view) => ipcRenderer.invoke('switch-view', view),
+  getCurrentView: () => ipcRenderer.invoke('get-current-view'),
 
   // 窗口操作
   openSettings: () => ipcRenderer.invoke('open-settings'),

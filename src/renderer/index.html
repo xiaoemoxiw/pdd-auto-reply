@@ -2076,7 +2076,11 @@
     }
 
     .api-message-system-bubble {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 4px;
       max-width: min(88%, 640px);
       padding: 5px 12px;
       border-radius: 8px;
@@ -2103,10 +2107,12 @@
 
     .api-message-system-main {
       display: inline;
+      color: #9da3ae;
     }
 
     .api-message-system-action {
-      display: inline;
+      display: inline-flex;
+      align-items: center;
       margin-top: 0;
       color: #5d7fe8;
       font-weight: 600;
@@ -2190,9 +2196,9 @@
     .api-goods-card-top {
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-size: 12px;
-      color: #666;
+      gap: 8px;
+      font-size: 11px;
+      color: #7f8794;
     }
 
     .api-goods-card-id {
@@ -2201,6 +2207,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      line-height: 1.2;
     }
 
     .api-goods-card-copy {
@@ -2208,7 +2215,7 @@
       padding: 0;
       background: transparent;
       color: #4f73ef;
-      font-size: 12px;
+      font-size: 11px;
       line-height: 1;
       cursor: pointer;
       flex-shrink: 0;
@@ -2223,7 +2230,7 @@
     .api-goods-card-body {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 7px;
     }
 
     .api-goods-card-content {
@@ -2269,8 +2276,9 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 5px;
-      padding-top: 1px;
+      justify-content: space-between;
+      gap: 4px;
+      min-height: 58px;
     }
 
     .api-goods-card-title {
@@ -2292,6 +2300,7 @@
       align-items: baseline;
       gap: 4px;
       flex-wrap: wrap;
+      margin-top: auto;
     }
 
     .api-goods-card-price {
@@ -2324,6 +2333,7 @@
       line-height: 1;
       box-sizing: border-box;
       white-space: nowrap;
+      letter-spacing: 0;
     }
 
     .api-message-bubble {
@@ -5057,12 +5067,16 @@
         </div>
         <div class="api-goods-card-divider"></div>
         <div class="api-goods-card-body">
-          ${imageHtml}
-          <div class="api-goods-card-main">
-            <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
-            ${priceHtml}
-            <span class="api-goods-card-spec">${esc(card.specText || '查看商品规格')}</span>
+          <div class="api-goods-card-content">
+            <div class="api-goods-card-media">
+              ${imageHtml}
+            </div>
+            <div class="api-goods-card-main">
+              <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
+              ${priceHtml}
+            </div>
           </div>
+          <span class="api-goods-card-spec">${esc(card.specText || '查看商品规格')}</span>
         </div>
       </div>`;
     }
@@ -5164,6 +5178,128 @@
       });
       html += esc(source.slice(lastIndex));
       return html;
+    }
+
+    function getApiSystemNoticeText(messageOrText = '') {
+      if (typeof messageOrText === 'string') return String(messageOrText || '').trim();
+      return [
+        messageOrText?.content,
+        messageOrText?.raw?.content,
+        messageOrText?.raw?.msg_content,
+        messageOrText?.raw?.text,
+        messageOrText?.raw?.message,
+        messageOrText?.extra?.text,
+        messageOrText?.raw?.extra?.text,
+        messageOrText?.raw?.ext?.text,
+      ].filter(Boolean).map(item => String(item || '').trim()).find(Boolean) || '';
+    }
+
+    function normalizeApiSystemActionText(text = '') {
+      return String(text || '')
+        .trim()
+        .replace(/^>>\s*/, '')
+        .replace(/\s*<<$/, '')
+        .trim();
+    }
+
+    function isApiUnmatchedReplyNoticeMessage(message = {}) {
+      return /机器人未找到对应(?:的)?回复/.test(getApiSystemNoticeText(message));
+    }
+
+    function isApiSystemNoticeMessage(message = {}) {
+      if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
+      const source = getApiSystemNoticeText(message);
+      if (!source) return false;
+      return [
+        /您接待过此消费者/,
+        /机器人已暂停接待/,
+        /机器人未找到对应(?:的)?回复/,
+        /立即恢复接待/,
+        /为避免插嘴/,
+        /为避免插播/,
+        /为避免抢答/,
+        /当前用户来自/,
+        /商品详情页/,
+      ].some(pattern => pattern.test(source));
+    }
+
+    function getApiSystemPromptContext(sortedMessages = [], messageIndex = -1) {
+      const activeSession = getApiActiveSession() || {};
+      const currentMessage = sortedMessages[messageIndex] || {};
+      const customer = String(activeSession.customerName || activeSession.displayName || apiActiveSessionName || '').trim();
+      const previousBuyerMessage = sortedMessages
+        .slice(0, messageIndex)
+        .reverse()
+        .find(item => !isApiSystemNoticeMessage(item) && item.isFromBuyer && String(item.content || '').trim());
+      return {
+        customer,
+        message: String(previousBuyerMessage?.content || '').trim(),
+        systemText: getApiSystemNoticeText(currentMessage),
+      };
+    }
+
+    async function handleApiSystemAction(action = '', messageIndex = -1, sortedMessages = []) {
+      if (action !== 'create-rule') return;
+      const context = getApiSystemPromptContext(sortedMessages, messageIndex);
+      try {
+        if (currentView !== 'qa') {
+          await switchView('qa');
+        } else {
+          await loadRules();
+        }
+        if (typeof window.openQAUnmatchedFromContext !== 'function') {
+          setApiHint('未找到规则入口');
+          return;
+        }
+        const result = await window.openQAUnmatchedFromContext({
+          customer: context.customer,
+          message: context.message,
+        });
+        if (result?.matched || result?.prefilled) {
+          setApiHint('已打开规则编辑');
+        } else {
+          setApiHint('未定位到对应消息，请手动补充规则');
+        }
+      } catch (error) {
+        setApiHint('打开规则入口失败');
+        addLog(`打开规则入口失败: ${error.message || error}`, 'error');
+      }
+    }
+
+    function buildApiSystemActionHtml(actionText = '', options = {}) {
+      const normalized = normalizeApiSystemActionText(actionText);
+      if (!normalized) return '';
+      const source = getApiSystemNoticeText(options.message);
+      if (
+        /^点击添加$/.test(normalized)
+        && /机器人未找到对应(?:的)?回复/.test(source)
+        && Number.isInteger(options.messageIndex)
+        && options.messageIndex >= 0
+      ) {
+        return `<button class="api-message-system-action api-message-system-action-button" type="button" data-system-action="create-rule" data-message-index="${options.messageIndex}">${esc(normalized)}</button>`;
+      }
+      return `<span class="api-message-system-action">${renderApiPddEmojiHtml(normalized)}</span>`;
+    }
+
+    function renderApiSystemMessageHtml(messageOrText = '', options = {}) {
+      const source = getApiSystemNoticeText(messageOrText);
+      if (!source) return '';
+      const actionPattern = /(>>[^<>\n]+<<|点击(?:添加|【[^】\n]+】))/g;
+      const normalizedSource = source.replace(/^(\s*>>[^<>\n]+<<\s*)+/, '').trim();
+      const target = normalizedSource || source;
+      const actionMatch = target.match(actionPattern);
+      if (actionMatch) {
+        const actionText = actionMatch[0];
+        const actionIndex = target.indexOf(actionText);
+        const prefix = actionIndex >= 0 ? target.slice(0, actionIndex) : target;
+        const suffix = actionIndex >= 0 ? target.slice(actionIndex + actionText.length) : '';
+        return [
+          prefix ? `<span class="api-message-system-main">${renderApiPddEmojiHtml(prefix)}</span>` : '',
+          buildApiSystemActionHtml(actionText, options),
+          suffix ? `<span class="api-message-system-main">${renderApiPddEmojiHtml(suffix)}</span>` : '',
+        ].join('');
+      }
+      return `<span class="api-message-system-main">${renderApiPddEmojiHtml(target)}</span>`;
     }
 
     function renderApiEmojiPanel() {
@@ -5836,9 +5972,20 @@
         const sortedMessages = apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
         let previousTimestamp = 0;
         container.innerHTML = sortedMessages.map((message, index) => {
+          const isSystem = isApiSystemNoticeMessage(message);
           const isBuyer = !!message.isFromBuyer;
           const buyerAvatar = activeSession?.customerAvatar || '';
           const sellerText = (shopName || apiTokenStatus?.mallName || '主账号').slice(0, 4);
+          if (isSystem) {
+            const systemVariantClass = isApiUnmatchedReplyNoticeMessage(message) ? ' unmatched-reply' : '';
+            const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
+              ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
+              : '';
+            previousTimestamp = message.timestamp;
+            return `${divider}<div class="api-message-item system${systemVariantClass}">
+              <div class="api-message-system-bubble${systemVariantClass}">${renderApiSystemMessageHtml(message, { message, messageIndex: index })}</div>
+            </div>`;
+          }
           const avatarHtml = isBuyer
             ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((apiActiveSessionName || '客户').slice(0, 2)))
             : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
@@ -5896,6 +6043,13 @@
             } catch {
               setApiHint('复制失败，请稍后重试');
             }
+          });
+        });
+        container.querySelectorAll('.api-message-system-action-button').forEach(button => {
+          button.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            const messageIndex = Number(button.dataset.messageIndex);
+            await handleApiSystemAction(button.dataset.systemAction || '', messageIndex, sortedMessages);
           });
         });
         container.querySelectorAll('.api-goods-card-copy').forEach(button => {

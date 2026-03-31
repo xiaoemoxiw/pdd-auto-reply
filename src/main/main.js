@@ -370,6 +370,17 @@ function detectChatPage(view, shopId) {
 const networkMsgDedup = new Map(); // text -> timestamp
 const apiSessionTrafficSnapshot = new Map();
 
+function buildApiSessionTrafficSignature(sessions = []) {
+  if (!Array.isArray(sessions)) return '';
+  return sessions.map(item => [
+    item.sessionId || '',
+    item.lastMessageTime || 0,
+    item.unreadCount || 0,
+    item.waitTime || 0,
+    item.lastMessage || '',
+  ].join(':')).join('|');
+}
+
 function setApiSessionSnapshot(shopId, sessions = [], source = 'runtime') {
   if (!shopId) return [];
   const normalized = Array.isArray(sessions)
@@ -422,7 +433,7 @@ function pushApiSessionsFromTraffic(shopId, entry) {
   try {
     const sessions = client._parseSessionList(entry.responseBody);
     if (!Array.isArray(sessions) || sessions.length === 0) return;
-    const signature = sessions.map(item => `${item.sessionId}:${item.lastMessageTime || item.waitTime || 0}`).join('|');
+    const signature = buildApiSessionTrafficSignature(sessions);
     if (apiSessionTrafficSnapshot.get(shopId) === signature) return;
     apiSessionTrafficSnapshot.set(shopId, signature);
     client._sessionCache = sessions;

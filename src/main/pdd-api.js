@@ -198,8 +198,18 @@ class PddApiClient extends EventEmitter {
     return this._findLatestTrafficEntry((entry) => {
       if (!String(entry?.url || '').includes(urlPart)) return false;
       const body = this._safeParseJson(entry?.requestBody);
-      const targetId = body?.data?.list?.with?.id || body?.data?.message?.to?.uid || body?.session_id || '';
-      return ids.includes(String(targetId));
+      const targetIds = [
+        body?.data?.list?.with?.id,
+        body?.data?.message?.to?.uid,
+        body?.data?.message?.session_id,
+        body?.data?.message?.conversation_id,
+        body?.data?.message?.chat_id,
+        body?.data?.message?.user_info?.uid,
+        body?.session_id,
+        body?.conversation_id,
+        body?.chat_id,
+      ].map(value => String(value || '')).filter(Boolean);
+      return targetIds.some(targetId => ids.includes(targetId));
     });
   }
 
@@ -327,50 +337,53 @@ class PddApiClient extends EventEmitter {
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
     const messages = this._parseMessages(payload);
     const buyerMessage = [...messages].reverse().find(item => item.isFromBuyer && item?.raw && typeof item.raw === 'object');
-    return buyerMessage?.raw?.user_info ? this._cloneJson(buyerMessage.raw.user_info) : null;
+    if (buyerMessage?.raw?.user_info) {
+      return this._cloneJson(buyerMessage.raw.user_info);
+    }
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    return sessionMeta?.raw?.user_info ? this._cloneJson(sessionMeta.raw.user_info) : null;
   }
 
   _getLatestMessageTemplate(sessionRef) {
     const { ids } = this._getSessionIdentityCandidates(sessionRef);
+    const sendMessageEntry = this._getLatestSessionTraffic('/plateau/chat/send_message', ids);
+    const sendMessageBody = this._safeParseJson(sendMessageEntry?.requestBody);
+    if (sendMessageBody?.data?.message && typeof sendMessageBody.data.message === 'object') {
+      return this._cloneJson(sendMessageBody.data.message);
+    }
     const identitySet = new Set(ids);
     const entry = this._getLatestSessionTraffic('/plateau/chat/list', ids);
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
     const messages = this._parseMessages(payload);
-    const sellerMessage = [...messages].reverse().find(item => !item.isFromBuyer && item?.raw && typeof item.raw === 'object');
+    const sellerMessage = [...messages].reverse().find(item => item.actor === 'seller' && item?.raw && typeof item.raw === 'object');
     if (sellerMessage?.raw) {
       return this._cloneJson(sellerMessage.raw);
     }
+    return null;
+  }
 
-    const sessionListPayload = this._getLatestResponseBody('/plateau/chat/latest_conversations');
-    const sessions = this._parseSessionList(sessionListPayload);
-    const matchedSession = [...sessions].find(item => {
-      if (!item?.raw || typeof item.raw !== 'object') return false;
-      const candidates = [
-        item?.sessionId,
-        item?.explicitSessionId,
-        item?.conversationId,
-        item?.chatId,
-        item?.rawId,
-        item?.customerId,
-        item?.userUid,
-        item?.raw?.session_id,
-        item?.raw?.conversation_id,
-        item?.raw?.chat_id,
-        item?.raw?.id,
-        item?.raw?.customer_id,
-        item?.raw?.buyer_id,
-        item?.raw?.uid,
-        item?.raw?.to?.uid,
-        item?.raw?.user_info?.uid,
-      ].map(value => String(value || '')).filter(Boolean);
-      return candidates.some(value => identitySet.has(value));
-    });
-    if (matchedSession?.raw) {
-      return this._cloneJson(matchedSession.raw);
+  _extractBuyerUid(item = {}) {
+    const directCandidates = [
+      item.customer_id,
+      item.buyer_id,
+      item?.user_info?.uid,
+      item.uid,
+    ].map(value => String(value || '')).filter(Boolean);
+    if (directCandidates.length) return directCandidates[0];
+    const mallId = String(this._getMallId() || '');
+    const fromUid = String(item?.from?.uid || item.from_uid || '');
+    const toUid = String(item?.to?.uid || item.to_uid || '');
+    const fromRole = String(item?.from?.role || '').toLowerCase();
+    const toRole = String(item?.to?.role || '').toLowerCase();
+    if (['buyer', 'customer', 'user'].includes(fromRole) && fromUid) return fromUid;
+    if (['buyer', 'customer', 'user'].includes(toRole) && toUid) return toUid;
+    if (mallId) {
+      if (fromUid && fromUid === mallId && toUid) return toUid;
+      if (toUid && toUid === mallId && fromUid) return fromUid;
+      if (String(item?.from?.mall_id || '') === mallId && toUid) return toUid;
+      if (String(item?.to?.mall_id || '') === mallId && fromUid) return fromUid;
     }
-
-    const latestSellerSession = [...sessions].find(item => !this._isBuyerMessage(item.raw) && item?.raw && typeof item.raw === 'object');
-    return latestSellerSession?.raw ? this._cloneJson(latestSellerSession.raw) : null;
+    return toUid || fromUid || '';
   }
 
   _buildSendMessageTemplate(sessionRef, text, ts, hash) {
@@ -540,20 +553,150 @@ class PddApiClient extends EventEmitter {
   }
 
   _normalizeBusinessError(payload) {
+    const candidates = this._collectBusinessPayloadCandidates(payload);
+    for (const item of candidates) {
+      const error = this._extractBusinessError(item);
+      if (error) return error;
+    }
+    return null;
+  }
+
+  _collectBusinessPayloadCandidates(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    const queue = [payload];
+    const visited = new Set();
+    const result = [];
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || visited.has(current)) continue;
+      visited.add(current);
+      result.push(current);
+      ['result', 'data', 'response'].forEach(key => {
+        if (current[key] && typeof current[key] === 'object') {
+          queue.push(current[key]);
+        }
+      });
+    }
+    return result;
+  }
+
+  _extractBusinessError(payload) {
     if (!payload || typeof payload !== 'object') return null;
-    if (payload.success === false) {
+    const message = payload.error_msg || payload.errorMsg || payload.message || payload.msg || '';
+    if (payload.success === false || payload.ok === false) {
       return {
-        code: payload.error_code || payload.code,
-        message: payload.error_msg || payload.message || 'API 请求失败',
+        code: payload.error_code || payload.code || payload.err_no || payload.errno || '',
+        message: message || 'API 请求失败',
       };
     }
-    if (payload.error_code && payload.error_code !== 0) {
+    const explicitCode = payload.error_code ?? payload.err_no ?? payload.errno ?? payload.biz_code;
+    if (explicitCode !== undefined && explicitCode !== null && explicitCode !== '' && Number(explicitCode) !== 0) {
       return {
-        code: payload.error_code,
-        message: payload.error_msg || payload.message || 'API 请求失败',
+        code: explicitCode,
+        message: message || 'API 请求失败',
+      };
+    }
+    const genericCode = payload.code;
+    if (
+      genericCode !== undefined
+      && genericCode !== null
+      && genericCode !== ''
+      && Number.isFinite(Number(genericCode))
+      && ![0, 200].includes(Number(genericCode))
+      && message
+    ) {
+      return {
+        code: genericCode,
+        message,
       };
     }
     return null;
+  }
+
+  _normalizeComparableMessageText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  _getMessageActor(item = {}) {
+    if (this._isSystemNoticeText(this._extractMessageText(item))) return 'system';
+    const role = String(
+      item.role ||
+      item.msg_from ||
+      item.from_type ||
+      item.sender_role ||
+      item?.from?.role ||
+      item?.sender?.role ||
+      item?.to?.role ||
+      ''
+    ).toLowerCase();
+    if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return 'buyer';
+    if (['system', 'robot', 'bot', 'notice', 'tips', '99'].includes(role)) return 'system';
+    if (['seller', 'service', 'kf', 'agent', 'mall_cs', '2', '3', '4'].includes(role)) return 'seller';
+    if (item.is_buyer || item.is_buyer === 1 || item.sender_type === 1 || item.sender_type === 0) return 'buyer';
+    if (item.is_robot || item.is_system) return 'system';
+    if (item.is_seller) return 'seller';
+
+    const mallId = String(this._getMallId() || '');
+    const fromUid = String(item?.from?.uid || item.from_uid || item.sender_id || item.from_id || '');
+    const toUid = String(item?.to?.uid || item.to_uid || '');
+    const buyerUidCandidates = [
+      item?.customer_id,
+      item?.buyer_id,
+      item?.uid,
+      item?.user_info?.uid,
+    ].map(value => String(value || '')).filter(Boolean);
+
+    if (mallId && (fromUid === mallId || String(item?.from?.mall_id || '') === mallId)) return 'seller';
+    if (mallId && (toUid === mallId || String(item?.to?.mall_id || '') === mallId)) return 'buyer';
+    if (fromUid && buyerUidCandidates.includes(fromUid)) return 'buyer';
+    if (toUid && buyerUidCandidates.includes(toUid)) return 'seller';
+    return 'unknown';
+  }
+
+  _isSystemNoticeText(text = '') {
+    const source = String(text || '').trim();
+    if (!source) return false;
+    return [
+      /您接待过此消费者/,
+      /机器人已暂停接待/,
+      /机器人未找到对应(?:的)?回复/,
+      /立即恢复接待/,
+      /为避免插嘴/,
+      /为避免插播/,
+      /为避免抢答/,
+      /当前用户来自/,
+      /商品详情页/,
+    ].some(pattern => pattern.test(source));
+  }
+
+  async _confirmSentTextMessage(sessionRef, text, options = {}) {
+    const attempts = Math.max(1, Number(options.attempts || 8));
+    const delayMs = Math.max(0, Number(options.delayMs || 700));
+    const pageSize = Math.max(20, Number(options.pageSize || 50));
+    const expectedText = this._normalizeComparableMessageText(text);
+    const sentAtMs = Number(options.sentAtMs || Date.now());
+    for (let index = 0; index < attempts; index++) {
+      const messages = await this.getSessionMessages(sessionRef, 1, pageSize);
+      const matched = messages.find(message => {
+        const actor = this._getMessageActor(message?.raw || message);
+        if (actor === 'buyer') return false;
+        const messageText = this._normalizeComparableMessageText(message.content);
+        if (!messageText || messageText !== expectedText) return false;
+        const timestampMs = this._normalizeTimestampMs(message.timestamp);
+        return !timestampMs || (timestampMs >= sentAtMs - 15000 && timestampMs <= Date.now() + 60000);
+      });
+      if (matched) {
+        return {
+          confirmed: true,
+          messageId: String(matched.messageId || ''),
+          timestamp: matched.timestamp || 0,
+        };
+      }
+      if (index < attempts - 1) {
+        await this._sleep(delayMs);
+      }
+    }
+    return { confirmed: false };
   }
 
   _isAuthError(code) {
@@ -937,8 +1080,19 @@ class PddApiClient extends EventEmitter {
       && date.getDate() === now.getDate();
   }
 
+  _hasPendingReplySession(session = {}) {
+    const waitValue = Number(session?.waitTime || 0);
+    if (Number.isFinite(waitValue) && waitValue > 0) return true;
+    if (session?.isTimeout) return true;
+    return Number(session?.unreadCount || 0) > 0;
+  }
+
   _filterDisplaySessions(sessions = []) {
-    return sessions.filter(session => this._isTodayTimestamp(session?.lastMessageTime) || this._isTodayTimestamp(session?.createdAt));
+    return sessions.filter(session => (
+      this._isTodayTimestamp(session?.lastMessageTime)
+      || this._isTodayTimestamp(session?.createdAt)
+      || this._hasPendingReplySession(session)
+    ));
   }
 
   _parseSessionIdentity(item = {}) {
@@ -946,8 +1100,9 @@ class PddApiClient extends EventEmitter {
     const chatId = item.chat_id || item.chatId || '';
     const explicitSessionId = item.session_id || item.sessionId || '';
     const rawId = item.id || '';
-    const customerId = item.customer_id || item.buyer_id || item.from_uid || item.uid || '';
-    const userUid = item?.to?.uid || item?.user_info?.uid || item?.from?.uid || '';
+    const buyerUid = this._extractBuyerUid(item);
+    const customerId = item.customer_id || item.buyer_id || item?.user_info?.uid || buyerUid || '';
+    const userUid = item?.user_info?.uid || item.customer_id || item.buyer_id || buyerUid || '';
     const sessionId = explicitSessionId || conversationId || chatId || rawId || customerId || userUid || '';
     return {
       sessionId,
@@ -1176,21 +1331,7 @@ class PddApiClient extends EventEmitter {
   }
 
   _isBuyerMessage(item) {
-    const role = String(
-      item.role ||
-      item.msg_from ||
-      item.from_type ||
-      item.sender_role ||
-      item?.from?.role ||
-      item?.sender?.role ||
-      item?.to?.role ||
-      ''
-    ).toLowerCase();
-    if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return true;
-    if (['seller', 'system', 'robot', 'service', 'kf', 'agent', 'bot', 'mall_cs', '2', '3', '4', '99'].includes(role)) return false;
-    if (item.is_buyer || item.is_buyer === 1 || item.sender_type === 1 || item.sender_type === 0) return true;
-    if (item.is_seller || item.is_robot || item.is_system) return false;
-    return !role;
+    return this._getMessageActor(item) === 'buyer';
   }
 
   _extractMessageText(item) {
@@ -1305,8 +1446,153 @@ class PddApiClient extends EventEmitter {
     }
   }
 
+  _extractGoodsJsonObject(source = '') {
+    const text = String(source || '').trim();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {}
+    const normalized = text.replace(/;\s*$/, '').trim();
+    try {
+      return JSON.parse(normalized);
+    } catch {}
+    const start = normalized.search(/[\[{]/);
+    if (start < 0) return null;
+    const opening = normalized[start];
+    const closing = opening === '{' ? '}' : ']';
+    let depth = 0;
+    let inString = false;
+    let quote = '';
+    let escaped = false;
+    for (let index = start; index < normalized.length; index += 1) {
+      const char = normalized[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (inString) {
+        if (char === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (char === quote) {
+          inString = false;
+          quote = '';
+        }
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        inString = true;
+        quote = char;
+        continue;
+      }
+      if (char === opening) {
+        depth += 1;
+        continue;
+      }
+      if (char === closing) {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = normalized.slice(start, index + 1);
+          try {
+            return JSON.parse(candidate);
+          } catch {
+            return null;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  _extractGoodsPayloadCandidates(html = '') {
+    const source = String(html || '');
+    const payloads = [];
+    const seen = new Set();
+    const pushPayload = (value) => {
+      if (!value || typeof value !== 'object') return;
+      let serialized = '';
+      try {
+        serialized = JSON.stringify(value);
+      } catch {}
+      if (serialized) {
+        if (seen.has(serialized)) return;
+        seen.add(serialized);
+      }
+      payloads.push(value);
+    };
+    const patterns = [
+      /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+      /<script[^>]+type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi,
+      /(?:window\.)?__NEXT_DATA__\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?__PRELOADED_STATE__\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?__INITIAL_STATE__\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?rawData\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?pageData\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?goodsData\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+    ];
+    patterns.forEach((pattern) => {
+      source.replace(pattern, (_, payloadText) => {
+        const parsed = this._extractGoodsJsonObject(payloadText);
+        if (parsed) pushPayload(parsed);
+        return _;
+      });
+    });
+    return payloads;
+  }
+
+  _extractGoodsTextCandidate(value, preferredKeys = []) {
+    if (typeof value === 'string' && value.trim()) {
+      return this._decodeGoodsText(value);
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const matched = this._extractGoodsTextCandidate(item, preferredKeys);
+        if (matched) return matched;
+      }
+      return '';
+    }
+    if (!value || typeof value !== 'object') return '';
+    for (const key of preferredKeys) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      const matched = this._extractGoodsTextCandidate(value[key], preferredKeys);
+      if (matched) return matched;
+    }
+    for (const item of Object.values(value)) {
+      const matched = this._extractGoodsTextCandidate(item, preferredKeys);
+      if (matched) return matched;
+    }
+    return '';
+  }
+
+  _findGoodsFieldText(payload, keys = [], nestedKeys = []) {
+    if (!payload || typeof payload !== 'object') return '';
+    const queue = [payload];
+    const seen = new Set();
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || seen.has(current)) continue;
+      seen.add(current);
+      if (Array.isArray(current)) {
+        current.forEach(item => queue.push(item));
+        continue;
+      }
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(current, key)) continue;
+        const matched = this._extractGoodsTextCandidate(current[key], nestedKeys);
+        if (matched) return matched;
+      }
+      Object.values(current).forEach(item => queue.push(item));
+    }
+    return '';
+  }
+
   _extractGoodsCardFromHtml(html = '', fallback = {}) {
     const source = String(html || '');
+    const payloadCandidates = this._extractGoodsPayloadCandidates(source);
     const matchFirst = (patterns = []) => {
       for (const pattern of patterns) {
         const matched = source.match(pattern);
@@ -1328,8 +1614,16 @@ class PddApiClient extends EventEmitter {
         /<meta[^>]+name="og:title"[^>]+content="([^"]+)"/i,
         /"goods_name"\s*:\s*"([^"]+)"/i,
         /"goodsName"\s*:\s*"([^"]+)"/i,
+        /"goods_title"\s*:\s*"([^"]+)"/i,
+        /"goodsTitle"\s*:\s*"([^"]+)"/i,
+        /"share_title"\s*:\s*"([^"]+)"/i,
         /<title>([^<]+)<\/title>/i,
       ]),
+      ...payloadCandidates.map(payload => this._findGoodsFieldText(
+        payload,
+        ['goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'share_title', 'title', 'item_title', 'itemTitle', 'name'],
+        ['title', 'name', 'text', 'content', 'value']
+      )),
       fallback.title,
     ]);
     const imageUrl = this._pickGoodsText([
@@ -1339,8 +1633,16 @@ class PddApiClient extends EventEmitter {
         /"hd_thumb_url"\s*:\s*"([^"]+)"/i,
         /"thumb_url"\s*:\s*"([^"]+)"/i,
         /"goods_thumb_url"\s*:\s*"([^"]+)"/i,
+        /"hdThumbUrl"\s*:\s*"([^"]+)"/i,
+        /"thumbUrl"\s*:\s*"([^"]+)"/i,
+        /"goodsThumbUrl"\s*:\s*"([^"]+)"/i,
         /"top_gallery"\s*:\s*\[\s*"([^"]+)"/i,
       ]),
+      ...payloadCandidates.map(payload => this._findGoodsFieldText(
+        payload,
+        ['hd_thumb_url', 'thumb_url', 'goods_thumb_url', 'hdThumbUrl', 'thumbUrl', 'goodsThumbUrl', 'imageUrl', 'image_url', 'pic_url', 'top_gallery', 'gallery', 'images', 'imageList'],
+        ['url', 'src', 'imageUrl', 'image_url', 'thumb_url', 'thumbUrl']
+      )),
       fallback.imageUrl,
     ]);
     const priceText = this._pickGoodsText([
@@ -1432,11 +1734,13 @@ class PddApiClient extends EventEmitter {
     const list = this._findMessageArray(payload);
 
     return list.map(item => ({
+      actor: this._getMessageActor(item),
       messageId: item.msg_id || item.message_id || item.id || '',
       sessionId: item.session_id || item.conversation_id || item.chat_id || item?.to?.uid || item?.from?.uid || '',
       content: this._extractMessageText(item),
       msgType: item.msg_type || item.message_type || item.content_type || 1,
       isFromBuyer: this._isBuyerMessage(item),
+      isSystem: this._getMessageActor(item) === 'system',
       senderName: item.nick || item.nickname || item.sender_name || item.from_name || item?.from?.csid || '',
       senderId: item.from_uid || item.sender_id || item.from_id || item?.from?.uid || '',
       timestamp: item.send_time || item.time || item.ts || item.timestamp || item.created_at || 0,
@@ -1760,17 +2064,27 @@ class PddApiClient extends EventEmitter {
       hasUserInfo: !!requestBody?.data?.message?.user_info,
       preMsgId: requestBody?.data?.message?.pre_msg_id || '',
     });
+    const sentAtMs = Date.now();
     const payload = await this._post('/plateau/chat/send_message', requestBody);
-    this._log('[API] 消息发送成功', {
+    const confirmResult = await this._confirmSentTextMessage(sessionMeta, text, { sentAtMs });
+    if (!confirmResult.confirmed) {
+      const error = new Error('发送接口未确认消息已入会话，请稍后刷新重试');
+      error.payload = payload;
+      throw error;
+    }
+    this._log('[API] 消息发送确认成功', {
       sessionId: String(sessionMeta.sessionId || ''),
       targetUid: String(requestBody?.data?.message?.to?.uid || ''),
       payloadKeys: Object.keys(payload?.result || payload?.data || payload || {}),
+      messageId: confirmResult.messageId,
     });
 
     const result = {
+      success: true,
       sessionId: String(sessionMeta.sessionId || ''),
       customerId: String(sessionMeta.customerId || ''),
       userUid: String(sessionMeta.userUid || ''),
+      messageId: confirmResult.messageId,
       text,
       response: payload
     };

@@ -1015,47 +1015,51 @@
       display: flex;
       flex: 1;
       min-height: 0;
-      gap: 12px;
-      padding: 12px;
+      gap: 0;
+      padding: 0;
       width: 100%;
-      min-width: 960px;
+      min-width: 980px;
       overflow-x: auto;
       overflow-y: hidden;
       flex-wrap: nowrap;
       align-items: stretch;
+      background: #f5f6f8;
+      border-top: 1px solid #eceef2;
     }
 
     .api-chat-sidebar,
     .api-chat-main,
     .api-chat-sidepanel {
       background: #fff;
-      border: 1px solid #e8e8e8;
-      border-radius: 8px;
+      border: none;
+      border-radius: 0;
       overflow: hidden;
       min-height: 0;
     }
 
     .api-chat-sidebar {
-      flex: 0 0 260px;
+      flex: 0 0 286px;
       display: flex;
       flex-direction: column;
       background: #f4f5f7;
-      min-width: 260px;
+      min-width: 286px;
+      border-right: 1px solid #eceef2;
     }
 
     .api-chat-main {
       flex: 1 1 0;
       display: flex;
       flex-direction: column;
-      background: #fff;
-      min-width: 360px;
+      background: #f5f6f8;
+      min-width: 420px;
     }
 
     .api-chat-sidepanel {
-      flex: 0 0 280px;
+      flex: 0 0 296px;
       display: flex;
       flex-direction: column;
-      min-width: 280px;
+      min-width: 296px;
+      border-left: 1px solid #eceef2;
     }
 
     .api-chat-main-inner {
@@ -1064,6 +1068,7 @@
       flex-direction: column;
       flex: 1;
       min-height: 0;
+      background: #f5f6f8;
     }
 
     .api-panel-header {
@@ -1808,8 +1813,10 @@
     .api-message-list {
       flex: 1;
       overflow: auto;
-      padding: 22px 24px;
-      background: #f5f6fa;
+      padding: 18px 24px 16px;
+      background:
+        linear-gradient(rgba(245, 246, 248, 0.96), rgba(245, 246, 248, 0.96)),
+        repeating-linear-gradient(-28deg, transparent 0 168px, rgba(187, 193, 204, 0.1) 168px 172px, transparent 172px 336px);
       min-height: 0;
       scrollbar-gutter: stable;
     }
@@ -1860,7 +1867,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      padding: 14px 18px;
+      padding: 12px 16px;
       border-bottom: 1px solid #eceef2;
       background: #fff;
     }
@@ -1887,9 +1894,9 @@
     .api-conversation-action {
       min-width: 44px;
       height: 32px;
-      padding: 0 14px;
+      padding: 0 12px;
       border: 1px solid #dadde3;
-      border-radius: 16px;
+      border-radius: 4px;
       background: #fff;
       color: #444;
       font-size: 13px;
@@ -2011,7 +2018,7 @@
 
     .api-message-item {
       display: flex;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
       align-items: flex-start;
       gap: 12px;
     }
@@ -2033,8 +2040,8 @@
     }
 
     .api-message-avatar {
-      width: 40px;
-      height: 40px;
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
       flex-shrink: 0;
       display: flex;
@@ -2061,10 +2068,10 @@
     }
 
     .api-message-body {
-      max-width: 76%;
+      max-width: 78%;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 3px;
     }
 
     .api-message-item.service .api-message-body {
@@ -2145,8 +2152,8 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      color: #999;
-      font-size: 12px;
+      color: #9da3ae;
+      font-size: 11px;
       line-height: 1;
     }
 
@@ -2158,7 +2165,7 @@
     .api-message-row {
       display: flex;
       align-items: flex-end;
-      gap: 8px;
+      gap: 6px;
     }
 
     .api-message-item.service .api-message-row {
@@ -2337,16 +2344,16 @@
     }
 
     .api-message-bubble {
-      padding: 10px 12px;
-      border-radius: 8px;
+      padding: 9px 12px;
+      border-radius: 6px;
       background: #fff;
-      border: 1px solid #e4e7ee;
+      border: 1px solid #e2e5ea;
       box-shadow: none;
     }
 
     .api-message-item.service .api-message-bubble {
-      background: #D7EBFF;
-      border-color: #cfe3fb;
+      background: #d8ebff;
+      border-color: #cddff5;
     }
 
     .api-message-item.buyer .api-message-bubble {
@@ -2365,7 +2372,7 @@
     .api-message-content {
       font-size: 13px;
       color: #333;
-      line-height: 1.6;
+      line-height: 1.55;
       word-break: break-word;
       white-space: pre-wrap;
     }
@@ -2429,8 +2436,9 @@
       display: flex;
       align-items: center;
       gap: 16px;
-      padding: 12px 18px;
-      border-top: 1px solid #f0f0f0;
+      padding: 10px 14px;
+      border-top: none;
+      border-bottom: 1px solid #f0f2f5;
       color: #777;
       font-size: 14px;
     }
@@ -2446,11 +2454,26 @@
     .api-composer-tool {
       border: 0;
       padding: 0;
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       background: transparent;
       color: inherit;
-      font-size: 16px;
       line-height: 1;
       cursor: pointer;
+    }
+
+    .api-composer-tool svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
     }
 
     .api-composer-tool:hover,
@@ -2460,6 +2483,11 @@
 
     .api-composer-tool.is-muted {
       color: #777;
+    }
+
+    .api-composer-action-link {
+      color: #999;
+      font-size: 12px;
     }
 
     .api-emoji-panel {
@@ -2556,26 +2584,26 @@
 
     .api-compose-inputbar {
       display: flex;
-      align-items: flex-end;
+      align-items: stretch;
       gap: 12px;
-      padding: 12px 18px 18px;
+      padding: 12px 14px 14px;
     }
 
     .api-composer textarea {
       flex: 1;
-      min-height: 86px;
+      min-height: 92px;
       resize: none;
-      border: 1px solid #e4d39a;
-      border-radius: 12px;
-      padding: 12px 14px;
+      border: none;
+      border-radius: 0;
+      padding: 0;
       font-size: 13px;
       outline: none;
-      background: #fffbee;
+      background: transparent;
       line-height: 1.7;
     }
 
     .api-composer textarea:focus {
-      border-color: #e8b22c;
+      border-color: transparent;
     }
 
     .api-composer-actions {
@@ -2589,6 +2617,9 @@
 
     .api-chat-main-inner.is-empty-session .api-message-list {
       padding: 0;
+      background:
+        linear-gradient(rgba(245, 246, 248, 0.98), rgba(245, 246, 248, 0.98)),
+        repeating-linear-gradient(-28deg, transparent 0 168px, rgba(187, 193, 204, 0.1) 168px 172px, transparent 172px 336px);
     }
 
     .api-chat-main-inner.is-empty-session .api-conversation-header,
@@ -2631,24 +2662,24 @@
       min-height: 0;
       display: flex;
       flex-direction: column;
-      background: #f4f6f9;
+      background: #f5f6f8;
     }
 
     .api-side-tabs {
       display: flex;
-      gap: 8px;
-      padding: 12px;
-      padding-bottom: 10px;
+      gap: 0;
+      padding: 0 12px;
       background: #fff;
       border-bottom: 1px solid #edf0f4;
     }
 
     .api-side-tab {
       flex: 1;
-      height: 34px;
-      border-radius: 8px;
-      border: 1px solid #e3e7ee;
-      background: #f7f8fb;
+      height: 42px;
+      border-radius: 0;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
       color: #8a92a3;
       font-size: 12px;
       cursor: pointer;
@@ -2656,9 +2687,9 @@
     }
 
     .api-side-tab.active {
-      background: #fff;
-      color: #5d6472;
-      border-color: #d8dde6;
+      background: transparent;
+      color: #4f73ef;
+      border-color: #4f73ef;
       font-weight: 600;
     }
 
@@ -2668,8 +2699,8 @@
       display: flex;
       flex-direction: column;
       gap: 14px;
-      padding: 18px 16px;
-      background: #eef2f5;
+      padding: 16px;
+      background: #f5f6f8;
       color: #b6bcc7;
       font-size: 13px;
       line-height: 1.7;
@@ -2687,9 +2718,9 @@
       display: flex;
       flex-direction: column;
       padding: 12px;
-      border-radius: 10px;
+      border-radius: 8px;
       background: #fff;
-      border: 1px solid #e6ebf2;
+      border: 1px solid #eceef2;
     }
 
     .api-side-debug-title {
@@ -2747,10 +2778,150 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #999;
+      color: #b4bac4;
       font-size: 13px;
       padding: 20px;
       text-align: center;
+    }
+
+    .api-chat-main-inner.is-empty-session .api-empty {
+      flex-direction: column;
+      gap: 10px;
+      color: #c0c6d0;
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .api-empty-illustrated {
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    .api-message-list>.api-empty-illustrated {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .api-empty-visual {
+      position: relative;
+      width: 132px;
+      height: 108px;
+      margin: 0 auto 14px;
+    }
+
+    .api-empty-spark {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      background: rgba(214, 218, 225, 0.88);
+      transform: rotate(45deg);
+      opacity: 0.72;
+    }
+
+    .api-empty-spark-left {
+      top: 22px;
+      left: 18px;
+    }
+
+    .api-empty-spark-top {
+      top: 8px;
+      left: 44px;
+      width: 8px;
+      height: 8px;
+    }
+
+    .api-empty-spark-right {
+      top: 16px;
+      right: 20px;
+      width: 7px;
+      height: 7px;
+    }
+
+    .api-empty-bubble {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid rgba(198, 204, 213, 0.88);
+      background: rgba(255, 255, 255, 0.6);
+      box-shadow: 0 10px 24px rgba(180, 186, 197, 0.18);
+      backdrop-filter: blur(1px);
+    }
+
+    .api-empty-bubble::after {
+      content: '';
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      background: rgba(255, 255, 255, 0.6);
+      transform: rotate(45deg);
+    }
+
+    .api-empty-bubble-back {
+      left: 18px;
+      top: 42px;
+      width: 56px;
+      height: 42px;
+      border-radius: 14px;
+      border-color: rgba(204, 210, 219, 0.8);
+    }
+
+    .api-empty-bubble-back::after {
+      left: 14px;
+      bottom: -8px;
+      border-right: 2px solid rgba(204, 210, 219, 0.8);
+      border-bottom: 2px solid rgba(204, 210, 219, 0.8);
+    }
+
+    .api-empty-bubble-lines {
+      width: 24px;
+      height: 12px;
+      border-radius: 999px;
+      background:
+        linear-gradient(rgba(204, 210, 219, 0.95), rgba(204, 210, 219, 0.95)) left 0 top 0 / 24px 3px no-repeat,
+        linear-gradient(rgba(204, 210, 219, 0.82), rgba(204, 210, 219, 0.82)) left 0 bottom 0 / 18px 3px no-repeat;
+      opacity: 0.85;
+    }
+
+    .api-empty-bubble-front {
+      right: 12px;
+      top: 12px;
+      width: 76px;
+      height: 66px;
+      border-radius: 22px;
+      color: #c7ccd5;
+      font-size: 40px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .api-empty-bubble-front::after {
+      right: 14px;
+      bottom: -8px;
+      border-right: 2px solid rgba(198, 204, 213, 0.88);
+      border-bottom: 2px solid rgba(198, 204, 213, 0.88);
+    }
+
+    .api-empty-title {
+      color: #c8ccd3;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+    }
+
+    .api-empty-subtitle,
+    .api-empty-detail {
+      color: #d5d9e0;
+      font-size: 12px;
+      line-height: 1.9;
+    }
+
+    .api-empty-detail {
+      max-width: 360px;
     }
 
     /* ---- 可提现合计 ---- */
@@ -3447,23 +3618,36 @@
               <div class="api-message-list" id="apiMessageList"></div>
               <div class="api-composer">
                 <div class="api-composer-toolbar">
-                  <button class="api-composer-tool" id="btnApiEmojiToggle" type="button" aria-label="打开表情面板">😊</button>
+                  <button class="api-composer-tool" id="btnApiEmojiToggle" type="button" aria-label="打开表情面板">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9"></circle>
+                      <path d="M8.6 14.2c.9 1.5 2.2 2.2 3.4 2.2s2.5-.7 3.4-2.2"></path>
+                      <circle cx="9.2" cy="10.2" r="1"></circle>
+                      <circle cx="14.8" cy="10.2" r="1"></circle>
+                    </svg>
+                  </button>
                   <div class="api-emoji-panel" id="apiEmojiPanel">
                     <div class="api-emoji-content">
                       <div class="api-emoji-grid" id="apiEmojiGrid"></div>
                     </div>
                   </div>
-                  <button class="api-composer-tool is-muted" id="btnApiSendImage" type="button"
-                    aria-label="选择图片发送">🖼️</button>
+                  <button class="api-composer-tool is-muted" id="btnApiSendImage" type="button" aria-label="选择图片发送">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="3.5" y="5.5" width="17" height="13" rx="2"></rect>
+                      <circle cx="9" cy="10" r="1.6"></circle>
+                      <path d="M6.5 16l3.7-3.7a1 1 0 0 1 1.4 0l1.9 1.9"></path>
+                      <path d="M12.7 16l2.7-2.7a1 1 0 0 1 1.4 0l1.7 1.7"></path>
+                    </svg>
+                  </button>
                   <!-- <span>📁</span>
                   <span>🎫</span> -->
                   <span>🔗</span>
                   <span>⤴</span>
                   <span>🛡</span>
                   <span>退</span>
-                  <span style="margin-left:auto;color:#999;">邀请关注</span>
-                  <span style="color:#999;">邀请下单</span>
-                  <span style="color:#999;">小额打款</span>
+                  <span class="api-composer-action-link" style="margin-left:auto;">邀请关注</span>
+                  <span class="api-composer-action-link">邀请下单</span>
+                  <span class="api-composer-action-link">小额打款</span>
                 </div>
                 <div class="api-compose-inputbar">
                   <textarea id="apiMessageInput" placeholder="输入要发送的消息..."></textarea>
@@ -4528,11 +4712,16 @@
     let apiPostSendRefreshTimer = null;
     let apiActiveSessionRefreshTimer = null;
     let apiActiveSessionSyncSignature = '';
+    let apiOpenSessionRequestId = 0;
+    let apiOpenSessionPendingPromise = null;
+    let apiOpenSessionPendingKey = '';
     let apiSyncStateEntries = [];
     let apiSessionTab = 'latest';
     let apiSideTab = 'personal';
     let apiSessionKeyword = '';
     let apiStarredSessions = [];
+    let apiLastSessionSelection = undefined;
+    let apiLastLoadedSessionScope = '';
     const apiGoodsCardCache = new Map();
     const apiGoodsCardPending = new Set();
     window.__chatApiModuleAccess = {
@@ -4578,6 +4767,9 @@
       getVisibleApiSessions,
       hasApiPendingReply,
       getApiPendingReplyMinutes,
+      formatApiPendingReplyText,
+      getApiConversationFollowStatus,
+      applyApiChatFollowStatus,
       emitRendererDebug,
       openApiSession,
       loadApiSessions,
@@ -4787,7 +4979,10 @@
           clearApiWarmupRefreshTimers();
         }
 
-        await loadViewContent(view);
+        const nextViewOptions = view === 'chat-api'
+          ? { keepCurrent: true }
+          : {};
+        await loadViewContent(view, nextViewOptions);
       } catch (error) {
         addLog(`切换页面失败: ${error.message || error}`, 'error');
         try {
@@ -5420,40 +5615,117 @@
       return num < 1e12 ? num * 1000 : num;
     }
 
-    function getApiPendingReplyMinutes(session = {}) {
-      const waitValue = Number(session.waitTime || 0);
-      if (waitValue > 0) {
-        if (waitValue > 1e12) {
-          return Math.max(1, Math.floor((Date.now() - waitValue) / 60000));
-        }
-        if (waitValue > 1e9) {
-          return Math.max(1, Math.floor((Date.now() - waitValue * 1000) / 60000));
-        }
-        if (waitValue > 100000) {
-          return Math.max(1, Math.floor(waitValue / 60000));
-        }
-        if (waitValue > 1440) {
-          return Math.max(1, Math.floor(waitValue / 60));
-        }
-        return Math.max(1, Math.floor(waitValue));
-      }
-      if (!session.isTimeout && Number(session.unreadCount || 0) <= 0) return 0;
+    function getApiPendingReplyElapsedMs(session = {}) {
       const lastMessageMs = getApiTimeMs(session.lastMessageTime);
-      if (!lastMessageMs) return 0;
-      return Math.max(1, Math.floor((Date.now() - lastMessageMs) / 60000));
+      if (lastMessageMs > 0) {
+        return Math.max(0, Date.now() - lastMessageMs);
+      }
+      const waitValue = Number(session.waitTime || 0);
+      if (!(waitValue > 0)) return 0;
+      if (waitValue > 1e12) {
+        return Math.max(0, Date.now() - waitValue);
+      }
+      if (waitValue > 1e9) {
+        return Math.max(0, Date.now() - waitValue * 1000);
+      }
+      if (waitValue > 100000) {
+        return Math.max(0, waitValue);
+      }
+      if (waitValue > 1440) {
+        return Math.max(0, waitValue * 1000);
+      }
+      return Math.max(0, waitValue * 60000);
+    }
+
+    function getApiPendingReplyDisplayState(session = {}) {
+      const unreadCount = Number(session.unreadCount || 0);
+      const waitValue = Number(session.waitTime || 0);
+      const pending = unreadCount > 0 || waitValue > 0 || !!session.isTimeout;
+      if (!pending) {
+        return {
+          pending: false,
+          countdownSeconds: 0,
+          waitMinutes: 0,
+        };
+      }
+      const elapsedMs = getApiPendingReplyElapsedMs(session);
+      if (!elapsedMs) {
+        return {
+          pending: false,
+          countdownSeconds: 0,
+          waitMinutes: 0,
+        };
+      }
+      const timeoutMs = 180 * 1000;
+      if (elapsedMs < timeoutMs) {
+        return {
+          pending: true,
+          countdownSeconds: Math.ceil((timeoutMs - elapsedMs) / 1000),
+          waitMinutes: 0,
+        };
+      }
+      return {
+        pending: true,
+        countdownSeconds: 0,
+        waitMinutes: Math.max(3, Math.floor(elapsedMs / 60000)),
+      };
+    }
+
+    function getApiPendingReplyMinutes(session = {}) {
+      return getApiPendingReplyDisplayState(session).waitMinutes || 0;
     }
 
     function hasApiPendingReply(session = {}) {
-      return getApiPendingReplyMinutes(session) > 0;
+      return !!getApiPendingReplyDisplayState(session).pending;
     }
 
     function formatApiPendingReplyText(session = {}) {
-      const waitMinutes = getApiPendingReplyMinutes(session);
+      const pendingState = getApiPendingReplyDisplayState(session);
+      if (!pendingState.pending) return '';
+      if (pendingState.countdownSeconds > 0) {
+        return `${pendingState.countdownSeconds}秒后超时`;
+      }
+      const waitMinutes = pendingState.waitMinutes || 0;
       if (waitMinutes <= 0) return '';
       if (waitMinutes > 60) {
         return `已等待${Math.floor(waitMinutes / 60)}小时`;
       }
       return `已等待${waitMinutes}分钟`;
+    }
+
+    function getApiConversationFollowStatus(session = null) {
+      if (!session) {
+        return {
+          text: '未选择会话',
+          highlighted: false,
+        };
+      }
+      const pendingReplyText = formatApiPendingReplyText(session);
+      if (pendingReplyText) {
+        return {
+          text: pendingReplyText,
+          highlighted: true,
+        };
+      }
+      const unreadCount = Number(session.unreadCount || 0);
+      if (unreadCount > 0) {
+        return {
+          text: `未读 ${unreadCount}`,
+          highlighted: true,
+        };
+      }
+      return {
+        text: '已关注本店',
+        highlighted: false,
+      };
+    }
+
+    function applyApiChatFollowStatus(session = null) {
+      const followStatusEl = document.getElementById('apiChatFollowStatus');
+      if (!followStatusEl) return;
+      const followStatus = getApiConversationFollowStatus(session);
+      followStatusEl.textContent = followStatus.text;
+      followStatusEl.classList.toggle('is-unread', !!followStatus.highlighted);
     }
 
     function clearApiPendingReplyState(payload = {}) {
@@ -5579,7 +5851,7 @@
           targetSession.sessionId,
           targetSession.customerName || apiActiveSessionName || '',
           targetSession.shopId,
-          { silentStatus: true }
+          { silentStatus: true, preserveMessages: true }
         );
       }, 120);
     }
@@ -5779,6 +6051,76 @@
       renderApiSessions();
     }
 
+    function normalizeApiSessionSelection(selection = null) {
+      if (!selection || !selection.shopId || !selection.sessionId) return null;
+      return {
+        shopId: String(selection.shopId),
+        sessionId: String(selection.sessionId),
+        customerName: selection.customerName || ''
+      };
+    }
+
+    async function getApiLastSessionSelection(force = false) {
+      if (!force && apiLastSessionSelection !== undefined) {
+        return apiLastSessionSelection;
+      }
+      try {
+        apiLastSessionSelection = normalizeApiSessionSelection(await window.pddApi.getLastApiSessionSelection());
+      } catch (error) {
+        apiLastSessionSelection = null;
+        emitRendererDebug('chat-api', 'getApiLastSessionSelection failed', {
+          message: error?.message || String(error || '')
+        });
+      }
+      return apiLastSessionSelection;
+    }
+
+    async function saveApiLastSessionSelection(selection) {
+      const nextSelection = normalizeApiSessionSelection(selection);
+      apiLastSessionSelection = nextSelection;
+      try {
+        if (nextSelection) {
+          await window.pddApi.setLastApiSessionSelection(nextSelection);
+        } else {
+          await window.pddApi.clearLastApiSessionSelection();
+        }
+      } catch (error) {
+        emitRendererDebug('chat-api', 'saveApiLastSessionSelection failed', {
+          message: error?.message || String(error || '')
+        });
+      }
+      return apiLastSessionSelection;
+    }
+
+    async function restoreApiLastSessionSelection(options = {}) {
+      if (apiHasUserSelectedSession && apiActiveSessionId && apiActiveSessionShopId) {
+        return false;
+      }
+      const savedSelection = await getApiLastSessionSelection();
+      if (!savedSelection) return false;
+      const sessionKey = getApiSessionKey(savedSelection.shopId, savedSelection.sessionId);
+      const targetSession = apiSessions.find(item => item.sessionKey === sessionKey)
+        || apiStarredSessions.find(item => item.sessionKey === sessionKey)
+        || null;
+      if (!targetSession) {
+        emitRendererDebug('chat-api', 'restoreApiLastSessionSelection skipped', {
+          sessionKey,
+          reason: 'session-not-found'
+        });
+        return false;
+      }
+      await openApiSession(
+        targetSession.sessionId,
+        savedSelection.customerName || targetSession.customerName || '',
+        targetSession.shopId,
+        {
+          preserveMessages: !!options.preserveMessages,
+          silentStatus: options.silentStatus !== false
+        }
+      );
+      return true;
+    }
+
     function clearApiActiveSession() {
       apiActiveSessionId = '';
       apiActiveSessionName = '';
@@ -5787,6 +6129,9 @@
       apiMessages = [];
       apiHasUserSelectedSession = false;
       apiActiveSessionSyncSignature = '';
+      apiOpenSessionRequestId += 1;
+      apiOpenSessionPendingPromise = null;
+      apiOpenSessionPendingKey = '';
       if (apiActiveSessionRefreshTimer) {
         clearTimeout(apiActiveSessionRefreshTimer);
         apiActiveSessionRefreshTimer = null;
@@ -5797,8 +6142,21 @@
       const sessions = getVisibleApiSessions();
       const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
       const currentVisible = sessions.find(item => item.sessionKey === currentKey);
+      const shouldKeepCurrentSession = apiHasUserSelectedSession
+        && currentKey !== '::'
+        && (apiOpenSessionPendingKey === currentKey || getApiSessionKey(apiActiveSessionSnapshot || {}) === currentKey);
       renderApiSessions();
-      if (currentVisible) return;
+      if (currentVisible) {
+        const nextSignature = getApiSessionSyncSignature(currentVisible);
+        if (apiActiveSessionSyncSignature && nextSignature !== apiActiveSessionSyncSignature) {
+          scheduleApiActiveSessionRefresh(currentVisible);
+        }
+        return;
+      }
+      if (shouldKeepCurrentSession) {
+        renderApiMessages();
+        return;
+      }
       clearApiActiveSession();
       renderApiMessages();
       await loadApiTokenStatus(getApiStatusShopId(false));
@@ -5847,7 +6205,7 @@
           const active = getApiSessionKey(session) === getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
           const unread = Number(session.unreadCount || 0);
           const pendingReply = hasApiPendingReply(session);
-          const waitMinutes = pendingReply ? getApiPendingReplyMinutes(session) : 0;
+          const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
           const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
           return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
             <div class="api-session-avatar">${avatarHtml}</div>
@@ -5867,7 +6225,7 @@
                 </div>
               </div>
               <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
-              ${pendingReply ? `<span class="api-session-item-wait">已等待${waitMinutes}分钟</span>` : ''}
+              ${pendingReplyText ? `<span class="api-session-item-wait">${esc(pendingReplyText)}</span>` : ''}
             </div>
           </div>`;
         }).join('');
@@ -5939,18 +6297,14 @@
         const mainInner = document.querySelector('.api-chat-main-inner');
         const activeSession = apiHasUserSelectedSession ? getApiActiveSession() : null;
         const hasActiveSession = !!(apiHasUserSelectedSession && apiActiveSessionId && activeSession);
+        const currentSessionKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
+        const isLoadingCurrentSession = !!currentSessionKey && currentSessionKey !== '::' && apiOpenSessionPendingKey === currentSessionKey;
         const shopName = activeSession?.shopName || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '未选择店铺');
         const unreadCount = Number(activeSession?.unreadCount || 0);
         const serviceAvatar = apiTokenStatus?.serviceAvatar || '';
-        const followStatusEl = document.getElementById('apiChatFollowStatus');
         document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
         document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
-        followStatusEl.textContent = !activeSession
-          ? '未选择会话'
-          : unreadCount > 0
-            ? `未读 ${unreadCount}`
-            : '已关注本店';
-        followStatusEl.classList.toggle('is-unread', !!activeSession && unreadCount > 0);
+        applyApiChatFollowStatus(activeSession);
         document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
         mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 
@@ -5965,7 +6319,7 @@
         }
 
         if (!apiMessages.length) {
-          container.innerHTML = '<div class="api-empty">当前会话暂无消息，或尚未从接口拿到消息数据。</div>';
+          container.innerHTML = `<div class="api-empty">${isLoadingCurrentSession ? '正在加载会话消息...' : '当前会话暂无消息，或尚未从接口拿到消息数据。'}</div>`;
           return;
         }
 
@@ -6177,6 +6531,7 @@
         }
         apiSessionLoadError = '';
         apiSessions = (result.length ? result : fallbackTrafficSessions).map(item => buildApiSession(item));
+        apiLastLoadedSessionScope = getApiScopeShopId();
         const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
         const currentSession = currentKey !== '::'
           ? apiSessions.find(item => item.sessionKey === currentKey)
@@ -6188,7 +6543,17 @@
         }
         renderApiSessions();
         if (options.keepCurrent && apiHasUserSelectedSession && apiActiveSessionId && apiActiveSessionShopId) {
-          await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId, options);
+          const shouldRefreshCurrentSession = !currentSession
+            || !apiMessages.length
+            || getApiSessionSyncSignature(currentSession) !== apiActiveSessionSyncSignature;
+          if (shouldRefreshCurrentSession) {
+            await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId, {
+              ...options,
+              preserveMessages: !!currentSession && !!options.silentStatus
+            });
+          } else {
+            renderApiMessages();
+          }
         } else {
           renderApiMessages();
         }
@@ -6218,6 +6583,12 @@
         || null;
       const targetShopId = shopId || currentSession?.shopId || apiActiveSessionShopId || activeShopId;
       const sessionDisplayName = customerName || currentSession?.customerName || sessionId;
+      const targetSessionKey = getApiSessionKey(targetShopId, sessionId);
+      const previousSessionKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
+      if (apiOpenSessionPendingPromise && apiOpenSessionPendingKey === targetSessionKey && !options.forceRefresh) {
+        return apiOpenSessionPendingPromise;
+      }
+      const preserveMessages = !!options.preserveMessages && targetSessionKey === previousSessionKey && apiMessages.length > 0;
       if (!targetShopId) {
         if (!options.silentStatus) {
           recordApiSyncState('消息失败', `会话：${sessionDisplayName}，未找到可用店铺`);
@@ -6225,6 +6596,7 @@
         setApiHint('请先选择一个可用店铺');
         return;
       }
+      const requestId = ++apiOpenSessionRequestId;
       apiActiveSessionId = String(sessionId);
       apiActiveSessionShopId = String(targetShopId);
       apiActiveSessionName = customerName || currentSession?.customerName || '';
@@ -6234,47 +6606,73 @@
         customerName: apiActiveSessionName || customerName || '',
       });
       apiHasUserSelectedSession = true;
-      apiMessages = [];
       renderApiSessions();
-      renderApiMessages();
+      await saveApiLastSessionSelection({
+        shopId: apiActiveSessionShopId,
+        sessionId: apiActiveSessionId,
+        customerName: apiActiveSessionName || sessionDisplayName
+      });
+      if (!preserveMessages) {
+        apiMessages = [];
+        renderApiMessages();
+      }
       if (!options.silentStatus) {
         recordApiSyncState('消息请求', `会话：${sessionDisplayName}，店铺：${currentSession?.shopName || apiActiveSessionShopId || '未知店铺'}`);
       }
-      try {
-        await loadApiTokenStatus(apiActiveSessionShopId);
-      } catch (error) {
-        if (!options.silentStatus) {
-          recordApiSyncState('状态失败', error?.message || '读取 Token 状态失败');
+      apiOpenSessionPendingKey = targetSessionKey;
+      const pendingPromise = (async () => {
+        try {
+          await loadApiTokenStatus(targetShopId);
+        } catch (error) {
+          if (!options.silentStatus) {
+            recordApiSyncState('状态失败', error?.message || '读取 Token 状态失败');
+          }
         }
-      }
-      const result = await window.pddApi.apiGetMessages({
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        session: currentSession || undefined,
-        page: 1,
-        pageSize: 50
-      });
-      if (!Array.isArray(result)) {
-        apiMessages = [];
+        const result = await window.pddApi.apiGetMessages({
+          shopId: targetShopId,
+          sessionId: String(sessionId),
+          session: currentSession || undefined,
+          page: 1,
+          pageSize: 50
+        });
+        if (requestId !== apiOpenSessionRequestId || getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId) !== targetSessionKey) {
+          return;
+        }
+        if (!Array.isArray(result)) {
+          if (!preserveMessages) {
+            apiMessages = [];
+            renderApiMessages();
+          }
+          if (!options.silentStatus) {
+            recordApiSyncState('消息失败', `会话：${sessionDisplayName}，${result?.error || '获取接口消息失败'}`);
+          }
+          setApiHint(withApiTrafficDiag(result?.error || '获取接口消息失败'));
+          return;
+        }
+        apiMessages = result;
         renderApiMessages();
+        updateApiActiveSessionSyncSignature();
         if (!options.silentStatus) {
-          recordApiSyncState('消息失败', `会话：${sessionDisplayName}，${result?.error || '获取接口消息失败'}`);
+          recordApiSyncState(
+            apiMessages.length ? '消息返回' : '消息为空',
+            `会话：${sessionDisplayName}，返回 ${apiMessages.length} 条`
+          );
         }
-        setApiHint(withApiTrafficDiag(result?.error || '获取接口消息失败'));
-        return;
+        await window.pddApi.apiMarkLatestConversations({ shopId: targetShopId, size: 100 });
+        await loadApiTraffic(targetShopId);
+        setApiHint(`已载入 ${apiMessages.length} 条接口消息`);
+      })();
+      apiOpenSessionPendingPromise = pendingPromise;
+      try {
+        return await pendingPromise;
+      } finally {
+        if (apiOpenSessionPendingPromise === pendingPromise) {
+          apiOpenSessionPendingPromise = null;
+        }
+        if (apiOpenSessionPendingKey === targetSessionKey) {
+          apiOpenSessionPendingKey = '';
+        }
       }
-      apiMessages = result;
-      renderApiMessages();
-      updateApiActiveSessionSyncSignature();
-      if (!options.silentStatus) {
-        recordApiSyncState(
-          apiMessages.length ? '消息返回' : '消息为空',
-          `会话：${sessionDisplayName}，返回 ${apiMessages.length} 条`
-        );
-      }
-      await window.pddApi.apiMarkLatestConversations({ shopId: apiActiveSessionShopId, size: 100 });
-      await loadApiTraffic(apiActiveSessionShopId);
-      setApiHint(`已载入 ${apiMessages.length} 条接口消息`);
     }
 
     async function refreshApiAfterMessageSent(payload = {}) {
@@ -6415,6 +6813,10 @@
         renderApiShopFilter();
         renderApiShopHeader();
         const pollingScope = getApiScopeShopId();
+        const reuseCachedSessions = !!options.keepCurrent
+          && !apiSessionLoadError
+          && apiSessions.length > 0
+          && apiLastLoadedSessionScope === pollingScope;
         recordApiSyncState('加载收藏', '开始读取收藏会话');
         const starredPromise = loadApiStarredSessions()
           .then(() => recordApiSyncState('收藏完成', `收藏数：${apiStarredSessions.length}`))
@@ -6435,10 +6837,20 @@
         const trafficPromise = loadApiTraffic()
           .then(() => recordApiSyncState('抓包完成', `${apiTrafficEntries.length} 条`))
           .catch(err => recordApiSyncState('抓包失败', err.message || '未知错误'));
-        const sessions = await loadApiSessions({ keepCurrent: options.keepCurrent });
+        let sessions = apiSessions;
+        if (reuseCachedSessions) {
+          recordApiSyncState('复用会话', `范围：${pollingScope === API_ALL_SHOPS ? '显示所有店铺' : pollingScope}`);
+          renderApiSessions();
+          renderApiMessages();
+        } else {
+          sessions = await loadApiSessions({ keepCurrent: options.keepCurrent });
+        }
         await Promise.allSettled([starredPromise, tokenStatusPromise, trafficPromise, pollingPromise]);
+        if ((!apiHasUserSelectedSession || !apiActiveSessionId || !apiActiveSessionShopId) && Array.isArray(sessions) && sessions.length) {
+          await restoreApiLastSessionSelection({ silentStatus: true });
+        }
         renderApiMessages();
-        const authHint = getApiAuthHintText();
+        const authHint = window.__chatApiModuleAccess?.getApiAuthHintText?.() || '';
         if (authHint) {
           setApiHint(authHint);
         } else if (!shops.length) {
@@ -6449,7 +6861,9 @@
             retryInitialApiSessions(options.keepCurrent);
           }, 1200);
         }
-        scheduleApiWarmupRefreshes(options.keepCurrent);
+        if (!reuseCachedSessions) {
+          scheduleApiWarmupRefreshes(options.keepCurrent);
+        }
       } catch (error) {
         apiSessionLoadError = error.message || '加载客户对话失败';
         clearApiActiveSession();
@@ -6626,183 +7040,185 @@
       setApiHint('商品信息区已预留，后续可继续从抓包中补真实接口。');
     });
 
-    document.getElementById('btnApiSendMessage').addEventListener('click', async () => {
-      const text = document.getElementById('apiMessageInput').value.trim();
-      const activeSession = getApiActiveSession();
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      if (!text) {
-        setApiHint('请输入要发送的消息');
-        return;
-      }
-      recordApiSyncState('消息发送', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-      const result = await window.pddApi.apiSendMessage({
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        session: activeSession || undefined,
-        text,
+    if (!window.__chatApiModuleBound) {
+      document.getElementById('btnApiSendMessage').addEventListener('click', async () => {
+        const text = document.getElementById('apiMessageInput').value.trim();
+        const activeSession = getApiActiveSession();
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        if (!text) {
+          setApiHint('请输入要发送的消息');
+          return;
+        }
+        recordApiSyncState('消息发送', `会话：${apiActiveSessionName || apiActiveSessionId}`);
+        const result = await window.pddApi.apiSendMessage({
+          shopId: apiActiveSessionShopId,
+          sessionId: apiActiveSessionId,
+          session: activeSession || undefined,
+          text,
+        });
+        if (result?.error) {
+          recordApiSyncState('发送失败', result.error);
+          setApiHint(`接口发送失败：${result.error}`);
+          return;
+        }
+        const successPayload = {
+          ...result,
+          shopId: apiActiveSessionShopId,
+          sessionId: apiActiveSessionId,
+          text,
+        };
+        recordApiSyncState('发送成功', `会话：${apiActiveSessionName || apiActiveSessionId}`);
+        clearApiPendingReplyState(successPayload);
+        appendApiLocalServiceMessage(successPayload);
+        document.getElementById('apiMessageInput').value = '';
+        setApiHint('接口发送成功，正在同步最新消息');
       });
-      if (result?.error) {
-        recordApiSyncState('发送失败', result.error);
-        setApiHint(`接口发送失败：${result.error}`);
-        return;
-      }
-      const successPayload = {
-        ...result,
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        text,
-      };
-      recordApiSyncState('发送成功', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-      clearApiPendingReplyState(successPayload);
-      appendApiLocalServiceMessage(successPayload);
-      document.getElementById('apiMessageInput').value = '';
-      setApiHint('接口发送成功，正在同步最新消息');
-    });
-    document.getElementById('btnApiSendImage').addEventListener('click', async () => {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      toggleApiEmojiPanel(false);
-      recordApiSyncState('选择图片', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-      const selected = await window.pddApi.apiSelectImage();
-      if (selected?.canceled) {
-        recordApiSyncState('图片取消', '用户取消选择图片');
-        setApiHint('已取消选择图片');
-        return;
-      }
-      if (!selected?.filePath) {
-        recordApiSyncState('图片失败', '未拿到图片路径');
-        setApiHint('未选择图片文件');
-        return;
-      }
-      const fileName = String(selected.filePath).split(/[\\/]/).pop() || '图片';
-      recordApiSyncState('图片上传', `文件：${fileName}`);
-      setApiHint('正在上传并发送图片，请稍候...');
-      const result = await window.pddApi.apiSendImage({
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        session: getApiActiveSession() || undefined,
-        filePath: selected.filePath,
+      document.getElementById('btnApiSendImage').addEventListener('click', async () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        toggleApiEmojiPanel(false);
+        recordApiSyncState('选择图片', `会话：${apiActiveSessionName || apiActiveSessionId}`);
+        const selected = await window.pddApi.apiSelectImage();
+        if (selected?.canceled) {
+          recordApiSyncState('图片取消', '用户取消选择图片');
+          setApiHint('已取消选择图片');
+          return;
+        }
+        if (!selected?.filePath) {
+          recordApiSyncState('图片失败', '未拿到图片路径');
+          setApiHint('未选择图片文件');
+          return;
+        }
+        const fileName = String(selected.filePath).split(/[\\/]/).pop() || '图片';
+        recordApiSyncState('图片上传', `文件：${fileName}`);
+        setApiHint('正在上传并发送图片，请稍候...');
+        const result = await window.pddApi.apiSendImage({
+          shopId: apiActiveSessionShopId,
+          sessionId: apiActiveSessionId,
+          session: getApiActiveSession() || undefined,
+          filePath: selected.filePath,
+        });
+        if (result?.error) {
+          const attemptText = Array.isArray(result?.attempts) && result.attempts.length
+            ? result.attempts.map(item => `${item.baseUrl} → ${item.error}`).join('；')
+            : '';
+          const detail = [
+            result?.step ? `阶段：${result.step}` : '',
+            result?.uploadBaseUrl ? `上传域：${result.uploadBaseUrl}` : '',
+            attemptText,
+            result?.error || ''
+          ].filter(Boolean).join('；');
+          recordApiSyncState('图片失败', detail || '图片发送失败');
+          setApiHint(`图片发送失败：${detail || result.error}`);
+          return;
+        }
+        recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
+        setApiHint('图片已发送，正在同步最新消息');
       });
-      if (result?.error) {
-        const attemptText = Array.isArray(result?.attempts) && result.attempts.length
-          ? result.attempts.map(item => `${item.baseUrl} → ${item.error}`).join('；')
-          : '';
-        const detail = [
-          result?.step ? `阶段：${result.step}` : '',
-          result?.uploadBaseUrl ? `上传域：${result.uploadBaseUrl}` : '',
-          attemptText,
-          result?.error || ''
-        ].filter(Boolean).join('；');
-        recordApiSyncState('图片失败', detail || '图片发送失败');
-        setApiHint(`图片发送失败：${detail || result.error}`);
-        return;
-      }
-      recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
-      setApiHint('图片已发送，正在同步最新消息');
-    });
 
-    document.getElementById('btnApiTransfer')?.addEventListener('click', async () => {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      await window.pddApi.apiMarkLatestConversations({ shopId: apiActiveSessionShopId, size: 100 });
-      await loadApiTraffic(apiActiveSessionShopId);
-      setApiHint('已模拟执行会话处理动作，当前先复用已读链路。');
-    });
-
-    document.getElementById('btnApiRisk').addEventListener('click', async () => {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(apiActiveSessionId);
-        setApiHint(`已复制会话ID：${apiActiveSessionId}`);
-      } catch {
-        setApiHint(`会话ID：${apiActiveSessionId}`);
-      }
-    });
-    document.getElementById('btnApiStar').addEventListener('click', async () => {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      const activeSession = getApiActiveSession();
-      const result = await window.pddApi.toggleApiStarredSession(activeSession || {
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        customerName: apiActiveSessionName,
+      document.getElementById('btnApiTransfer')?.addEventListener('click', async () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        await window.pddApi.apiMarkLatestConversations({ shopId: apiActiveSessionShopId, size: 100 });
+        await loadApiTraffic(apiActiveSessionShopId);
+        setApiHint('已模拟执行会话处理动作，当前先复用已读链路。');
       });
-      if (result?.error) {
-        setApiHint(result.error);
-        return;
-      }
-      apiStarredSessions = Array.isArray(result.sessions) ? result.sessions.map(item => buildApiSession(item)) : apiStarredSessions;
-      renderApiSessions();
-      renderApiMessages();
-      setApiHint(result.starred ? '已收藏当前会话' : '已取消收藏当前会话');
-    });
 
-    document.getElementById('apiMessageInput').addEventListener('keydown', async (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
-        document.getElementById('btnApiSendMessage').click();
-      }
-    });
-
-    window.pddApi.onApiSessionUpdated(async (payload) => {
-      emitRendererDebug('chat-api', 'onApiSessionUpdated', {
-        currentView,
-        payloadShopId: payload?.shopId || '',
-        payloadCount: Array.isArray(payload?.sessions) ? payload.sessions.length : -1,
-        apiSelectedShopId,
-        beforeCount: apiSessions.length
+      document.getElementById('btnApiRisk').addEventListener('click', async () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(apiActiveSessionId);
+          setApiHint(`已复制会话ID：${apiActiveSessionId}`);
+        } catch {
+          setApiHint(`会话ID：${apiActiveSessionId}`);
+        }
       });
-      if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-      if (Array.isArray(payload?.sessions) && payload.sessions.length > 0) {
-        mergeApiSessionsForShop(payload.shopId, payload.sessions);
-      }
-      if (Array.isArray(payload?.sessions)) {
-        await syncApiSelectionWithFilter();
-        renderApiSideCards();
-      }
-      if (currentView === 'chat-api') {
+      document.getElementById('btnApiStar').addEventListener('click', async () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        const activeSession = getApiActiveSession();
+        const result = await window.pddApi.toggleApiStarredSession(activeSession || {
+          shopId: apiActiveSessionShopId,
+          sessionId: apiActiveSessionId,
+          customerName: apiActiveSessionName,
+        });
+        if (result?.error) {
+          setApiHint(result.error);
+          return;
+        }
+        apiStarredSessions = Array.isArray(result.sessions) ? result.sessions.map(item => buildApiSession(item)) : apiStarredSessions;
+        renderApiSessions();
+        renderApiMessages();
+        setApiHint(result.starred ? '已收藏当前会话' : '已取消收藏当前会话');
+      });
+
+      document.getElementById('apiMessageInput').addEventListener('keydown', async (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('btnApiSendMessage').click();
+        }
+      });
+
+      window.pddApi.onApiSessionUpdated(async (payload) => {
+        emitRendererDebug('chat-api', 'onApiSessionUpdated', {
+          currentView,
+          payloadShopId: payload?.shopId || '',
+          payloadCount: Array.isArray(payload?.sessions) ? payload.sessions.length : -1,
+          apiSelectedShopId,
+          beforeCount: apiSessions.length
+        });
+        if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
+        if (Array.isArray(payload?.sessions) && payload.sessions.length > 0) {
+          mergeApiSessionsForShop(payload.shopId, payload.sessions);
+        }
+        if (Array.isArray(payload?.sessions)) {
+          await syncApiSelectionWithFilter();
+          renderApiSideCards();
+        }
+        if (currentView === 'chat-api') {
+          await loadApiTraffic(getApiStatusShopId(true));
+        }
+      });
+
+      window.pddApi.onApiNewMessage(async (payload) => {
+        if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
         await loadApiTraffic(getApiStatusShopId(true));
-      }
-    });
+        if (String(payload?.sessionId || '') === String(apiActiveSessionId) && String(payload?.shopId || '') === String(apiActiveSessionShopId || '')) {
+          await openApiSession(apiActiveSessionId, apiActiveSessionName || payload.customer || '', apiActiveSessionShopId);
+        } else {
+          await loadApiSessions({ keepCurrent: true });
+        }
+        setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
+      });
 
-    window.pddApi.onApiNewMessage(async (payload) => {
-      if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-      await loadApiTraffic(getApiStatusShopId(true));
-      if (String(payload?.sessionId || '') === String(apiActiveSessionId) && String(payload?.shopId || '') === String(apiActiveSessionShopId || '')) {
-        await openApiSession(apiActiveSessionId, apiActiveSessionName || payload.customer || '', apiActiveSessionShopId);
-      } else {
-        await loadApiSessions({ keepCurrent: true });
-      }
-      setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
-    });
+      window.pddApi.onApiMessageSent(async (payload) => {
+        await refreshApiAfterMessageSent(payload);
+      });
 
-    window.pddApi.onApiMessageSent(async (payload) => {
-      await refreshApiAfterMessageSent(payload);
-    });
-
-    window.pddApi.onApiAuthExpired((payload) => {
-      if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-      apiTokenStatus = {
-        ...(apiTokenStatus || {}),
-        authExpired: true,
-        authState: payload?.authState || 'expired',
-        authHint: payload?.errorMsg || '',
-      };
-      renderApiStatus();
-      setApiHint(payload?.errorMsg || getApiAuthHintText() || '接口认证已过期，请重新导入 Token 或刷新登录态');
-    });
+      window.pddApi.onApiAuthExpired((payload) => {
+        if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
+        apiTokenStatus = {
+          ...(apiTokenStatus || {}),
+          authExpired: true,
+          authState: payload?.authState || 'expired',
+          authHint: payload?.errorMsg || '',
+        };
+        renderApiStatus();
+        setApiHint(payload?.errorMsg || window.__chatApiModuleAccess?.getApiAuthHintText?.() || '接口认证已过期，请重新导入 Token 或刷新登录态');
+      });
+    }
 
     // ==================== 店铺管理 ====================
     async function loadShops() {

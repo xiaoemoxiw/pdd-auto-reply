@@ -86,6 +86,9 @@ contextBridge.exposeInMainWorld('pddApi', {
   invoiceGetOverview: (params) => ipcRenderer.invoke('invoice-get-overview', params),
   invoiceGetList: (params) => ipcRenderer.invoke('invoice-get-list', params),
   getApiStarredSessions: () => ipcRenderer.invoke('get-api-starred-sessions'),
+  getLastApiSessionSelection: () => ipcRenderer.invoke('get-last-api-session-selection'),
+  setLastApiSessionSelection: (selection) => ipcRenderer.invoke('set-last-api-session-selection', selection),
+  clearLastApiSessionSelection: () => ipcRenderer.invoke('clear-last-api-session-selection'),
   toggleApiStarredSession: (session) => ipcRenderer.invoke('toggle-api-starred-session', session),
 
   // 快捷短语

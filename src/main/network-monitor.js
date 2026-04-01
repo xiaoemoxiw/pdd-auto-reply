@@ -25,6 +25,9 @@ class NetworkMonitor {
     this.capturePatterns = [
       '/plateau/',    // PDD 客服平台核心 API（含 sync/message, chat/list 等）
       '/chats/',
+      '/get_signature',
+      '/store_image',
+      '/general_file',
       'message',
       'chat',
       'im/',
@@ -36,6 +39,13 @@ class NetworkMonitor {
       'recv',
       'long_polling',
       'sync',
+      'galerie-api.pdd.net',
+      'galerie-api.htj.pdd.net',
+      'pddugc.com',
+      'store_image',
+      'general_file',
+      'get_signature',
+      '/cos/',
     ];
 
     // 排除的 URL（心跳、埋点等无关请求）

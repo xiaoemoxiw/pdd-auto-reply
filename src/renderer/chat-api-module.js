@@ -1,5 +1,8 @@
 (function () {
   let initialized = false;
+  let apiPendingReplyTicker = null;
+  let apiPendingReplySignature = '';
+  let apiActivePendingReplySignature = '';
 
   function getRuntime() {
     return window.__chatApiModuleAccess || {};
@@ -82,8 +85,25 @@
     return !!callRuntime('hasApiPendingReply', session);
   }
 
-  function getApiPendingReplyMinutes(session = {}) {
-    return callRuntime('getApiPendingReplyMinutes', session) || 0;
+  function formatApiPendingReplyText(session = {}) {
+    return callRuntime('formatApiPendingReplyText', session) || '';
+  }
+
+  function getApiConversationFollowStatus(session = null) {
+    const status = callRuntime('getApiConversationFollowStatus', session);
+    if (status && typeof status === 'object') return status;
+    return {
+      text: session ? '已关注本店' : '未选择会话',
+      highlighted: false,
+    };
+  }
+
+  function applyApiChatFollowStatus(session = null) {
+    const followStatusEl = document.getElementById('apiChatFollowStatus');
+    if (!followStatusEl) return;
+    const followStatus = getApiConversationFollowStatus(session);
+    followStatusEl.textContent = followStatus.text || (session ? '已关注本店' : '未选择会话');
+    followStatusEl.classList.toggle('is-unread', !!followStatus.highlighted);
   }
 
   function openApiSession(sessionId, customerName, shopId, options) {
@@ -424,6 +444,24 @@
     });
   }
 
+  function renderApiEmptyStateHtml({ title = '', subtitle = '', detail = '' } = {}) {
+    const safeTitle = esc(title || '');
+    const safeSubtitle = esc(subtitle || '');
+    const safeDetail = esc(detail || '');
+    return `<div class="api-empty api-empty-illustrated">
+      <div class="api-empty-visual" aria-hidden="true">
+        <span class="api-empty-spark api-empty-spark-left"></span>
+        <span class="api-empty-spark api-empty-spark-top"></span>
+        <span class="api-empty-spark api-empty-spark-right"></span>
+        <span class="api-empty-bubble api-empty-bubble-back"><span class="api-empty-bubble-lines"></span></span>
+        <span class="api-empty-bubble api-empty-bubble-front">?</span>
+      </div>
+      <div class="api-empty-title">${safeTitle}</div>
+      ${safeSubtitle ? `<div class="api-empty-subtitle">${safeSubtitle}</div>` : ''}
+      ${safeDetail ? `<div class="api-empty-detail">${safeDetail}</div>` : ''}
+    </div>`;
+  }
+
   function renderApiMessages() {
     try {
       const state = getState();
@@ -434,31 +472,44 @@
       const shopName = activeSession?.shopName || (state.shops || []).find(item => item.id === state.apiActiveSessionShopId)?.name || '未选择店铺';
       const unreadCount = Number(activeSession?.unreadCount || 0);
       const serviceAvatar = state.apiTokenStatus?.serviceAvatar || '';
-      const followStatusEl = document.getElementById('apiChatFollowStatus');
       document.getElementById('apiChatCustomerName').textContent = state.apiActiveSessionName || '未选择客户';
       document.getElementById('btnApiStar').textContent = state.isApiSessionStarred?.(activeSession || {}) ? '取消收藏' : '收藏';
-      followStatusEl.textContent = !activeSession
-        ? '未选择会话'
-        : unreadCount > 0
-          ? `未读 ${unreadCount}`
-          : '已关注本店';
-      followStatusEl.classList.toggle('is-unread', !!activeSession && unreadCount > 0);
+      applyApiChatFollowStatus(activeSession);
       document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
       mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 
       if (!hasActiveSession) {
         const visibleSessions = state.getVisibleApiSessions ? state.getVisibleApiSessions() : [];
-        const emptyText = state.apiSessionLoadError
-          || state.apiTokenStatus?.authHint
-          || (visibleSessions.length
-            ? '请先从左侧选择一个会话查看详情。'
-            : '暂无接口会话，请先点击“接口连通测试”或刷新接口会话。');
-        container.innerHTML = `<div class="api-empty">${esc(emptyText)}</div>`;
+        const loadError = state.apiSessionLoadError || '';
+        const authHint = state.apiTokenStatus?.authHint || '';
+        if (loadError || authHint) {
+          container.innerHTML = renderApiEmptyStateHtml({
+            title: '当前无法加载接口会话',
+            subtitle: loadError || authHint,
+            detail: visibleSessions.length ? '请稍后重试，或重新选择左侧会话。' : '请先检查店铺认证状态后再重试。'
+          });
+          return;
+        }
+        if (visibleSessions.length) {
+          container.innerHTML = renderApiEmptyStateHtml({
+            title: '请点击左侧会话与买家聊天',
+            subtitle: '将窗口最大化即可看到所有会话列表'
+          });
+          return;
+        }
+        container.innerHTML = renderApiEmptyStateHtml({
+          title: '暂无接口会话',
+          subtitle: '请先点击“接口连通测试”或刷新接口会话'
+        });
         return;
       }
 
       if (!(state.apiMessages || []).length) {
-        container.innerHTML = '<div class="api-empty">当前会话暂无消息，或尚未从接口拿到消息数据。</div>';
+        container.innerHTML = renderApiEmptyStateHtml({
+          title: '当前会话暂无消息',
+          subtitle: '可继续等待买家消息，或手动发送一条新消息',
+          detail: '如果刚切换会话，也可能是接口消息仍在加载中。'
+        });
         return;
       }
 
@@ -540,7 +591,10 @@
     } catch (error) {
       const container = document.getElementById('apiMessageList');
       if (container) {
-        container.innerHTML = `<div class="api-empty">${esc(error.message || '渲染会话消息失败')}</div>`;
+        container.innerHTML = renderApiEmptyStateHtml({
+          title: '聊天内容渲染失败',
+          subtitle: error.message || '请稍后重试'
+        });
       }
       addLog(`渲染客户对话失败: ${error.message || error}`, 'error');
     }
@@ -603,6 +657,42 @@
         setApiHint('已将快捷短语填入接口发送输入框');
       });
     });
+  }
+
+  function buildApiPendingReplySignature(sessions = []) {
+    return sessions.map(session => `${getApiSessionKey(session)}:${formatApiPendingReplyText(session)}`).join('||');
+  }
+
+  function buildApiActivePendingReplySignature() {
+    const state = getState();
+    if (state.currentView !== 'chat-api' || !state.apiHasUserSelectedSession) return '';
+    const activeSession = getApiActiveSession();
+    if (!activeSession) return '';
+    const followStatus = getApiConversationFollowStatus(activeSession);
+    return `${getApiSessionKey(activeSession)}:${followStatus.text || ''}:${followStatus.highlighted ? 1 : 0}`;
+  }
+
+  function startApiPendingReplyTicker() {
+    if (apiPendingReplyTicker) return;
+    apiPendingReplySignature = buildApiPendingReplySignature(getVisibleApiSessions());
+    apiActivePendingReplySignature = buildApiActivePendingReplySignature();
+    apiPendingReplyTicker = window.setInterval(() => {
+      const state = getState();
+      if (state.currentView !== 'chat-api') {
+        apiPendingReplySignature = '';
+        apiActivePendingReplySignature = '';
+        return;
+      }
+      const nextSignature = buildApiPendingReplySignature(getVisibleApiSessions());
+      if (nextSignature && nextSignature !== apiPendingReplySignature) {
+        apiPendingReplySignature = nextSignature;
+        renderApiSessions();
+      }
+      const nextActiveSignature = buildApiActivePendingReplySignature();
+      if (nextActiveSignature === apiActivePendingReplySignature) return;
+      apiActivePendingReplySignature = nextActiveSignature;
+      applyApiChatFollowStatus(state.apiHasUserSelectedSession ? getApiActiveSession() : null);
+    }, 1000);
   }
 
   function renderApiShopHeader() {
@@ -674,6 +764,7 @@
           ? '暂无收藏会话，可在右侧按钮中添加收藏。'
           : (state.apiSessionLoadError || '暂无接口会话数据，请先操作嵌入网页或刷新接口会话。');
         container.innerHTML = `<div class="api-empty">${esc(emptyText)}</div>`;
+        apiPendingReplySignature = '';
         emitRendererDebug('chat-api', 'renderApiSessions empty-dom', { htmlLength: container.innerHTML.length });
         return;
       }
@@ -682,7 +773,7 @@
         const active = getApiSessionKey(session) === getApiSessionKey(state.apiActiveSessionShopId, state.apiActiveSessionId);
         const unread = Number(session.unreadCount || 0);
         const pendingReply = hasApiPendingReply(session);
-        const waitMinutes = pendingReply ? getApiPendingReplyMinutes(session) : 0;
+        const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
         const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
         return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
           <div class="api-session-avatar">${avatarHtml}</div>
@@ -702,7 +793,7 @@
               </div>
             </div>
             <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
-            ${pendingReply ? `<span class="api-session-item-wait">已等待${waitMinutes}分钟</span>` : ''}
+            ${pendingReplyText ? `<span class="api-session-item-wait">${esc(pendingReplyText)}</span>` : ''}
           </div>
         </div>`;
       }).join('');
@@ -716,6 +807,7 @@
           await openApiSession(item.dataset.sessionId, item.dataset.customerName, item.dataset.shopId);
         });
       });
+      apiPendingReplySignature = buildApiPendingReplySignature(sessions);
       container.querySelectorAll('.api-session-star').forEach(button => {
         button.addEventListener('click', async event => {
           event.stopPropagation();
@@ -942,8 +1034,10 @@
   function bindChatApiModule() {
     if (initialized) return;
     initialized = true;
+    window.__chatApiModuleBound = true;
 
     renderApiEmojiPanel();
+    startApiPendingReplyTicker();
 
     document.getElementById('apiShopFilter')?.addEventListener('change', async event => {
       const state = getState();

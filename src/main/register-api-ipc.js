@@ -23,6 +23,17 @@ function registerApiIpc({
     return params.shopId || getActiveShopId();
   }
 
+  function getLastApiSessionSelection() {
+    const selection = store.get('lastApiSessionSelection') || null;
+    if (!selection?.shopId || !selection?.sessionId) return null;
+    return {
+      shopId: String(selection.shopId),
+      sessionId: String(selection.sessionId),
+      customerName: selection.customerName || '',
+      updatedAt: Number(selection.updatedAt || 0)
+    };
+  }
+
   ipcMain.handle('api-get-token-status', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有活跃店铺' };
@@ -256,6 +267,30 @@ function registerApiIpc({
   });
 
   ipcMain.handle('get-api-starred-sessions', () => store.get('apiStarredSessions') || []);
+
+  ipcMain.handle('get-last-api-session-selection', () => getLastApiSessionSelection());
+
+  ipcMain.handle('set-last-api-session-selection', (event, selection = {}) => {
+    const shopId = String(selection.shopId || '').trim();
+    const sessionId = String(selection.sessionId || '').trim();
+    if (!shopId || !sessionId) {
+      store.delete('lastApiSessionSelection');
+      return null;
+    }
+    const nextSelection = {
+      shopId,
+      sessionId,
+      customerName: selection.customerName || '',
+      updatedAt: Date.now()
+    };
+    store.set('lastApiSessionSelection', nextSelection);
+    return nextSelection;
+  });
+
+  ipcMain.handle('clear-last-api-session-selection', () => {
+    store.delete('lastApiSessionSelection');
+    return true;
+  });
 
   ipcMain.handle('toggle-api-starred-session', (event, session = {}) => {
     const sessions = store.get('apiStarredSessions') || [];

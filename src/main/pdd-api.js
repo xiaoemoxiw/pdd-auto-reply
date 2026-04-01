@@ -31,6 +31,7 @@ class PddApiClient extends EventEmitter {
     this._onLog = options.onLog || (() => {});
     this._getShopInfo = options.getShopInfo || (() => null);
     this._getApiTraffic = options.getApiTraffic || (() => []);
+    this._requestInPddPage = options.requestInPddPage || null;
   }
 
   _log(message, extra) {
@@ -428,29 +429,31 @@ class PddApiClient extends EventEmitter {
     return message;
   }
 
-  _buildSendImageTemplate(sessionId, imageUrl, ts, hash) {
-    const imageContent = JSON.stringify({
-      picture_url: imageUrl,
-      url: imageUrl,
-      type: 'image',
-    });
-    const message = this._buildSendMessageTemplate(sessionId, imageContent, ts, hash);
-    message.type = 2;
-    message.msg_type = 2;
-    message.message_type = 2;
-    message.content_type = 2;
-    message.extra = {
-      ...(message.extra || {}),
-      type: 'image',
-      picture_url: imageUrl,
-      url: imageUrl,
-    };
-    message.ext = {
-      ...(message.ext || {}),
-      type: 'image',
-      picture_url: imageUrl,
-      url: imageUrl,
-    };
+  _buildSendImageTemplate(sessionRef, imageUrl, ts, hash, imageMeta = {}) {
+    const message = this._buildSendMessageTemplate(sessionRef, imageUrl, ts, hash);
+    message.ts = ts;
+    message.content = imageUrl;
+    message.type = 1;
+    delete message.msg_type;
+    delete message.message_type;
+    delete message.content_type;
+    const width = Number(imageMeta?.width || 0) || 0;
+    const height = Number(imageMeta?.height || 0) || 0;
+    const imageSize = Number(imageMeta?.imageSize || 0) || 0;
+    if (width || height || imageSize) {
+      message.size = {
+        ...(message.size || {}),
+        ...(height ? { height } : {}),
+        ...(width ? { width } : {}),
+        ...(imageSize ? { image_size: imageSize } : {}),
+      };
+    }
+    if (imageMeta?.thumbData) {
+      message.info = {
+        ...(message.info || {}),
+        thumb_data: imageMeta.thumbData,
+      };
+    }
     return message;
   }
 
@@ -535,6 +538,91 @@ class PddApiClient extends EventEmitter {
     return 'application/octet-stream';
   }
 
+  _toImageDataUrl(fileBuffer, mimeType = 'application/octet-stream') {
+    return `data:${mimeType};base64,${Buffer.from(fileBuffer || []).toString('base64')}`;
+  }
+
+  async _buildImageMessageMeta(filePath, uploadResult = {}) {
+    if (!filePath) {
+      return {
+        width: Number(uploadResult?.width || 0) || 0,
+        height: Number(uploadResult?.height || 0) || 0,
+        imageSize: Number(uploadResult?.imageSize || 0) || 0,
+        thumbData: '',
+      };
+    }
+    const fileBuffer = await fs.readFile(filePath);
+    const mimeType = this._guessMimeType(filePath);
+    return {
+      width: Number(uploadResult?.width || 0) || 0,
+      height: Number(uploadResult?.height || 0) || 0,
+      imageSize: Math.max(1, Math.round(fileBuffer.length / 1024)),
+      thumbData: this._toImageDataUrl(fileBuffer, mimeType),
+    };
+  }
+
+  async _getPreUploadTicket() {
+    const requestBody = {
+      chat_type_id: 1,
+      file_usage: 1,
+    };
+    let payload;
+    if (typeof this._requestInPddPage === 'function') {
+      payload = await this._requestInPddPage({
+        method: 'POST',
+        url: '/plateau/file/pre_upload',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/plain, */*',
+        },
+        body: JSON.stringify(requestBody),
+      });
+    } else {
+      payload = await this._post('/plateau/file/pre_upload', requestBody);
+    }
+    const result = payload?.result || payload?.data || payload || {};
+    return {
+      uploadSignature: result.upload_signature || result.uploadSign || result.signature || '',
+      uploadUrl: result.upload_url || result.uploadUrl || 'https://file.pinduoduo.com/v2/store_image',
+      uploadHost: result.upload_host || result.uploadHost || '',
+      uploadBucketTag: result.upload_bucket_tag || result.uploadBucketTag || '',
+    };
+  }
+
+  async _uploadImageViaPreUpload(filePath) {
+    const fileBuffer = await fs.readFile(filePath);
+    const ticket = await this._getPreUploadTicket();
+    const requestBody = {
+      image: this._toImageDataUrl(fileBuffer, this._guessMimeType(filePath)),
+    };
+    if (ticket.uploadSignature) {
+      requestBody.upload_sign = ticket.uploadSignature;
+      requestBody.upload_signature = ticket.uploadSignature;
+    }
+    const payload = typeof this._requestInPddPage === 'function'
+      ? await this._requestInPddPage({
+          method: 'POST',
+          url: ticket.uploadUrl,
+          headers: {
+            accept: 'application/json, text/plain, */*',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        })
+      : await this._requestRaw('POST', ticket.uploadUrl, JSON.stringify(requestBody), {
+          accept: 'application/json, text/plain, */*',
+          'content-type': 'application/json',
+          Referer: `${PDD_BASE}/`,
+          Origin: PDD_BASE,
+        });
+    if (!payload?.url) {
+      throw new Error(payload?.error_msg || payload?.message || '图片上传失败');
+    }
+    payload.uploadBaseUrl = ticket.uploadUrl;
+    payload.imageSize = Math.max(1, Math.round(fileBuffer.length / 1024));
+    return payload;
+  }
+
   _isCrossOriginUrl(urlPath = '') {
     try {
       const target = new URL(urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`);
@@ -583,6 +671,7 @@ class PddApiClient extends EventEmitter {
   _extractBusinessError(payload) {
     if (!payload || typeof payload !== 'object') return null;
     const message = payload.error_msg || payload.errorMsg || payload.message || payload.msg || '';
+    const successCodes = new Set([0, 200, 1000000]);
     if (payload.success === false || payload.ok === false) {
       return {
         code: payload.error_code || payload.code || payload.err_no || payload.errno || '',
@@ -590,7 +679,12 @@ class PddApiClient extends EventEmitter {
       };
     }
     const explicitCode = payload.error_code ?? payload.err_no ?? payload.errno ?? payload.biz_code;
-    if (explicitCode !== undefined && explicitCode !== null && explicitCode !== '' && Number(explicitCode) !== 0) {
+    if (
+      explicitCode !== undefined
+      && explicitCode !== null
+      && explicitCode !== ''
+      && !successCodes.has(Number(explicitCode))
+    ) {
       return {
         code: explicitCode,
         message: message || 'API 请求失败',
@@ -602,7 +696,7 @@ class PddApiClient extends EventEmitter {
       && genericCode !== null
       && genericCode !== ''
       && Number.isFinite(Number(genericCode))
-      && ![0, 200].includes(Number(genericCode))
+      && !successCodes.has(Number(genericCode))
       && message
     ) {
       return {
@@ -1965,8 +2059,13 @@ class PddApiClient extends EventEmitter {
     if (!filePath) {
       throw new Error('缺少图片路径');
     }
-    const fileBuffer = await fs.readFile(filePath);
     const attempts = [];
+    try {
+      return await this._uploadImageViaPreUpload(filePath);
+    } catch (error) {
+      attempts.push({ baseUrl: '/plateau/file/pre_upload', error: error.message });
+    }
+    const fileBuffer = await fs.readFile(filePath);
     for (const baseUrl of this._getUploadBases()) {
       try {
         const signature = await this._getUploadSignature(baseUrl, options.bucketTag || 'chat-merchant');
@@ -1989,7 +2088,7 @@ class PddApiClient extends EventEmitter {
     throw this._createStepError('upload', attempts[0]?.error || '图片上传失败', { attempts });
   }
 
-  _buildSendImageBody(sessionRef, imageUrl) {
+  _buildSendImageBody(sessionRef, imageUrl, imageMeta = {}) {
     const { sessionMeta, ids } = this._getSessionIdentityCandidates(sessionRef);
     const latestTraffic = this._getLatestSessionTraffic('/plateau/chat/send_message', ids);
     const templateBody = this._safeParseJson(latestTraffic?.requestBody);
@@ -2008,7 +2107,7 @@ class PddApiClient extends EventEmitter {
     const ts = Math.floor(Date.now() / 1000);
     const random = this._randomHex(32);
     const hash = this._buildMessageHash(sessionMeta.sessionId || sessionMeta.userUid || sessionMeta.customerId || '', imageUrl, ts, random);
-    const message = this._buildSendImageTemplate(sessionMeta, imageUrl, ts, hash);
+    const message = this._buildSendImageTemplate(sessionMeta, imageUrl, ts, hash, imageMeta);
 
     if (templateBody) {
       const body = this._cloneJson(templateBody);
@@ -2108,7 +2207,8 @@ class PddApiClient extends EventEmitter {
     }
     const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
     const imageUrl = uploadResult?.processed_url || uploadResult?.url;
-    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl);
+    const imageMeta = await this._buildImageMessageMeta(filePath, uploadResult);
+    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl, imageMeta);
     this._log('[API] 发送图片', {
       sessionId: String(sessionMeta.sessionId || ''),
       targetUid: String(requestBody?.data?.message?.to?.uid || ''),
@@ -2144,7 +2244,8 @@ class PddApiClient extends EventEmitter {
       await this.initSession();
     }
     const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
-    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl);
+    const imageMeta = await this._buildImageMessageMeta(extra?.filePath || '', extra);
+    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl, imageMeta);
     this._log('[API] 发送图片', {
       sessionId: String(sessionMeta.sessionId || ''),
       targetUid: String(requestBody?.data?.message?.to?.uid || ''),

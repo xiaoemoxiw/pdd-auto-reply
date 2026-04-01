@@ -101,6 +101,17 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-get-refund-orders', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    try {
+      return await getApiClient(shopId).getRefundOrders(params.session || params.sessionId);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
   ipcMain.handle('api-send-message', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

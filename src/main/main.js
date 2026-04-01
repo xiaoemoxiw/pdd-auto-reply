@@ -525,6 +525,10 @@ function getApiClient(shopId) {
     },
     requestInPddPage(request) {
       return requestViaPddPage(shopId, request);
+    },
+    async executeInPddPage(script) {
+      const view = await ensurePddPageViewReady(shopId);
+      return view.webContents.executeJavaScript(String(script || ''), true);
     }
   });
 

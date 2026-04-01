@@ -32,6 +32,7 @@ class PddApiClient extends EventEmitter {
     this._getShopInfo = options.getShopInfo || (() => null);
     this._getApiTraffic = options.getApiTraffic || (() => []);
     this._requestInPddPage = options.requestInPddPage || null;
+    this._executeInPddPage = options.executeInPddPage || null;
   }
 
   _log(message, extra) {
@@ -1528,6 +1529,33 @@ class PddApiClient extends EventEmitter {
     return `¥${amount.toFixed(2)}`;
   }
 
+  _normalizeRefundAmountByKeys(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const rawValue = source[key];
+        if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+        if (typeof rawValue === 'string') {
+          const text = rawValue.trim();
+          if (!text) continue;
+          if (text.includes('¥')) return text;
+          if (text.includes('.')) {
+            const decimal = Number(text);
+            if (Number.isFinite(decimal) && decimal > 0) return `¥${decimal.toFixed(2)}`;
+          }
+          const integer = Number(text);
+          if (Number.isFinite(integer) && integer > 0) return `¥${(integer / 100).toFixed(2)}`;
+          continue;
+        }
+        const numeric = Number(rawValue);
+        if (Number.isFinite(numeric) && numeric > 0) {
+          return `¥${(numeric / 100).toFixed(2)}`;
+        }
+      }
+    }
+    return '';
+  }
+
   _extractGoodsIdFromUrl(rawUrl = '') {
     const urlText = String(rawUrl || '').trim();
     if (!urlText) return '';
@@ -1842,6 +1870,401 @@ class PddApiClient extends EventEmitter {
       extra: item.extra || item.ext || null,
       raw: item,
     }));
+  }
+
+  _pickRefundText(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const value = source[key];
+        if (typeof value === 'string' && value.trim()) return this._decodeGoodsText(value);
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+      }
+    }
+    return '';
+  }
+
+  _pickRefundNumber(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const numeric = Number(source[key]);
+        if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      }
+    }
+    return 0;
+  }
+
+  _looksLikeRefundOrderNode(node = {}) {
+    if (!node || typeof node !== 'object') return false;
+    return [
+      'order_id',
+      'order_sn',
+      'parent_order_sn',
+      'mall_order_sn',
+      'orderId',
+    ].some(key => {
+      const value = node[key];
+      return value !== undefined && value !== null && String(value).trim() !== '';
+    });
+  }
+
+  _collectRefundOrderNodes(node, bucket, visited, depth = 0) {
+    if (!node || depth > 4) return;
+    if (Array.isArray(node)) {
+      node.slice(0, 30).forEach(item => this._collectRefundOrderNodes(item, bucket, visited, depth + 1));
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (visited.has(node)) return;
+    visited.add(node);
+    if (this._looksLikeRefundOrderNode(node)) {
+      bucket.push(node);
+    }
+    Object.values(node).forEach(value => {
+      if (value && typeof value === 'object') {
+        this._collectRefundOrderNodes(value, bucket, visited, depth + 1);
+      }
+    });
+  }
+
+  _normalizeRefundOrder(item = {}, fallback = {}, index = 0) {
+    const sources = [
+      item,
+      item?.orderGoodsList,
+      item?.order_goods_list,
+      item?.goods_info,
+      item?.goodsInfo,
+      item?.goods,
+      item?.order_info,
+      item?.orderInfo,
+      fallback?.goodsInfo,
+      fallback?.raw?.goods_info,
+      fallback?.raw?.goods,
+      fallback?.raw,
+      fallback,
+    ].filter(Boolean);
+    const orderId = this._pickRefundText(sources, ['order_id', 'order_sn', 'orderSn', 'parent_order_sn', 'mall_order_sn', 'orderId'])
+      || String(fallback?.orderId || '').trim();
+    const title = this._pickRefundText(sources, ['goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'goodsName', 'title'])
+      || fallback?.title
+      || `订单 ${index + 1}`;
+    const imageUrl = this._pickRefundText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url', 'thumbUrl']);
+    const amountText = this._normalizeRefundAmountByKeys(sources, ['order_amount', 'orderAmount', 'pay_amount', 'refund_amount', 'amount', 'order_price', 'price'])
+      || this._pickRefundText(sources, ['priceText', 'price_text'])
+      || this._normalizeGoodsPrice(this._pickRefundNumber(sources, ['goodsPrice', 'min_price', 'group_price']))
+      || '待确认';
+    const quantityValue = this._pickRefundText(sources, ['quantity', 'num', 'count', 'goods_count', 'goodsNumber', 'buy_num', 'buyNum']);
+    const specText = this._pickRefundText(sources, ['specText', 'spec_text', 'spec', 'sku_spec', 'skuSpec', 'spec_desc', 'specDesc', 'sub_name', 'subName']);
+    const normalizedQuantity = String(quantityValue || '').replace(/^x/i, '').trim();
+    const detailText = normalizedQuantity && specText
+      ? `${normalizedQuantity}x${specText}`
+      : (specText || (normalizedQuantity ? `${normalizedQuantity}x` : '当前会话订单'));
+    return {
+      key: `${orderId || 'order'}::${title}::${index}`,
+      orderId: orderId || '-',
+      title,
+      imageUrl,
+      amountText,
+      detailText,
+      raw: item,
+    };
+  }
+
+  _dedupeRefundOrders(list = [], fallback = {}) {
+    const deduped = [];
+    const seen = new Set();
+    list.forEach((item, index) => {
+      const normalized = this._normalizeRefundOrder(item, fallback, index);
+      if (!normalized.orderId || normalized.orderId === '-') return;
+      const signature = [normalized.orderId, normalized.title, normalized.imageUrl, normalized.amountText].join('::');
+      if (!signature.replace(/[:\-]/g, '')) return;
+      if (seen.has(signature)) return;
+      seen.add(signature);
+      deduped.push(normalized);
+    });
+    if (!deduped.length) {
+      const fallbackOrder = this._normalizeRefundOrder(fallback, fallback, 0);
+      if (fallbackOrder.orderId && fallbackOrder.orderId !== '-') {
+        deduped.push(fallbackOrder);
+      }
+    }
+    return deduped;
+  }
+
+  _extractRefundOrdersFromMessages(sessionMeta = {}, messages = []) {
+    const bucket = [];
+    const visited = new WeakSet();
+    (Array.isArray(messages) ? messages : []).forEach(message => {
+      this._collectRefundOrderNodes(message?.extra, bucket, visited);
+      this._collectRefundOrderNodes(message?.raw?.extra, bucket, visited);
+      this._collectRefundOrderNodes(message?.raw, bucket, visited);
+    });
+    return bucket.map((item, index) => this._normalizeRefundOrder(item, sessionMeta, index));
+  }
+
+  _extractRefundOrdersFromTraffic(sessionMeta = {}) {
+    const bucket = [];
+    const visited = new WeakSet();
+    this._getApiTrafficEntries()
+      .filter(entry => /order|goods|trade|pay|after/i.test(String(entry?.url || '')))
+      .slice(-30)
+      .forEach(entry => {
+        const requestBody = typeof entry?.requestBody === 'string' ? this._safeParseJson(entry.requestBody) : entry?.requestBody;
+        const responseBody = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
+        this._collectRefundOrderNodes(requestBody, bucket, visited);
+        this._collectRefundOrderNodes(responseBody, bucket, visited);
+      });
+    return bucket.map((item, index) => this._normalizeRefundOrder(item, sessionMeta, index));
+  }
+
+  _extractAfterSalesStatusText(value) {
+    if (!value) return '';
+    if (Array.isArray(value)) {
+      const texts = value
+        .map(item => this._extractAfterSalesStatusText(item))
+        .filter(Boolean);
+      return [...new Set(texts)].join(' / ');
+    }
+    if (typeof value !== 'object') return '';
+    const text = this._pickRefundText([value], [
+      'statusDesc',
+      'status_desc',
+      'aftersaleStatusDesc',
+      'afterSalesStatusDesc',
+      'aftersale_status_desc',
+      'after_sales_status_desc',
+      'typeDesc',
+      'type_desc',
+      'afterSalesTypeDesc',
+      'after_sales_type_desc',
+      'buttonDesc',
+      'button_desc',
+      'label',
+      'desc',
+      'remark',
+    ]);
+    return text || '';
+  }
+
+  async _fetchAfterSalesStatusMap(orderSns = []) {
+    const validOrderSns = [...new Set((Array.isArray(orderSns) ? orderSns : []).map(item => String(item || '').trim()).filter(Boolean))];
+    if (!validOrderSns.length) return {};
+    const antiContent = this._getLatestAntiContent();
+    const payload = await this._requestRefundOrderPageApi('/mercury/chat/afterSales/queryList', antiContent
+      ? { orderSns: validOrderSns, anti_content: antiContent }
+      : { orderSns: validOrderSns });
+    const map = payload?.result?.orderSn2AfterSalesListMap;
+    if (!map || typeof map !== 'object') return {};
+    const statusMap = {};
+    Object.entries(map).forEach(([orderSn, list]) => {
+      const text = this._extractAfterSalesStatusText(list);
+      if (text) statusMap[String(orderSn)] = text;
+    });
+    return statusMap;
+  }
+
+  async _attachAfterSalesStatus(orders = []) {
+    const orderSns = orders.map(item => String(item?.orderId || item?.orderSn || '').trim()).filter(Boolean);
+    if (!orderSns.length) return orders;
+    let statusMap = {};
+    try {
+      statusMap = await this._fetchAfterSalesStatusMap(orderSns);
+    } catch (error) {
+      this._log('[API] 售后状态查询失败', { message: error.message });
+    }
+    return orders.map(order => {
+      const orderSn = String(order?.orderId || order?.orderSn || '').trim();
+      return {
+        ...order,
+        afterSalesStatus: statusMap[orderSn] || '',
+      };
+    });
+  }
+
+  _getRefundOrderUid(sessionMeta = {}) {
+    const candidates = [
+      sessionMeta?.customerId,
+      sessionMeta?.userUid,
+      sessionMeta?.raw?.customer_id,
+      sessionMeta?.raw?.buyer_id,
+      sessionMeta?.raw?.uid,
+      sessionMeta?.raw?.to?.uid,
+      sessionMeta?.raw?.user_info?.uid,
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    return candidates[0] || '';
+  }
+
+  async _requestRefundOrderPageApi(url, body) {
+    if (typeof this._requestInPddPage === 'function') {
+      return this._requestInPddPage({
+        method: 'POST',
+        url,
+        headers: {
+          accept: 'application/json, text/plain, */*',
+          'content-type': 'application/json;charset=UTF-8',
+        },
+        body: JSON.stringify(body || {}),
+      });
+    }
+    return this._post(url, body || {});
+  }
+
+  async _extractRefundOrdersFromPageApis(sessionMeta = {}) {
+    const uid = this._getRefundOrderUid(sessionMeta);
+    if (!uid) return null;
+    const quantityPayload = await this._requestRefundOrderPageApi('/latitude/order/userOrderQuantity', { uid });
+    const quantityResult = quantityPayload?.result || {};
+    const totalCount = Number(quantityResult?.sum || 0) || 0;
+    if (totalCount <= 0) {
+      return [];
+    }
+    const orderPayload = await this._requestRefundOrderPageApi('/latitude/order/userAllOrder', {
+      pageNo: 1,
+      pageSize: Math.min(Math.max(totalCount, 10), 50),
+      showHistory: true,
+      uid,
+    });
+    const orders = Array.isArray(orderPayload?.result?.orders) ? orderPayload.result.orders : [];
+    const normalized = await this._attachAfterSalesStatus(this._dedupeRefundOrders(orders, sessionMeta));
+    if (normalized.length) {
+      return normalized;
+    }
+    const unshippedCount = Number(quantityResult?.unshipped || 0) || 0;
+    if (unshippedCount > 0) {
+      const unshippedPayload = await this._requestRefundOrderPageApi('/latitude/order/userUnshippedOrder', {
+        pageNo: 1,
+        pageSize: Math.min(Math.max(unshippedCount, 10), 50),
+        uid,
+      });
+      const unshippedOrders = Array.isArray(unshippedPayload?.result?.orders) ? unshippedPayload.result.orders : [];
+      return this._attachAfterSalesStatus(this._dedupeRefundOrders(unshippedOrders, sessionMeta));
+    }
+    return [];
+  }
+
+  async _extractRefundOrdersFromDom(sessionMeta = {}) {
+    if (typeof this._executeInPddPage !== 'function') return [];
+    const target = {
+      customerName: String(sessionMeta?.customerName || sessionMeta?.raw?.nick || sessionMeta?.raw?.nickname || '').trim(),
+      orderId: String(sessionMeta?.orderId || '').trim(),
+      customerId: String(sessionMeta?.customerId || sessionMeta?.raw?.customer_id || sessionMeta?.raw?.buyer_id || '').trim(),
+    };
+    const result = await this._executeInPddPage(`
+      (async () => {
+        const target = ${JSON.stringify(target)};
+        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+        const isVisible = el => {
+          if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+          const rect = el.getBoundingClientRect();
+          return rect.width > 20 && rect.height > 20 && el.offsetParent !== null;
+        };
+        const getText = el => String(el?.innerText || el?.textContent || '').replace(/\\s+/g, ' ').trim();
+        const maybeClickConversation = async () => {
+          const keywords = [target.orderId, target.customerName, target.customerId].filter(Boolean);
+          if (!keywords.length) return false;
+          const nodes = Array.from(document.querySelectorAll('div, li, section, article, a, button'));
+          const candidate = nodes.find(el => {
+            if (!isVisible(el)) return false;
+            const rect = el.getBoundingClientRect();
+            if (rect.left > window.innerWidth * 0.45 || rect.width < 120 || rect.height < 28) return false;
+            const text = getText(el);
+            if (!text || text.length > 300) return false;
+            return keywords.some(keyword => keyword && text.includes(keyword));
+          });
+          if (!candidate) return false;
+          candidate.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          candidate.click();
+          candidate.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          await sleep(500);
+          return true;
+        };
+        await maybeClickConversation();
+        const containers = Array.from(document.querySelectorAll(
+          '.right-panel, .order-panel, .customer-info, [class*="right-panel"], [class*="orderInfo"], [class*="goodsInfo"], [class*="order-panel"], [class*="customer-info"]'
+        )).filter(isVisible);
+        const container = containers.sort((a, b) => {
+          const rectA = a.getBoundingClientRect();
+          const rectB = b.getBoundingClientRect();
+          return (rectB.left + rectB.width) - (rectA.left + rectA.width);
+        })[0] || document.body;
+        const orderPattern = /订单号[:：]?\\s*([0-9-]{10,})/;
+        const pricePattern = /¥\\s*\\d+(?:\\.\\d+)?/;
+        const nodes = Array.from(container.querySelectorAll('div, li, section, article')).filter(isVisible);
+        const items = [];
+        const seen = new Set();
+        nodes.forEach((node, index) => {
+          const text = getText(node);
+          if (!text || text.length > 800) return;
+          const orderMatch = text.match(orderPattern);
+          if (!orderMatch?.[1]) return;
+          const orderId = orderMatch[1];
+          if (seen.has(orderId)) return;
+          const rect = node.getBoundingClientRect();
+          if (rect.width < 160 || rect.height < 50) return;
+          const titleEl = node.querySelector('[class*="title"], [class*="name"], strong, h3, h4, h5');
+          const img = node.querySelector('img');
+          const titleText = getText(titleEl) || (img?.getAttribute('alt') || '').trim();
+          const priceMatch = text.match(pricePattern);
+          const quantityMatch = text.match(/x\\s*\\d+/i);
+          items.push({
+            orderId,
+            title: titleText || ('订单 ' + (index + 1)),
+            imageUrl: img?.src || '',
+            amountText: priceMatch?.[0] || '待确认',
+            detailText: quantityMatch?.[0] || '消费者订单',
+          });
+          seen.add(orderId);
+        });
+        return items;
+      })()
+    `);
+    return Array.isArray(result) ? result : [];
+  }
+
+  async getRefundOrders(sessionRef) {
+    const sessionMeta = this._normalizeSessionMeta(sessionRef);
+    try {
+      const pageOrders = await this._extractRefundOrdersFromPageApis(sessionMeta);
+      if (Array.isArray(pageOrders)) {
+        return pageOrders;
+      }
+    } catch (error) {
+      this._log('[API] 售后订单接口查询失败', { message: error.message });
+    }
+    try {
+      const domOrders = await this._extractRefundOrdersFromDom(sessionMeta);
+      const normalizedDomOrders = this._dedupeRefundOrders(domOrders, sessionMeta);
+      if (normalizedDomOrders.length) {
+        return normalizedDomOrders;
+      }
+    } catch (error) {
+      this._log('[API] 售后订单 DOM 提取失败', { message: error.message });
+    }
+    const bucket = [];
+    const visited = new WeakSet();
+    [
+      sessionMeta?.goodsInfo,
+      sessionMeta?.raw?.goods_info,
+      sessionMeta?.raw?.goods,
+      sessionMeta?.raw?.orders,
+      sessionMeta?.raw?.order_list,
+      sessionMeta?.raw?.orderList,
+      sessionMeta?.raw?.order_info,
+      sessionMeta?.raw?.orderInfo,
+      sessionMeta?.raw,
+    ].forEach(source => this._collectRefundOrderNodes(source, bucket, visited));
+    let messages = [];
+    try {
+      messages = await this.getSessionMessages(sessionMeta, 1, 50);
+    } catch (error) {
+      this._log('[API] 售后订单消息回退失败', { message: error.message });
+    }
+    const merged = bucket
+      .map((item, index) => this._normalizeRefundOrder(item, sessionMeta, index))
+      .concat(this._extractRefundOrdersFromMessages(sessionMeta, messages))
+      .concat(this._extractRefundOrdersFromTraffic(sessionMeta));
+    return this._dedupeRefundOrders(merged, sessionMeta);
   }
 
   async getSessionMessages(sessionRef, page = 1, pageSize = 30) {

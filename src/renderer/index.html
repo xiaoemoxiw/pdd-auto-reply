@@ -670,7 +670,7 @@
     }
 
     .modal-header {
-      padding: 16px 20px;
+      padding: 8px 20px;
       border-bottom: 1px solid #e8e8e8;
       display: flex;
       align-items: center;
@@ -756,6 +756,238 @@
       font-size: 12px;
       color: #999;
       margin-top: 4px;
+    }
+
+    .api-refund-modal {
+      width: 420px;
+    }
+
+    .api-refund-order-select-modal {
+      width: 660px;
+    }
+
+    .api-refund-order-select-tip {
+      font-size: 13px;
+      color: #969696;
+      margin-bottom: 12px;
+    }
+
+    .api-refund-order-select-list {
+      border: 1px solid #eceff5;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .api-refund-order-select-list.is-scrollable {
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .api-refund-order-select-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 16px 18px;
+      border-bottom: 1px solid #f0f2f5;
+    }
+
+    .api-refund-order-select-item:last-child {
+      border-bottom: none;
+    }
+
+    .api-refund-order-select-media {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f0f2f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #999;
+      font-size: 12px;
+    }
+
+    .api-refund-order-select-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .api-refund-order-select-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .api-refund-order-select-id {
+      font-size: 12px;
+      color: #777;
+      margin-bottom: 6px;
+      word-break: break-all;
+    }
+
+    .api-refund-order-select-title {
+      font-size: 15px;
+      color: #333;
+      line-height: 1.45;
+      font-weight: 500;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
+
+    .api-refund-order-select-detail {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #666;
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
+
+    .api-refund-order-select-price {
+      margin-top: 6px;
+      font-size: 14px;
+      color: #111;
+      font-weight: 600;
+    }
+
+    .api-refund-order-select-status {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #e02e24;
+      line-height: 1.4;
+    }
+
+    .api-refund-order-select-action {
+      flex-shrink: 0;
+      padding-top: 14px;
+    }
+
+    .api-refund-order-select-action .btn {
+      min-width: 86px;
+    }
+
+    .api-refund-order-empty {
+      text-align: center;
+      padding: 36px 20px;
+      color: #999;
+      font-size: 13px;
+    }
+
+    .api-refund-order-card {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f7f8fa;
+      margin-bottom: 18px;
+    }
+
+    .api-refund-order-media {
+      width: 48px;
+      height: 48px;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #f0f2f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #999;
+      font-size: 12px;
+    }
+
+    .api-refund-order-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    .api-refund-order-info {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .api-refund-order-id {
+      font-size: 12px;
+      color: #666;
+      line-height: 1.4;
+      word-break: break-all;
+    }
+
+    .api-refund-order-title {
+      font-size: 13px;
+      color: #333;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .api-refund-order-price {
+      font-size: 14px;
+      color: #222;
+      font-weight: 600;
+    }
+
+    .api-refund-type-group {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-height: 36px;
+    }
+
+    .api-refund-radio {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #333;
+      cursor: pointer;
+    }
+
+    .api-refund-radio input {
+      margin: 0;
+      accent-color: #4c6ef5;
+    }
+
+    .api-refund-required {
+      color: #e02e24;
+      margin-right: 4px;
+    }
+
+    .api-refund-note-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .api-refund-note-count {
+      font-size: 12px;
+      color: #999;
+      white-space: nowrap;
+    }
+
+    .api-refund-note {
+      min-height: 92px;
+      resize: none;
+    }
+
+    .api-refund-amount:disabled {
+      background: #f5f5f5;
+      color: #666;
+      cursor: default;
     }
 
     .checkbox-group {
@@ -3639,12 +3871,11 @@
                       <path d="M12.7 16l2.7-2.7a1 1 0 0 1 1.4 0l1.7 1.7"></path>
                     </svg>
                   </button>
-                  <!-- <span>📁</span>
-                  <span>🎫</span> -->
+                  <span>视频</span>
+                  <!-- <span>🎫</span> -->
                   <span>🔗</span>
-                  <span>⤴</span>
                   <span>🛡</span>
-                  <span>退</span>
+                  <span id="btnApiRefund">退</span>
                   <span class="api-composer-action-link" style="margin-left:auto;">邀请关注</span>
                   <span class="api-composer-action-link">邀请下单</span>
                   <span class="api-composer-action-link">小额打款</span>
@@ -4570,6 +4801,93 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modalApiRefundOrderSelect">
+    <div class="modal api-refund-order-select-modal">
+      <div class="modal-header">
+        <h3>帮消费者申请售后</h3>
+        <button class="modal-close" onclick="hideModal('modalApiRefundOrderSelect')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="api-refund-order-select-tip">仅展示该买家近三年内的支付成功订单</div>
+        <div class="api-refund-order-select-list" id="apiRefundOrderList"></div>
+        <div class="api-refund-order-empty" id="apiRefundOrderEmpty" style="display:none;">当前会话暂无可选订单</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalApiRefund">
+    <div class="modal api-refund-modal">
+      <div class="modal-header">
+        <h3>帮消费者申请售后</h3>
+        <button class="modal-close" onclick="hideModal('modalApiRefund')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="api-refund-order-card">
+          <div class="api-refund-order-media">
+            <img id="apiRefundGoodsImage" alt="商品主图">
+            <span id="apiRefundGoodsPlaceholder">商品</span>
+          </div>
+          <div class="api-refund-order-info">
+            <div class="api-refund-order-id" id="apiRefundOrderId">订单编号：-</div>
+            <div class="api-refund-order-title" id="apiRefundGoodsTitle">当前会话暂无订单商品信息</div>
+            <div class="api-refund-order-price" id="apiRefundGoodsPrice">-</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label"><span class="api-refund-required">*</span>申请类型</label>
+          <div class="api-refund-type-group">
+            <label class="api-refund-radio">
+              <input type="radio" name="apiRefundType" value="refund" checked>
+              <span>退款</span>
+            </label>
+            <label class="api-refund-radio">
+              <input type="radio" name="apiRefundType" value="refund" checked>
+              <span>退货退款</span>
+            </label>
+            <label class="api-refund-radio">
+              <input type="radio" name="apiRefundType" value="resend">
+              <span>补寄</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" id="apiRefundReasonLabel"><span class="api-refund-required">*</span>退款原因</label>
+          <select class="form-select" id="apiRefundReason">
+            <option value="" id="apiRefundReasonPlaceholder">请选择退款原因</option>
+            <option value="不喜欢">不喜欢、效果不好</option>
+            <option value="不想要了">不想要了</option>
+            <option value="缺货">缺货</option>
+            <option value="发货慢">发货慢</option>
+            <option value="质量问题">质量问题</option>
+            <option value="卖家发错货">卖家发错货</option>
+            <option value="空包裹">空包裹</option>
+            <option value="其他原因">其他原因</option>
+            <option value="收到商品少件（含少配件）">收到商品少件（含少配件）</option>
+            <option value="商品破损或污渍">商品破损或污渍</option>
+          </select>
+        </div>
+        <div class="form-group" id="apiRefundAmountGroup">
+          <label class="form-label" id="apiRefundAmountLabel"><span class="api-refund-required">*</span>退款金额</label>
+          <input class="form-input api-refund-amount" id="apiRefundAmount" type="number" inputmode="decimal" min="0"
+            step="0.01" placeholder="请输入退款金额">
+        </div>
+        <div class="form-group">
+          <div class="api-refund-note-header">
+            <label class="form-label" for="apiRefundNote">添加留言</label>
+            <span class="api-refund-note-count" id="apiRefundNoteCount">0 / 200</span>
+          </div>
+          <textarea class="form-textarea api-refund-note" id="apiRefundNote" maxlength="200"></textarea>
+          <div class="form-hint" id="apiRefundNoteHint">请友好说明您希望消费者申请退款的意愿，避免产生误解和纠纷</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnApiRefundBack">重选订单</button>
+        <button class="btn btn-secondary" onclick="hideModal('modalApiRefund')">取消</button>
+        <button class="btn btn-primary" id="btnApiRefundSubmit">提交</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 日志已移至独立调试窗口 -->
 
   <div class="toast-msg" id="toastMsg"></div>
@@ -4734,6 +5052,7 @@
           apiSelectedShopId,
           apiSessions,
           apiMessages,
+          apiTrafficEntries,
           apiSessionTab,
           apiSideTab,
           apiSessionKeyword,

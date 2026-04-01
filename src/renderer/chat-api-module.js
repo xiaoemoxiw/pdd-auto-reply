@@ -3,6 +3,12 @@
   let apiPendingReplyTicker = null;
   let apiPendingReplySignature = '';
   let apiActivePendingReplySignature = '';
+  let apiRefundOrderCandidates = [];
+  let apiRefundSelectedOrder = null;
+  let apiRefundAllowOrderReselect = true;
+  let apiRefundCustomAmount = '';
+  const API_REFUND_DEFAULT_NOTE = '亲亲，这边帮您申请退款，您看可以吗？若同意可以点击下方卡片按钮哦～';
+  const API_RESEND_DEFAULT_NOTE = '亲亲，这边帮您申请补寄，您看可以吗？若同意可以点击下方卡片按钮哦～';
 
   function getRuntime() {
     return window.__chatApiModuleAccess || {};
@@ -186,6 +192,588 @@
     const hintEl = document.getElementById('apiComposerHint');
     if (!hintEl) return;
     hintEl.textContent = text;
+  }
+
+  function pickApiRefundText(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const value = source[key];
+        if (typeof value === 'string' && value.trim()) return value.trim();
+      }
+    }
+    return '';
+  }
+
+  function pickApiRefundNumber(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const numeric = Number(source[key]);
+        if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      }
+    }
+    return 0;
+  }
+
+  function formatApiRefundAmount(value) {
+    if (value === undefined || value === null || value === '') return '';
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (!text) return '';
+      if (/^¥/.test(text)) return text;
+      const numeric = Number(text.replace(/[^\d.-]/g, ''));
+      if (Number.isFinite(numeric) && numeric > 0) return formatApiRefundAmount(numeric);
+      return text;
+    }
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '';
+    const amount = Number.isInteger(numeric) && numeric >= 1000 ? numeric / 100 : numeric;
+    return `¥ ${amount.toFixed(2)}`;
+  }
+
+  function normalizeApiRefundAmountInputValue(value) {
+    const text = String(value ?? '').trim();
+    if (!text) return '';
+    const sanitized = text.replace(/[^\d.]/g, '');
+    if (!sanitized) return '';
+    const parts = sanitized.split('.');
+    const integerPart = (parts.shift() || '').replace(/^0+(?=\d)/, '');
+    const decimalPart = parts.join('').slice(0, 2);
+    const normalizedIntegerPart = integerPart || '0';
+    return decimalPart ? `${normalizedIntegerPart}.${decimalPart}` : normalizedIntegerPart;
+  }
+
+  function formatApiRefundAmountInputValue(value) {
+    const normalized = normalizeApiRefundAmountInputValue(value);
+    if (!normalized) return '';
+    const numeric = Number(normalized);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '';
+    return numeric.toFixed(2);
+  }
+
+  function getApiRefundMaxAmountInputValue(context = getSelectedApiRefundContext()) {
+    return formatApiRefundAmountInputValue(context?.amountText);
+  }
+
+  function clampApiRefundAmountInputValue(value, options = {}) {
+    const normalized = options.formatted
+      ? formatApiRefundAmountInputValue(value)
+      : normalizeApiRefundAmountInputValue(value);
+    if (!normalized) return '';
+    const maxAmount = getApiRefundMaxAmountInputValue(options.context);
+    if (!maxAmount) return normalized;
+    const numeric = Number(normalized);
+    const maxNumeric = Number(maxAmount);
+    if (!Number.isFinite(numeric) || !Number.isFinite(maxNumeric)) return normalized;
+    if (numeric > maxNumeric) {
+      return options.formatted ? maxAmount : normalizeApiRefundAmountInputValue(maxAmount);
+    }
+    return normalized;
+  }
+
+  function normalizeApiRefundAmountByKeys(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const rawValue = source[key];
+        if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+        if (typeof rawValue === 'string') {
+          const text = rawValue.trim();
+          if (!text) continue;
+          if (/^¥/.test(text)) return text;
+          if (text.includes('.')) {
+            const decimal = Number(text);
+            if (Number.isFinite(decimal) && decimal > 0) return `¥ ${decimal.toFixed(2)}`;
+          }
+          const integer = Number(text);
+          if (Number.isFinite(integer) && integer > 0) return `¥ ${(integer / 100).toFixed(2)}`;
+          continue;
+        }
+        const numeric = Number(rawValue);
+        if (Number.isFinite(numeric) && numeric > 0) {
+          return `¥ ${(numeric / 100).toFixed(2)}`;
+        }
+      }
+    }
+    return '';
+  }
+
+  function normalizeApiRefundAmountText(value) {
+    if (value === undefined || value === null || value === '') return '';
+    const text = String(value).trim();
+    if (!text) return '';
+    if (/^¥/.test(text)) return text;
+    const formatted = formatApiRefundAmount(text);
+    return formatted || text;
+  }
+
+  function formatApiRefundPaidText(value) {
+    const amountText = String(value || '').trim();
+    return amountText ? `实付：${amountText}` : '实付待确认';
+  }
+
+  function normalizeApiRefundOrderContext(order = {}, fallback = {}, index = 0) {
+    const sources = [
+      order,
+      order?.orderGoodsList,
+      order?.order_goods_list,
+      order?.goods_info,
+      order?.goodsInfo,
+      order?.goods,
+      order?.order_info,
+      order?.orderInfo,
+      fallback?.goodsInfo,
+      fallback?.raw?.goods_info,
+      fallback?.raw?.goods,
+      fallback?.raw,
+      fallback,
+    ].filter(Boolean);
+    const orderId = String(
+      pickApiRefundText(sources, ['order_id', 'order_sn', 'orderSn', 'parent_order_sn', 'mall_order_sn', 'orderId'])
+      || fallback?.orderId
+      || ''
+    ).trim();
+    const title = pickApiRefundText(sources, ['goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'title'])
+      || fallback?.title
+      || `订单 ${index + 1}`;
+    const imageUrl = pickApiRefundText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url']);
+    const rawAmountText = pickApiRefundText(sources, ['amountText']);
+    const amountText = normalizeApiRefundAmountByKeys(rawAmountText ? [{ amountText: rawAmountText }] : [], ['amountText'])
+      || normalizeApiRefundAmountByKeys(sources, ['order_amount', 'orderAmount', 'pay_amount', 'refund_amount', 'amount', 'order_price', 'price'])
+      || normalizeApiRefundAmountText(pickApiRefundText(sources, ['priceText', 'price_text']))
+      || formatApiRefundAmount(pickApiRefundNumber(sources, ['goodsPrice', 'min_price', 'group_price']))
+      || '待确认';
+    const quantityValue = pickApiRefundText(sources, ['quantity', 'num', 'count', 'goods_count', 'goodsNumber', 'buy_num', 'buyNum']) || String(pickApiRefundNumber(sources, ['quantity', 'num', 'count', 'goods_count', 'goodsNumber', 'buy_num', 'buyNum']) || '').trim();
+    const specText = pickApiRefundText(sources, ['specText', 'spec_text', 'spec', 'sku_spec', 'skuSpec', 'spec_desc', 'specDesc', 'sub_name', 'subName']);
+    const afterSalesStatus = pickApiRefundText(sources, ['afterSalesStatus', 'after_sales_status', 'afterSalesStatusDesc', 'after_sales_status_desc']);
+    const normalizedQuantity = String(quantityValue || '').replace(/^x/i, '').trim();
+    const detailText = pickApiRefundText(sources, ['detailText', 'detail_text']) || (normalizedQuantity && specText
+      ? `${normalizedQuantity}x${specText}`
+      : (specText || (normalizedQuantity ? `${normalizedQuantity}x` : '当前会话订单')));
+    const key = `${orderId || 'order'}::${title}::${index}`;
+    return {
+      key,
+      orderId: orderId || '-',
+      title,
+      imageUrl,
+      amountText,
+      detailText,
+      afterSalesStatus,
+    };
+  }
+
+  function getApiRefundContext(session = {}) {
+    return normalizeApiRefundOrderContext(session, {
+      orderId: session?.orderId || '',
+      title: '当前会话暂无订单商品信息',
+    }, 0);
+  }
+
+  function getApiRefundOrderCandidatesFromMessages(session = {}, messages = []) {
+    const list = Array.isArray(messages) ? messages : [];
+    const result = [];
+    list.forEach((message, index) => {
+      const linkInfo = extractApiGoodsLinkInfo(message);
+      const fallbackCard = linkInfo ? buildApiGoodsCardFallback(linkInfo, message, session) : null;
+      const rawSources = [
+        message?.extra,
+        message?.raw?.extra,
+        message?.raw,
+        fallbackCard,
+      ].filter(Boolean);
+      if (!rawSources.length) return;
+      const hasOrderHint = rawSources.some(item => looksLikeApiRefundOrderNode(item));
+      if (!hasOrderHint && !fallbackCard?.title && !fallbackCard?.imageUrl) return;
+      result.push(normalizeApiRefundOrderContext({
+        ...fallbackCard,
+        ...message?.raw,
+        ...message?.extra,
+        order_id: pickApiRefundText(rawSources, ['order_id', 'order_sn', 'parent_order_sn', 'mall_order_sn']) || session?.orderId || '',
+      }, session, index));
+    });
+    return result;
+  }
+
+  function getApiRefundOrderCandidatesFromTraffic(session = {}, entries = []) {
+    const list = Array.isArray(entries) ? entries : [];
+    const bucket = [];
+    const visited = new WeakSet();
+    list
+      .filter(entry => {
+        const url = String(entry?.url || '');
+        return /order|goods|trade|pay|after/i.test(url);
+      })
+      .slice(0, 20)
+      .forEach(entry => {
+        collectApiRefundOrderNodes(entry?.responseBody, bucket, visited);
+        collectApiRefundOrderNodes(entry?.requestBody, bucket, visited);
+      });
+    return bucket.map((item, index) => normalizeApiRefundOrderContext(item, session, index));
+  }
+
+  function looksLikeApiRefundOrderNode(node = {}) {
+    if (!node || typeof node !== 'object') return false;
+    return [
+      'order_id',
+      'order_sn',
+      'parent_order_sn',
+      'mall_order_sn',
+      'orderId',
+    ].some(key => {
+      const value = node[key];
+      return value !== undefined && value !== null && String(value).trim() !== '';
+    });
+  }
+
+  function collectApiRefundOrderNodes(node, bucket, visited, depth = 0) {
+    if (!node || depth > 4) return;
+    if (Array.isArray(node)) {
+      node.slice(0, 20).forEach(item => collectApiRefundOrderNodes(item, bucket, visited, depth + 1));
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (visited.has(node)) return;
+    visited.add(node);
+    if (looksLikeApiRefundOrderNode(node)) {
+      bucket.push(node);
+    }
+    Object.values(node).forEach(value => {
+      if (value && typeof value === 'object') {
+        collectApiRefundOrderNodes(value, bucket, visited, depth + 1);
+      }
+    });
+  }
+
+  function getApiRefundOrderCandidates(session = {}) {
+    const state = getState();
+    const bucket = [];
+    const visited = new WeakSet();
+    [
+      session?.goodsInfo,
+      session?.raw?.goods_info,
+      session?.raw?.goods,
+      session?.raw?.orders,
+      session?.raw?.order_list,
+      session?.raw?.orderList,
+      session?.raw?.order_info,
+      session?.raw?.orderInfo,
+      session?.raw,
+    ].forEach(source => collectApiRefundOrderNodes(source, bucket, visited));
+    const normalized = bucket.map((item, index) => normalizeApiRefundOrderContext(item, session, index))
+      .concat(getApiRefundOrderCandidatesFromMessages(session, state.apiMessages || []))
+      .concat(getApiRefundOrderCandidatesFromTraffic(session, state.apiTrafficEntries || []));
+    return dedupeApiRefundOrders(normalized, session);
+  }
+
+  function dedupeApiRefundOrders(list = [], session = {}) {
+    const deduped = [];
+    const seen = new Set();
+    list.forEach(item => {
+      if (!item?.orderId || item.orderId === '-') return;
+      const signature = [item.orderId, item.title, item.imageUrl, item.amountText].join('::');
+      if (!signature.replace(/[:\-]/g, '')) return;
+      if (seen.has(signature)) return;
+      seen.add(signature);
+      deduped.push(item);
+    });
+    if (!deduped.length) {
+      const fallback = getApiRefundContext(session);
+      if (fallback?.orderId && fallback.orderId !== '-') {
+        deduped.push(fallback);
+      }
+    }
+    return deduped;
+  }
+
+  function renderApiRefundOrderSelector() {
+    const listEl = document.getElementById('apiRefundOrderList');
+    const emptyEl = document.getElementById('apiRefundOrderEmpty');
+    if (!listEl || !emptyEl) return;
+    listEl.classList.toggle('is-scrollable', apiRefundOrderCandidates.length > 2);
+    if (!apiRefundOrderCandidates.length) {
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+    listEl.innerHTML = apiRefundOrderCandidates.map(order => `
+      <div class="api-refund-order-select-item">
+        <div class="api-refund-order-select-media">
+          ${order.imageUrl ? `<img src="${esc(order.imageUrl)}" alt="${esc(order.title || '订单商品')}">` : '<span>商品</span>'}
+        </div>
+        <div class="api-refund-order-select-main">
+          <div class="api-refund-order-select-id">订单号：${esc(order.orderId || '-')}</div>
+          <div class="api-refund-order-select-title">${esc(order.title || '订单商品')}</div>
+          <div class="api-refund-order-select-detail">${esc(order.detailText || '当前会话订单')}</div>
+          <div class="api-refund-order-select-price">${esc(formatApiRefundPaidText(order.amountText))}</div>
+          ${order.afterSalesStatus ? `<div class="api-refund-order-select-status">售后：${esc(order.afterSalesStatus)}</div>` : ''}
+        </div>
+        <div class="api-refund-order-select-action">
+          <button class="btn btn-primary" type="button" data-api-refund-order-key="${esc(order.key)}">选择订单</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function updateApiRefundNoteCount() {
+    const textarea = document.getElementById('apiRefundNote');
+    const counter = document.getElementById('apiRefundNoteCount');
+    if (!textarea || !counter) return;
+    counter.textContent = `${textarea.value.length} / 200`;
+  }
+
+  function showApiRefundOrderEmptyHint() {
+    const toastEl = document.getElementById('toastMsg');
+    if (toastEl) {
+      toastEl.textContent = '90天内无有效订单';
+      toastEl.classList.add('show');
+      setTimeout(() => {
+        toastEl.classList.remove('show');
+      }, 2000);
+    }
+    setApiHint('90天内无有效订单');
+  }
+
+  function getApiRefundTypeMeta(type = 'refund') {
+    if (type === 'resend') {
+      return {
+        actionText: '补寄',
+        reasonLabel: '补寄原因',
+        amountLabel: '补寄金额',
+        amountText: '无需退款',
+        defaultNote: API_RESEND_DEFAULT_NOTE,
+        noteHint: '请友好说明您希望消费者申请补寄的意愿，避免产生误解和纠纷',
+      };
+    }
+    return {
+      actionText: '退款',
+      reasonLabel: '退款原因',
+      amountLabel: '退款金额',
+      amountText: '',
+      defaultNote: API_REFUND_DEFAULT_NOTE,
+      noteHint: '请友好说明您希望消费者申请退款的意愿，避免产生误解和纠纷',
+    };
+  }
+
+  function getCurrentApiRefundType() {
+    return document.querySelector('input[name="apiRefundType"]:checked')?.value || 'refund';
+  }
+
+  function getSelectedApiRefundContext() {
+    return apiRefundSelectedOrder || getApiRefundContext(getApiActiveSession() || getState());
+  }
+
+  function syncApiRefundFormByType(options = {}) {
+    const type = options.type || getCurrentApiRefundType();
+    const meta = getApiRefundTypeMeta(type);
+    const context = options.context || getSelectedApiRefundContext();
+    const reasonLabel = document.getElementById('apiRefundReasonLabel');
+    const reasonPlaceholder = document.getElementById('apiRefundReasonPlaceholder');
+    const amountLabel = document.getElementById('apiRefundAmountLabel');
+    const amountInput = document.getElementById('apiRefundAmount');
+    const noteInput = document.getElementById('apiRefundNote');
+    const noteHint = document.getElementById('apiRefundNoteHint');
+    const nextAmountText = type === 'resend'
+      ? ''
+      : clampApiRefundAmountInputValue(
+        apiRefundCustomAmount || normalizeApiRefundAmountInputValue(context.amountText),
+        { context }
+      );
+    if (reasonLabel) {
+      reasonLabel.innerHTML = `<span class="api-refund-required">*</span>${meta.reasonLabel}`;
+    }
+    if (reasonPlaceholder) {
+      reasonPlaceholder.textContent = `请选择${meta.reasonLabel}`;
+    }
+    if (amountLabel) {
+      amountLabel.innerHTML = `<span class="api-refund-required">*</span>${meta.amountLabel}`;
+    }
+    if (amountInput) {
+      amountInput.disabled = type === 'resend';
+      amountInput.placeholder = type === 'resend'
+        ? meta.amountText
+        : (nextAmountText ? '' : '请输入退款金额');
+      amountInput.value = nextAmountText;
+    }
+    if (type !== 'resend') {
+      apiRefundCustomAmount = nextAmountText;
+    }
+    if (noteHint) {
+      noteHint.textContent = meta.noteHint;
+    }
+    if (noteInput) {
+      const previousDefaults = [API_REFUND_DEFAULT_NOTE, API_RESEND_DEFAULT_NOTE, ''];
+      if (options.forceNote || previousDefaults.includes(noteInput.value.trim())) {
+        noteInput.value = meta.defaultNote;
+      }
+    }
+    updateApiRefundNoteCount();
+  }
+
+  function fillApiRefundModal(order = {}) {
+    const context = order?.key ? order : getApiRefundContext(order);
+    apiRefundSelectedOrder = context;
+    const image = document.getElementById('apiRefundGoodsImage');
+    const placeholder = document.getElementById('apiRefundGoodsPlaceholder');
+    const orderIdEl = document.getElementById('apiRefundOrderId');
+    const titleEl = document.getElementById('apiRefundGoodsTitle');
+    const priceEl = document.getElementById('apiRefundGoodsPrice');
+    const amountInput = document.getElementById('apiRefundAmount');
+    const reasonSelect = document.getElementById('apiRefundReason');
+    const noteInput = document.getElementById('apiRefundNote');
+    const refundTypeInput = document.querySelector('input[name="apiRefundType"][value="refund"]');
+    apiRefundCustomAmount = clampApiRefundAmountInputValue(context.amountText, { context });
+    if (orderIdEl) orderIdEl.textContent = `订单编号：${context.orderId}`;
+    if (titleEl) titleEl.textContent = context.title;
+    if (priceEl) priceEl.textContent = formatApiRefundPaidText(context.amountText);
+    if (amountInput) amountInput.value = apiRefundCustomAmount;
+    if (reasonSelect) reasonSelect.value = '';
+    if (noteInput) noteInput.value = API_REFUND_DEFAULT_NOTE;
+    if (refundTypeInput) refundTypeInput.checked = true;
+    if (image) {
+      image.src = context.imageUrl || '';
+      image.style.display = context.imageUrl ? 'block' : 'none';
+    }
+    if (placeholder) placeholder.style.display = context.imageUrl ? 'none' : 'inline';
+    syncApiRefundFormByType({ type: 'refund', context, forceNote: true });
+  }
+
+  function syncApiRefundBackButton() {
+    const backButton = document.getElementById('btnApiRefundBack');
+    if (!backButton) return;
+    backButton.style.display = apiRefundAllowOrderReselect ? '' : 'none';
+  }
+
+  function openApiRefundModal(order = null, options = {}) {
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    apiRefundAllowOrderReselect = typeof options.allowOrderReselect === 'boolean'
+      ? options.allowOrderReselect
+      : apiRefundOrderCandidates.length > 1;
+    fillApiRefundModal(order || getSelectedApiRefundContext());
+    syncApiRefundBackButton();
+    window.showModal?.('modalApiRefund');
+  }
+
+  function closeApiRefundModal() {
+    window.hideModal?.('modalApiRefund');
+  }
+
+  async function openApiRefundOrderSelector() {
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    const session = getApiActiveSession() || {
+      sessionId: state.apiActiveSessionId,
+      shopId: state.apiActiveSessionShopId,
+      customerName: state.apiActiveSessionName,
+      orderId: state.apiActiveSessionId,
+    };
+    let remoteOrders = [];
+    if (window.pddApi?.apiGetRefundOrders) {
+      try {
+        const result = await window.pddApi.apiGetRefundOrders({
+          shopId: state.apiActiveSessionShopId,
+          sessionId: state.apiActiveSessionId,
+          session,
+        });
+        if (Array.isArray(result)) {
+          remoteOrders = result.map((item, index) => normalizeApiRefundOrderContext(item, session, index));
+        }
+      } catch {}
+    }
+    apiRefundOrderCandidates = dedupeApiRefundOrders(
+      remoteOrders.concat(getApiRefundOrderCandidates(session)),
+      session
+    );
+    if (!apiRefundOrderCandidates.length) {
+      apiRefundSelectedOrder = null;
+      closeApiRefundOrderSelector();
+      showApiRefundOrderEmptyHint();
+      return;
+    }
+    if (apiRefundOrderCandidates.length === 1) {
+      apiRefundSelectedOrder = apiRefundOrderCandidates[0] || null;
+      closeApiRefundOrderSelector();
+      openApiRefundModal(apiRefundSelectedOrder, { allowOrderReselect: false });
+      return;
+    }
+    apiRefundSelectedOrder = apiRefundOrderCandidates[0] || null;
+    renderApiRefundOrderSelector();
+    window.showModal?.('modalApiRefundOrderSelect');
+  }
+
+  function closeApiRefundOrderSelector() {
+    window.hideModal?.('modalApiRefundOrderSelect');
+  }
+
+  function handleApiRefundOrderSelection(event) {
+    const button = event.target.closest('[data-api-refund-order-key]');
+    if (!button) return;
+    const key = String(button.dataset.apiRefundOrderKey || '');
+    const selected = apiRefundOrderCandidates.find(item => item.key === key);
+    if (!selected) return;
+    apiRefundSelectedOrder = selected;
+    closeApiRefundOrderSelector();
+    openApiRefundModal(selected, { allowOrderReselect: true });
+  }
+
+  function handleApiRefundBack() {
+    closeApiRefundModal();
+    openApiRefundOrderSelector();
+  }
+
+  function handleApiRefundSubmit() {
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      closeApiRefundModal();
+      return;
+    }
+    const refundType = getCurrentApiRefundType();
+    const reasonSelect = document.getElementById('apiRefundReason');
+    const selectedReason = reasonSelect?.selectedOptions?.[0] || null;
+    const reason = String(selectedReason?.value || '').trim()
+      ? String(selectedReason?.textContent || selectedReason.value).trim()
+      : '';
+    if (!reason) {
+      setApiHint('请选择退款原因');
+      return;
+    }
+    const orderContext = getSelectedApiRefundContext();
+    let amountText = '';
+    if (refundType !== 'resend') {
+      amountText = clampApiRefundAmountInputValue(document.getElementById('apiRefundAmount')?.value, {
+        context: orderContext,
+        formatted: true,
+      });
+      if (!amountText) {
+        setApiHint('请输入正确的退款金额');
+        return;
+      }
+      apiRefundCustomAmount = amountText;
+      const amountInput = document.getElementById('apiRefundAmount');
+      if (amountInput) amountInput.value = amountText;
+    }
+    const noteText = String(document.getElementById('apiRefundNote')?.value || '').trim();
+    const input = document.getElementById('apiMessageInput');
+    if (input && noteText) {
+      input.value = noteText;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+    const actionText = getApiRefundTypeMeta(refundType).actionText;
+    const amountDetail = refundType === 'resend' ? '' : (amountText ? `；金额：${amountText}` : '');
+    const orderDetail = orderContext?.orderId && orderContext.orderId !== '-' ? `；订单：${orderContext.orderId}` : '';
+    recordApiSyncState('退款弹窗', `类型：${actionText}${orderDetail}；原因：${reason}${amountDetail}`);
+    closeApiRefundModal();
+    setApiHint(`已生成${actionText}留言，请确认后发送`);
   }
 
   function getApiMessageReadState(message = {}) {
@@ -1121,6 +1709,30 @@
     document.getElementById('btnApiTransfer')?.addEventListener('click', handleApiTransfer);
     document.getElementById('btnApiRisk')?.addEventListener('click', handleApiRisk);
     document.getElementById('btnApiStar')?.addEventListener('click', handleApiStar);
+    document.getElementById('btnApiRefund')?.addEventListener('click', openApiRefundOrderSelector);
+    document.getElementById('apiRefundOrderList')?.addEventListener('click', handleApiRefundOrderSelection);
+    document.getElementById('btnApiRefundBack')?.addEventListener('click', handleApiRefundBack);
+    document.getElementById('btnApiRefundSubmit')?.addEventListener('click', handleApiRefundSubmit);
+    document.getElementById('apiRefundNote')?.addEventListener('input', updateApiRefundNoteCount);
+    document.getElementById('apiRefundAmount')?.addEventListener('input', event => {
+      const nextValue = clampApiRefundAmountInputValue(event.target?.value);
+      apiRefundCustomAmount = nextValue;
+      if (event.target && event.target.value !== nextValue) {
+        event.target.value = nextValue;
+      }
+    });
+    document.getElementById('apiRefundAmount')?.addEventListener('blur', event => {
+      const nextValue = clampApiRefundAmountInputValue(event.target?.value, { formatted: true });
+      apiRefundCustomAmount = nextValue;
+      if (event.target) {
+        event.target.value = nextValue;
+      }
+    });
+    document.querySelectorAll('input[name="apiRefundType"]').forEach(input => {
+      input.addEventListener('change', () => {
+        syncApiRefundFormByType();
+      });
+    });
     document.getElementById('apiMessageInput')?.addEventListener('keydown', handleApiMessageInputKeydown);
 
     document.getElementById('btnApiQuickReply')?.addEventListener('click', async () => {

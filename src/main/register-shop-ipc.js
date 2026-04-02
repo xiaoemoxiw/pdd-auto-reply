@@ -61,6 +61,17 @@ function registerShopIpc({
     return shopManager.removeShop(shopId);
   });
 
+  ipcMain.handle('refresh-shop-profile', async (event, shopId) => {
+    const shopManager = getShopManager();
+    if (!shopManager) return { success: false, error: '店铺管理器未初始化' };
+    try {
+      return await shopManager.refreshShopProfile(shopId);
+    } catch (error) {
+      console.error('[PDD助手] 手动获取店铺信息失败:', error.message);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('import-token-file', async () => {
     const shopManager = getShopManager();
     if (!shopManager) return { error: '店铺管理器未初始化' };

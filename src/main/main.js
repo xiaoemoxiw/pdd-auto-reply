@@ -23,6 +23,7 @@ const { registerEmbeddedViewIpc } = require('./register-embedded-view-ipc');
 const Store = require('electron-store');
 
 app.disableHardwareAcceleration();
+configureChromiumLogging();
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -217,6 +218,16 @@ app.on('second-instance', () => {
 
 function isDevelopmentMode() {
   return process.env.NODE_ENV === 'development';
+}
+
+function configureChromiumLogging() {
+  if (isDevelopmentMode()) {
+    app.commandLine.appendSwitch('enable-logging');
+    app.commandLine.appendSwitch('log-level', '0');
+    return;
+  }
+
+  app.commandLine.appendSwitch('log-level', '3');
 }
 
 function clearRendererReloadTimer() {
@@ -991,6 +1002,14 @@ function updateShopStatus(shopId, status) {
   if (!target || target.status === status) return;
   target.status = status;
   store.set('shops', shops);
+  if (status === 'expired' && shopManager?.getActiveShopId() === shopId) {
+    const shouldShowView = !!mainWindow && isEmbeddedPddView(currentView);
+    shopManager.syncActiveShopSelection({
+      shops,
+      showView: shouldShowView,
+      emitEvent: !!mainWindow && !shouldShowView
+    });
+  }
   mainWindow?.webContents.send('shop-list-updated', { shops });
 }
 
@@ -1194,6 +1213,7 @@ function createMainWindow() {
     onInjectScript: injectAutoReplyScript,
     onNetworkMonitor: startNetworkMonitor,
     onDetectChat: detectChatPage,
+    getApiClient,
     onTokenUpdated: (shopId) => {
       destroyApiClient(shopId);
       destroyMailApiClient(shopId);
@@ -2019,20 +2039,19 @@ app.whenReady().then(async () => {
 
   const activeId = store.get('activeShopId');
   const shops = store.get('shops') || [];
-  if (activeId && shops.find(s => s.id === activeId)) {
-    await shopManager.restoreCookies(activeId);
-    shopManager.switchTo(activeId);
-  } else if (shops.length > 0) {
-    const realShop = shops.find(s => s.mallId || s.loginMethod);
-    if (realShop) {
-      await shopManager.restoreCookies(realShop.id);
-      shopManager.switchTo(realShop.id);
-    }
+  const startupShopId = shopManager.getPreferredActiveShopId(shops, activeId);
+  if (startupShopId) {
+    await shopManager.restoreCookies(startupShopId);
+    shopManager.switchTo(startupShopId);
+  } else {
+    shopManager.syncActiveShopSelection({ shops, preferredShopId: activeId });
   }
+  shopManager.startShopInfoHydrationLoop(5000);
 });
 
 app.on('before-quit', () => {
   cleanupRendererWatcher();
+  shopManager?.stopShopInfoHydrationLoop();
   if (shopManager) shopManager.saveAllCookies();
   for (const shopId of apiClients.keys()) {
     destroyApiClient(shopId);

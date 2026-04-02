@@ -23,7 +23,10 @@ class ShopManager {
     this.onNetworkMonitor = options.onNetworkMonitor || (() => {});
     this.onDetectChat = options.onDetectChat || (() => {});
     this.onTokenUpdated = options.onTokenUpdated || (() => {});
+    this.getApiClient = options.getApiClient || (() => null);
     this._pendingQRShopId = null;     // 扫码登录中的临时 shopId
+    this._shopInfoTimer = null;
+    this._shopInfoFetchingShopId = '';
   }
 
   // ---- BrowserView 生命周期 ----
@@ -48,6 +51,52 @@ class ShopManager {
       raw: tokenData.windowsAppShopToken || '',
       userAgent: tokenData.userAgent || '',
       pddid: tokenData.pddid || ''
+    };
+  }
+
+  _decodeWindowsAppShopToken(tokenData = {}) {
+    let mallId = '';
+    let userId = '';
+    let token = '';
+    if (tokenData.windowsAppShopToken) {
+      try {
+        const decoded = JSON.parse(Buffer.from(tokenData.windowsAppShopToken, 'base64').toString());
+        mallId = decoded.m ? String(decoded.m) : '';
+        userId = decoded.u ? String(decoded.u) : '';
+        token = decoded.t || '';
+      } catch {}
+    }
+    return { mallId, userId, token };
+  }
+
+  _analyzeTokenData(tokenData = {}, tokenInfo = null) {
+    const resolvedTokenInfo = tokenInfo || this._decodeWindowsAppShopToken(tokenData);
+    const passIds = Array.isArray(tokenData.mallCookies)
+      ? tokenData.mallCookies
+        .filter(cookieStr => typeof cookieStr === 'string' && cookieStr.startsWith('PASS_ID='))
+        .map(cookieStr => {
+          const eqIdx = cookieStr.indexOf('=');
+          return eqIdx >= 0 ? cookieStr.slice(eqIdx + 1) : '';
+        })
+        .filter(Boolean)
+      : [];
+    const uniquePassIds = new Set(passIds);
+    const passIdentityKeys = new Set();
+    for (const passId of uniquePassIds) {
+      const matched = passId.match(/_(\d+)_(\d+)$/);
+      if (!matched) continue;
+      passIdentityKeys.add(`${matched[1]}:${matched[2]}`);
+    }
+    const tokenIdentityKey = resolvedTokenInfo.mallId && resolvedTokenInfo.userId
+      ? `${resolvedTokenInfo.mallId}:${resolvedTokenInfo.userId}`
+      : '';
+    return {
+      passIdCount: uniquePassIds.size,
+      passIdIdentityCount: passIdentityKeys.size,
+      tokenMallId: resolvedTokenInfo.mallId || '',
+      tokenUserId: resolvedTokenInfo.userId || '',
+      tokenMatchesPassId: tokenIdentityKey ? passIdentityKeys.has(tokenIdentityKey) : false,
+      multiPassIdSingleToken: passIdentityKeys.size > 1 && !!resolvedTokenInfo.mallId
     };
   }
 
@@ -132,6 +181,15 @@ class ShopManager {
     return cookieCount;
   }
 
+  _hasRealShopName(name = '') {
+    const text = String(name || '').trim();
+    if (!text) return false;
+    if (text.startsWith('店铺 ') || text.startsWith('新店铺 ')) return false;
+    if (text === '扫码登录中...') return false;
+    if (text.includes('拼多多商家后台')) return false;
+    return true;
+  }
+
   _buildShopFromTokenRecord(record, previousShop = {}) {
     const previousName = previousShop.name || '';
     const autoNames = [
@@ -143,6 +201,18 @@ class ShopManager {
     const name = !previousName || autoNames.includes(previousName)
       ? (record.tokenInfo.mallId ? `店铺 ${record.tokenInfo.mallId}` : previousName || `店铺 ${record.shopId.slice(-6)}`)
       : previousName;
+    const hasRealShopName = this._hasRealShopName(previousName);
+    const inheritedFetchedAt = hasRealShopName ? Number(previousShop.shopInfoFetchedAt || 0) : 0;
+    const inheritedStatus = inheritedFetchedAt ? 'done' : 'pending';
+    const previousInfoStatus = previousShop.shopInfoStatus || '';
+    const normalizedInfoStatus = previousInfoStatus === 'fetching'
+      ? 'pending'
+      : (inheritedFetchedAt ? previousInfoStatus || inheritedStatus : (
+        ['expired', 'failed'].includes(previousInfoStatus) ? previousInfoStatus : inheritedStatus
+      ));
+    const normalizedShopStatus = inheritedFetchedAt
+      ? (previousShop.status || 'online')
+      : ((previousShop.status === 'expired' || previousInfoStatus === 'expired') ? 'expired' : 'offline');
 
     return {
       id: record.shopId,
@@ -151,14 +221,18 @@ class ShopManager {
       mallId: record.tokenInfo.mallId || previousShop.mallId || '',
       group: previousShop.group || '',
       remark: previousShop.remark || '',
-      status: 'online',
+      status: normalizedShopStatus,
       loginMethod: 'token',
       userAgent: record.tokenInfo.userAgent || previousShop.userAgent || '',
       bindTime: previousShop.bindTime || record.bindTime,
       category: previousShop.category || '待分类',
       balance: Number(previousShop.balance || 0),
       tokenFileName: record.fileName,
-      tokenUpdatedAt: record.updatedAt
+      tokenUpdatedAt: record.updatedAt,
+      shopInfoStatus: normalizedInfoStatus || 'pending',
+      shopInfoFetchedAt: inheritedFetchedAt,
+      shopInfoLastAttemptAt: Number(previousShop.shopInfoLastAttemptAt || 0),
+      shopInfoError: inheritedFetchedAt ? '' : (previousShop.shopInfoError || '')
     };
   }
 
@@ -170,6 +244,49 @@ class ShopManager {
     }
     try { view.webContents.close(); } catch {}
     this.views.delete(shopId);
+  }
+
+  isSelectableShop(shop) {
+    if (!shop?.id) return false;
+    return !(shop.loginMethod === 'token' && shop.status === 'expired');
+  }
+
+  getPreferredActiveShopId(shops = this.getShopList(), preferredShopId = '') {
+    const list = Array.isArray(shops) ? shops.filter(shop => shop?.id) : [];
+    const candidateIds = [preferredShopId, this.activeShopId, this.store.get('activeShopId')].filter(Boolean);
+    for (const candidateId of candidateIds) {
+      const shop = list.find(item => item.id === candidateId);
+      if (this.isSelectableShop(shop)) return candidateId;
+    }
+    return list.find(shop => this.isSelectableShop(shop))?.id || '';
+  }
+
+  syncActiveShopSelection(options = {}) {
+    const shops = Array.isArray(options.shops) ? options.shops : this.getShopList();
+    const targetShopId = this.getPreferredActiveShopId(shops, options.preferredShopId || '');
+    if (!targetShopId) {
+      if (this.activeShopId && this.views.has(this.activeShopId) && this.mainWindow) {
+        try { this.mainWindow.removeBrowserView(this.views.get(this.activeShopId)); } catch {}
+      }
+      this.activeShopId = null;
+      this.store.set('activeShopId', '');
+      return null;
+    }
+    if (targetShopId === this.activeShopId) {
+      this.store.set('activeShopId', targetShopId);
+      return shops.find(item => item.id === targetShopId) || this._getShop(targetShopId) || null;
+    }
+    if (options.showView && this.mainWindow) {
+      this.switchTo(targetShopId, options.loadUrl || null);
+      return shops.find(item => item.id === targetShopId) || this._getShop(targetShopId) || null;
+    }
+    this.activeShopId = targetShopId;
+    this.store.set('activeShopId', targetShopId);
+    const nextShop = shops.find(item => item.id === targetShopId) || this._getShop(targetShopId) || null;
+    if (options.emitEvent && this.mainWindow && nextShop) {
+      this.mainWindow.webContents.send('shop-switched', { shopId: targetShopId, shop: nextShop });
+    }
+    return nextShop;
   }
 
   async syncShopsFromTokenFiles(options = {}) {
@@ -236,21 +353,12 @@ class ShopManager {
 
     this.store.set('shopTokenFiles', nextFiles);
     this.store.set('shops', nextShops);
-
-    const activeShopRemoved = this.activeShopId && !nextShops.find(shop => shop.id === this.activeShopId);
-    if (activeShopRemoved) {
-      this.activeShopId = null;
-      this.store.set('activeShopId', '');
-    }
-
-    if (!this.activeShopId && nextShops.length > 0) {
-      if (broadcast && this.mainWindow) {
-        this.switchTo(nextShops[0].id);
-      } else {
-        this.activeShopId = nextShops[0].id;
-        this.store.set('activeShopId', nextShops[0].id);
-      }
-    }
+    const previousActiveShopId = this.activeShopId || this.store.get('activeShopId') || '';
+    this.syncActiveShopSelection({
+      shops: nextShops,
+      preferredShopId: previousActiveShopId,
+      showView: broadcast && !!this.mainWindow
+    });
 
     if (broadcast && this.mainWindow) {
       this.mainWindow.webContents.send('shop-list-updated', { shops: nextShops });
@@ -415,6 +523,7 @@ class ShopManager {
   switchTo(shopId, loadUrl = null) {
     const shop = this._getShop(shopId);
     if (!shop) return false;
+    if (!this.isSelectableShop(shop)) return false;
 
     // 先移除当前 view
     if (this.activeShopId && this.views.has(this.activeShopId)) {
@@ -488,23 +597,54 @@ class ShopManager {
         filePath = filePaths[0];
       }
 
+      const sourceFileName = path.basename(filePath);
       const imported = this.tokenFileStore.importTokenFile(filePath);
+      const tokenAnalysis = this._analyzeTokenData(imported.tokenData, imported.tokenInfo);
+      const importedShopIds = Array.isArray(imported.records) ? imported.records.map(record => record.shopId) : [];
       const { shops, cookieCountByShopId, createdShopIds } = await this.syncShopsFromTokenFiles({ broadcast: true });
-      const targetShop = shops.find(shop => shop.id === imported.shopId) || null;
+      const targetShopId = importedShopIds.find(shopId => createdShopIds.includes(shopId)) || importedShopIds[0] || '';
+      const targetShop = shops.find(shop => shop.id === targetShopId) || null;
+      const createdCount = importedShopIds.filter(shopId => createdShopIds.includes(shopId)).length;
+      const refreshedCount = importedShopIds.length - createdCount;
+      const created = createdCount > 0;
       if (targetShop) {
         this.switchTo(targetShop.id);
         this._detectShopName(targetShop.id);
       }
-      if (createdShopIds.includes(imported.shopId) && targetShop) {
-        this.mainWindow.webContents.send('shop-added', { shop: targetShop });
+      for (const shopId of importedShopIds) {
+        if (!createdShopIds.includes(shopId)) continue;
+        const createdShop = shops.find(shop => shop.id === shopId);
+        if (createdShop) {
+          this.mainWindow.webContents.send('shop-added', { shop: createdShop });
+        }
       }
-      this.onLog(`[PDD助手] Token 文件已纳入管理: ${imported.fileName}, mallId=${imported.tokenInfo.mallId || '未知'}, shopId=${imported.shopId}`);
+      if (importedShopIds.length > 1) {
+        if (targetShopId) {
+          this._fetchAndApplyShopProfile(targetShopId).catch(() => {});
+        }
+        this.startShopInfoHydrationLoop(5000);
+      } else if (targetShopId) {
+        this._fetchAndApplyShopProfile(targetShopId).catch(() => {});
+      }
+      this.onLog(`[PDD助手] Token 文件已纳入管理: ${sourceFileName}, 导入 ${importedShopIds.length || 0} 家店铺`);
       return {
-        shopId: imported.shopId,
-        cookieCount: cookieCountByShopId[imported.shopId] || 0,
-        mallId: imported.tokenInfo.mallId || '',
-        refreshed: !createdShopIds.includes(imported.shopId),
-        fileName: imported.fileName
+        shopId: targetShopId,
+        cookieCount: importedShopIds.reduce((sum, shopId) => sum + Number(cookieCountByShopId[shopId] || 0), 0),
+        mallId: targetShop?.mallId || imported.tokenInfo.mallId || '',
+        refreshed: createdCount === 0,
+        created,
+        fileName: imported.fileName,
+        sourceFileName,
+        shopName: targetShop?.name || '',
+        shopCount: shops.length,
+        importedCount: importedShopIds.length,
+        createdCount,
+        refreshedCount,
+        multiShopImport: importedShopIds.length > 1,
+        passIdCount: tokenAnalysis.passIdCount,
+        passIdIdentityCount: tokenAnalysis.passIdIdentityCount,
+        tokenMatchesPassId: tokenAnalysis.tokenMatchesPassId,
+        multiPassIdSingleToken: tokenAnalysis.multiPassIdSingleToken && importedShopIds.length <= 1
       };
     }
 
@@ -522,22 +662,25 @@ class ShopManager {
     const tokenData = JSON.parse(raw);
 
     // 解码 mallId 用于去重
-    let mallId = null, userId = null, tokenStr = null;
-    if (tokenData.windowsAppShopToken) {
-      try {
-        const decoded = JSON.parse(Buffer.from(tokenData.windowsAppShopToken, 'base64').toString());
-        mallId = String(decoded.m);
-        userId = decoded.u;
-        tokenStr = decoded.t;
-      } catch {}
-    }
+    const decodedToken = this._decodeWindowsAppShopToken(tokenData);
+    const mallId = decodedToken.mallId || null;
+    const userId = decodedToken.userId || null;
+    const tokenStr = decodedToken.token || null;
+    const tokenAnalysis = this._analyzeTokenData(tokenData, decodedToken);
 
     // 检查是否已有相同 mallId 的店铺
     const shops = this.store.get('shops') || [];
     const existing = mallId ? shops.find(s => s.mallId === mallId) : null;
     if (existing) {
       // 更新已有店铺的 Cookie
-      return await this._refreshTokenForShop(existing.id, tokenData, mallId, userId, tokenStr);
+      const refreshed = await this._refreshTokenForShop(existing.id, tokenData, mallId, userId, tokenStr);
+      return {
+        ...refreshed,
+        passIdCount: tokenAnalysis.passIdCount,
+        passIdIdentityCount: tokenAnalysis.passIdIdentityCount,
+        tokenMatchesPassId: tokenAnalysis.tokenMatchesPassId,
+        multiPassIdSingleToken: tokenAnalysis.multiPassIdSingleToken
+      };
     }
 
     const shopId = 'shop_' + Date.now();
@@ -598,12 +741,21 @@ class ShopManager {
 
     // 页面加载后尝试检测店铺名称
     this._detectShopName(shopId);
+    this._fetchAndApplyShopProfile(shopId).catch(() => {});
 
     this.mainWindow.webContents.send('shop-added', { shop });
     this.mainWindow.webContents.send('shop-list-updated', { shops: this.store.get('shops') });
     this.onLog(`[PDD助手] Token 导入完成: ${cookieCount} Cookie, mallId=${mallId}, shopId=${shopId}`);
 
-    return { shopId, cookieCount, mallId };
+    return {
+      shopId,
+      cookieCount,
+      mallId,
+      passIdCount: tokenAnalysis.passIdCount,
+      passIdIdentityCount: tokenAnalysis.passIdIdentityCount,
+      tokenMatchesPassId: tokenAnalysis.tokenMatchesPassId,
+      multiPassIdSingleToken: tokenAnalysis.multiPassIdSingleToken
+    };
   }
 
   async _refreshTokenForShop(shopId, tokenData, mallId, userId, tokenStr) {
@@ -632,6 +784,7 @@ class ShopManager {
 
     this.switchTo(shopId);
     if (view) view.webContents.loadURL(this._getChatUrl());
+    this._fetchAndApplyShopProfile(shopId).catch(() => {});
 
     this.mainWindow.webContents.send('shop-list-updated', { shops: this.store.get('shops') });
     this.onLog(`[PDD助手] Token 已刷新: shopId=${shopId}, ${cookieCount} Cookie`);
@@ -690,6 +843,7 @@ class ShopManager {
     }
 
     this._detectShopName(shopId);
+    this._fetchAndApplyShopProfile(shopId).catch(() => {});
 
     this.mainWindow.webContents.send('shop-login-success', { shopId, shop });
     this.mainWindow.webContents.send('shop-list-updated', { shops: this.store.get('shops') });
@@ -711,7 +865,7 @@ class ShopManager {
           if (el) mallName = el.textContent.trim();
           if (!mallName) {
             var title = document.title || '';
-            if (title && !title.includes('登录') && title !== '拼多多商家后台') mallName = title;
+            if (title && !title.includes('登录') && !title.includes('拼多多商家后台')) mallName = title;
           }
           return mallName;
         })()
@@ -731,6 +885,158 @@ class ShopManager {
     shop.name = name;
     this.store.set('shops', shops);
     this.mainWindow.webContents.send('shop-list-updated', { shops });
+  }
+
+  _updateShopInfoState(shopId, patch = {}) {
+    const shops = this.store.get('shops') || [];
+    const shop = shops.find(item => item.id === shopId);
+    if (!shop) return null;
+    let changed = false;
+    for (const [key, value] of Object.entries(patch)) {
+      if (shop[key] === value) continue;
+      shop[key] = value;
+      changed = true;
+    }
+    if (changed) {
+      this.store.set('shops', shops);
+      this.mainWindow?.webContents.send('shop-list-updated', { shops });
+    }
+    return shop;
+  }
+
+  _isAuthExpiredError(error) {
+    const code = Number(error?.errorCode || error?.statusCode || 0);
+    return !!error?.authExpired || [40001, 43001, 43002].includes(code);
+  }
+
+  _applyShopProfile(shopId, profile = {}) {
+    if (!shopId || !profile || typeof profile !== 'object') return null;
+    const shops = this.store.get('shops') || [];
+    const shop = shops.find(item => item.id === shopId);
+    if (!shop) return null;
+    const nextName = profile.mallName || shop.name || '';
+    const nextAccount = profile.account || shop.account || '';
+    const nextMallId = profile.mallId ? String(profile.mallId) : (shop.mallId || '');
+    const nextCategory = profile.category || shop.category || '';
+    let changed = false;
+    if (nextName && nextName !== shop.name) {
+      shop.name = nextName;
+      changed = true;
+    }
+    if (nextAccount !== shop.account) {
+      shop.account = nextAccount;
+      changed = true;
+    }
+    if (nextMallId && nextMallId !== shop.mallId) {
+      shop.mallId = nextMallId;
+      changed = true;
+    }
+    if (nextCategory && nextCategory !== shop.category) {
+      shop.category = nextCategory;
+      changed = true;
+    }
+    shop.shopInfoStatus = 'done';
+    shop.shopInfoFetchedAt = Date.now();
+    shop.shopInfoError = '';
+    if (shop.status !== 'online') {
+      shop.status = 'online';
+    }
+    changed = true;
+    if (changed) {
+      this.store.set('shops', shops);
+      this.mainWindow?.webContents.send('shop-list-updated', { shops });
+    }
+    return shop;
+  }
+
+  async _fetchAndApplyShopProfile(shopId) {
+    if (!shopId) return null;
+    if (this._shopInfoFetchingShopId === shopId) return null;
+    const client = this.getApiClient(shopId);
+    if (!client) return null;
+    this._shopInfoFetchingShopId = shopId;
+    this._updateShopInfoState(shopId, {
+      shopInfoStatus: 'fetching',
+      shopInfoLastAttemptAt: Date.now(),
+      shopInfoError: ''
+    });
+    try {
+      await client.initSession(true);
+      const profile = await client.getShopProfile(true);
+      const hasMallName = !!String(profile?.mallName || '').trim();
+      if (!hasMallName) {
+        throw new Error('接口未返回真实店铺名称');
+      }
+      const shop = this._applyShopProfile(shopId, profile);
+      if (shop) {
+        this.onLog(`[PDD助手] 已通过接口刷新店铺信息: ${shop.name || shop.id}`);
+      }
+      return shop;
+    } catch (error) {
+      const authExpired = this._isAuthExpiredError(error);
+      this._updateShopInfoState(shopId, {
+        shopInfoStatus: authExpired ? 'expired' : 'failed',
+        shopInfoError: error.message || String(error),
+        ...(authExpired ? { status: 'expired' } : {})
+      });
+      this.onLog(`[PDD助手] 通过接口获取店铺信息失败: ${shopId}, ${error.message || error}`);
+      return null;
+    } finally {
+      if (this._shopInfoFetchingShopId === shopId) {
+        this._shopInfoFetchingShopId = '';
+      }
+    }
+  }
+
+  async refreshShopProfile(shopId) {
+    const targetShopId = shopId || this.getActiveShopId();
+    if (!targetShopId) {
+      return { success: false, error: '未找到店铺' };
+    }
+    if (this._shopInfoFetchingShopId === targetShopId) {
+      return { success: false, fetching: true, error: '店铺信息获取中，请稍候' };
+    }
+    const shop = await this._fetchAndApplyShopProfile(targetShopId);
+    const nextShop = (this.store.get('shops') || []).find(item => item.id === targetShopId) || null;
+    if (!shop) {
+      return {
+        success: false,
+        shopId: targetShopId,
+        error: nextShop?.shopInfoError || '店铺信息获取失败',
+        status: nextShop?.shopInfoStatus || 'failed'
+      };
+    }
+    return {
+      success: true,
+      shopId: targetShopId,
+      shop,
+      status: nextShop?.shopInfoStatus || 'done'
+    };
+  }
+
+  _pickNextPendingShopForProfile() {
+    const shops = this.store.get('shops') || [];
+    return shops.find(shop => shop.loginMethod === 'token' && !shop.shopInfoFetchedAt && (shop.shopInfoStatus || 'pending') === 'pending') || null;
+  }
+
+  startShopInfoHydrationLoop(intervalMs = 5000) {
+    if (this._shopInfoTimer) return;
+    const run = async () => {
+      const nextShop = this._pickNextPendingShopForProfile();
+      if (!nextShop) {
+        this._shopInfoTimer = null;
+        return;
+      }
+      this._shopInfoTimer = setTimeout(run, intervalMs);
+      await this._fetchAndApplyShopProfile(nextShop.id);
+    };
+    this._shopInfoTimer = setTimeout(run, intervalMs);
+  }
+
+  stopShopInfoHydrationLoop() {
+    if (!this._shopInfoTimer) return;
+    clearTimeout(this._shopInfoTimer);
+    this._shopInfoTimer = null;
   }
 
   // ---- 店铺管理 ----
@@ -770,11 +1076,10 @@ class ShopManager {
     // 如果删除的是当前活跃店铺，切换到下一个
     if (this.activeShopId === shopId) {
       this.activeShopId = null;
-      if (shops.length > 0) {
-        this.switchTo(shops[0].id);
-      } else {
-        this.store.set('activeShopId', '');
-      }
+      this.syncActiveShopSelection({
+        shops,
+        showView: shops.length > 0
+      });
     }
 
     this.mainWindow.webContents.send('shop-list-updated', { shops });

@@ -820,15 +820,36 @@ class PddApiClient extends EventEmitter {
     const mall = (info.mall && typeof info.mall === 'object') ? info.mall : {};
     return {
       mallId: info.mall_id || info.mallId || mall.mall_id || this._getMallId() || '',
-      mallName: mall.mall_name || info.mall_name || this._getShopInfo()?.name || '',
+      mallName: mall.mall_name || info.mall_name || '',
       serviceName: info.username || info.nickname || info.nick_name || info.name || '',
       serviceAvatar: mall.logo || info.avatar || info.head_img || '',
     };
   }
 
+  _getShopInfoRequestHeaders(type = 'default') {
+    const antiContent = this._getLatestAntiContent();
+    if (type === 'credential') {
+      return {
+        Referer: `${PDD_BASE}/mallcenter/info/main/index`,
+        Origin: PDD_BASE,
+        ...(antiContent ? { 'anti-content': antiContent } : {}),
+      };
+    }
+    return {
+      Referer: PDD_BASE,
+      Origin: PDD_BASE,
+      ...(antiContent ? { 'anti-content': antiContent } : {}),
+    };
+  }
+
   async getUserInfo() {
-    const payload = await this._post('/janus/api/new/userinfo', {});
-    return this._parseUserInfo(payload);
+    try {
+      const payload = await this._post('/janus/api/userinfo', {}, this._getShopInfoRequestHeaders('mall'));
+      return this._parseUserInfo(payload);
+    } catch (error) {
+      const payload = await this._post('/janus/api/new/userinfo', {}, this._getShopInfoRequestHeaders('mall'));
+      return this._parseUserInfo(payload);
+    }
   }
 
   async getServiceProfile(force = false) {
@@ -856,6 +877,66 @@ class PddApiClient extends EventEmitter {
       }
       throw error;
     }
+  }
+
+  _parseMallInfo(payload) {
+    const info = payload?.result || payload?.data || payload || {};
+    const staple = Array.isArray(info.staple) ? info.staple : [];
+    return {
+      mallId: info.mall_id || info.mallId || this._getMallId() || '',
+      mallName: info.mall_name || info.mallName || '',
+      category: staple[0] || info.mall_category || info.category || '',
+      logo: info.logo || '',
+    };
+  }
+
+  _parseCredentialInfo(payload) {
+    const info = payload?.result || payload?.data || payload || {};
+    const mallInfo = info.mallInfo && typeof info.mallInfo === 'object' ? info.mallInfo : {};
+    const detail = info.queryDetailResult && typeof info.queryDetailResult === 'object' ? info.queryDetailResult : {};
+    const enterprise = detail.enterprise && typeof detail.enterprise === 'object' ? detail.enterprise : {};
+    return {
+      mallId: mallInfo.id || detail.mallId || this._getMallId() || '',
+      mallName: mallInfo.mallName || detail.mallName || '',
+      companyName: mallInfo.companyName || enterprise.companyName || '',
+      merchantType: detail.merchantType || '',
+    };
+  }
+
+  async getMallInfo() {
+    const payload = await this._request('GET', '/earth/api/mallInfo/commonMallInfo', null, this._getShopInfoRequestHeaders('mall'));
+    return this._parseMallInfo(payload);
+  }
+
+  async getCredentialInfo() {
+    const payload = await this._request('GET', '/earth/api/mallInfo/queryFinalCredentialNew', null, this._getShopInfoRequestHeaders('credential'));
+    return this._parseCredentialInfo(payload);
+  }
+
+  async getShopProfile(force = false) {
+    if (force) {
+      this._serviceProfileCache = null;
+    }
+    const [userInfoResult, serviceProfileResult, mallInfoResult, credentialInfoResult] = await Promise.allSettled([
+      this.getUserInfo(),
+      this.getServiceProfile(force),
+      this.getMallInfo(),
+      this.getCredentialInfo()
+    ]);
+    const userInfo = userInfoResult.status === 'fulfilled' ? userInfoResult.value : {};
+    const serviceProfile = serviceProfileResult.status === 'fulfilled' ? serviceProfileResult.value : {};
+    const mallInfo = mallInfoResult.status === 'fulfilled' ? mallInfoResult.value : {};
+    const credentialInfo = credentialInfoResult.status === 'fulfilled' ? credentialInfoResult.value : {};
+    return {
+      mallId: mallInfo.mallId || credentialInfo.mallId || serviceProfile.mallId || userInfo.mallId || this._getMallId() || '',
+      mallName: mallInfo.mallName || credentialInfo.mallName || serviceProfile.mallName || '',
+      account: userInfo.nickname || serviceProfile.serviceName || '',
+      mobile: userInfo.mobile || '',
+      category: mallInfo.category || '',
+      logo: mallInfo.logo || serviceProfile.serviceAvatar || '',
+      companyName: credentialInfo.companyName || '',
+      merchantType: credentialInfo.merchantType || '',
+    };
   }
 
   _extractSessionPreviewText(item) {

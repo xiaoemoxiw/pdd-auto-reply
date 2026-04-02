@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   addShopByTokenPath: (path) => ipcRenderer.invoke('add-shop-by-token-path', path),
   addShopByQRCode: () => ipcRenderer.invoke('add-shop-by-qrcode'),
   removeShop: (shopId) => ipcRenderer.invoke('remove-shop', shopId),
+  refreshShopProfile: (shopId) => ipcRenderer.invoke('refresh-shop-profile', shopId),
 
   // 视图切换
   switchView: (view) => ipcRenderer.invoke('switch-view', view),

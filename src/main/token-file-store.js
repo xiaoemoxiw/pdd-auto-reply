@@ -24,17 +24,26 @@ class TokenFileStore {
     if (existing.length > 0) return 0;
     let imported = 0;
     for (const filePath of this._listJsonFiles(sourceDir)) {
-      this.importTokenFile(filePath);
-      imported++;
+      const result = this.importTokenFile(filePath);
+      imported += result.records?.length || 0;
     }
     return imported;
   }
 
   importTokenFile(filePath) {
-    const record = this.readTokenFile(filePath);
-    const targetPath = path.join(this.ensureManagedDir(), `${record.shopId}.json`);
-    fs.writeFileSync(targetPath, JSON.stringify(record.tokenData, null, 2) + '\n', 'utf-8');
-    return this.readTokenFile(targetPath);
+    const tokenData = this._readTokenJson(filePath);
+    const records = this._buildImportRecords(filePath, tokenData).map(record => {
+      const targetPath = path.join(this.ensureManagedDir(), `${record.shopId}.json`);
+      fs.writeFileSync(targetPath, JSON.stringify(record.tokenData, null, 2) + '\n', 'utf-8');
+      return this.readTokenFile(targetPath);
+    });
+    return {
+      filePath,
+      fileName: path.basename(filePath),
+      tokenData,
+      tokenInfo: this._buildTokenInfo(tokenData),
+      records
+    };
   }
 
   listTokenRecords() {
@@ -95,6 +104,11 @@ class TokenFileStore {
         token = decoded.t || '';
       } catch {}
     }
+    const passEntries = this._extractPassIdEntries(tokenData);
+    if (passEntries.length === 1) {
+      mallId = passEntries[0].mallId || mallId;
+      userId = passEntries[0].userId || userId;
+    }
     return {
       token,
       mallId,
@@ -103,6 +117,62 @@ class TokenFileStore {
       userAgent: tokenData.userAgent || '',
       pddid: tokenData.pddid || ''
     };
+  }
+
+  _extractPassIdEntries(tokenData = {}) {
+    if (!Array.isArray(tokenData.mallCookies)) return [];
+    const entries = [];
+    const seen = new Set();
+    for (const cookieStr of tokenData.mallCookies) {
+      if (typeof cookieStr !== 'string' || !cookieStr.startsWith('PASS_ID=')) continue;
+      const eqIdx = cookieStr.indexOf('=');
+      const passId = eqIdx >= 0 ? cookieStr.slice(eqIdx + 1).trim() : '';
+      const matched = passId.match(/_(\d+)_(\d+)$/);
+      if (!matched) continue;
+      const mallId = matched[1];
+      const userId = matched[2];
+      const key = `${mallId}:${userId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({ cookieStr, passId, mallId, userId });
+    }
+    return entries;
+  }
+
+  _buildImportRecords(filePath, tokenData = {}) {
+    const stats = fs.statSync(filePath);
+    const passEntries = this._extractPassIdEntries(tokenData);
+    const bindTime = this._formatDate(stats.birthtimeMs || stats.ctimeMs || stats.mtimeMs || Date.now());
+    if (passEntries.length > 1) {
+      return passEntries.map(entry => {
+        const nextTokenData = {
+          ...tokenData,
+          mallCookies: [entry.cookieStr]
+        };
+        const tokenInfo = this._buildTokenInfo(nextTokenData);
+        const shopId = this._buildShopId(tokenInfo, nextTokenData, `${filePath}#${entry.mallId}`);
+        return {
+          shopId,
+          filePath,
+          fileName: path.basename(filePath),
+          updatedAt: stats.mtimeMs || 0,
+          bindTime,
+          tokenData: nextTokenData,
+          tokenInfo
+        };
+      });
+    }
+    const tokenInfo = this._buildTokenInfo(tokenData);
+    const shopId = this._buildShopId(tokenInfo, tokenData, filePath);
+    return [{
+      shopId,
+      filePath,
+      fileName: path.basename(filePath),
+      updatedAt: stats.mtimeMs || 0,
+      bindTime,
+      tokenData,
+      tokenInfo
+    }];
   }
 
   _buildShopId(tokenInfo = {}, tokenData = {}, filePath = '') {

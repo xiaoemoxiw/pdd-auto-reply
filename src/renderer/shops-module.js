@@ -113,6 +113,7 @@
       if (activeGroup !== 'all' && shop.group !== activeGroup) return false;
       if (searchText) {
         return String(shop.name || '').toLowerCase().includes(searchText)
+          || String(shop.mallId || '').toLowerCase().includes(searchText)
           || String(shop.account || '').toLowerCase().includes(searchText)
           || String(shop.tokenFileName || '').toLowerCase().includes(searchText);
       }
@@ -142,6 +143,15 @@
     });
   }
 
+  function getShopInfoStatusText(shop) {
+    const status = shop?.shopInfoStatus || 'pending';
+    if (status === 'fetching') return '店鋪信息獲取中';
+    if (status === 'expired') return 'Token 已過期，接口不可用';
+    if (status === 'failed') return '店鋪信息獲取失敗';
+    if (!shop?.shopInfoFetchedAt) return '店鋪信息待獲取';
+    return '';
+  }
+
   function renderShops() {
     const state = getState();
     const shops = state.shops || [];
@@ -162,15 +172,22 @@
 
     tbody.innerHTML = filtered.map((shop, index) => {
       const groupName = shopGroups.find(group => group.id === shop.group)?.name || '未分组';
-      const statusMap = { online: '登录成功', offline: '已离线', expired: '已过期' };
+      const statusMap = { online: '接口可用', offline: '待验证', expired: 'Token过期' };
       const isActive = shop.id === activeShopId;
+      const shopInfoStatusText = getShopInfoStatusText(shop);
+      const shopInfoErrorTitle = shop.shopInfoError ? ` title="${esc(shop.shopInfoError)}"` : '';
+      const refreshButtonTitle = shop.shopInfoError
+        ? `重新獲取店鋪信息\n上次失敗：${shop.shopInfoError}`
+        : '手動獲取店鋪信息';
       return `<tr>
         <td><input type="checkbox" data-id="${shop.id}" class="shop-check" ${selectedShopIds.has(shop.id) ? 'checked' : ''}></td>
         <td>${index + 1}</td>
         <td>
           <a href="#" class="shop-name-link" data-shop-id="${shop.id}" style="color:${isActive ? '#e02e24' : '#1890ff'};cursor:pointer;text-decoration:none;font-weight:${isActive ? '600' : 'normal'}" title="点击切换到此店铺">${esc(shop.name)}</a>
           ${isActive ? '<span style="font-size:11px;color:#e02e24;margin-left:4px">(当前)</span>' : ''}
+          ${shopInfoStatusText ? `<div style="font-size:11px;color:${shop.shopInfoStatus === 'failed' || shop.shopInfoStatus === 'expired' ? '#e02e24' : '#999'};margin-top:2px"${shopInfoErrorTitle}>${esc(shopInfoStatusText)}</div>` : ''}
         </td>
+        <td>${esc(shop.mallId) || '<span style="color:#ccc">-</span>'}</td>
         <td title="${esc(shop.tokenFileName || '')}">${esc(shop.tokenFileName) || '<span style="color:#ccc">-</span>'}</td>
         <td>${esc(groupName)}</td>
         <td title="${esc(shop.remark)}">${esc(shop.remark) || '<span style="color:#ccc">-</span>'}</td>
@@ -178,7 +195,10 @@
         <td>${esc(shop.category)}</td>
         <td><span class="status-tag ${shop.status}">${statusMap[shop.status] || shop.status}</span></td>
         <td style="text-align:right;font-weight:500">${(shop.balance || 0).toFixed(2)}</td>
-        <td><button class="btn btn-sm btn-secondary" onclick="openRemarkModal('${shop.id}')">备注</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-sm btn-secondary" onclick="refreshShopProfile('${shop.id}')" style="margin-right:6px" title="${esc(refreshButtonTitle)}">獲取信息</button>
+          <button class="btn btn-sm btn-secondary" onclick="openRemarkModal('${shop.id}')">备注</button>
+        </td>
       </tr>`;
     }).join('');
 
@@ -277,6 +297,24 @@
   async function refreshShops() {
     await loadShops();
     addLog('店铺列表已刷新', 'info');
+  }
+
+  async function refreshShopProfile(shopId) {
+    const result = await window.pddApi.refreshShopProfile(shopId);
+    if (result?.success) {
+      addLog(`店铺信息已更新: ${result.shop?.name || shopId}`, 'reply');
+      if (typeof showToast === 'function') {
+        showToast(`店铺信息已更新：${result.shop?.name || shopId}`);
+      }
+      return;
+    }
+    const errorText = result?.fetching
+      ? (result.error || '店铺信息获取中，请稍候')
+      : (result?.error || '店铺信息获取失败');
+    addLog(`获取店铺信息失败: ${errorText}`, 'error');
+    if (typeof showToast === 'function') {
+      showToast(`获取店铺信息失败：${errorText}`);
+    }
   }
 
   async function unbindShops() {
@@ -500,6 +538,7 @@
   window.renderShops = renderShops;
   window.updateBalanceTotal = updateBalanceTotal;
   window.openRemarkModal = openRemarkModal;
+  window.refreshShopProfile = refreshShopProfile;
   window.renderExam = renderExam;
   window.updateExamProgress = updateExamProgress;
 

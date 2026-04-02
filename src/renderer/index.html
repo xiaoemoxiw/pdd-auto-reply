@@ -2904,6 +2904,10 @@
       background: #999;
     }
 
+    .shop-switcher-btn .shop-dot.expired {
+      background: #ff9800;
+    }
+
     .shop-switcher-btn .shop-name-text {
       overflow: hidden;
       text-overflow: ellipsis;
@@ -2965,6 +2969,16 @@
       background: #fff1f0;
       color: #e02e24;
       font-weight: 600;
+    }
+
+    .shop-dropdown-item.disabled {
+      cursor: not-allowed;
+      color: #999;
+      background: #fafafa;
+    }
+
+    .shop-dropdown-item.disabled:hover {
+      background: #fafafa;
     }
 
     .shop-dropdown-item .item-dot {
@@ -3692,7 +3706,7 @@
       <div class="view-page" id="viewShops">
         <div class="page-toolbar">
           <div class="group-tabs" id="shopGroupTabs"></div>
-          <input class="search-box" id="shopSearch" placeholder="搜索店铺名称 / Token 文件...">
+          <input class="search-box" id="shopSearch" placeholder="搜索店铺名称 / mallId / Token 文件...">
           <span class="spacer"></span>
           <div class="balance-total" id="balanceTotal">
             可提现合计: <span class="amount">-</span>
@@ -3713,6 +3727,7 @@
                 <th style="width:36px"><input type="checkbox" id="shopSelectAll"></th>
                 <th style="width:40px">序号</th>
                 <th>店铺名称</th>
+                <th>mallId</th>
                 <th>Token文件</th>
                 <th>分组</th>
                 <th>备注</th>
@@ -4407,6 +4422,7 @@
     const API_EMOJIS = API_EMOJI_GROUPS.flatMap(group => group.items);
     let activeShopId = null;
     let apiSelectedShopId = API_ALL_SHOPS;
+    let apiSelectedShopIdPinned = false;
     let apiSessions = [];
     let apiMessages = [];
     let apiSessionLoadError = '';
@@ -4494,7 +4510,15 @@
         return window.loadQuickPhrases?.(...args);
       },
       setApiSelectedShopId(value) {
-        apiSelectedShopId = value;
+        const normalizedValue = value || '';
+        const defaultShopId = getDefaultApiSelectedShopId();
+        if (normalizedValue === API_ALL_SHOPS) {
+          apiSelectedShopId = API_ALL_SHOPS;
+          apiSelectedShopIdPinned = true;
+          return;
+        }
+        apiSelectedShopId = normalizedValue || defaultShopId || API_ALL_SHOPS;
+        apiSelectedShopIdPinned = !!normalizedValue && normalizedValue !== defaultShopId;
       },
       setApiSessionKeyword(value) {
         apiSessionKeyword = value;
@@ -4715,13 +4739,14 @@
     });
 
     function renderShopDropdown() {
-      if (shops.length === 0) {
-        shopDropdownList.innerHTML = '<div class="shop-no-items">暂无店铺，请添加</div>';
+      const visibleShops = shops.filter(shop => !(shop.loginMethod === 'token' && shop.status === 'expired'));
+      if (visibleShops.length === 0) {
+        shopDropdownList.innerHTML = '<div class="shop-no-items">暂无可切换店铺，请导入新 Token 或重新登录</div>';
         return;
       }
-      shopDropdownList.innerHTML = shops.map(s => {
+      shopDropdownList.innerHTML = visibleShops.map(s => {
         const methodLabel = s.loginMethod === 'qrcode' ? '扫码' : s.loginMethod === 'token' ? 'Token' : '';
-        return `<div class="shop-dropdown-item ${s.id === activeShopId ? 'active' : ''}" data-shop-id="${s.id}">
+        return `<div class="shop-dropdown-item ${s.id === activeShopId ? 'active' : ''}" data-shop-id="${s.id}" title="${esc(s.name)}">
           <span class="item-dot ${s.status || 'offline'}"></span>
           <span class="item-name" title="${esc(s.name)}">${esc(s.name)}</span>
           ${methodLabel ? `<span class="item-method">${methodLabel}</span>` : ''}
@@ -4748,13 +4773,14 @@
       const dotEl = document.getElementById('shopSwitcherDot');
       if (shop) {
         nameEl.textContent = shop.name || '未命名店铺';
-        dotEl.className = 'shop-dot ' + (shop.status === 'online' ? '' : 'offline');
+        dotEl.className = 'shop-dot ' + (shop.status || 'offline');
         activeShopId = shop.id;
       } else {
         nameEl.textContent = '未选择店铺';
         dotEl.className = 'shop-dot offline';
         activeShopId = null;
       }
+      syncApiSelectedShopId();
     }
 
     function formatApiTime(value) {
@@ -4987,7 +5013,29 @@
     }
 
     function getApiSelectedShop() {
-      return shops.find(item => item.id === apiSelectedShopId) || null;
+      const shopId = getApiScopeShopId();
+      if (!shopId || shopId === API_ALL_SHOPS) return null;
+      return shops.find(item => item.id === shopId) || null;
+    }
+
+    function isSelectableShop(shop) {
+      return !!shop?.id && !(shop.loginMethod === 'token' && shop.status === 'expired');
+    }
+
+    function getDefaultApiSelectedShopId() {
+      const activeShop = shops.find(item => item.id === activeShopId) || null;
+      if (isSelectableShop(activeShop)) return activeShop.id;
+      const nextShop = shops.find(isSelectableShop) || null;
+      return nextShop?.id || '';
+    }
+
+    function syncApiSelectedShopId() {
+      const currentShop = shops.find(item => item.id === apiSelectedShopId) || null;
+      const currentValid = apiSelectedShopId === API_ALL_SHOPS || isSelectableShop(currentShop);
+      if (apiSelectedShopIdPinned && currentValid) return;
+      const defaultShopId = getDefaultApiSelectedShopId();
+      apiSelectedShopIdPinned = false;
+      apiSelectedShopId = defaultShopId || API_ALL_SHOPS;
     }
 
     function buildApiSession(session = {}) {
@@ -5061,12 +5109,9 @@
       const activeInfo = await window.pddApi.getActiveShop();
       const nextActiveShop = activeInfo?.shop && shops.some(item => item.id === activeInfo.shop.id)
         ? activeInfo.shop
-        : (activeShopId ? shops.find(item => item.id === activeShopId) : null) || shops[0] || null;
+        : (activeShopId ? shops.find(item => item.id === activeShopId && isSelectableShop(item)) : null) || shops.find(isSelectableShop) || null;
       updateShopSwitcherDisplay(nextActiveShop);
       renderShopDropdown();
-      if (apiSelectedShopId !== API_ALL_SHOPS && !shops.some(item => item.id === apiSelectedShopId)) {
-        apiSelectedShopId = API_ALL_SHOPS;
-      }
       return { shops, activeShop: nextActiveShop };
     }
 
@@ -5084,14 +5129,15 @@
     }
 
     function getApiScopeShopId() {
-      if (apiSelectedShopId && apiSelectedShopId !== API_ALL_SHOPS) return apiSelectedShopId;
-      return API_ALL_SHOPS;
+      syncApiSelectedShopId();
+      return apiSelectedShopId || API_ALL_SHOPS;
     }
 
     function getApiStatusShopId(preferActiveSession = true) {
       if (preferActiveSession && apiActiveSessionShopId) return apiActiveSessionShopId;
-      if (apiSelectedShopId !== API_ALL_SHOPS) return apiSelectedShopId;
-      return activeShopId || shops[0]?.id || '';
+      const scopeShopId = getApiScopeShopId();
+      if (scopeShopId !== API_ALL_SHOPS) return scopeShopId;
+      return getDefaultApiSelectedShopId();
     }
 
     function getApiAuthStatusText() {
@@ -5171,11 +5217,11 @@
 
     function renderApiShopFilter() {
       const select = document.getElementById('apiShopFilter');
+      syncApiSelectedShopId();
       const options = [`<option value="${API_ALL_SHOPS}">显示所有店铺</option>`]
         .concat(shops.map(shop => `<option value="${esc(shop.id)}">${esc(shop.name || '未命名店铺')}</option>`));
       select.innerHTML = options.join('');
-      select.value = shops.some(item => item.id === apiSelectedShopId) ? apiSelectedShopId : API_ALL_SHOPS;
-      apiSelectedShopId = select.value || API_ALL_SHOPS;
+      select.value = getApiScopeShopId();
     }
 
     async function loadApiStarredSessions() {
@@ -5585,28 +5631,53 @@
         const result = await window.pddApi.addShopByToken();
         if (result.canceled) {
           addLog('Token 导入已取消', 'info');
+          showToast('Token 导入已取消');
         } else if (result.error) {
           addLog(`Token 导入失败: ${result.error}`, 'error');
+          showToast(`Token 导入失败：${result.error}`);
         } else {
-          await refreshShopContext({ loadGroups: currentView === 'shops' });
-          addLog(`${result.refreshed ? 'Token 已更新' : 'Token 导入成功'}: ${result.fileName || '未知文件'}, ${result.cookieCount} Cookie, mallId=${result.mallId || '未知'}${result.refreshed ? ' (已覆盖同店铺旧 Token)' : ''}`, 'reply');
+          const importFileName = result.sourceFileName || result.fileName || '未知文件';
+          const shopLabel = result.shopName || result.mallId || result.shopId || '当前店铺';
+          const passIdHint = result.multiPassIdSingleToken
+            ? `；检测到 ${result.passIdIdentityCount || result.passIdCount || 0} 个 PASS_ID 身份，但文件只有 1 份店铺 Token，当前仍按 1 家店铺导入`
+            : '';
+          const successText = result.multiShopImport
+            ? `已从文件导入 ${result.importedCount || 0} 家店铺，新增 ${result.createdCount || 0} 家，更新 ${result.refreshedCount || 0} 家，当前共 ${result.shopCount || 0} 家店铺`
+            : result.refreshed
+              ? `检测到同店铺，已更新 ${shopLabel}，列表不会新增行`
+              : `已新增店铺 ${shopLabel}，当前共 ${result.shopCount || 0} 家店铺`;
+          if (result.createdCount > 0) {
+            resetShopFilters();
+          }
+          if (currentView === 'shops') {
+            await window.pddApi.switchView('shops');
+            await loadViewContent('shops', { keepCurrent: true });
+          } else {
+            await switchView('shops');
+          }
+          addLog(`${result.multiShopImport ? 'Token 批量导入成功' : result.refreshed ? 'Token 已更新' : 'Token 导入成功'}: ${importFileName}, ${result.cookieCount} Cookie${result.multiShopImport ? `, 导入 ${result.importedCount || 0} 家店铺，新增 ${result.createdCount || 0} 家，更新 ${result.refreshedCount || 0} 家，当前共 ${result.shopCount || 0} 家店铺` : `, mallId=${result.mallId || '未知'}${result.refreshed ? ' (检测到同 mallId，已覆盖现有店铺，不会新增列表行)' : ` (当前共 ${result.shopCount || 0} 家店铺)`}`}${passIdHint}`, 'reply');
+          showToast(`${successText}${passIdHint}`);
         }
       } catch (err) {
         addLog(`Token 导入异常: ${err.message}`, 'error');
+        showToast(`Token 导入异常：${err.message}`);
       }
     }
 
     async function handleAddShopByQR() {
       addLog('请在拼多多登录页扫描二维码...', 'info');
+      showToast('请在拼多多登录页扫描二维码');
       try {
         const result = await window.pddApi.addShopByQRCode();
         if (result.error) {
           addLog(`扫码添加失败: ${result.error}`, 'error');
+          showToast(`扫码添加失败：${result.error}`);
         } else {
           if (!isEmbeddedPddView(currentView)) await switchView('chat');
         }
       } catch (err) {
         addLog(`扫码添加异常: ${err.message}`, 'error');
+        showToast(`扫码添加异常：${err.message}`);
       }
     }
 
@@ -5642,9 +5713,6 @@
       shops = data.shops || [];
       if (activeShopId && !shops.some(item => item.id === activeShopId)) {
         updateShopSwitcherDisplay(null);
-      }
-      if (apiSelectedShopId !== API_ALL_SHOPS && !shops.some(item => item.id === apiSelectedShopId)) {
-        apiSelectedShopId = API_ALL_SHOPS;
       }
       await refreshShopContext({ loadGroups: currentView === 'shops' });
       if (currentView === 'shops') {
@@ -5870,6 +5938,29 @@
     // ==================== 通用工具 ====================
     function showModal(id) { document.getElementById(id).classList.add('visible'); }
     function hideModal(id) { document.getElementById(id).classList.remove('visible'); }
+
+    let toastTimer = null;
+
+    function showToast(text) {
+      const toast = document.getElementById('toastMsg');
+      if (!toast) return;
+      toast.textContent = text;
+      toast.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2200);
+    }
+
+    function resetShopFilters() {
+      activeGroup = 'all';
+      shopSearchText = '';
+      selectedShopIds = new Set();
+      const searchInput = document.getElementById('shopSearch');
+      if (searchInput) searchInput.value = '';
+      const selectAllInput = document.getElementById('shopSelectAll');
+      if (selectAllInput) selectAllInput.checked = false;
+    }
 
     function addLog(text, type = 'info') {
       const statusText = document.getElementById('statusText');

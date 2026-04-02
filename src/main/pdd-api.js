@@ -14,6 +14,13 @@ const PDD_UPLOAD_BASES = [
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
 const POLL_INTERVAL = 5000;
 const POLL_INTERVAL_IDLE = 15000;
+const ORDER_REMARK_TAG_LABELS = {
+  RED: '红色',
+  YELLOW: '黄色',
+  GREEN: '绿色',
+  BLUE: '蓝色',
+  PURPLE: '紫色',
+};
 
 class PddApiClient extends EventEmitter {
   constructor(shopId, options = {}) {
@@ -25,6 +32,8 @@ class PddApiClient extends EventEmitter {
     this._sessionInited = false;
     this._authExpired = false;
     this._serviceProfileCache = null;
+    this._orderRemarkTagOptionsCache = null;
+    this._orderRemarkCache = new Map();
     this._seenMessageIds = new Set();
     this._sessionCache = [];
     this._bootstrapTraffic = [];
@@ -1043,11 +1052,44 @@ class PddApiClient extends EventEmitter {
     return this._request('POST', urlPath, body, extraHeaders);
   }
 
+  async _requestOrderRemarkApi(urlPath, body = {}) {
+    const headers = {
+      accept: 'application/json, text/plain, */*',
+      'content-type': 'application/json',
+    };
+    let payload = null;
+    const via = typeof this._requestInPddPage === 'function' ? 'page' : 'direct';
+    this._log('[API] 订单备注请求开始', this._summarizeOrderRemarkRequest(urlPath, body, via));
+    if (typeof this._requestInPddPage === 'function') {
+      payload = await this._requestInPddPage({
+        method: 'POST',
+        url: urlPath,
+        headers,
+        body: JSON.stringify(body || {}),
+      });
+    } else {
+      payload = await this._post(urlPath, body || {}, headers);
+    }
+    this._log('[API] 订单备注请求返回', {
+      ...this._summarizeOrderRemarkRequest(urlPath, body, via),
+      response: this._summarizeOrderRemarkResponse(payload),
+    });
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      const error = new Error(businessError.message);
+      error.errorCode = businessError.code;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  }
+
   _parseUserInfo(payload) {
     const info = payload?.result || payload?.data || payload || {};
     return {
       mallId: info.mall_id || info.mallId || this._getMallId() || '',
       userId: info.uid || info.user_id || info.userId || this._getTokenInfo()?.userId || '',
+      username: info.username || info.user_name || info.login_name || '',
       nickname: info.nick_name || info.nickname || info.name || '',
       mobile: info.mobile || '',
     };
@@ -1059,6 +1101,7 @@ class PddApiClient extends EventEmitter {
     return {
       mallId: info.mall_id || info.mallId || mall.mall_id || this._getMallId() || '',
       mallName: mall.mall_name || info.mall_name || this._getShopInfo()?.name || '',
+      username: info.username || info.user_name || info.login_name || '',
       serviceName: info.username || info.nickname || info.nick_name || info.name || '',
       serviceAvatar: mall.logo || info.avatar || info.head_img || '',
     };
@@ -1895,6 +1938,233 @@ class PddApiClient extends EventEmitter {
     return 0;
   }
 
+  _pickRefundBoolean(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const value = source[key];
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value > 0;
+        const text = String(value).trim().toLowerCase();
+        if (['1', 'true', 'yes', 'y', 'shipped', 'delivered'].includes(text)) return true;
+        if (['0', 'false', 'no', 'n', 'unshipped', 'pending'].includes(text)) return false;
+      }
+    }
+    return null;
+  }
+
+  _resolveRefundOrderShippingInfo(sources = []) {
+    const trackingNo = this._pickRefundText(sources, [
+      'tracking_no',
+      'trackingNo',
+      'waybill_no',
+      'waybillNo',
+      'express_no',
+      'expressNo',
+      'express_number',
+      'expressNumber',
+      'logistics_no',
+      'logisticsNo',
+      'shipping_no',
+      'shippingNo',
+      'mail_no',
+      'mailNo',
+      'invoice_waybill_no',
+    ]);
+    const shippingStateText = this._pickRefundText(sources, [
+      'refund_shipping_state',
+      'shippingState',
+      'shipping_state',
+    ]);
+    const shippingStatusText = this._pickRefundText(sources, [
+      'order_status_desc',
+      'order_status_text',
+      'order_status_name',
+      'order_status',
+      'shipping_status_desc',
+      'shipping_status_text',
+      'shipping_status',
+      'delivery_status_desc',
+      'delivery_status_text',
+      'delivery_status',
+      'express_status_desc',
+      'express_status_text',
+      'express_status',
+      'logistics_status_desc',
+      'logistics_status_text',
+      'logistics_status',
+      'statusDesc',
+      'status_desc',
+    ]);
+    const shippedFlag = this._pickRefundBoolean(sources, [
+      'has_tracking_no',
+      'hasTrackingNo',
+      'has_waybill',
+      'hasWaybill',
+      'has_logistics',
+      'hasLogistics',
+      'has_express',
+      'hasExpress',
+      'has_shipping',
+      'hasShipping',
+      'is_shipped',
+      'isShipped',
+      'shipped',
+    ]);
+    const unshippedFlag = this._pickRefundBoolean(sources, [
+      'unshipped',
+      'is_unshipped',
+      'isUnshipped',
+      'wait_ship',
+      'waitShip',
+    ]);
+    const mergedStatusText = `${shippingStateText} ${shippingStatusText}`.replace(/\s+/g, '');
+    if (trackingNo) {
+      return {
+        shippingState: 'shipped',
+        shippingStatusText: shippingStatusText || '已发货',
+        trackingNo,
+        isShipped: true,
+      };
+    }
+    if (/^shipped$/i.test(shippingStateText) || shippingStateText === '已发货') {
+      return {
+        shippingState: 'shipped',
+        shippingStatusText: shippingStatusText || shippingStateText || '已发货',
+        trackingNo: '',
+        isShipped: true,
+      };
+    }
+    if (/^unshipped$/i.test(shippingStateText) || shippingStateText === '未发货') {
+      return {
+        shippingState: 'unshipped',
+        shippingStatusText: shippingStatusText || shippingStateText || '未发货',
+        trackingNo: '',
+        isShipped: false,
+      };
+    }
+    if (shippedFlag === true) {
+      return {
+        shippingState: 'shipped',
+        shippingStatusText: shippingStatusText || '已发货',
+        trackingNo: '',
+        isShipped: true,
+      };
+    }
+    if (unshippedFlag === true) {
+      return {
+        shippingState: 'unshipped',
+        shippingStatusText: shippingStatusText || '未发货',
+        trackingNo: '',
+        isShipped: false,
+      };
+    }
+    if (/(已发货|运输中|待收货|已签收|已收货|派送中|配送中|揽收|物流)/.test(mergedStatusText)) {
+      return {
+        shippingState: 'shipped',
+        shippingStatusText: shippingStatusText || '已发货',
+        trackingNo: '',
+        isShipped: true,
+      };
+    }
+    if (/(未发货|待发货|待揽收|待出库|待配送|未揽件)/.test(mergedStatusText)) {
+      return {
+        shippingState: 'unshipped',
+        shippingStatusText: shippingStatusText || '未发货',
+        trackingNo: '',
+        isShipped: false,
+      };
+    }
+    return {
+      shippingState: '',
+      shippingStatusText,
+      trackingNo: '',
+      isShipped: false,
+    };
+  }
+
+  _resolveRefundShippingBenefitText(sources = []) {
+    const rawText = this._pickRefundText(sources, [
+      'refundShippingText',
+      'refund_shipping_text',
+      'refundShippingDesc',
+      'refund_shipping_desc',
+      'refundShippingStateDesc',
+      'refund_shipping_state_desc',
+      'refundShippingStatusDesc',
+      'refund_shipping_status_desc',
+      'refundShippingBenefitText',
+      'refund_shipping_benefit_text',
+      'refundShippingBenefitDesc',
+      'refund_shipping_benefit_desc',
+      'refundShippingBenefitStateDesc',
+      'refund_shipping_benefit_state_desc',
+      'refundShippingInsuranceText',
+      'refund_shipping_insurance_text',
+      'refundShippingInsuranceDesc',
+      'refund_shipping_insurance_desc',
+      'refundShippingInsuranceStateDesc',
+      'refund_shipping_insurance_state_desc',
+      'refundShippingInsuranceStatusDesc',
+      'refund_shipping_insurance_status_desc',
+      'refundShippingState',
+      'refund_shipping_state',
+      'refundShippingBenefit',
+      'refund_shipping_benefit',
+      'refundShippingInsurance',
+      'refund_shipping_insurance',
+    ]);
+    const text = String(rawText || '').trim();
+    if (text) {
+      const normalized = text.toLowerCase();
+      if (['0', 'false', 'no', 'n', 'unshipped', 'not_gifted', 'none'].includes(normalized) || text === '未赠送') {
+        return '未赠送';
+      }
+      if (['1', 'true', 'yes', 'y', 'shipped', 'gifted', 'presented'].includes(normalized) || text === '已赠送') {
+        return '已赠送';
+      }
+      return text;
+    }
+    const giftedFlag = this._pickRefundBoolean(sources, [
+      'refundShippingBenefit',
+      'refund_shipping_benefit',
+      'refundShippingInsurance',
+      'refund_shipping_insurance',
+      'refundShippingGifted',
+      'refund_shipping_gifted',
+      'refundShippingInsured',
+      'refund_shipping_insured',
+      'hasRefundShippingBenefit',
+      'has_refund_shipping_benefit',
+      'hasRefundShippingInsurance',
+      'has_refund_shipping_insurance',
+    ]);
+    if (giftedFlag === true) return '已赠送';
+    if (giftedFlag === false) return '未赠送';
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const [key, value] of Object.entries(source)) {
+        if (!key || value === undefined || value === null) continue;
+        const keyText = String(key).toLowerCase();
+        const keyMatched = /(refund.*ship|ship.*refund|refund_shipping|shipping_refund)/i.test(keyText)
+          && /(benefit|insurance|state|status|desc|text)/i.test(keyText);
+        if (!keyMatched) continue;
+        if (typeof value === 'string') {
+          const candidate = value.trim();
+          if (!candidate) continue;
+          if (/(已赠送|未赠送)/.test(candidate)) return candidate;
+        } else if (typeof value === 'boolean') {
+          return value ? '已赠送' : '未赠送';
+        } else if (typeof value === 'number' && Number.isFinite(value)) {
+          if (value === 0) return '未赠送';
+          if (value === 1) return '已赠送';
+        }
+      }
+    }
+    return '';
+  }
+
   _looksLikeRefundOrderNode(node = {}) {
     if (!node || typeof node !== 'object') return false;
     return [
@@ -1931,6 +2201,7 @@ class PddApiClient extends EventEmitter {
   _normalizeRefundOrder(item = {}, fallback = {}, index = 0) {
     const sources = [
       item,
+      item?.raw,
       item?.orderGoodsList,
       item?.order_goods_list,
       item?.goods_info,
@@ -1938,6 +2209,33 @@ class PddApiClient extends EventEmitter {
       item?.goods,
       item?.order_info,
       item?.orderInfo,
+      item?.logistics_info,
+      item?.logisticsInfo,
+      item?.logistics,
+      item?.delivery_info,
+      item?.deliveryInfo,
+      item?.delivery,
+      item?.express_info,
+      item?.expressInfo,
+      item?.express,
+      item?.shipping_info,
+      item?.shippingInfo,
+      item?.shipping,
+      item?.transport_info,
+      item?.transportInfo,
+      item?.transport,
+      item?.raw?.logistics_info,
+      item?.raw?.logisticsInfo,
+      item?.raw?.logistics,
+      item?.raw?.delivery_info,
+      item?.raw?.deliveryInfo,
+      item?.raw?.delivery,
+      item?.raw?.express_info,
+      item?.raw?.expressInfo,
+      item?.raw?.express,
+      item?.raw?.shipping_info,
+      item?.raw?.shippingInfo,
+      item?.raw?.shipping,
       fallback?.goodsInfo,
       fallback?.raw?.goods_info,
       fallback?.raw?.goods,
@@ -1958,8 +2256,9 @@ class PddApiClient extends EventEmitter {
     const specText = this._pickRefundText(sources, ['specText', 'spec_text', 'spec', 'sku_spec', 'skuSpec', 'spec_desc', 'specDesc', 'sub_name', 'subName']);
     const normalizedQuantity = String(quantityValue || '').replace(/^x/i, '').trim();
     const detailText = normalizedQuantity && specText
-      ? `${normalizedQuantity}x${specText}`
-      : (specText || (normalizedQuantity ? `${normalizedQuantity}x` : '当前会话订单'));
+      ? `${specText} x${normalizedQuantity}`
+      : (specText || (normalizedQuantity ? `x${normalizedQuantity}` : '所拍规格待确认'));
+    const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
     return {
       key: `${orderId || 'order'}::${title}::${index}`,
       orderId: orderId || '-',
@@ -1967,6 +2266,10 @@ class PddApiClient extends EventEmitter {
       imageUrl,
       amountText,
       detailText,
+      trackingNo: shippingInfo.trackingNo,
+      shippingState: shippingInfo.shippingState,
+      shippingStatusText: shippingInfo.shippingStatusText,
+      isShipped: shippingInfo.isShipped,
       raw: item,
     };
   }
@@ -2042,7 +2345,6 @@ class PddApiClient extends EventEmitter {
       'button_desc',
       'label',
       'desc',
-      'remark',
     ]);
     return text || '';
   }
@@ -2138,7 +2440,13 @@ class PddApiClient extends EventEmitter {
         uid,
       });
       const unshippedOrders = Array.isArray(unshippedPayload?.result?.orders) ? unshippedPayload.result.orders : [];
-      return this._attachAfterSalesStatus(this._dedupeRefundOrders(unshippedOrders, sessionMeta));
+      return this._attachAfterSalesStatus(this._dedupeRefundOrders(
+        unshippedOrders.map(item => ({
+          ...(item || {}),
+          refund_shipping_state: 'unshipped',
+        })),
+        sessionMeta
+      ));
     }
     return [];
   }
@@ -2265,6 +2573,792 @@ class PddApiClient extends EventEmitter {
       .concat(this._extractRefundOrdersFromMessages(sessionMeta, messages))
       .concat(this._extractRefundOrdersFromTraffic(sessionMeta));
     return this._dedupeRefundOrders(merged, sessionMeta);
+  }
+
+  _formatSideOrderDateTime(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '';
+    const timestamp = numeric > 1e12 ? numeric : numeric * 1000;
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}/${month}/${day} ${hours}:${minutes}`;
+  }
+
+  _formatOrderRemarkDateTime(value = Date.now()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+  }
+
+  _extractOrderRemarkText(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return value.trim();
+    if (Array.isArray(value)) {
+      return value.map(item => this._extractOrderRemarkText(item)).filter(Boolean).join('\n').trim();
+    }
+    if (typeof value !== 'object') return '';
+    return this._pickRefundText([value], [
+      'note',
+      'content',
+      'text',
+      'remark',
+      'desc',
+      'message',
+      'value',
+    ]);
+  }
+
+  _normalizeOrderRemarkTag(value) {
+    const normalized = String(value ?? '').trim().toUpperCase();
+    if (!normalized) return '';
+    if (['0', 'NULL', 'UNDEFINED', 'FALSE', 'NONE'].includes(normalized)) {
+      return '';
+    }
+    return normalized;
+  }
+
+  _isOrderRemarkSaveIntervalError(error) {
+    const message = String(error?.message || error || '').trim();
+    if (!message) return false;
+    return /两次备注间隔时长需大于1秒|备注间隔时长需大于1秒|间隔时长需大于1秒/.test(message);
+  }
+
+  _isOrderRemarkSaveMatched(remark = {}, note = '', tag = '') {
+    return this._extractOrderRemarkText(remark?.note) === this._extractOrderRemarkText(note)
+      && this._normalizeOrderRemarkTag(remark?.tag) === this._normalizeOrderRemarkTag(tag);
+  }
+
+  _maskOrderRemarkOrderSn(orderSn) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) return '';
+    if (normalizedOrderSn.length <= 8) return normalizedOrderSn;
+    return `${normalizedOrderSn.slice(0, 4)}***${normalizedOrderSn.slice(-4)}`;
+  }
+
+  _summarizeOrderRemarkRequest(urlPath, body = {}, via = 'direct') {
+    const normalizedNote = this._extractOrderRemarkText(body?.note);
+    return {
+      urlPath: String(urlPath || ''),
+      via,
+      orderSn: this._maskOrderRemarkOrderSn(body?.orderSn),
+      hasNote: normalizedNote.length > 0,
+      noteLength: normalizedNote.length,
+      tag: this._normalizeOrderRemarkTag(body?.tag),
+      source: Number(body?.source) > 0 ? Number(body.source) : 1,
+    };
+  }
+
+  _summarizeOrderRemarkResponse(payload) {
+    if (!payload || typeof payload !== 'object') {
+      return {
+        type: typeof payload,
+      };
+    }
+    const candidates = this._collectBusinessPayloadCandidates(payload);
+    const first = candidates[0] || payload;
+    return {
+      success: first?.success,
+      ok: first?.ok,
+      errorCode: first?.error_code ?? first?.code ?? first?.err_no ?? first?.errno ?? null,
+      message: first?.error_msg || first?.message || first?.msg || '',
+      resultKeys: first?.result && typeof first.result === 'object' ? Object.keys(first.result).slice(0, 10) : [],
+    };
+  }
+
+  _getOrderRemarkTagName(tag) {
+    const normalizedTag = this._normalizeOrderRemarkTag(tag);
+    if (!normalizedTag) return '';
+    const cachedName = this._orderRemarkTagOptionsCache?.[normalizedTag];
+    if (cachedName) return String(cachedName).trim();
+    return ORDER_REMARK_TAG_LABELS[normalizedTag] || '';
+  }
+
+  _formatOrderRemarkMeta(value = Date.now()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${month}/${day} ${hours}:${minutes}`;
+  }
+
+  async _getOrderRemarkOperatorName() {
+    try {
+      const userInfo = await this.getUserInfo();
+      const username = String(userInfo?.username || '').trim();
+      if (username) return username;
+    } catch {}
+    try {
+      const profile = await this.getServiceProfile();
+      const username = String(profile?.username || '').trim();
+      if (username) return username;
+      const serviceName = String(profile?.serviceName || '').trim();
+      if (serviceName) return serviceName;
+    } catch {}
+    return String(this._getShopInfo()?.name || '').trim() || '主账号';
+  }
+
+  _getOrderRemarkCache(orderSn) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) return null;
+    const cached = this._orderRemarkCache.get(normalizedOrderSn);
+    if (!cached || typeof cached !== 'object') return null;
+    return this._cloneJson(cached);
+  }
+
+  _setOrderRemarkCache(orderSn, remark = {}) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) return null;
+    const nextRemark = {
+      orderSn: normalizedOrderSn,
+      note: this._extractOrderRemarkText(remark?.note),
+      tag: this._normalizeOrderRemarkTag(remark?.tag),
+      tagName: String(remark?.tagName || '').trim(),
+      source: Number(remark?.source) > 0 ? Number(remark.source) : 1,
+    };
+    this._orderRemarkCache.set(normalizedOrderSn, nextRemark);
+    return this._cloneJson(nextRemark);
+  }
+
+  _normalizeOrderRemarkTagOptions(payload = {}) {
+    const source = payload?.result && typeof payload.result === 'object'
+      ? payload.result
+      : (payload && typeof payload === 'object' ? payload : {});
+    const entries = Object.entries(source)
+      .map(([value, label]) => [String(value || '').trim().toUpperCase(), String(label || '').trim()])
+      .filter(([value, label]) => value && label);
+    const preferredOrder = ['RED', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE'];
+    const ordered = [
+      ...preferredOrder.filter(key => entries.some(([value]) => value === key)),
+      ...entries.map(([value]) => value).filter(value => !preferredOrder.includes(value)),
+    ];
+    return ordered.reduce((result, key) => {
+      const matched = entries.find(([value]) => value === key);
+      if (matched) result[key] = matched[1];
+      return result;
+    }, {});
+  }
+
+  async getOrderRemarkTagOptions(force = false) {
+    if (this._orderRemarkTagOptionsCache && !force) {
+      return this._cloneJson(this._orderRemarkTagOptionsCache);
+    }
+    let payload;
+    try {
+      payload = await this._requestOrderRemarkApi('/pizza/order/remarkTag/query', {});
+    } catch (error) {
+      if (this._orderRemarkTagOptionsCache) {
+        return this._cloneJson(this._orderRemarkTagOptionsCache);
+      }
+      throw error;
+    }
+    const result = this._normalizeOrderRemarkTagOptions(payload);
+    this._orderRemarkTagOptionsCache = result;
+    return this._cloneJson(result);
+  }
+
+  async getOrderRemark(orderSn, source = 1) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const requestBody = {
+      orderSn: normalizedOrderSn,
+      source: Number(source) > 0 ? Number(source) : 1,
+    };
+    const [noteResult, noteTagResult] = await Promise.allSettled([
+      this._requestOrderRemarkApi('/pizza/order/note/query', requestBody),
+      this._requestOrderRemarkApi('/pizza/order/noteTag/query', requestBody),
+    ]);
+    if (noteResult.status === 'rejected' && noteTagResult.status === 'rejected') {
+      throw noteTagResult.reason || noteResult.reason || new Error('读取订单备注失败');
+    }
+    const notePayload = noteResult.status === 'fulfilled' ? noteResult.value : null;
+    const noteTagPayload = noteTagResult.status === 'fulfilled' ? noteTagResult.value : null;
+    const noteTagData = noteTagPayload?.result && typeof noteTagPayload.result === 'object'
+      ? noteTagPayload.result
+      : {};
+    const noteData = notePayload?.result;
+    const note = this._extractOrderRemarkText(noteTagData?.note) || this._extractOrderRemarkText(noteData);
+    const tag = this._normalizeOrderRemarkTag(this._pickRefundText([noteTagData], ['tag', 'tagCode', 'color', 'colorCode']));
+    const tagName = this._pickRefundText([noteTagData], ['tagName', 'tag_name', 'colorName', 'color_name']);
+    return this._setOrderRemarkCache(normalizedOrderSn, {
+      orderSn: normalizedOrderSn,
+      note,
+      tag,
+      tagName,
+      source: requestBody.source,
+    });
+  }
+
+  async saveOrderRemark(params = {}) {
+    const normalizedOrderSn = String(params?.orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const source = Number(params?.source) > 0 ? Number(params.source) : 1;
+    const baseNote = String(params?.note || '').trim().slice(0, 300);
+    const tag = this._normalizeOrderRemarkTag(params?.tag);
+    const baseTagName = String(params?.tagName || '').trim();
+    const tagName = baseTagName || this._getOrderRemarkTagName(tag);
+    let finalNote = baseNote;
+    if (params?.autoAppendMeta) {
+      const operatorName = await this._getOrderRemarkOperatorName();
+      const metaText = this._formatOrderRemarkMeta();
+      const suffix = [operatorName, metaText].filter(Boolean).join(' ').trim();
+      finalNote = suffix
+        ? `${baseNote || ''} [${suffix}]`.trim()
+        : baseNote;
+    }
+    const candidates = tag
+      ? [
+        {
+          url: '/pizza/order/noteTag/update',
+          body: {
+            orderSn: normalizedOrderSn,
+            source,
+            remark: finalNote,
+            remarkTag: tag,
+            remarkTagName: tagName || '',
+          },
+        },
+        {
+          url: '/pizza/order/note/update',
+          body: {
+            orderSn: normalizedOrderSn,
+            source,
+            remark: finalNote,
+          },
+        },
+      ]
+      : [
+        {
+          url: '/pizza/order/noteTag/update',
+          body: {
+            orderSn: normalizedOrderSn,
+            source,
+            remark: finalNote,
+            remarkTag: '',
+            remarkTagName: '',
+          },
+        },
+        {
+          url: '/pizza/order/note/update',
+          body: {
+            orderSn: normalizedOrderSn,
+            source,
+            remark: finalNote,
+          },
+        },
+      ];
+    let lastError = null;
+    let responsePayload = null;
+    let latestRemark = null;
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
+      let canRetryAfterIntervalError = true;
+      while (true) {
+        try {
+          responsePayload = await this._requestOrderRemarkApi(candidate.url, candidate.body);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (canRetryAfterIntervalError && this._isOrderRemarkSaveIntervalError(error)) {
+            canRetryAfterIntervalError = false;
+            await this._sleep(1100);
+            continue;
+          }
+          break;
+        }
+      }
+      if (lastError) {
+        continue;
+      }
+      latestRemark = null;
+      try {
+        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
+      } catch (error) {
+        lastError = error;
+      }
+      if (!lastError && this._isOrderRemarkSaveMatched(latestRemark, finalNote, tag)) {
+        break;
+      }
+      if (!lastError) {
+        this._log('[API] 订单备注写入后回读未生效', {
+          candidateUrl: candidate.url,
+          orderSn: this._maskOrderRemarkOrderSn(normalizedOrderSn),
+          expected: {
+            noteLength: this._extractOrderRemarkText(finalNote).length,
+            tag,
+          },
+          actual: {
+            noteLength: this._extractOrderRemarkText(latestRemark?.note).length,
+            tag: this._normalizeOrderRemarkTag(latestRemark?.tag),
+          },
+        });
+        lastError = new Error('备注保存未生效，请重试');
+      }
+      if (index < candidates.length - 1) {
+        await this._sleep(1100);
+      }
+    }
+    if (lastError && this._isOrderRemarkSaveIntervalError(lastError)) {
+      try {
+        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
+        if (this._isOrderRemarkSaveMatched(latestRemark, finalNote, tag)) {
+          lastError = null;
+        }
+      } catch {}
+    }
+    if (lastError) {
+      throw lastError;
+    }
+    if (!latestRemark) {
+      try {
+        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
+      } catch {}
+    }
+    const cachedRemark = this._setOrderRemarkCache(normalizedOrderSn, {
+      orderSn: normalizedOrderSn,
+      note: latestRemark?.note || finalNote,
+      tag: latestRemark?.tag || tag,
+      tagName: latestRemark?.tagName || '',
+      source,
+    });
+    return {
+      success: true,
+      ...cachedRemark,
+      response: responsePayload,
+    };
+  }
+
+  _buildSideOrderSources(item = {}, fallback = {}) {
+    return [
+      item,
+      item?.raw,
+      item?.orderGoodsList,
+      item?.order_goods_list,
+      item?.goods_info,
+      item?.goodsInfo,
+      item?.goods,
+      item?.order_info,
+      item?.orderInfo,
+      item?.afterSalesInfo,
+      item?.after_sales_info,
+      item?.compensate,
+      item?.compensateInfo,
+      item?.pendingCompensate,
+      item?.raw?.afterSalesInfo,
+      item?.raw?.after_sales_info,
+      item?.raw?.compensate,
+      item?.raw?.compensateInfo,
+      item?.raw?.pendingCompensate,
+      fallback?.goodsInfo,
+      fallback?.raw?.goods_info,
+      fallback?.raw?.goods,
+      fallback?.raw,
+      fallback,
+    ].filter(Boolean);
+  }
+
+  _resolveSideOrderHeadline(tab = 'personal', sources = []) {
+    const afterSalesStatus = this._pickRefundText(sources, ['afterSalesStatus', 'after_sales_status', 'afterSalesStatusDesc', 'after_sales_status_desc']);
+    const orderStatusText = this._pickRefundText(sources, [
+      'orderStatusStr',
+      'order_status_str',
+      'order_status_desc',
+      'order_status_text',
+      'statusDesc',
+      'status_desc',
+      'statusText',
+      'status_text',
+      'shippingStatusText',
+      'shipping_status_text',
+      'shippingStatus',
+      'shipping_status',
+    ]);
+    const compensateText = this._pickRefundText(sources, [
+      'pendingCompensateText',
+      'pending_compensate_text',
+      'detail',
+      'text',
+      'desc',
+    ]);
+    if (tab === 'aftersale') {
+      return [orderStatusText, afterSalesStatus].filter(Boolean).join('，') || afterSalesStatus || orderStatusText || '售后处理中';
+    }
+    if (tab === 'pending') {
+      return [orderStatusText, compensateText].filter(Boolean).join('，') || orderStatusText || '店铺待支付';
+    }
+    return [orderStatusText, afterSalesStatus].filter(Boolean).join('，') || orderStatusText || '订单状态待确认';
+  }
+
+  _buildSideOrderMetaRows(tab = 'personal', sources = []) {
+    const rows = [];
+    const orderTimeText = this._formatSideOrderDateTime(this._pickRefundNumber(sources, ['orderTime', 'order_time', 'createdAt', 'created_at']));
+    const afterSalesStatus = this._pickRefundText(sources, ['afterSalesStatus', 'after_sales_status', 'afterSalesStatusDesc', 'after_sales_status_desc']);
+    const compensateText = this._pickRefundText(sources, [
+      'pendingCompensateText',
+      'pending_compensate_text',
+      'detail',
+      'text',
+      'desc',
+    ]);
+    const refundShippingBenefitText = this._resolveRefundShippingBenefitText(sources);
+    const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
+    if (orderTimeText) {
+      rows.push({ label: '下单时间', value: orderTimeText });
+    }
+    if (afterSalesStatus) {
+      rows.push({ label: '售后状态', value: afterSalesStatus });
+    }
+    if (tab === 'pending' && compensateText) {
+      rows.push({ label: '待支付说明', value: compensateText });
+    } else if (refundShippingBenefitText) {
+      rows.push({ label: '退货包运费', value: refundShippingBenefitText });
+    }
+    if (shippingInfo.shippingStatusText) {
+      rows.push({ label: '物流状态', value: shippingInfo.shippingStatusText });
+    } else if (shippingInfo.trackingNo) {
+      rows.push({ label: '物流单号', value: shippingInfo.trackingNo });
+    }
+    return rows.slice(0, 4);
+  }
+
+  _formatSideOrderAmount(value, { negative = false } = {}) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return '';
+    return `${negative ? '-' : ''}¥${(numeric / 100).toFixed(2)}`;
+  }
+
+  _resolveSideOrderDiscountText(sources = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of ['manualDiscount', 'merchantDiscount', 'discountAmount', 'totalDiscount']) {
+        if (source[key] === undefined || source[key] === null || source[key] === '') continue;
+        const numeric = Number(source[key]);
+        if (Number.isFinite(numeric) && numeric >= 0) {
+          return this._formatSideOrderAmount(numeric, { negative: true });
+        }
+      }
+    }
+    return '-¥0.00';
+  }
+
+  _resolveSideOrderPendingCountdown(sources = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const rawOrderTime = source.orderTime ?? source.order_time ?? source.createdAt ?? source.created_at;
+      const numeric = Number(rawOrderTime);
+      if (!Number.isFinite(numeric) || numeric <= 0) continue;
+      const orderTimeMs = numeric > 1e12 ? numeric : numeric * 1000;
+      const countdownEndTime = orderTimeMs + 24 * 60 * 60 * 1000;
+      const remainMs = Math.max(0, countdownEndTime - Date.now());
+      const totalSeconds = Math.floor(remainMs / 1000);
+      const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+      const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+      const seconds = String(totalSeconds % 60).padStart(2, '0');
+      return {
+        countdownEndTime,
+        countdownText: `${hours}:${minutes}:${seconds}`,
+      };
+    }
+    return {
+      countdownEndTime: 0,
+      countdownText: '',
+    };
+  }
+
+  _buildSideOrderSummaryRows(tab = 'personal', sources = [], amountText = '') {
+    const rows = [];
+    rows.push({
+      label: '店铺优惠抵扣',
+      value: this._resolveSideOrderDiscountText(sources),
+      tone: 'muted',
+    });
+    if (amountText) {
+      rows.push({
+        label: tab === 'pending' ? '待支付金额' : '实收',
+        value: amountText,
+        tone: 'danger',
+      });
+    }
+    return rows.slice(0, 2);
+  }
+
+  _buildSideOrderActionTags(tab = 'personal', sources = []) {
+    const tags = ['备注'];
+    const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
+    if (shippingInfo.isShipped || shippingInfo.trackingNo) {
+      tags.push('物流信息');
+    }
+    if (tab === 'pending') {
+      tags.push('小额打款');
+    }
+    if (this._pickRefundBoolean(sources, ['showGoodsInstructEntrance', 'show_goods_instruct_entrance'])) {
+      tags.push('查看说明书');
+    }
+    if (this._pickRefundBoolean(sources, ['showExtraPackageTool', 'show_extra_package_tool'])) {
+      tags.push('新增额外包裹');
+    }
+    const statusText = this._pickRefundText(sources, ['orderStatusStr', 'order_status_str']);
+    if (tab === 'pending' || /待支付/.test(statusText)) {
+      tags.push('改价');
+    }
+    return [...new Set(tags)].slice(0, 6);
+  }
+
+  _normalizeSideOrderCard(item = {}, fallback = {}, tab = 'personal', index = 0) {
+    const sources = this._buildSideOrderSources(item, fallback);
+    const goodsInfo = Array.isArray(item?.orderGoodsList)
+      ? (item.orderGoodsList[0] || {})
+      : (item?.orderGoodsList || item?.goodsInfo || item?.goods_info || item?.raw?.orderGoodsList || {});
+    const orderId = this._pickRefundText(sources, ['order_id', 'order_sn', 'orderSn', 'parent_order_sn', 'mall_order_sn', 'orderId'])
+      || String(fallback?.orderId || '').trim();
+    const title = this._pickRefundText(sources, ['goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'title'])
+      || fallback?.title
+      || `订单 ${index + 1}`;
+    const imageUrl = this._pickRefundText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url']);
+    const amountText = this._normalizeRefundAmountByKeys(sources, ['order_amount', 'orderAmount', 'pay_amount', 'refund_amount', 'amount', 'order_price', 'price'])
+      || this._pickRefundText(sources, ['priceText', 'price_text'])
+      || this._normalizeGoodsPrice(this._pickRefundNumber(sources, ['goodsPrice', 'min_price', 'group_price']))
+      || '';
+    const quantityValue = this._pickRefundText(
+      [goodsInfo, ...sources],
+      ['goodsNumber', 'quantity', 'num', 'count', 'goods_count', 'buy_num', 'buyNum'],
+    );
+    const specText = this._pickRefundText(
+      [goodsInfo, ...sources],
+      ['spec', 'specText', 'spec_text', 'sku_spec', 'skuSpec', 'spec_desc', 'specDesc', 'sub_name', 'subName'],
+    );
+    const normalizedQuantity = String(quantityValue || '').replace(/^x/i, '').trim();
+    const detailText = this._pickRefundText([item, goodsInfo, ...sources], ['detailText', 'detail_text']) || (normalizedQuantity && specText
+      ? `${specText} x${normalizedQuantity}`
+      : (specText || (normalizedQuantity ? `x${normalizedQuantity}` : '所拍规格待确认')));
+    const pendingCountdown = tab === 'pending'
+      ? this._resolveSideOrderPendingCountdown(sources)
+      : { countdownEndTime: 0, countdownText: '' };
+    const remarkNote = this._extractOrderRemarkText(this._pickRefundText(sources, ['note']));
+    const remarkTag = this._normalizeOrderRemarkTag(this._pickRefundText(sources, ['tag']));
+    const remarkTagName = this._pickRefundText(sources, ['tagName', 'tag_name']);
+    const cachedRemark = this._getOrderRemarkCache(orderId);
+    if (orderId && (remarkNote || remarkTag || remarkTagName)) {
+      this._setOrderRemarkCache(orderId, {
+        note: remarkNote,
+        tag: remarkTag,
+        tagName: remarkTagName,
+      });
+    }
+    return {
+      key: `${tab}::${orderId || 'order'}::${index}`,
+      orderId: orderId || '-',
+      title,
+      imageUrl,
+      detailText,
+      amountText,
+      headline: this._resolveSideOrderHeadline(tab, sources),
+      countdownEndTime: pendingCountdown.countdownEndTime,
+      countdownText: pendingCountdown.countdownText,
+      metaRows: this._buildSideOrderMetaRows(tab, sources),
+      summaryRows: this._buildSideOrderSummaryRows(tab, sources, amountText),
+      note: remarkNote || cachedRemark?.note || '',
+      noteTag: remarkTag || cachedRemark?.tag || '',
+      noteTagName: remarkTagName || cachedRemark?.tagName || '',
+      actionTags: this._buildSideOrderActionTags(tab, sources),
+    };
+  }
+
+  async _extractPendingOrdersFromPageApis(sessionMeta = {}) {
+    const uid = this._getRefundOrderUid(sessionMeta);
+    if (!uid) return null;
+    const pendingPayload = await this._requestRefundOrderPageApi('/latitude/order/userUnfinishedOrder', {
+      pageNo: 1,
+      pageSize: 50,
+      uid,
+    });
+    const pendingOrders = Array.isArray(pendingPayload?.result?.orders) ? pendingPayload.result.orders : [];
+    if (!pendingOrders.length) return [];
+    const compensateMap = {};
+    const validOrderSns = [...new Set(pendingOrders.map(item => String(item?.orderSn || item?.orderId || '').trim()).filter(Boolean))].slice(0, 20);
+    await Promise.all(validOrderSns.map(async orderSn => {
+      try {
+        const payload = await this._requestRefundOrderPageApi('/latitude/order/orderCompensate', { orderSn });
+        const result = payload?.result || {};
+        const text = this._pickRefundText([result], ['detail', 'text', 'desc']);
+        if (text) {
+          compensateMap[orderSn] = {
+            pendingCompensateText: text,
+          };
+        }
+      } catch (error) {
+        this._log('[API] 店铺待支付补充查询失败', { orderSn, message: error.message });
+      }
+    }));
+    return this._dedupeRefundOrders(pendingOrders.map(item => {
+      const orderSn = String(item?.orderSn || item?.orderId || '').trim();
+      return {
+        ...(item || {}),
+        ...(compensateMap[orderSn] || {}),
+      };
+    }), sessionMeta);
+  }
+
+  _getOrderTrafficEntries(urlPart = '', sessionMeta = {}) {
+    const uid = this._getRefundOrderUid(sessionMeta);
+    return this._getApiTrafficEntries()
+      .filter(entry => String(entry?.url || '').includes(urlPart))
+      .filter(entry => {
+        if (!uid) return true;
+        const body = typeof entry?.requestBody === 'string' ? this._safeParseJson(entry.requestBody) : entry?.requestBody;
+        const requestUid = String(body?.uid || body?.data?.uid || '').trim();
+        return !requestUid || requestUid === uid;
+      });
+  }
+
+  _extractAfterSalesStatusMapFromTraffic(orderSns = [], sessionMeta = {}) {
+    const validOrderSns = [...new Set((Array.isArray(orderSns) ? orderSns : []).map(item => String(item || '').trim()).filter(Boolean))];
+    if (!validOrderSns.length) return {};
+    const targetSet = new Set(validOrderSns);
+    const statusMap = {};
+    const entries = this._getOrderTrafficEntries('/mercury/chat/afterSales/queryList', sessionMeta);
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
+        ? entries[i].responseBody
+        : this._safeParseJson(entries[i]?.responseBody);
+      const map = responseBody?.result?.orderSn2AfterSalesListMap;
+      if (!map || typeof map !== 'object') continue;
+      Object.entries(map).forEach(([orderSn, list]) => {
+        if (!targetSet.has(String(orderSn)) || statusMap[String(orderSn)]) return;
+        const text = this._extractAfterSalesStatusText(list);
+        if (text) statusMap[String(orderSn)] = text;
+      });
+      if (validOrderSns.every(orderSn => statusMap[orderSn])) break;
+    }
+    return statusMap;
+  }
+
+  _attachAfterSalesStatusFromTraffic(orders = [], sessionMeta = {}) {
+    const orderSns = orders.map(item => String(item?.orderId || item?.orderSn || '').trim()).filter(Boolean);
+    if (!orderSns.length) return orders;
+    const statusMap = this._extractAfterSalesStatusMapFromTraffic(orderSns, sessionMeta);
+    return orders.map(order => {
+      const orderSn = String(order?.orderId || order?.orderSn || '').trim();
+      return {
+        ...order,
+        afterSalesStatus: order?.afterSalesStatus || statusMap[orderSn] || '',
+      };
+    });
+  }
+
+  _extractPersonalOrdersFromTraffic(sessionMeta = {}) {
+    const entries = this._getOrderTrafficEntries('/latitude/order/userAllOrder', sessionMeta);
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
+        ? entries[i].responseBody
+        : this._safeParseJson(entries[i]?.responseBody);
+      const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
+      if (!orders.length) continue;
+      return this._attachAfterSalesStatusFromTraffic(this._dedupeRefundOrders(orders, sessionMeta), sessionMeta);
+    }
+    return [];
+  }
+
+  _extractPendingOrdersFromTraffic(sessionMeta = {}) {
+    const entries = this._getOrderTrafficEntries('/latitude/order/userUnfinishedOrder', sessionMeta);
+    let pendingOrders = [];
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
+        ? entries[i].responseBody
+        : this._safeParseJson(entries[i]?.responseBody);
+      const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
+      if (!orders.length) continue;
+      pendingOrders = orders;
+      break;
+    }
+    if (!pendingOrders.length) return [];
+    const compensateEntries = this._getOrderTrafficEntries('/latitude/order/orderCompensate', sessionMeta);
+    const compensateMap = {};
+    for (let i = compensateEntries.length - 1; i >= 0; i -= 1) {
+      const requestBody = typeof compensateEntries[i]?.requestBody === 'string'
+        ? this._safeParseJson(compensateEntries[i].requestBody)
+        : compensateEntries[i]?.requestBody;
+      const responseBody = compensateEntries[i]?.responseBody && typeof compensateEntries[i].responseBody === 'object'
+        ? compensateEntries[i].responseBody
+        : this._safeParseJson(compensateEntries[i]?.responseBody);
+      const orderSn = String(requestBody?.orderSn || '').trim();
+      const text = this._pickRefundText([responseBody?.result || {}], ['detail', 'text', 'desc']);
+      if (orderSn && text && !compensateMap[orderSn]) {
+        compensateMap[orderSn] = {
+          pendingCompensateText: text,
+        };
+      }
+    }
+    return this._dedupeRefundOrders(pendingOrders.map(item => {
+      const orderSn = String(item?.orderSn || item?.orderId || '').trim();
+      return {
+        ...(item || {}),
+        ...(compensateMap[orderSn] || {}),
+      };
+    }), sessionMeta);
+  }
+
+  async getSideOrders(sessionRef, tab = 'personal') {
+    const sessionMeta = this._normalizeSessionMeta(sessionRef);
+    const normalizedTab = ['personal', 'aftersale', 'pending'].includes(String(tab || ''))
+      ? String(tab)
+      : 'personal';
+    if (normalizedTab === 'pending') {
+      let pendingOrders = [];
+      try {
+        const pagePendingOrders = await this._extractPendingOrdersFromPageApis(sessionMeta);
+        if (Array.isArray(pagePendingOrders)) {
+          pendingOrders = pagePendingOrders;
+        }
+      } catch (error) {
+        this._log('[API] 侧栏待支付接口查询失败', { message: error.message });
+      }
+      if (!pendingOrders.length) {
+        pendingOrders = this._extractPendingOrdersFromTraffic(sessionMeta);
+      }
+      if (!Array.isArray(pendingOrders) || !pendingOrders.length) return [];
+      return pendingOrders.map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
+    }
+    let orders = [];
+    try {
+      const pageOrders = await this._extractRefundOrdersFromPageApis(sessionMeta);
+      if (Array.isArray(pageOrders)) {
+        orders = pageOrders;
+      }
+    } catch (error) {
+      this._log('[API] 侧栏订单接口查询失败', { tab: normalizedTab, message: error.message });
+    }
+    if (!orders.length) {
+      orders = this._extractPersonalOrdersFromTraffic(sessionMeta);
+    }
+    if (!orders.length) {
+      try {
+        orders = await this.getRefundOrders(sessionMeta);
+      } catch (error) {
+        this._log('[API] 侧栏订单回退失败', { tab: normalizedTab, message: error.message });
+      }
+    }
+    const filtered = normalizedTab === 'aftersale'
+      ? orders.filter(item => String(item?.afterSalesStatus || '').trim())
+      : orders;
+    return filtered.map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
   }
 
   async getSessionMessages(sessionRef, page = 1, pageSize = 30) {

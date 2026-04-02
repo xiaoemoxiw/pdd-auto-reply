@@ -960,6 +960,11 @@
       accent-color: #4c6ef5;
     }
 
+    .api-refund-radio.is-disabled {
+      color: #999;
+      cursor: not-allowed;
+    }
+
     .api-refund-required {
       color: #e02e24;
       margin-right: 4px;
@@ -2567,7 +2572,7 @@
       border-radius: 3px;
       color: #4f73ef;
       background: #fff;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 500;
       line-height: 1;
       box-sizing: border-box;
@@ -2602,7 +2607,7 @@
     }
 
     .api-message-content {
-      font-size: 13px;
+      font-size: 10px;
       color: #333;
       line-height: 1.55;
       word-break: break-word;
@@ -2931,7 +2936,7 @@
       display: flex;
       flex-direction: column;
       gap: 14px;
-      padding: 16px;
+      padding: 8px;
       background: #f5f6f8;
       color: #b6bcc7;
       font-size: 13px;
@@ -2942,6 +2947,485 @@
     .api-side-order-empty {
       color: #b8bec8;
       word-break: break-word;
+    }
+
+    .api-side-order-list {
+      flex: 1;
+      min-height: 0;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .api-side-order-card {
+      background: #fff;
+      border: 1px solid #eceef2;
+      border-radius: 10px;
+      padding: 14px 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      color: #5f6877;
+    }
+
+    .api-side-order-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .api-side-order-card-status-wrap {
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .api-side-order-card-status {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ef6b6b;
+      line-height: 1.5;
+    }
+
+    .api-side-order-card-countdown {
+      font-size: 11px;
+      font-weight: 600;
+      color: #ef6b6b;
+      line-height: 1.5;
+    }
+
+    .api-side-order-card-copy {
+      border: none;
+      background: transparent;
+      color: #5d83ef;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0;
+      flex-shrink: 0;
+    }
+
+    .api-side-order-card-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .api-side-order-card-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .api-side-order-card-row-label {
+      flex-shrink: 0;
+      color: #9aa3b2;
+    }
+
+    .api-side-order-card-row-value {
+      min-width: 0;
+      color: #5f6877;
+      word-break: break-word;
+    }
+
+    .api-side-order-card-goods {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-top: 1px solid #f1f3f6;
+      border-bottom: 1px solid #f1f3f6;
+    }
+
+    .api-side-order-card-media {
+      width: 48px;
+      height: 48px;
+      border-radius: 6px;
+      background: #eef1f6;
+      overflow: hidden;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #97a0af;
+      font-size: 12px;
+    }
+
+    .api-side-order-card-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .api-side-order-card-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .api-side-order-card-title {
+      font-size: 13px;
+      color: #4f5663;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      line-clamp: 2;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
+
+    .api-side-order-card-detail {
+      font-size: 12px;
+      color: #8d95a3;
+      line-height: 1.4;
+    }
+
+    .api-side-order-card-price {
+      font-size: 13px;
+      font-weight: 600;
+      color: #4f5663;
+    }
+
+    .api-side-order-card-summary {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .api-side-order-card-summary-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .api-side-order-card-summary-row span {
+      color: #9aa3b2;
+    }
+
+    .api-side-order-card-summary-row strong {
+      color: #5f6877;
+      font-weight: 500;
+    }
+
+    .api-side-order-card-summary-row.is-danger strong {
+      color: #ef6b6b;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .api-side-order-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .api-side-order-card-action {
+      padding: 2px 6px;
+      border-radius: 5px;
+      border: 1px solid #7f9bef;
+      background: #f5f8ff;
+      color: #5d83ef;
+      font-size: 11px;
+      line-height: 1.3;
+      user-select: none;
+    }
+
+    .api-side-order-card-action.is-button {
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .api-side-order-card-action.is-button:hover {
+      background: #eaf0ff;
+      border-color: #6d90f0;
+    }
+
+    .api-side-order-remark-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #f2f3f5;
+    }
+
+    .api-side-order-remark-summary-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+      flex-wrap: nowrap;
+    }
+
+    .api-side-order-remark-summary-inline-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #5f6877;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.4;
+      flex-shrink: 0;
+    }
+
+    .api-side-order-remark-summary-inline-tag .api-side-order-remark-color-dot {
+      width: 10px;
+      height: 10px;
+    }
+
+    .api-side-order-remark-summary-text {
+      min-width: 0;
+      display: block;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.5;
+      color: #4f5663;
+    }
+
+    .api-side-order-remark-summary-copy {
+      font-size: 11px;
+      line-height: 1.2;
+      color: #6d8ff5;
+    }
+
+    .api-side-order-remark-popup {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid #e8ebf1;
+      background: #fbfcfe;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+
+    .api-side-order-remark-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #3f4652;
+      line-height: 1.4;
+    }
+
+    .api-side-order-remark-status {
+      font-size: 12px;
+      line-height: 1.5;
+      color: #8b95a3;
+    }
+
+    .api-side-order-remark-status.is-error {
+      color: #e05d5d;
+    }
+
+    .api-side-order-remark-colors {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .api-side-order-remark-color {
+      width: 100%;
+      height: 28px;
+      padding: 0 6px;
+      border: 1px solid #e4e8ef;
+      border-radius: 6px;
+      background: #f5f6f8;
+      color: #4f5663;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      font-size: 9px;
+      font-weight: 500;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+
+    .api-side-order-remark-color:hover {
+      border-color: #d2d8e5;
+      background: #eef3ff;
+    }
+
+    .api-side-order-remark-color.active {
+      border-color: #bfd0ff;
+      background: #eaf0ff;
+      color: #3f67d9;
+    }
+
+    .api-side-order-remark-color-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .api-side-order-remark-color-dot.is-red {
+      background: #ff5a5a;
+    }
+
+    .api-side-order-remark-color-dot.is-yellow {
+      background: #f7a400;
+    }
+
+    .api-side-order-remark-color-dot.is-green {
+      background: #45be18;
+    }
+
+    .api-side-order-remark-color-dot.is-blue {
+      background: #2098f3;
+    }
+
+    .api-side-order-remark-color-dot.is-purple {
+      background: #9254de;
+    }
+
+    .api-side-order-remark-editor {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 132px;
+      padding: 12px 12px 36px;
+      border: 1px solid #d8dee8;
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .api-side-order-remark-editor.has-tag {
+      padding-top: 10px;
+    }
+
+    .api-side-order-remark-chip-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .api-side-order-remark-chip {
+      height: 30px;
+      padding: 0 10px;
+      border: none;
+      border-radius: 6px;
+      background: #f3f4f6;
+      color: #3f4652;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .api-side-order-remark-textarea {
+      width: 100%;
+      min-height: 72px;
+      border: none;
+      background: transparent;
+      resize: none;
+      outline: none;
+      color: #4f5663;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 0;
+    }
+
+    .api-side-order-remark-textarea::placeholder {
+      color: #c3c8d1;
+    }
+
+    .api-side-order-remark-count {
+      position: absolute;
+      right: 12px;
+      bottom: 10px;
+      font-size: 12px;
+      color: #a3aab6;
+    }
+
+    .api-side-order-remark-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .api-side-order-remark-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #6f7785;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .api-side-order-remark-check input {
+      width: 16px;
+      height: 16px;
+      accent-color: #5d83ef;
+      cursor: pointer;
+    }
+
+    .api-side-order-remark-buttons {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
+    }
+
+    .api-side-order-remark-btn {
+      min-width: 70px;
+      height: 34px;
+      padding: 0 16px;
+      border-radius: 8px;
+      border: 1px solid #d2d7e2;
+      background: #fff;
+      color: #4f5663;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.18s ease;
+    }
+
+    .api-side-order-remark-btn:hover {
+      border-color: #c4cada;
+      background: #f7f8fb;
+    }
+
+    .api-side-order-remark-btn.is-primary {
+      border-color: #5d83ef;
+      background: #5d83ef;
+      color: #fff;
+    }
+
+    .api-side-order-remark-btn.is-primary:hover {
+      border-color: #5077e6;
+      background: #5077e6;
+    }
+
+    .api-side-order-remark-btn:disabled,
+    .api-side-order-remark-color:disabled,
+    .api-side-order-card-action.is-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
     }
 
     .api-side-debug-card {
@@ -3903,15 +4387,17 @@
             </div>
             <div class="api-side-shell">
               <div class="api-side-tabs">
-                <button class="api-side-tab active" data-api-side-tab="personal">个人订单</button>
+                <button class="api-side-tab active" data-api-side-tab="sync">接口同步状态</button>
+                <button class="api-side-tab" data-api-side-tab="personal">个人订单</button>
                 <button class="api-side-tab" data-api-side-tab="aftersale">售后订单</button>
                 <button class="api-side-tab" data-api-side-tab="pending">店铺待支付</button>
               </div>
               <div class="api-side-order-stage">
-                <div class="api-side-debug-card">
+                <div class="api-side-debug-card" id="apiSideSyncCard">
                   <div class="api-side-debug-title">接口同步状态</div>
                   <div class="api-side-debug-list" id="apiSideSyncState"></div>
                 </div>
+                <div class="api-side-order-list" id="apiSideOrderList"></div>
                 <div class="api-side-order-empty" id="apiSideOrderEmpty">近90天无订单，更早订单请在管理后台查看</div>
               </div>
             </div>
@@ -4841,7 +5327,7 @@
               <span>退款</span>
             </label>
             <label class="api-refund-radio">
-              <input type="radio" name="apiRefundType" value="refund" checked>
+              <input type="radio" name="apiRefundType" value="returnRefund">
               <span>退货退款</span>
             </label>
             <label class="api-refund-radio">
@@ -4850,10 +5336,23 @@
             </label>
           </div>
         </div>
+        <div class="form-group" id="apiRefundReceiptStatusGroup" style="display:none;">
+          <label class="form-label"><span class="api-refund-required">*</span>收货状态</label>
+          <div class="api-refund-type-group">
+            <label class="api-refund-radio">
+              <input type="radio" name="apiRefundReceiptStatus" value="not_received">
+              <span>未收到货</span>
+            </label>
+            <label class="api-refund-radio">
+              <input type="radio" name="apiRefundReceiptStatus" value="received">
+              <span>已收到货</span>
+            </label>
+          </div>
+        </div>
         <div class="form-group">
           <label class="form-label" id="apiRefundReasonLabel"><span class="api-refund-required">*</span>退款原因</label>
           <select class="form-select" id="apiRefundReason">
-            <option value="" id="apiRefundReasonPlaceholder">请选择退款原因</option>
+            <option value="" id="apiRefundReasonPlaceholder" disabled selected hidden>请选择退款原因</option>
             <option value="不喜欢">不喜欢、效果不好</option>
             <option value="不想要了">不想要了</option>
             <option value="缺货">缺货</option>
@@ -5035,7 +5534,7 @@
     let apiOpenSessionPendingKey = '';
     let apiSyncStateEntries = [];
     let apiSessionTab = 'latest';
-    let apiSideTab = 'personal';
+    let apiSideTab = 'sync';
     let apiSessionKeyword = '';
     let apiStarredSessions = [];
     let apiLastSessionSelection = undefined;
@@ -6773,21 +7272,30 @@
 
     function renderApiSideCards() {
       const emptyEl = document.getElementById('apiSideOrderEmpty');
-      if (!emptyEl) return;
+      const syncCardEl = document.getElementById('apiSideSyncCard');
+      const listEl = document.getElementById('apiSideOrderList');
+      if (!emptyEl || !syncCardEl || !listEl) return;
       document.querySelectorAll('.api-side-tab').forEach(button => {
         button.classList.toggle('active', button.dataset.apiSideTab === apiSideTab);
       });
       const emptyTextMap = {
+        sync: '',
         personal: '近90天无订单，更早订单请在管理后台查看',
         aftersale: '近90天无售后订单，更早记录请在管理后台查看',
         pending: '暂无待支付订单，请在管理后台查看',
       };
+      const isSyncTab = apiSideTab === 'sync';
+      syncCardEl.style.display = isSyncTab ? 'flex' : 'none';
+      listEl.style.display = isSyncTab ? 'none' : 'flex';
+      emptyEl.style.display = isSyncTab ? 'none' : 'block';
       emptyEl.textContent = emptyTextMap[apiSideTab] || emptyTextMap.personal;
       renderApiSyncState();
+      window.renderApiSideOrders?.();
     }
 
     function renderApiTraffic() {
       document.getElementById('apiTrafficSummary').textContent = `${apiTrafficEntries.length} 条抓包 · ${getApiTrafficDiagText()}`;
+      window.invalidateApiSideOrders?.();
       renderApiSideCards();
     }
 
@@ -6926,6 +7434,7 @@
       });
       apiHasUserSelectedSession = true;
       renderApiSessions();
+      renderApiStatus();
       await saveApiLastSessionSelection({
         shopId: apiActiveSessionShopId,
         sessionId: apiActiveSessionId,

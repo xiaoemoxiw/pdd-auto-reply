@@ -112,6 +112,49 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-get-side-orders', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    try {
+      return await getApiClient(shopId).getSideOrders(params.session || params.sessionId, params.tab);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-get-order-remark', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn) return { error: '缺少订单编号' };
+    try {
+      return await getApiClient(shopId).getOrderRemark(params.orderSn, params.source);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-get-order-remark-tags', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    try {
+      return await getApiClient(shopId).getOrderRemarkTagOptions(Boolean(params.force));
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-save-order-remark', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn) return { error: '缺少订单编号' };
+    try {
+      return await getApiClient(shopId).saveOrderRemark(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
   ipcMain.handle('api-send-message', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

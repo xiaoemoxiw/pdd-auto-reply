@@ -381,6 +381,17 @@ function detectChatPage(view, shopId) {
 const networkMsgDedup = new Map(); // text -> timestamp
 const apiSessionTrafficSnapshot = new Map();
 
+function buildApiSessionTrafficSignature(sessions = []) {
+  if (!Array.isArray(sessions)) return '';
+  return sessions.map(item => [
+    item.sessionId || '',
+    item.lastMessageTime || 0,
+    item.unreadCount || 0,
+    item.waitTime || 0,
+    item.lastMessage || '',
+  ].join(':')).join('|');
+}
+
 function setApiSessionSnapshot(shopId, sessions = [], source = 'runtime') {
   if (!shopId) return [];
   const normalized = Array.isArray(sessions)
@@ -433,7 +444,7 @@ function pushApiSessionsFromTraffic(shopId, entry) {
   try {
     const sessions = client._parseSessionList(entry.responseBody);
     if (!Array.isArray(sessions) || sessions.length === 0) return;
-    const signature = sessions.map(item => `${item.sessionId}:${item.lastMessageTime || item.waitTime || 0}`).join('|');
+    const signature = buildApiSessionTrafficSignature(sessions);
     if (apiSessionTrafficSnapshot.get(shopId) === signature) return;
     apiSessionTrafficSnapshot.set(shopId, signature);
     client._sessionCache = sessions;
@@ -522,6 +533,13 @@ function getApiClient(shopId) {
     },
     getApiTraffic() {
       return getApiTraffic(shopId);
+    },
+    requestInPddPage(request) {
+      return requestViaPddPage(shopId, request);
+    },
+    async executeInPddPage(script) {
+      const view = await ensurePddPageViewReady(shopId);
+      return view.webContents.executeJavaScript(String(script || ''), true);
     }
   });
 
@@ -703,22 +721,33 @@ async function pickBestFileInputNodeId(view, nodeIds = []) {
 async function probePddUploadInput(view) {
   return view.webContents.executeJavaScript(`
     (() => {
+      const markNode = (node, prefix) => {
+        if (!node) return '';
+        const token = (prefix || 'probe') + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        node.setAttribute('data-pdd-helper-probe', token);
+        return '[data-pdd-helper-probe="' + token + '"]';
+      };
       const isVisible = (node) => {
         if (!node) return false;
         const rect = node.getBoundingClientRect();
         const style = window.getComputedStyle(node);
         return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
       };
-      const inputs = Array.from(document.querySelectorAll('input[type="file"]')).filter(node => !node.disabled);
-      const imageInput = inputs.find(node => String(node.accept || '').includes('image')) || inputs[0];
-      if (imageInput) {
-        if (!imageInput.id) imageInput.id = 'pdd-upload-input-' + Date.now();
-        return { selector: '#' + imageInput.id, accept: imageInput.accept || '' };
-      }
       const inputBox = document.querySelector('.middle-panel textarea')
         || document.querySelector('.middle-panel [contenteditable="true"]')
         || document.querySelector('textarea')
         || document.querySelector('[contenteditable="true"]');
+      const inputs = Array.from(document.querySelectorAll('input[type="file"]')).filter(node => !node.disabled);
+      const imageInput = inputs.find(node => String(node.accept || '').includes('image')) || inputs[0];
+      if (imageInput) {
+        return {
+          selector: markNode(imageInput, 'upload-input'),
+          accept: imageInput.accept || '',
+          hasInputBox: !!inputBox,
+          inputCount: inputs.length,
+          currentUrl: location.href
+        };
+      }
       const inputRect = inputBox ? inputBox.getBoundingClientRect() : null;
       const root = document.body;
       const candidates = Array.from(root.querySelectorAll('button,[role="button"],span,div'))
@@ -748,12 +777,18 @@ async function probePddUploadInput(view) {
             text,
             title,
             cls: String(cls).slice(0, 80),
+            selector: markNode(node, 'upload-candidate'),
           };
         })
         .filter(item => item.score > 0)
         .sort((a, b) => b.score - a.score)
         .slice(0, 8);
-      return { candidates, hasInputBox: !!inputBox };
+      return {
+        candidates,
+        hasInputBox: !!inputBox,
+        inputCount: inputs.length,
+        currentUrl: location.href
+      };
     })()
   `, true);
 }
@@ -763,6 +798,29 @@ function clickViewAt(view, x, y) {
   return waitForMs(80).then(() => {
     view.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
   });
+}
+
+async function clickViewTarget(view, target) {
+  if (!view || !target) return false;
+  if (target.selector) {
+    const clicked = await view.webContents.executeJavaScript(`
+      (() => {
+        const node = document.querySelector(${JSON.stringify(target.selector)});
+        if (!node) return false;
+        const clickable = node.closest('button,[role="button"],label,a,div,span') || node;
+        clickable.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+        clickable.click();
+        clickable.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+        return true;
+      })()
+    `, true).catch(() => false);
+    if (clicked) return true;
+  }
+  if (Number.isFinite(target.x) && Number.isFinite(target.y)) {
+    await clickViewAt(view, target.x, target.y);
+    return true;
+  }
+  return false;
 }
 
 async function setViewFileInputFiles(view, target, filePath) {
@@ -809,6 +867,14 @@ async function waitForViewUploadResult(view, filePath) {
   const { debuggerInstance, attachedBefore } = await ensureViewDebugger(view);
   const trackedRequestIds = new Set();
   const uploadRequestPattern = /get_signature|store_image|general_file|upload|pddugc|galerie|cos/i;
+  const buildMissingInputError = (probe) => {
+    const parts = [];
+    if (probe?.currentUrl) parts.push(`url=${probe.currentUrl}`);
+    if (typeof probe?.hasInputBox === 'boolean') parts.push(`hasInputBox=${probe.hasInputBox ? 1 : 0}`);
+    if (typeof probe?.inputCount === 'number') parts.push(`inputCount=${probe.inputCount}`);
+    if (Array.isArray(probe?.candidates)) parts.push(`candidates=${probe.candidates.length}`);
+    return new Error(parts.length ? `PDD_UPLOAD_INPUT_MISSING; ${parts.join('; ')}` : 'PDD_UPLOAD_INPUT_MISSING');
+  };
   return new Promise(async (resolve, reject) => {
     const timeout = setTimeout(() => {
       cleanup();
@@ -879,7 +945,7 @@ async function waitForViewUploadResult(view, filePath) {
         const candidates = Array.isArray(probe?.candidates) ? probe.candidates : [];
         for (const candidate of candidates) {
           const beforeNodeIds = await listFileInputNodeIds(view);
-          await clickViewAt(view, candidate.x, candidate.y);
+          await clickViewTarget(view, candidate);
           await waitForMs(500);
           const afterNodeIds = await listFileInputNodeIds(view);
           const newNodeIds = afterNodeIds.filter(id => !beforeNodeIds.includes(id));
@@ -887,8 +953,9 @@ async function waitForViewUploadResult(view, filePath) {
           if (clickedNodeId) return clickedNodeId;
           const nextProbe = await probePddUploadInput(view);
           if (nextProbe?.selector) return nextProbe.selector;
+          probe = nextProbe;
         }
-        throw new Error('PDD_UPLOAD_INPUT_MISSING');
+        throw buildMissingInputError(probe);
       })();
       await setViewFileInputFiles(view, target, filePath);
     } catch (error) {
@@ -898,15 +965,76 @@ async function waitForViewUploadResult(view, filePath) {
   });
 }
 
-async function uploadImageViaPddPage(shopId, filePath) {
+async function ensurePddPageViewReady(shopId) {
   const view = shopManager?.getOrCreateView(shopId);
   if (!view) throw new Error('未找到店铺网页实例');
+  try {
+    shopManager?._resizeView?.(view);
+  } catch {}
+  let justLoadedChatPage = false;
   const currentUrl = view.webContents.getURL();
   if (!currentUrl || currentUrl === 'about:blank' || !currentUrl.includes('/chat-merchant/')) {
     const waitTask = waitForViewLoad(view, '/chat-merchant/');
     view.webContents.loadURL(PDD_CHAT_URL);
     await waitTask;
+    justLoadedChatPage = true;
   }
+  if (justLoadedChatPage) {
+    await waitForMs(1200);
+  }
+  await view.webContents.executeJavaScript(
+    `window.__PDD_HELPER__?.dismissBlockingPopups?.() || 0`
+  ).catch(() => {});
+  await waitForMs(300);
+  return view;
+}
+
+async function requestViaPddPage(shopId, request = {}) {
+  const view = await ensurePddPageViewReady(shopId);
+  const payload = {
+    url: String(request.url || ''),
+    method: String(request.method || 'GET').toUpperCase(),
+    headers: request.headers && typeof request.headers === 'object' ? request.headers : {},
+    body: request.body === undefined ? null : request.body,
+  };
+  if (!payload.url) {
+    throw new Error('缺少页面请求 URL');
+  }
+  const result = await view.webContents.executeJavaScript(`
+    (async () => {
+      const payload = ${JSON.stringify(payload)};
+      try {
+        const response = await fetch(payload.url, {
+          method: payload.method,
+          credentials: 'include',
+          headers: payload.headers,
+          body: payload.body === null ? undefined : payload.body,
+        });
+        const text = await response.text();
+        let data = text;
+        try { data = JSON.parse(text); } catch {}
+        return {
+          ok: response.ok,
+          status: response.status,
+          url: response.url,
+          body: data,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error?.message || String(error || 'PAGE_REQUEST_FAILED'),
+        };
+      }
+    })()
+  `, true);
+  if (!result?.ok) {
+    throw new Error(result?.error || `PAGE_REQUEST_FAILED${result?.status ? `:${result.status}` : ''}`);
+  }
+  return result.body;
+}
+
+async function uploadImageViaPddPage(shopId, filePath) {
+  const view = await ensurePddPageViewReady(shopId);
   return waitForViewUploadResult(view, filePath);
 }
 
@@ -1547,6 +1675,12 @@ async function selectConversationInView(view) {
   console.log('[PDD助手] 无活跃会话，主进程尝试自动选择...');
 
   const coords = await view.webContents.executeJavaScript(`(function(){
+    var markNode = function(node) {
+      if (!node) return '';
+      var token = 'pdd-conversation-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      node.setAttribute('data-pdd-helper-conversation', token);
+      return '[data-pdd-helper-conversation="' + token + '"]';
+    };
     // 通过"今日接待"文本定位会话列表区域
     var panels = document.querySelectorAll('div, aside, section, nav');
     var sp = null;
@@ -1570,7 +1704,11 @@ async function selectConversationInView(view) {
           for (var d = 0; d < 10 && item && item !== sp; d++) {
             var r = item.getBoundingClientRect();
             if (r.height >= 40 && r.height <= 150 && r.width >= 150)
-              return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+              return {
+                x: Math.round(r.left + r.width / 2),
+                y: Math.round(r.top + r.height / 2),
+                selector: markNode(item)
+              };
             item = item.parentElement;
           }
         }
@@ -1586,7 +1724,11 @@ async function selectConversationInView(view) {
       if (!el.offsetParent) continue;
       var text = (el.textContent || '').trim();
       if (text.length < 3 || text.length > 300) continue;
-      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+      return {
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+        selector: markNode(el)
+      };
     }
     return null;
   })()`).catch(() => null);
@@ -1597,9 +1739,7 @@ async function selectConversationInView(view) {
   }
 
   console.log(`[PDD助手] sendInputEvent 点击会话 (${coords.x}, ${coords.y})`);
-  view.webContents.sendInputEvent({ type: 'mouseDown', x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
-  await new Promise(r => setTimeout(r, 80));
-  view.webContents.sendInputEvent({ type: 'mouseUp', x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
+  await clickViewTarget(view, coords);
 
   // 等待会话加载
   await new Promise(r => setTimeout(r, 2000));

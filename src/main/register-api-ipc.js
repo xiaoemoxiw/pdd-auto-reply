@@ -23,6 +23,17 @@ function registerApiIpc({
     return params.shopId || getActiveShopId();
   }
 
+  function getLastApiSessionSelection() {
+    const selection = store.get('lastApiSessionSelection') || null;
+    if (!selection?.shopId || !selection?.sessionId) return null;
+    return {
+      shopId: String(selection.shopId),
+      sessionId: String(selection.sessionId),
+      customerName: selection.customerName || '',
+      updatedAt: Number(selection.updatedAt || 0)
+    };
+  }
+
   ipcMain.handle('api-get-token-status', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有活跃店铺' };
@@ -85,6 +96,60 @@ function registerApiIpc({
     if (!params.url) return { error: '缺少商品链接' };
     try {
       return await getApiClient(shopId).getGoodsCard(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-get-refund-orders', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    try {
+      return await getApiClient(shopId).getRefundOrders(params.session || params.sessionId);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-get-side-orders', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    try {
+      return await getApiClient(shopId).getSideOrders(params.session || params.sessionId, params.tab);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-get-order-remark', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn) return { error: '缺少订单编号' };
+    try {
+      return await getApiClient(shopId).getOrderRemark(params.orderSn, params.source);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-get-order-remark-tags', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    try {
+      return await getApiClient(shopId).getOrderRemarkTagOptions(Boolean(params.force));
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-save-order-remark', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn) return { error: '缺少订单编号' };
+    try {
+      return await getApiClient(shopId).saveOrderRemark(params);
     } catch (error) {
       return { error: error.message };
     }
@@ -256,6 +321,30 @@ function registerApiIpc({
   });
 
   ipcMain.handle('get-api-starred-sessions', () => store.get('apiStarredSessions') || []);
+
+  ipcMain.handle('get-last-api-session-selection', () => getLastApiSessionSelection());
+
+  ipcMain.handle('set-last-api-session-selection', (event, selection = {}) => {
+    const shopId = String(selection.shopId || '').trim();
+    const sessionId = String(selection.sessionId || '').trim();
+    if (!shopId || !sessionId) {
+      store.delete('lastApiSessionSelection');
+      return null;
+    }
+    const nextSelection = {
+      shopId,
+      sessionId,
+      customerName: selection.customerName || '',
+      updatedAt: Date.now()
+    };
+    store.set('lastApiSessionSelection', nextSelection);
+    return nextSelection;
+  });
+
+  ipcMain.handle('clear-last-api-session-selection', () => {
+    store.delete('lastApiSessionSelection');
+    return true;
+  });
 
   ipcMain.handle('toggle-api-starred-session', (event, session = {}) => {
     const sessions = store.get('apiStarredSessions') || [];

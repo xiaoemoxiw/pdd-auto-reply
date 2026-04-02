@@ -151,6 +151,122 @@ function testParseSessionListKeepsConversationIdentity() {
   assert.strictEqual(sessions[0].userUid, 'buyer-1');
 }
 
+function testParseSessionIdentityPrefersBuyerUid() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const identity = client._parseSessionIdentity({
+    conversation_id: 'conv-2',
+    from: { uid: 'mall-1' },
+    to: { uid: 'buyer-2' },
+    user_info: { uid: 'buyer-2' },
+  });
+
+  assert.strictEqual(identity.customerId, 'buyer-2');
+  assert.strictEqual(identity.userUid, 'buyer-2');
+}
+
+function testParseSessionIdentityUsesBuyerFromUidForPendingSession() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    },
+    getShopInfo() {
+      return { mallId: 90001 };
+    }
+  });
+
+  const identity = client._parseSessionIdentity({
+    conversation_id: 'conv-pending',
+    from_uid: 'buyer-pending',
+    from: { uid: 'buyer-pending' },
+    to: { uid: '90001' },
+  });
+
+  assert.strictEqual(identity.customerId, 'buyer-pending');
+  assert.strictEqual(identity.userUid, 'buyer-pending');
+}
+
+function testParseMessagesMarksSystemNotice() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const messages = client._parseMessages({
+    data: {
+      msg_list: [{
+        msg_id: 'sys-1',
+        content: '您接待过此消费者，为避免插播、抢答，机器人已暂停接待',
+        send_time: 1743446492,
+        from: { role: 'system' },
+      }]
+    }
+  });
+
+  assert.strictEqual(messages.length, 1);
+  assert.strictEqual(messages[0].actor, 'system');
+  assert.strictEqual(messages[0].isSystem, true);
+  assert.strictEqual(messages[0].isFromBuyer, false);
+}
+
+function testParseMessagesMarksSystemNoticeByContent() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    },
+    getShopInfo() {
+      return { mallId: 90001 };
+    }
+  });
+
+  const messages = client._parseMessages({
+    data: {
+      msg_list: [{
+        msg_id: 'sys-plain',
+        content: '您接待过此消费者，为避免插播、抢答，机器人已暂停接待，>>点此【立即恢复接待】<<',
+        send_time: 1743446493,
+        from: { uid: 'buyer-3' },
+        to: { uid: '90001' },
+      }]
+    }
+  });
+
+  assert.strictEqual(messages.length, 1);
+  assert.strictEqual(messages[0].actor, 'system');
+  assert.strictEqual(messages[0].isSystem, true);
+  assert.strictEqual(messages[0].isFromBuyer, false);
+}
+
+function testSystemNoticeOverridesBuyerRole() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const messages = client._parseMessages({
+    data: {
+      msg_list: [{
+        msg_id: 'sys-role-user',
+        content: '您接待过此消费者，为避免插播、抢答，机器人已暂停接待，>>点此【立即恢复接待】<<',
+        send_time: 1743446494,
+        to: { role: 'user', uid: 'buyer-5' },
+        from: { uid: 'mall-1' },
+      }]
+    }
+  });
+
+  assert.strictEqual(messages.length, 1);
+  assert.strictEqual(messages[0].actor, 'system');
+  assert.strictEqual(messages[0].isSystem, true);
+  assert.strictEqual(messages[0].isFromBuyer, false);
+}
+
 function testFilterDisplaySessions() {
   const client = new PddApiClient('shop-1', {
     getApiTraffic() {
@@ -308,6 +424,28 @@ function testGuessImageMimeType() {
   ]);
 }
 
+function testNormalizeBusinessErrorNested() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const error = client._normalizeBusinessError({
+    result: {
+      data: {
+        error_code: 7001,
+        error_msg: '发送失败'
+      }
+    }
+  });
+
+  assert.deepStrictEqual(error, {
+    code: 7001,
+    message: '发送失败'
+  });
+}
+
 async function testRequestRawSanitizesCrossOriginHeaders() {
   const client = new PddApiClient('shop-1', {
     getApiTraffic() {
@@ -382,19 +520,215 @@ async function testSendImageUrl() {
   assert.strictEqual(JSON.parse(result.response.body.data.message.content).picture_url, 'https://img.example.com/chat/test.png');
 }
 
+async function testSendMessageRequiresConfirmation() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  client._sessionInited = true;
+  client._sleep = async () => {};
+  client._buildSendMessageBody = () => ({
+    data: {
+      message: {
+        to: { uid: 'session-1' }
+      },
+      anti_content: 'body-anti'
+    },
+    client: 1,
+    anti_content: 'top-anti'
+  });
+  client._post = async () => ({ result: { code: 0 } });
+  client.getSessionMessages = async () => ([{
+    messageId: 'm-1',
+    content: 'hello',
+    isFromBuyer: false,
+    timestamp: Date.now(),
+  }]);
+
+  const result = await client.sendMessage('session-1', 'hello');
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.messageId, 'm-1');
+}
+
+async function testSendMessageConfirmationAllowsUnknownActor() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    },
+    getShopInfo() {
+      return { mallId: 'mall-1' };
+    }
+  });
+
+  client._sessionInited = true;
+  client._sleep = async () => {};
+  client._buildSendMessageBody = () => ({
+    data: {
+      message: {
+        to: { uid: 'buyer-1' }
+      },
+      anti_content: 'body-anti'
+    },
+    client: 1,
+    anti_content: 'top-anti'
+  });
+  client._post = async () => ({ result: { code: 0 } });
+  client.getSessionMessages = async () => ([{
+    messageId: 'm-2',
+    content: 'hello',
+    timestamp: Date.now(),
+    raw: {},
+  }]);
+
+  const result = await client.sendMessage('session-1', 'hello');
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.messageId, 'm-2');
+}
+
+function testGetLatestBuyerInfoFallsBackToSessionRaw() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const userInfo = client._getLatestBuyerInfo({
+    sessionId: 'session-raw',
+    raw: {
+      user_info: {
+        uid: 'buyer-raw',
+        nickname: '客户Raw'
+      }
+    }
+  });
+
+  assert.deepStrictEqual(userInfo, {
+    uid: 'buyer-raw',
+    nickname: '客户Raw'
+  });
+}
+
+function testGetLatestMessageTemplateUsesSendMessageBody() {
+  const traffic = [{
+    url: 'https://mms.pinduoduo.com/plateau/chat/send_message',
+    requestBody: JSON.stringify({
+      data: {
+        message: {
+          to: { role: 'user', uid: 'buyer-template' },
+          from: { role: 'mall_cs', uid: 'mall-1' },
+          pre_msg_id: 'msg-template'
+        }
+      }
+    })
+  }];
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return traffic;
+    }
+  });
+
+  const template = client._getLatestMessageTemplate({
+    sessionId: 'buyer-template',
+    userUid: 'buyer-template',
+    raw: {}
+  });
+
+  assert.strictEqual(template.to.uid, 'buyer-template');
+  assert.strictEqual(template.pre_msg_id, 'msg-template');
+}
+
+function testGetLatestMessageTemplateIgnoresSystemMessage() {
+  const traffic = [{
+    url: 'https://mms.pinduoduo.com/plateau/chat/list',
+    requestBody: JSON.stringify({
+      data: {
+        list: {
+          with: { role: 'user', id: 'buyer-template' }
+        }
+      }
+    }),
+    responseBody: {
+      data: {
+        msg_list: [{
+          msg_id: 'sys-2',
+          content: '系统提示',
+          from: { role: 'system' },
+        }]
+      }
+    }
+  }];
+
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return traffic;
+    }
+  });
+
+  const template = client._getLatestMessageTemplate({
+    sessionId: 'buyer-template',
+    userUid: 'buyer-template',
+    raw: {}
+  });
+
+  assert.strictEqual(template, null);
+}
+
+async function testSendMessageRejectsUnconfirmedResult() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  client._sessionInited = true;
+  client._sleep = async () => {};
+  client._buildSendMessageBody = () => ({
+    data: {
+      message: {
+        to: { uid: 'session-1' }
+      },
+      anti_content: 'body-anti'
+    },
+    client: 1,
+    anti_content: 'top-anti'
+  });
+  client._post = async () => ({ result: { code: 0 } });
+  client.getSessionMessages = async () => ([]);
+
+  await assert.rejects(
+    () => client.sendMessage('session-1', 'hello'),
+    /未确认消息已入会话/
+  );
+}
+
 async function main() {
   try {
     await testResetStaleCursor();
     await testReuseLatestWindow();
     testParseNestedSessionPreview();
     testParseSessionListKeepsConversationIdentity();
+    testParseSessionIdentityPrefersBuyerUid();
+    testParseSessionIdentityUsesBuyerFromUidForPendingSession();
+    testParseMessagesMarksSystemNotice();
+    testParseMessagesMarksSystemNoticeByContent();
+    testSystemNoticeOverridesBuyerRole();
     testFilterDisplaySessions();
     await testGetSessionListFiltersOldSessions();
     await testGetSessionMessagesRetriesConversationIdentity();
     testBuildSendImageBody();
     testGuessImageMimeType();
+    testNormalizeBusinessErrorNested();
     await testRequestRawSanitizesCrossOriginHeaders();
     await testSendImageUrl();
+    await testSendMessageRequiresConfirmation();
+    await testSendMessageConfirmationAllowsUnknownActor();
+    testGetLatestBuyerInfoFallsBackToSessionRaw();
+    testGetLatestMessageTemplateUsesSendMessageBody();
+    testGetLatestMessageTemplateIgnoresSystemMessage();
+    await testSendMessageRejectsUnconfirmedResult();
     console.log('pdd-api-session-window-test passed');
   } finally {
     Module._load = originalLoad;

@@ -14,6 +14,13 @@ const PDD_UPLOAD_BASES = [
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
 const POLL_INTERVAL = 5000;
 const POLL_INTERVAL_IDLE = 15000;
+const ORDER_REMARK_TAG_LABELS = {
+  RED: '红色',
+  YELLOW: '黄色',
+  GREEN: '绿色',
+  BLUE: '蓝色',
+  PURPLE: '紫色',
+};
 
 class PddApiClient extends EventEmitter {
   constructor(shopId, options = {}) {
@@ -25,12 +32,16 @@ class PddApiClient extends EventEmitter {
     this._sessionInited = false;
     this._authExpired = false;
     this._serviceProfileCache = null;
+    this._orderRemarkTagOptionsCache = null;
+    this._orderRemarkCache = new Map();
     this._seenMessageIds = new Set();
     this._sessionCache = [];
     this._bootstrapTraffic = [];
     this._onLog = options.onLog || (() => {});
     this._getShopInfo = options.getShopInfo || (() => null);
     this._getApiTraffic = options.getApiTraffic || (() => []);
+    this._requestInPddPage = options.requestInPddPage || null;
+    this._executeInPddPage = options.executeInPddPage || null;
   }
 
   _log(message, extra) {
@@ -198,8 +209,18 @@ class PddApiClient extends EventEmitter {
     return this._findLatestTrafficEntry((entry) => {
       if (!String(entry?.url || '').includes(urlPart)) return false;
       const body = this._safeParseJson(entry?.requestBody);
-      const targetId = body?.data?.list?.with?.id || body?.data?.message?.to?.uid || body?.session_id || '';
-      return ids.includes(String(targetId));
+      const targetIds = [
+        body?.data?.list?.with?.id,
+        body?.data?.message?.to?.uid,
+        body?.data?.message?.session_id,
+        body?.data?.message?.conversation_id,
+        body?.data?.message?.chat_id,
+        body?.data?.message?.user_info?.uid,
+        body?.session_id,
+        body?.conversation_id,
+        body?.chat_id,
+      ].map(value => String(value || '')).filter(Boolean);
+      return targetIds.some(targetId => ids.includes(targetId));
     });
   }
 
@@ -327,50 +348,53 @@ class PddApiClient extends EventEmitter {
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
     const messages = this._parseMessages(payload);
     const buyerMessage = [...messages].reverse().find(item => item.isFromBuyer && item?.raw && typeof item.raw === 'object');
-    return buyerMessage?.raw?.user_info ? this._cloneJson(buyerMessage.raw.user_info) : null;
+    if (buyerMessage?.raw?.user_info) {
+      return this._cloneJson(buyerMessage.raw.user_info);
+    }
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    return sessionMeta?.raw?.user_info ? this._cloneJson(sessionMeta.raw.user_info) : null;
   }
 
   _getLatestMessageTemplate(sessionRef) {
     const { ids } = this._getSessionIdentityCandidates(sessionRef);
+    const sendMessageEntry = this._getLatestSessionTraffic('/plateau/chat/send_message', ids);
+    const sendMessageBody = this._safeParseJson(sendMessageEntry?.requestBody);
+    if (sendMessageBody?.data?.message && typeof sendMessageBody.data.message === 'object') {
+      return this._cloneJson(sendMessageBody.data.message);
+    }
     const identitySet = new Set(ids);
     const entry = this._getLatestSessionTraffic('/plateau/chat/list', ids);
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
     const messages = this._parseMessages(payload);
-    const sellerMessage = [...messages].reverse().find(item => !item.isFromBuyer && item?.raw && typeof item.raw === 'object');
+    const sellerMessage = [...messages].reverse().find(item => item.actor === 'seller' && item?.raw && typeof item.raw === 'object');
     if (sellerMessage?.raw) {
       return this._cloneJson(sellerMessage.raw);
     }
+    return null;
+  }
 
-    const sessionListPayload = this._getLatestResponseBody('/plateau/chat/latest_conversations');
-    const sessions = this._parseSessionList(sessionListPayload);
-    const matchedSession = [...sessions].find(item => {
-      if (!item?.raw || typeof item.raw !== 'object') return false;
-      const candidates = [
-        item?.sessionId,
-        item?.explicitSessionId,
-        item?.conversationId,
-        item?.chatId,
-        item?.rawId,
-        item?.customerId,
-        item?.userUid,
-        item?.raw?.session_id,
-        item?.raw?.conversation_id,
-        item?.raw?.chat_id,
-        item?.raw?.id,
-        item?.raw?.customer_id,
-        item?.raw?.buyer_id,
-        item?.raw?.uid,
-        item?.raw?.to?.uid,
-        item?.raw?.user_info?.uid,
-      ].map(value => String(value || '')).filter(Boolean);
-      return candidates.some(value => identitySet.has(value));
-    });
-    if (matchedSession?.raw) {
-      return this._cloneJson(matchedSession.raw);
+  _extractBuyerUid(item = {}) {
+    const directCandidates = [
+      item.customer_id,
+      item.buyer_id,
+      item?.user_info?.uid,
+      item.uid,
+    ].map(value => String(value || '')).filter(Boolean);
+    if (directCandidates.length) return directCandidates[0];
+    const mallId = String(this._getMallId() || '');
+    const fromUid = String(item?.from?.uid || item.from_uid || '');
+    const toUid = String(item?.to?.uid || item.to_uid || '');
+    const fromRole = String(item?.from?.role || '').toLowerCase();
+    const toRole = String(item?.to?.role || '').toLowerCase();
+    if (['buyer', 'customer', 'user'].includes(fromRole) && fromUid) return fromUid;
+    if (['buyer', 'customer', 'user'].includes(toRole) && toUid) return toUid;
+    if (mallId) {
+      if (fromUid && fromUid === mallId && toUid) return toUid;
+      if (toUid && toUid === mallId && fromUid) return fromUid;
+      if (String(item?.from?.mall_id || '') === mallId && toUid) return toUid;
+      if (String(item?.to?.mall_id || '') === mallId && fromUid) return fromUid;
     }
-
-    const latestSellerSession = [...sessions].find(item => !this._isBuyerMessage(item.raw) && item?.raw && typeof item.raw === 'object');
-    return latestSellerSession?.raw ? this._cloneJson(latestSellerSession.raw) : null;
+    return toUid || fromUid || '';
   }
 
   _buildSendMessageTemplate(sessionRef, text, ts, hash) {
@@ -415,29 +439,31 @@ class PddApiClient extends EventEmitter {
     return message;
   }
 
-  _buildSendImageTemplate(sessionId, imageUrl, ts, hash) {
-    const imageContent = JSON.stringify({
-      picture_url: imageUrl,
-      url: imageUrl,
-      type: 'image',
-    });
-    const message = this._buildSendMessageTemplate(sessionId, imageContent, ts, hash);
-    message.type = 2;
-    message.msg_type = 2;
-    message.message_type = 2;
-    message.content_type = 2;
-    message.extra = {
-      ...(message.extra || {}),
-      type: 'image',
-      picture_url: imageUrl,
-      url: imageUrl,
-    };
-    message.ext = {
-      ...(message.ext || {}),
-      type: 'image',
-      picture_url: imageUrl,
-      url: imageUrl,
-    };
+  _buildSendImageTemplate(sessionRef, imageUrl, ts, hash, imageMeta = {}) {
+    const message = this._buildSendMessageTemplate(sessionRef, imageUrl, ts, hash);
+    message.ts = ts;
+    message.content = imageUrl;
+    message.type = 1;
+    delete message.msg_type;
+    delete message.message_type;
+    delete message.content_type;
+    const width = Number(imageMeta?.width || 0) || 0;
+    const height = Number(imageMeta?.height || 0) || 0;
+    const imageSize = Number(imageMeta?.imageSize || 0) || 0;
+    if (width || height || imageSize) {
+      message.size = {
+        ...(message.size || {}),
+        ...(height ? { height } : {}),
+        ...(width ? { width } : {}),
+        ...(imageSize ? { image_size: imageSize } : {}),
+      };
+    }
+    if (imageMeta?.thumbData) {
+      message.info = {
+        ...(message.info || {}),
+        thumb_data: imageMeta.thumbData,
+      };
+    }
     return message;
   }
 
@@ -522,6 +548,91 @@ class PddApiClient extends EventEmitter {
     return 'application/octet-stream';
   }
 
+  _toImageDataUrl(fileBuffer, mimeType = 'application/octet-stream') {
+    return `data:${mimeType};base64,${Buffer.from(fileBuffer || []).toString('base64')}`;
+  }
+
+  async _buildImageMessageMeta(filePath, uploadResult = {}) {
+    if (!filePath) {
+      return {
+        width: Number(uploadResult?.width || 0) || 0,
+        height: Number(uploadResult?.height || 0) || 0,
+        imageSize: Number(uploadResult?.imageSize || 0) || 0,
+        thumbData: '',
+      };
+    }
+    const fileBuffer = await fs.readFile(filePath);
+    const mimeType = this._guessMimeType(filePath);
+    return {
+      width: Number(uploadResult?.width || 0) || 0,
+      height: Number(uploadResult?.height || 0) || 0,
+      imageSize: Math.max(1, Math.round(fileBuffer.length / 1024)),
+      thumbData: this._toImageDataUrl(fileBuffer, mimeType),
+    };
+  }
+
+  async _getPreUploadTicket() {
+    const requestBody = {
+      chat_type_id: 1,
+      file_usage: 1,
+    };
+    let payload;
+    if (typeof this._requestInPddPage === 'function') {
+      payload = await this._requestInPddPage({
+        method: 'POST',
+        url: '/plateau/file/pre_upload',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/plain, */*',
+        },
+        body: JSON.stringify(requestBody),
+      });
+    } else {
+      payload = await this._post('/plateau/file/pre_upload', requestBody);
+    }
+    const result = payload?.result || payload?.data || payload || {};
+    return {
+      uploadSignature: result.upload_signature || result.uploadSign || result.signature || '',
+      uploadUrl: result.upload_url || result.uploadUrl || 'https://file.pinduoduo.com/v2/store_image',
+      uploadHost: result.upload_host || result.uploadHost || '',
+      uploadBucketTag: result.upload_bucket_tag || result.uploadBucketTag || '',
+    };
+  }
+
+  async _uploadImageViaPreUpload(filePath) {
+    const fileBuffer = await fs.readFile(filePath);
+    const ticket = await this._getPreUploadTicket();
+    const requestBody = {
+      image: this._toImageDataUrl(fileBuffer, this._guessMimeType(filePath)),
+    };
+    if (ticket.uploadSignature) {
+      requestBody.upload_sign = ticket.uploadSignature;
+      requestBody.upload_signature = ticket.uploadSignature;
+    }
+    const payload = typeof this._requestInPddPage === 'function'
+      ? await this._requestInPddPage({
+          method: 'POST',
+          url: ticket.uploadUrl,
+          headers: {
+            accept: 'application/json, text/plain, */*',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        })
+      : await this._requestRaw('POST', ticket.uploadUrl, JSON.stringify(requestBody), {
+          accept: 'application/json, text/plain, */*',
+          'content-type': 'application/json',
+          Referer: `${PDD_BASE}/`,
+          Origin: PDD_BASE,
+        });
+    if (!payload?.url) {
+      throw new Error(payload?.error_msg || payload?.message || '图片上传失败');
+    }
+    payload.uploadBaseUrl = ticket.uploadUrl;
+    payload.imageSize = Math.max(1, Math.round(fileBuffer.length / 1024));
+    return payload;
+  }
+
   _isCrossOriginUrl(urlPath = '') {
     try {
       const target = new URL(urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`);
@@ -540,20 +651,156 @@ class PddApiClient extends EventEmitter {
   }
 
   _normalizeBusinessError(payload) {
+    const candidates = this._collectBusinessPayloadCandidates(payload);
+    for (const item of candidates) {
+      const error = this._extractBusinessError(item);
+      if (error) return error;
+    }
+    return null;
+  }
+
+  _collectBusinessPayloadCandidates(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    const queue = [payload];
+    const visited = new Set();
+    const result = [];
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || visited.has(current)) continue;
+      visited.add(current);
+      result.push(current);
+      ['result', 'data', 'response'].forEach(key => {
+        if (current[key] && typeof current[key] === 'object') {
+          queue.push(current[key]);
+        }
+      });
+    }
+    return result;
+  }
+
+  _extractBusinessError(payload) {
     if (!payload || typeof payload !== 'object') return null;
-    if (payload.success === false) {
+    const message = payload.error_msg || payload.errorMsg || payload.message || payload.msg || '';
+    const successCodes = new Set([0, 200, 1000000]);
+    if (payload.success === false || payload.ok === false) {
       return {
-        code: payload.error_code || payload.code,
-        message: payload.error_msg || payload.message || 'API 请求失败',
+        code: payload.error_code || payload.code || payload.err_no || payload.errno || '',
+        message: message || 'API 请求失败',
       };
     }
-    if (payload.error_code && payload.error_code !== 0) {
+    const explicitCode = payload.error_code ?? payload.err_no ?? payload.errno ?? payload.biz_code;
+    if (
+      explicitCode !== undefined
+      && explicitCode !== null
+      && explicitCode !== ''
+      && !successCodes.has(Number(explicitCode))
+    ) {
       return {
-        code: payload.error_code,
-        message: payload.error_msg || payload.message || 'API 请求失败',
+        code: explicitCode,
+        message: message || 'API 请求失败',
+      };
+    }
+    const genericCode = payload.code;
+    if (
+      genericCode !== undefined
+      && genericCode !== null
+      && genericCode !== ''
+      && Number.isFinite(Number(genericCode))
+      && !successCodes.has(Number(genericCode))
+      && message
+    ) {
+      return {
+        code: genericCode,
+        message,
       };
     }
     return null;
+  }
+
+  _normalizeComparableMessageText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  _getMessageActor(item = {}) {
+    if (this._isSystemNoticeText(this._extractMessageText(item))) return 'system';
+    const role = String(
+      item.role ||
+      item.msg_from ||
+      item.from_type ||
+      item.sender_role ||
+      item?.from?.role ||
+      item?.sender?.role ||
+      item?.to?.role ||
+      ''
+    ).toLowerCase();
+    if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return 'buyer';
+    if (['system', 'robot', 'bot', 'notice', 'tips', '99'].includes(role)) return 'system';
+    if (['seller', 'service', 'kf', 'agent', 'mall_cs', '2', '3', '4'].includes(role)) return 'seller';
+    if (item.is_buyer || item.is_buyer === 1 || item.sender_type === 1 || item.sender_type === 0) return 'buyer';
+    if (item.is_robot || item.is_system) return 'system';
+    if (item.is_seller) return 'seller';
+
+    const mallId = String(this._getMallId() || '');
+    const fromUid = String(item?.from?.uid || item.from_uid || item.sender_id || item.from_id || '');
+    const toUid = String(item?.to?.uid || item.to_uid || '');
+    const buyerUidCandidates = [
+      item?.customer_id,
+      item?.buyer_id,
+      item?.uid,
+      item?.user_info?.uid,
+    ].map(value => String(value || '')).filter(Boolean);
+
+    if (mallId && (fromUid === mallId || String(item?.from?.mall_id || '') === mallId)) return 'seller';
+    if (mallId && (toUid === mallId || String(item?.to?.mall_id || '') === mallId)) return 'buyer';
+    if (fromUid && buyerUidCandidates.includes(fromUid)) return 'buyer';
+    if (toUid && buyerUidCandidates.includes(toUid)) return 'seller';
+    return 'unknown';
+  }
+
+  _isSystemNoticeText(text = '') {
+    const source = String(text || '').trim();
+    if (!source) return false;
+    return [
+      /您接待过此消费者/,
+      /机器人已暂停接待/,
+      /机器人未找到对应(?:的)?回复/,
+      /立即恢复接待/,
+      /为避免插嘴/,
+      /为避免插播/,
+      /为避免抢答/,
+      /当前用户来自/,
+      /商品详情页/,
+    ].some(pattern => pattern.test(source));
+  }
+
+  async _confirmSentTextMessage(sessionRef, text, options = {}) {
+    const attempts = Math.max(1, Number(options.attempts || 8));
+    const delayMs = Math.max(0, Number(options.delayMs || 700));
+    const pageSize = Math.max(20, Number(options.pageSize || 50));
+    const expectedText = this._normalizeComparableMessageText(text);
+    const sentAtMs = Number(options.sentAtMs || Date.now());
+    for (let index = 0; index < attempts; index++) {
+      const messages = await this.getSessionMessages(sessionRef, 1, pageSize);
+      const matched = messages.find(message => {
+        const actor = this._getMessageActor(message?.raw || message);
+        if (actor === 'buyer') return false;
+        const messageText = this._normalizeComparableMessageText(message.content);
+        if (!messageText || messageText !== expectedText) return false;
+        const timestampMs = this._normalizeTimestampMs(message.timestamp);
+        return !timestampMs || (timestampMs >= sentAtMs - 15000 && timestampMs <= Date.now() + 60000);
+      });
+      if (matched) {
+        return {
+          confirmed: true,
+          messageId: String(matched.messageId || ''),
+          timestamp: matched.timestamp || 0,
+        };
+      }
+      if (index < attempts - 1) {
+        await this._sleep(delayMs);
+      }
+    }
+    return { confirmed: false };
   }
 
   _isAuthError(code) {
@@ -805,11 +1052,44 @@ class PddApiClient extends EventEmitter {
     return this._request('POST', urlPath, body, extraHeaders);
   }
 
+  async _requestOrderRemarkApi(urlPath, body = {}) {
+    const headers = {
+      accept: 'application/json, text/plain, */*',
+      'content-type': 'application/json',
+    };
+    let payload = null;
+    const via = typeof this._requestInPddPage === 'function' ? 'page' : 'direct';
+    this._log('[API] 订单备注请求开始', this._summarizeOrderRemarkRequest(urlPath, body, via));
+    if (typeof this._requestInPddPage === 'function') {
+      payload = await this._requestInPddPage({
+        method: 'POST',
+        url: urlPath,
+        headers,
+        body: JSON.stringify(body || {}),
+      });
+    } else {
+      payload = await this._post(urlPath, body || {}, headers);
+    }
+    this._log('[API] 订单备注请求返回', {
+      ...this._summarizeOrderRemarkRequest(urlPath, body, via),
+      response: this._summarizeOrderRemarkResponse(payload),
+    });
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      const error = new Error(businessError.message);
+      error.errorCode = businessError.code;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  }
+
   _parseUserInfo(payload) {
     const info = payload?.result || payload?.data || payload || {};
     return {
       mallId: info.mall_id || info.mallId || this._getMallId() || '',
       userId: info.uid || info.user_id || info.userId || this._getTokenInfo()?.userId || '',
+      username: info.username || info.user_name || info.login_name || '',
       nickname: info.nick_name || info.nickname || info.name || '',
       mobile: info.mobile || '',
     };
@@ -820,7 +1100,8 @@ class PddApiClient extends EventEmitter {
     const mall = (info.mall && typeof info.mall === 'object') ? info.mall : {};
     return {
       mallId: info.mall_id || info.mallId || mall.mall_id || this._getMallId() || '',
-      mallName: mall.mall_name || info.mall_name || '',
+      mallName: mall.mall_name || info.mall_name || this._getShopInfo()?.name || '',
+      username: info.username || info.user_name || info.login_name || '',
       serviceName: info.username || info.nickname || info.nick_name || info.name || '',
       serviceAvatar: mall.logo || info.avatar || info.head_img || '',
     };
@@ -1018,8 +1299,19 @@ class PddApiClient extends EventEmitter {
       && date.getDate() === now.getDate();
   }
 
+  _hasPendingReplySession(session = {}) {
+    const waitValue = Number(session?.waitTime || 0);
+    if (Number.isFinite(waitValue) && waitValue > 0) return true;
+    if (session?.isTimeout) return true;
+    return Number(session?.unreadCount || 0) > 0;
+  }
+
   _filterDisplaySessions(sessions = []) {
-    return sessions.filter(session => this._isTodayTimestamp(session?.lastMessageTime) || this._isTodayTimestamp(session?.createdAt));
+    return sessions.filter(session => (
+      this._isTodayTimestamp(session?.lastMessageTime)
+      || this._isTodayTimestamp(session?.createdAt)
+      || this._hasPendingReplySession(session)
+    ));
   }
 
   _parseSessionIdentity(item = {}) {
@@ -1027,8 +1319,9 @@ class PddApiClient extends EventEmitter {
     const chatId = item.chat_id || item.chatId || '';
     const explicitSessionId = item.session_id || item.sessionId || '';
     const rawId = item.id || '';
-    const customerId = item.customer_id || item.buyer_id || item.from_uid || item.uid || '';
-    const userUid = item?.to?.uid || item?.user_info?.uid || item?.from?.uid || '';
+    const buyerUid = this._extractBuyerUid(item);
+    const customerId = item.customer_id || item.buyer_id || item?.user_info?.uid || buyerUid || '';
+    const userUid = item?.user_info?.uid || item.customer_id || item.buyer_id || buyerUid || '';
     const sessionId = explicitSessionId || conversationId || chatId || rawId || customerId || userUid || '';
     return {
       sessionId,
@@ -1257,21 +1550,7 @@ class PddApiClient extends EventEmitter {
   }
 
   _isBuyerMessage(item) {
-    const role = String(
-      item.role ||
-      item.msg_from ||
-      item.from_type ||
-      item.sender_role ||
-      item?.from?.role ||
-      item?.sender?.role ||
-      item?.to?.role ||
-      ''
-    ).toLowerCase();
-    if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return true;
-    if (['seller', 'system', 'robot', 'service', 'kf', 'agent', 'bot', 'mall_cs', '2', '3', '4', '99'].includes(role)) return false;
-    if (item.is_buyer || item.is_buyer === 1 || item.sender_type === 1 || item.sender_type === 0) return true;
-    if (item.is_seller || item.is_robot || item.is_system) return false;
-    return !role;
+    return this._getMessageActor(item) === 'buyer';
   }
 
   _extractMessageText(item) {
@@ -1374,6 +1653,33 @@ class PddApiClient extends EventEmitter {
     return `¥${amount.toFixed(2)}`;
   }
 
+  _normalizeRefundAmountByKeys(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const rawValue = source[key];
+        if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+        if (typeof rawValue === 'string') {
+          const text = rawValue.trim();
+          if (!text) continue;
+          if (text.includes('¥')) return text;
+          if (text.includes('.')) {
+            const decimal = Number(text);
+            if (Number.isFinite(decimal) && decimal > 0) return `¥${decimal.toFixed(2)}`;
+          }
+          const integer = Number(text);
+          if (Number.isFinite(integer) && integer > 0) return `¥${(integer / 100).toFixed(2)}`;
+          continue;
+        }
+        const numeric = Number(rawValue);
+        if (Number.isFinite(numeric) && numeric > 0) {
+          return `¥${(numeric / 100).toFixed(2)}`;
+        }
+      }
+    }
+    return '';
+  }
+
   _extractGoodsIdFromUrl(rawUrl = '') {
     const urlText = String(rawUrl || '').trim();
     if (!urlText) return '';
@@ -1386,8 +1692,153 @@ class PddApiClient extends EventEmitter {
     }
   }
 
+  _extractGoodsJsonObject(source = '') {
+    const text = String(source || '').trim();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {}
+    const normalized = text.replace(/;\s*$/, '').trim();
+    try {
+      return JSON.parse(normalized);
+    } catch {}
+    const start = normalized.search(/[\[{]/);
+    if (start < 0) return null;
+    const opening = normalized[start];
+    const closing = opening === '{' ? '}' : ']';
+    let depth = 0;
+    let inString = false;
+    let quote = '';
+    let escaped = false;
+    for (let index = start; index < normalized.length; index += 1) {
+      const char = normalized[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (inString) {
+        if (char === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (char === quote) {
+          inString = false;
+          quote = '';
+        }
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        inString = true;
+        quote = char;
+        continue;
+      }
+      if (char === opening) {
+        depth += 1;
+        continue;
+      }
+      if (char === closing) {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = normalized.slice(start, index + 1);
+          try {
+            return JSON.parse(candidate);
+          } catch {
+            return null;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  _extractGoodsPayloadCandidates(html = '') {
+    const source = String(html || '');
+    const payloads = [];
+    const seen = new Set();
+    const pushPayload = (value) => {
+      if (!value || typeof value !== 'object') return;
+      let serialized = '';
+      try {
+        serialized = JSON.stringify(value);
+      } catch {}
+      if (serialized) {
+        if (seen.has(serialized)) return;
+        seen.add(serialized);
+      }
+      payloads.push(value);
+    };
+    const patterns = [
+      /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+      /<script[^>]+type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi,
+      /(?:window\.)?__NEXT_DATA__\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?__PRELOADED_STATE__\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?__INITIAL_STATE__\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?rawData\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?pageData\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+      /(?:window\.)?goodsData\s*=\s*([\s\S]*?);\s*<\/script>/gi,
+    ];
+    patterns.forEach((pattern) => {
+      source.replace(pattern, (_, payloadText) => {
+        const parsed = this._extractGoodsJsonObject(payloadText);
+        if (parsed) pushPayload(parsed);
+        return _;
+      });
+    });
+    return payloads;
+  }
+
+  _extractGoodsTextCandidate(value, preferredKeys = []) {
+    if (typeof value === 'string' && value.trim()) {
+      return this._decodeGoodsText(value);
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const matched = this._extractGoodsTextCandidate(item, preferredKeys);
+        if (matched) return matched;
+      }
+      return '';
+    }
+    if (!value || typeof value !== 'object') return '';
+    for (const key of preferredKeys) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      const matched = this._extractGoodsTextCandidate(value[key], preferredKeys);
+      if (matched) return matched;
+    }
+    for (const item of Object.values(value)) {
+      const matched = this._extractGoodsTextCandidate(item, preferredKeys);
+      if (matched) return matched;
+    }
+    return '';
+  }
+
+  _findGoodsFieldText(payload, keys = [], nestedKeys = []) {
+    if (!payload || typeof payload !== 'object') return '';
+    const queue = [payload];
+    const seen = new Set();
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || seen.has(current)) continue;
+      seen.add(current);
+      if (Array.isArray(current)) {
+        current.forEach(item => queue.push(item));
+        continue;
+      }
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(current, key)) continue;
+        const matched = this._extractGoodsTextCandidate(current[key], nestedKeys);
+        if (matched) return matched;
+      }
+      Object.values(current).forEach(item => queue.push(item));
+    }
+    return '';
+  }
+
   _extractGoodsCardFromHtml(html = '', fallback = {}) {
     const source = String(html || '');
+    const payloadCandidates = this._extractGoodsPayloadCandidates(source);
     const matchFirst = (patterns = []) => {
       for (const pattern of patterns) {
         const matched = source.match(pattern);
@@ -1409,8 +1860,16 @@ class PddApiClient extends EventEmitter {
         /<meta[^>]+name="og:title"[^>]+content="([^"]+)"/i,
         /"goods_name"\s*:\s*"([^"]+)"/i,
         /"goodsName"\s*:\s*"([^"]+)"/i,
+        /"goods_title"\s*:\s*"([^"]+)"/i,
+        /"goodsTitle"\s*:\s*"([^"]+)"/i,
+        /"share_title"\s*:\s*"([^"]+)"/i,
         /<title>([^<]+)<\/title>/i,
       ]),
+      ...payloadCandidates.map(payload => this._findGoodsFieldText(
+        payload,
+        ['goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'share_title', 'title', 'item_title', 'itemTitle', 'name'],
+        ['title', 'name', 'text', 'content', 'value']
+      )),
       fallback.title,
     ]);
     const imageUrl = this._pickGoodsText([
@@ -1420,8 +1879,16 @@ class PddApiClient extends EventEmitter {
         /"hd_thumb_url"\s*:\s*"([^"]+)"/i,
         /"thumb_url"\s*:\s*"([^"]+)"/i,
         /"goods_thumb_url"\s*:\s*"([^"]+)"/i,
+        /"hdThumbUrl"\s*:\s*"([^"]+)"/i,
+        /"thumbUrl"\s*:\s*"([^"]+)"/i,
+        /"goodsThumbUrl"\s*:\s*"([^"]+)"/i,
         /"top_gallery"\s*:\s*\[\s*"([^"]+)"/i,
       ]),
+      ...payloadCandidates.map(payload => this._findGoodsFieldText(
+        payload,
+        ['hd_thumb_url', 'thumb_url', 'goods_thumb_url', 'hdThumbUrl', 'thumbUrl', 'goodsThumbUrl', 'imageUrl', 'image_url', 'pic_url', 'top_gallery', 'gallery', 'images', 'imageList'],
+        ['url', 'src', 'imageUrl', 'image_url', 'thumb_url', 'thumbUrl']
+      )),
       fallback.imageUrl,
     ]);
     const priceText = this._pickGoodsText([
@@ -1513,11 +1980,13 @@ class PddApiClient extends EventEmitter {
     const list = this._findMessageArray(payload);
 
     return list.map(item => ({
+      actor: this._getMessageActor(item),
       messageId: item.msg_id || item.message_id || item.id || '',
       sessionId: item.session_id || item.conversation_id || item.chat_id || item?.to?.uid || item?.from?.uid || '',
       content: this._extractMessageText(item),
       msgType: item.msg_type || item.message_type || item.content_type || 1,
       isFromBuyer: this._isBuyerMessage(item),
+      isSystem: this._getMessageActor(item) === 'system',
       senderName: item.nick || item.nickname || item.sender_name || item.from_name || item?.from?.csid || '',
       senderId: item.from_uid || item.sender_id || item.from_id || item?.from?.uid || '',
       timestamp: item.send_time || item.time || item.ts || item.timestamp || item.created_at || 0,
@@ -1525,6 +1994,1452 @@ class PddApiClient extends EventEmitter {
       extra: item.extra || item.ext || null,
       raw: item,
     }));
+  }
+
+  _pickRefundText(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const value = source[key];
+        if (typeof value === 'string' && value.trim()) return this._decodeGoodsText(value);
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+      }
+    }
+    return '';
+  }
+
+  _pickRefundNumber(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const numeric = Number(source[key]);
+        if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      }
+    }
+    return 0;
+  }
+
+  _pickRefundBoolean(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const value = source[key];
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value > 0;
+        const text = String(value).trim().toLowerCase();
+        if (['1', 'true', 'yes', 'y', 'shipped', 'delivered'].includes(text)) return true;
+        if (['0', 'false', 'no', 'n', 'unshipped', 'pending'].includes(text)) return false;
+      }
+    }
+    return null;
+  }
+
+  _resolveRefundOrderShippingInfo(sources = []) {
+    const trackingNo = this._pickRefundText(sources, [
+      'tracking_no',
+      'trackingNo',
+      'waybill_no',
+      'waybillNo',
+      'express_no',
+      'expressNo',
+      'express_number',
+      'expressNumber',
+      'logistics_no',
+      'logisticsNo',
+      'shipping_no',
+      'shippingNo',
+      'mail_no',
+      'mailNo',
+      'invoice_waybill_no',
+    ]);
+    const shippingStateText = this._pickRefundText(sources, [
+      'refund_shipping_state',
+      'shippingState',
+      'shipping_state',
+    ]);
+    const shippingStatusText = this._pickRefundText(sources, [
+      'order_status_desc',
+      'order_status_text',
+      'order_status_name',
+      'order_status',
+      'shipping_status_desc',
+      'shipping_status_text',
+      'shipping_status',
+      'delivery_status_desc',
+      'delivery_status_text',
+      'delivery_status',
+      'express_status_desc',
+      'express_status_text',
+      'express_status',
+      'logistics_status_desc',
+      'logistics_status_text',
+      'logistics_status',
+      'statusDesc',
+      'status_desc',
+    ]);
+    const shippedFlag = this._pickRefundBoolean(sources, [
+      'has_tracking_no',
+      'hasTrackingNo',
+      'has_waybill',
+      'hasWaybill',
+      'has_logistics',
+      'hasLogistics',
+      'has_express',
+      'hasExpress',
+      'has_shipping',
+      'hasShipping',
+      'is_shipped',
+      'isShipped',
+      'shipped',
+    ]);
+    const unshippedFlag = this._pickRefundBoolean(sources, [
+      'unshipped',
+      'is_unshipped',
+      'isUnshipped',
+      'wait_ship',
+      'waitShip',
+    ]);
+    const mergedStatusText = `${shippingStateText} ${shippingStatusText}`.replace(/\s+/g, '');
+    if (trackingNo) {
+      return {
+        shippingState: 'shipped',
+        shippingStatusText: shippingStatusText || '已发货',
+        trackingNo,
+        isShipped: true,
+      };
+    }
+    if (/^shipped$/i.test(shippingStateText) || shippingStateText === '已发货') {
+      return {
+        shippingState: 'shipped',
+        shippingStatusText: shippingStatusText || shippingStateText || '已发货',
+        trackingNo: '',
+        isShipped: true,
+      };
+    }
+    if (/^unshipped$/i.test(shippingStateText) || shippingStateText === '未发货') {
+      return {
+        shippingState: 'unshipped',
+        shippingStatusText: shippingStatusText || shippingStateText || '未发货',
+        trackingNo: '',
+        isShipped: false,
+      };
+    }
+    if (shippedFlag === true) {
+      return {
+        shippingState: 'shipped',
+        shippingStatusText: shippingStatusText || '已发货',
+        trackingNo: '',
+        isShipped: true,
+      };
+    }
+    if (unshippedFlag === true) {
+      return {
+        shippingState: 'unshipped',
+        shippingStatusText: shippingStatusText || '未发货',
+        trackingNo: '',
+        isShipped: false,
+      };
+    }
+    if (/(已发货|运输中|待收货|已签收|已收货|派送中|配送中|揽收|物流)/.test(mergedStatusText)) {
+      return {
+        shippingState: 'shipped',
+        shippingStatusText: shippingStatusText || '已发货',
+        trackingNo: '',
+        isShipped: true,
+      };
+    }
+    if (/(未发货|待发货|待揽收|待出库|待配送|未揽件)/.test(mergedStatusText)) {
+      return {
+        shippingState: 'unshipped',
+        shippingStatusText: shippingStatusText || '未发货',
+        trackingNo: '',
+        isShipped: false,
+      };
+    }
+    return {
+      shippingState: '',
+      shippingStatusText,
+      trackingNo: '',
+      isShipped: false,
+    };
+  }
+
+  _resolveRefundShippingBenefitText(sources = []) {
+    const rawText = this._pickRefundText(sources, [
+      'refundShippingText',
+      'refund_shipping_text',
+      'refundShippingDesc',
+      'refund_shipping_desc',
+      'refundShippingStateDesc',
+      'refund_shipping_state_desc',
+      'refundShippingStatusDesc',
+      'refund_shipping_status_desc',
+      'refundShippingBenefitText',
+      'refund_shipping_benefit_text',
+      'refundShippingBenefitDesc',
+      'refund_shipping_benefit_desc',
+      'refundShippingBenefitStateDesc',
+      'refund_shipping_benefit_state_desc',
+      'refundShippingInsuranceText',
+      'refund_shipping_insurance_text',
+      'refundShippingInsuranceDesc',
+      'refund_shipping_insurance_desc',
+      'refundShippingInsuranceStateDesc',
+      'refund_shipping_insurance_state_desc',
+      'refundShippingInsuranceStatusDesc',
+      'refund_shipping_insurance_status_desc',
+      'refundShippingState',
+      'refund_shipping_state',
+      'refundShippingBenefit',
+      'refund_shipping_benefit',
+      'refundShippingInsurance',
+      'refund_shipping_insurance',
+    ]);
+    const text = String(rawText || '').trim();
+    if (text) {
+      const normalized = text.toLowerCase();
+      if (['0', 'false', 'no', 'n', 'unshipped', 'not_gifted', 'none'].includes(normalized) || text === '未赠送') {
+        return '未赠送';
+      }
+      if (['1', 'true', 'yes', 'y', 'shipped', 'gifted', 'presented'].includes(normalized) || text === '已赠送') {
+        return '已赠送';
+      }
+      return text;
+    }
+    const giftedFlag = this._pickRefundBoolean(sources, [
+      'refundShippingBenefit',
+      'refund_shipping_benefit',
+      'refundShippingInsurance',
+      'refund_shipping_insurance',
+      'refundShippingGifted',
+      'refund_shipping_gifted',
+      'refundShippingInsured',
+      'refund_shipping_insured',
+      'hasRefundShippingBenefit',
+      'has_refund_shipping_benefit',
+      'hasRefundShippingInsurance',
+      'has_refund_shipping_insurance',
+    ]);
+    if (giftedFlag === true) return '已赠送';
+    if (giftedFlag === false) return '未赠送';
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const [key, value] of Object.entries(source)) {
+        if (!key || value === undefined || value === null) continue;
+        const keyText = String(key).toLowerCase();
+        const keyMatched = /(refund.*ship|ship.*refund|refund_shipping|shipping_refund)/i.test(keyText)
+          && /(benefit|insurance|state|status|desc|text)/i.test(keyText);
+        if (!keyMatched) continue;
+        if (typeof value === 'string') {
+          const candidate = value.trim();
+          if (!candidate) continue;
+          if (/(已赠送|未赠送)/.test(candidate)) return candidate;
+        } else if (typeof value === 'boolean') {
+          return value ? '已赠送' : '未赠送';
+        } else if (typeof value === 'number' && Number.isFinite(value)) {
+          if (value === 0) return '未赠送';
+          if (value === 1) return '已赠送';
+        }
+      }
+    }
+    return '';
+  }
+
+  _looksLikeRefundOrderNode(node = {}) {
+    if (!node || typeof node !== 'object') return false;
+    return [
+      'order_id',
+      'order_sn',
+      'parent_order_sn',
+      'mall_order_sn',
+      'orderId',
+    ].some(key => {
+      const value = node[key];
+      return value !== undefined && value !== null && String(value).trim() !== '';
+    });
+  }
+
+  _collectRefundOrderNodes(node, bucket, visited, depth = 0) {
+    if (!node || depth > 4) return;
+    if (Array.isArray(node)) {
+      node.slice(0, 30).forEach(item => this._collectRefundOrderNodes(item, bucket, visited, depth + 1));
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (visited.has(node)) return;
+    visited.add(node);
+    if (this._looksLikeRefundOrderNode(node)) {
+      bucket.push(node);
+    }
+    Object.values(node).forEach(value => {
+      if (value && typeof value === 'object') {
+        this._collectRefundOrderNodes(value, bucket, visited, depth + 1);
+      }
+    });
+  }
+
+  _normalizeRefundOrder(item = {}, fallback = {}, index = 0) {
+    const sources = [
+      item,
+      item?.raw,
+      item?.orderGoodsList,
+      item?.order_goods_list,
+      item?.goods_info,
+      item?.goodsInfo,
+      item?.goods,
+      item?.order_info,
+      item?.orderInfo,
+      item?.logistics_info,
+      item?.logisticsInfo,
+      item?.logistics,
+      item?.delivery_info,
+      item?.deliveryInfo,
+      item?.delivery,
+      item?.express_info,
+      item?.expressInfo,
+      item?.express,
+      item?.shipping_info,
+      item?.shippingInfo,
+      item?.shipping,
+      item?.transport_info,
+      item?.transportInfo,
+      item?.transport,
+      item?.raw?.logistics_info,
+      item?.raw?.logisticsInfo,
+      item?.raw?.logistics,
+      item?.raw?.delivery_info,
+      item?.raw?.deliveryInfo,
+      item?.raw?.delivery,
+      item?.raw?.express_info,
+      item?.raw?.expressInfo,
+      item?.raw?.express,
+      item?.raw?.shipping_info,
+      item?.raw?.shippingInfo,
+      item?.raw?.shipping,
+      fallback?.goodsInfo,
+      fallback?.raw?.goods_info,
+      fallback?.raw?.goods,
+      fallback?.raw,
+      fallback,
+    ].filter(Boolean);
+    const orderId = this._pickRefundText(sources, ['order_id', 'order_sn', 'orderSn', 'parent_order_sn', 'mall_order_sn', 'orderId'])
+      || String(fallback?.orderId || '').trim();
+    const title = this._pickRefundText(sources, ['goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'goodsName', 'title'])
+      || fallback?.title
+      || `订单 ${index + 1}`;
+    const imageUrl = this._pickRefundText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url', 'thumbUrl']);
+    const amountText = this._normalizeRefundAmountByKeys(sources, ['order_amount', 'orderAmount', 'pay_amount', 'refund_amount', 'amount', 'order_price', 'price'])
+      || this._pickRefundText(sources, ['priceText', 'price_text'])
+      || this._normalizeGoodsPrice(this._pickRefundNumber(sources, ['goodsPrice', 'min_price', 'group_price']))
+      || '待确认';
+    const quantityValue = this._pickRefundText(sources, ['quantity', 'num', 'count', 'goods_count', 'goodsNumber', 'buy_num', 'buyNum']);
+    const specText = this._pickRefundText(sources, ['specText', 'spec_text', 'spec', 'sku_spec', 'skuSpec', 'spec_desc', 'specDesc', 'sub_name', 'subName']);
+    const normalizedQuantity = String(quantityValue || '').replace(/^x/i, '').trim();
+    const detailText = normalizedQuantity && specText
+      ? `${specText} x${normalizedQuantity}`
+      : (specText || (normalizedQuantity ? `x${normalizedQuantity}` : '所拍规格待确认'));
+    const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
+    return {
+      key: `${orderId || 'order'}::${title}::${index}`,
+      orderId: orderId || '-',
+      title,
+      imageUrl,
+      amountText,
+      detailText,
+      trackingNo: shippingInfo.trackingNo,
+      shippingState: shippingInfo.shippingState,
+      shippingStatusText: shippingInfo.shippingStatusText,
+      isShipped: shippingInfo.isShipped,
+      raw: item,
+    };
+  }
+
+  _dedupeRefundOrders(list = [], fallback = {}) {
+    const deduped = [];
+    const seen = new Set();
+    list.forEach((item, index) => {
+      const normalized = this._normalizeRefundOrder(item, fallback, index);
+      if (!normalized.orderId || normalized.orderId === '-') return;
+      const signature = [normalized.orderId, normalized.title, normalized.imageUrl, normalized.amountText].join('::');
+      if (!signature.replace(/[:\-]/g, '')) return;
+      if (seen.has(signature)) return;
+      seen.add(signature);
+      deduped.push(normalized);
+    });
+    if (!deduped.length) {
+      const fallbackOrder = this._normalizeRefundOrder(fallback, fallback, 0);
+      if (fallbackOrder.orderId && fallbackOrder.orderId !== '-') {
+        deduped.push(fallbackOrder);
+      }
+    }
+    return deduped;
+  }
+
+  _extractRefundOrdersFromMessages(sessionMeta = {}, messages = []) {
+    const bucket = [];
+    const visited = new WeakSet();
+    (Array.isArray(messages) ? messages : []).forEach(message => {
+      this._collectRefundOrderNodes(message?.extra, bucket, visited);
+      this._collectRefundOrderNodes(message?.raw?.extra, bucket, visited);
+      this._collectRefundOrderNodes(message?.raw, bucket, visited);
+    });
+    return bucket.map((item, index) => this._normalizeRefundOrder(item, sessionMeta, index));
+  }
+
+  _extractRefundOrdersFromTraffic(sessionMeta = {}) {
+    const bucket = [];
+    const visited = new WeakSet();
+    this._getApiTrafficEntries()
+      .filter(entry => /order|goods|trade|pay|after/i.test(String(entry?.url || '')))
+      .slice(-30)
+      .forEach(entry => {
+        const requestBody = typeof entry?.requestBody === 'string' ? this._safeParseJson(entry.requestBody) : entry?.requestBody;
+        const responseBody = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
+        this._collectRefundOrderNodes(requestBody, bucket, visited);
+        this._collectRefundOrderNodes(responseBody, bucket, visited);
+      });
+    return bucket.map((item, index) => this._normalizeRefundOrder(item, sessionMeta, index));
+  }
+
+  _extractAfterSalesStatusText(value) {
+    if (!value) return '';
+    if (Array.isArray(value)) {
+      const texts = value
+        .map(item => this._extractAfterSalesStatusText(item))
+        .filter(Boolean);
+      return [...new Set(texts)].join(' / ');
+    }
+    if (typeof value !== 'object') return '';
+    const text = this._pickRefundText([value], [
+      'statusDesc',
+      'status_desc',
+      'aftersaleStatusDesc',
+      'afterSalesStatusDesc',
+      'aftersale_status_desc',
+      'after_sales_status_desc',
+      'typeDesc',
+      'type_desc',
+      'afterSalesTypeDesc',
+      'after_sales_type_desc',
+      'buttonDesc',
+      'button_desc',
+      'label',
+      'desc',
+    ]);
+    return text || '';
+  }
+
+  async _fetchAfterSalesStatusMap(orderSns = []) {
+    const validOrderSns = [...new Set((Array.isArray(orderSns) ? orderSns : []).map(item => String(item || '').trim()).filter(Boolean))];
+    if (!validOrderSns.length) return {};
+    const antiContent = this._getLatestAntiContent();
+    const payload = await this._requestRefundOrderPageApi('/mercury/chat/afterSales/queryList', antiContent
+      ? { orderSns: validOrderSns, anti_content: antiContent }
+      : { orderSns: validOrderSns });
+    const map = payload?.result?.orderSn2AfterSalesListMap;
+    if (!map || typeof map !== 'object') return {};
+    const statusMap = {};
+    Object.entries(map).forEach(([orderSn, list]) => {
+      const text = this._extractAfterSalesStatusText(list);
+      if (text) statusMap[String(orderSn)] = text;
+    });
+    return statusMap;
+  }
+
+  async _attachAfterSalesStatus(orders = []) {
+    const orderSns = orders.map(item => String(item?.orderId || item?.orderSn || '').trim()).filter(Boolean);
+    if (!orderSns.length) return orders;
+    let statusMap = {};
+    try {
+      statusMap = await this._fetchAfterSalesStatusMap(orderSns);
+    } catch (error) {
+      this._log('[API] 售后状态查询失败', { message: error.message });
+    }
+    return orders.map(order => {
+      const orderSn = String(order?.orderId || order?.orderSn || '').trim();
+      return {
+        ...order,
+        afterSalesStatus: statusMap[orderSn] || '',
+      };
+    });
+  }
+
+  _getRefundOrderUid(sessionMeta = {}) {
+    const candidates = [
+      sessionMeta?.customerId,
+      sessionMeta?.userUid,
+      sessionMeta?.raw?.customer_id,
+      sessionMeta?.raw?.buyer_id,
+      sessionMeta?.raw?.uid,
+      sessionMeta?.raw?.to?.uid,
+      sessionMeta?.raw?.user_info?.uid,
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    return candidates[0] || '';
+  }
+
+  async _requestRefundOrderPageApi(url, body) {
+    if (typeof this._requestInPddPage === 'function') {
+      return this._requestInPddPage({
+        method: 'POST',
+        url,
+        headers: {
+          accept: 'application/json, text/plain, */*',
+          'content-type': 'application/json;charset=UTF-8',
+        },
+        body: JSON.stringify(body || {}),
+      });
+    }
+    return this._post(url, body || {});
+  }
+
+  async _extractRefundOrdersFromPageApis(sessionMeta = {}) {
+    const uid = this._getRefundOrderUid(sessionMeta);
+    if (!uid) return null;
+    const quantityPayload = await this._requestRefundOrderPageApi('/latitude/order/userOrderQuantity', { uid });
+    const quantityResult = quantityPayload?.result || {};
+    const totalCount = Number(quantityResult?.sum || 0) || 0;
+    if (totalCount <= 0) {
+      return [];
+    }
+    const orderPayload = await this._requestRefundOrderPageApi('/latitude/order/userAllOrder', {
+      pageNo: 1,
+      pageSize: Math.min(Math.max(totalCount, 10), 50),
+      showHistory: true,
+      uid,
+    });
+    const orders = Array.isArray(orderPayload?.result?.orders) ? orderPayload.result.orders : [];
+    const normalized = await this._attachAfterSalesStatus(this._dedupeRefundOrders(orders, sessionMeta));
+    if (normalized.length) {
+      return normalized;
+    }
+    const unshippedCount = Number(quantityResult?.unshipped || 0) || 0;
+    if (unshippedCount > 0) {
+      const unshippedPayload = await this._requestRefundOrderPageApi('/latitude/order/userUnshippedOrder', {
+        pageNo: 1,
+        pageSize: Math.min(Math.max(unshippedCount, 10), 50),
+        uid,
+      });
+      const unshippedOrders = Array.isArray(unshippedPayload?.result?.orders) ? unshippedPayload.result.orders : [];
+      return this._attachAfterSalesStatus(this._dedupeRefundOrders(
+        unshippedOrders.map(item => ({
+          ...(item || {}),
+          refund_shipping_state: 'unshipped',
+        })),
+        sessionMeta
+      ));
+    }
+    return [];
+  }
+
+  async _extractRefundOrdersFromDom(sessionMeta = {}) {
+    if (typeof this._executeInPddPage !== 'function') return [];
+    const target = {
+      customerName: String(sessionMeta?.customerName || sessionMeta?.raw?.nick || sessionMeta?.raw?.nickname || '').trim(),
+      orderId: String(sessionMeta?.orderId || '').trim(),
+      customerId: String(sessionMeta?.customerId || sessionMeta?.raw?.customer_id || sessionMeta?.raw?.buyer_id || '').trim(),
+    };
+    const result = await this._executeInPddPage(`
+      (async () => {
+        const target = ${JSON.stringify(target)};
+        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+        const isVisible = el => {
+          if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+          const rect = el.getBoundingClientRect();
+          return rect.width > 20 && rect.height > 20 && el.offsetParent !== null;
+        };
+        const getText = el => String(el?.innerText || el?.textContent || '').replace(/\\s+/g, ' ').trim();
+        const maybeClickConversation = async () => {
+          const keywords = [target.orderId, target.customerName, target.customerId].filter(Boolean);
+          if (!keywords.length) return false;
+          const nodes = Array.from(document.querySelectorAll('div, li, section, article, a, button'));
+          const candidate = nodes.find(el => {
+            if (!isVisible(el)) return false;
+            const rect = el.getBoundingClientRect();
+            if (rect.left > window.innerWidth * 0.45 || rect.width < 120 || rect.height < 28) return false;
+            const text = getText(el);
+            if (!text || text.length > 300) return false;
+            return keywords.some(keyword => keyword && text.includes(keyword));
+          });
+          if (!candidate) return false;
+          candidate.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          candidate.click();
+          candidate.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          await sleep(500);
+          return true;
+        };
+        await maybeClickConversation();
+        const containers = Array.from(document.querySelectorAll(
+          '.right-panel, .order-panel, .customer-info, [class*="right-panel"], [class*="orderInfo"], [class*="goodsInfo"], [class*="order-panel"], [class*="customer-info"]'
+        )).filter(isVisible);
+        const container = containers.sort((a, b) => {
+          const rectA = a.getBoundingClientRect();
+          const rectB = b.getBoundingClientRect();
+          return (rectB.left + rectB.width) - (rectA.left + rectA.width);
+        })[0] || document.body;
+        const orderPattern = /订单号[:：]?\\s*([0-9-]{10,})/;
+        const pricePattern = /¥\\s*\\d+(?:\\.\\d+)?/;
+        const nodes = Array.from(container.querySelectorAll('div, li, section, article')).filter(isVisible);
+        const items = [];
+        const seen = new Set();
+        nodes.forEach((node, index) => {
+          const text = getText(node);
+          if (!text || text.length > 800) return;
+          const orderMatch = text.match(orderPattern);
+          if (!orderMatch?.[1]) return;
+          const orderId = orderMatch[1];
+          if (seen.has(orderId)) return;
+          const rect = node.getBoundingClientRect();
+          if (rect.width < 160 || rect.height < 50) return;
+          const titleEl = node.querySelector('[class*="title"], [class*="name"], strong, h3, h4, h5');
+          const img = node.querySelector('img');
+          const titleText = getText(titleEl) || (img?.getAttribute('alt') || '').trim();
+          const priceMatch = text.match(pricePattern);
+          const quantityMatch = text.match(/x\\s*\\d+/i);
+          items.push({
+            orderId,
+            title: titleText || ('订单 ' + (index + 1)),
+            imageUrl: img?.src || '',
+            amountText: priceMatch?.[0] || '待确认',
+            detailText: quantityMatch?.[0] || '消费者订单',
+          });
+          seen.add(orderId);
+        });
+        return items;
+      })()
+    `);
+    return Array.isArray(result) ? result : [];
+  }
+
+  async getRefundOrders(sessionRef) {
+    const sessionMeta = this._normalizeSessionMeta(sessionRef);
+    try {
+      const pageOrders = await this._extractRefundOrdersFromPageApis(sessionMeta);
+      if (Array.isArray(pageOrders)) {
+        return pageOrders;
+      }
+    } catch (error) {
+      this._log('[API] 售后订单接口查询失败', { message: error.message });
+    }
+    try {
+      const domOrders = await this._extractRefundOrdersFromDom(sessionMeta);
+      const normalizedDomOrders = this._dedupeRefundOrders(domOrders, sessionMeta);
+      if (normalizedDomOrders.length) {
+        return normalizedDomOrders;
+      }
+    } catch (error) {
+      this._log('[API] 售后订单 DOM 提取失败', { message: error.message });
+    }
+    const bucket = [];
+    const visited = new WeakSet();
+    [
+      sessionMeta?.goodsInfo,
+      sessionMeta?.raw?.goods_info,
+      sessionMeta?.raw?.goods,
+      sessionMeta?.raw?.orders,
+      sessionMeta?.raw?.order_list,
+      sessionMeta?.raw?.orderList,
+      sessionMeta?.raw?.order_info,
+      sessionMeta?.raw?.orderInfo,
+      sessionMeta?.raw,
+    ].forEach(source => this._collectRefundOrderNodes(source, bucket, visited));
+    let messages = [];
+    try {
+      messages = await this.getSessionMessages(sessionMeta, 1, 50);
+    } catch (error) {
+      this._log('[API] 售后订单消息回退失败', { message: error.message });
+    }
+    const merged = bucket
+      .map((item, index) => this._normalizeRefundOrder(item, sessionMeta, index))
+      .concat(this._extractRefundOrdersFromMessages(sessionMeta, messages))
+      .concat(this._extractRefundOrdersFromTraffic(sessionMeta));
+    return this._dedupeRefundOrders(merged, sessionMeta);
+  }
+
+  _formatSideOrderDateTime(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '';
+    const timestamp = numeric > 1e12 ? numeric : numeric * 1000;
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}/${month}/${day} ${hours}:${minutes}`;
+  }
+
+  _formatOrderRemarkDateTime(value = Date.now()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+  }
+
+  _extractOrderRemarkText(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return value.trim();
+    if (Array.isArray(value)) {
+      return value.map(item => this._extractOrderRemarkText(item)).filter(Boolean).join('\n').trim();
+    }
+    if (typeof value !== 'object') return '';
+    return this._pickRefundText([value], [
+      'note',
+      'content',
+      'text',
+      'remark',
+      'desc',
+      'message',
+      'value',
+    ]);
+  }
+
+  _normalizeOrderRemarkTag(value) {
+    const normalized = String(value ?? '').trim().toUpperCase();
+    if (!normalized) return '';
+    if (['0', 'NULL', 'UNDEFINED', 'FALSE', 'NONE'].includes(normalized)) {
+      return '';
+    }
+    return normalized;
+  }
+
+  _isOrderRemarkSaveIntervalError(error) {
+    const message = String(error?.message || error || '').trim();
+    if (!message) return false;
+    return /两次备注间隔时长需大于1秒|备注间隔时长需大于1秒|间隔时长需大于1秒/.test(message);
+  }
+
+  _isOrderRemarkSaveMatched(remark = {}, note = '', tag = '') {
+    return this._extractOrderRemarkText(remark?.note) === this._extractOrderRemarkText(note)
+      && this._normalizeOrderRemarkTag(remark?.tag) === this._normalizeOrderRemarkTag(tag);
+  }
+
+  _maskOrderRemarkOrderSn(orderSn) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) return '';
+    if (normalizedOrderSn.length <= 8) return normalizedOrderSn;
+    return `${normalizedOrderSn.slice(0, 4)}***${normalizedOrderSn.slice(-4)}`;
+  }
+
+  _summarizeOrderRemarkRequest(urlPath, body = {}, via = 'direct') {
+    const normalizedNote = this._extractOrderRemarkText(body?.note);
+    return {
+      urlPath: String(urlPath || ''),
+      via,
+      orderSn: this._maskOrderRemarkOrderSn(body?.orderSn),
+      hasNote: normalizedNote.length > 0,
+      noteLength: normalizedNote.length,
+      tag: this._normalizeOrderRemarkTag(body?.tag),
+      source: Number(body?.source) > 0 ? Number(body.source) : 1,
+    };
+  }
+
+  _summarizeOrderRemarkResponse(payload) {
+    if (!payload || typeof payload !== 'object') {
+      return {
+        type: typeof payload,
+      };
+    }
+    const candidates = this._collectBusinessPayloadCandidates(payload);
+    const first = candidates[0] || payload;
+    return {
+      success: first?.success,
+      ok: first?.ok,
+      errorCode: first?.error_code ?? first?.code ?? first?.err_no ?? first?.errno ?? null,
+      message: first?.error_msg || first?.message || first?.msg || '',
+      resultKeys: first?.result && typeof first.result === 'object' ? Object.keys(first.result).slice(0, 10) : [],
+    };
+  }
+
+  _getOrderRemarkTagName(tag) {
+    const normalizedTag = this._normalizeOrderRemarkTag(tag);
+    if (!normalizedTag) return '';
+    const cachedName = this._orderRemarkTagOptionsCache?.[normalizedTag];
+    if (cachedName) return String(cachedName).trim();
+    return ORDER_REMARK_TAG_LABELS[normalizedTag] || '';
+  }
+
+  _formatOrderRemarkMeta(value = Date.now()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${month}/${day} ${hours}:${minutes}`;
+  }
+
+  async _getOrderRemarkOperatorName() {
+    try {
+      const userInfo = await this.getUserInfo();
+      const username = String(userInfo?.username || '').trim();
+      if (username) return username;
+    } catch {}
+    try {
+      const profile = await this.getServiceProfile();
+      const username = String(profile?.username || '').trim();
+      if (username) return username;
+      const serviceName = String(profile?.serviceName || '').trim();
+      if (serviceName) return serviceName;
+    } catch {}
+    return String(this._getShopInfo()?.name || '').trim() || '主账号';
+  }
+
+  _getOrderRemarkCache(orderSn) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) return null;
+    const cached = this._orderRemarkCache.get(normalizedOrderSn);
+    if (!cached || typeof cached !== 'object') return null;
+    return this._cloneJson(cached);
+  }
+
+  _setOrderRemarkCache(orderSn, remark = {}) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) return null;
+    const nextRemark = {
+      orderSn: normalizedOrderSn,
+      note: this._extractOrderRemarkText(remark?.note),
+      tag: this._normalizeOrderRemarkTag(remark?.tag),
+      tagName: String(remark?.tagName || '').trim(),
+      source: Number(remark?.source) > 0 ? Number(remark.source) : 1,
+    };
+    this._orderRemarkCache.set(normalizedOrderSn, nextRemark);
+    return this._cloneJson(nextRemark);
+  }
+
+  _normalizeOrderRemarkTagOptions(payload = {}) {
+    const source = payload?.result && typeof payload.result === 'object'
+      ? payload.result
+      : (payload && typeof payload === 'object' ? payload : {});
+    const entries = Object.entries(source)
+      .map(([value, label]) => [String(value || '').trim().toUpperCase(), String(label || '').trim()])
+      .filter(([value, label]) => value && label);
+    const preferredOrder = ['RED', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE'];
+    const ordered = [
+      ...preferredOrder.filter(key => entries.some(([value]) => value === key)),
+      ...entries.map(([value]) => value).filter(value => !preferredOrder.includes(value)),
+    ];
+    return ordered.reduce((result, key) => {
+      const matched = entries.find(([value]) => value === key);
+      if (matched) result[key] = matched[1];
+      return result;
+    }, {});
+  }
+
+  async getOrderRemarkTagOptions(force = false) {
+    if (this._orderRemarkTagOptionsCache && !force) {
+      return this._cloneJson(this._orderRemarkTagOptionsCache);
+    }
+    let payload;
+    try {
+      payload = await this._requestOrderRemarkApi('/pizza/order/remarkTag/query', {});
+    } catch (error) {
+      if (this._orderRemarkTagOptionsCache) {
+        return this._cloneJson(this._orderRemarkTagOptionsCache);
+      }
+      throw error;
+    }
+    const result = this._normalizeOrderRemarkTagOptions(payload);
+    this._orderRemarkTagOptionsCache = result;
+    return this._cloneJson(result);
+  }
+
+  async getOrderRemark(orderSn, source = 1) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const requestBody = {
+      orderSn: normalizedOrderSn,
+      source: Number(source) > 0 ? Number(source) : 1,
+    };
+    const [noteResult, noteTagResult] = await Promise.allSettled([
+      this._requestOrderRemarkApi('/pizza/order/note/query', requestBody),
+      this._requestOrderRemarkApi('/pizza/order/noteTag/query', requestBody),
+    ]);
+    if (noteResult.status === 'rejected' && noteTagResult.status === 'rejected') {
+      throw noteTagResult.reason || noteResult.reason || new Error('读取订单备注失败');
+    }
+    const notePayload = noteResult.status === 'fulfilled' ? noteResult.value : null;
+    const noteTagPayload = noteTagResult.status === 'fulfilled' ? noteTagResult.value : null;
+    const noteTagData = noteTagPayload?.result && typeof noteTagPayload.result === 'object'
+      ? noteTagPayload.result
+      : {};
+    const noteData = notePayload?.result;
+    const note = this._extractOrderRemarkText(noteTagData?.note) || this._extractOrderRemarkText(noteData);
+    const tag = this._normalizeOrderRemarkTag(this._pickRefundText([noteTagData], ['tag', 'tagCode', 'color', 'colorCode']));
+    const tagName = this._pickRefundText([noteTagData], ['tagName', 'tag_name', 'colorName', 'color_name']);
+    return this._setOrderRemarkCache(normalizedOrderSn, {
+      orderSn: normalizedOrderSn,
+      note,
+      tag,
+      tagName,
+      source: requestBody.source,
+    });
+  }
+
+  async saveOrderRemark(params = {}) {
+    const normalizedOrderSn = String(params?.orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const source = Number(params?.source) > 0 ? Number(params.source) : 1;
+    const baseNote = String(params?.note || '').trim().slice(0, 300);
+    const tag = this._normalizeOrderRemarkTag(params?.tag);
+    const baseTagName = String(params?.tagName || '').trim();
+    const tagName = baseTagName || this._getOrderRemarkTagName(tag);
+    let finalNote = baseNote;
+    if (params?.autoAppendMeta) {
+      const operatorName = await this._getOrderRemarkOperatorName();
+      const metaText = this._formatOrderRemarkMeta();
+      const suffix = [operatorName, metaText].filter(Boolean).join(' ').trim();
+      finalNote = suffix
+        ? `${baseNote || ''} [${suffix}]`.trim()
+        : baseNote;
+    }
+    const candidates = tag
+      ? [
+        {
+          url: '/pizza/order/noteTag/update',
+          body: {
+            orderSn: normalizedOrderSn,
+            source,
+            remark: finalNote,
+            remarkTag: tag,
+            remarkTagName: tagName || '',
+          },
+        },
+        {
+          url: '/pizza/order/note/update',
+          body: {
+            orderSn: normalizedOrderSn,
+            source,
+            remark: finalNote,
+          },
+        },
+      ]
+      : [
+        {
+          url: '/pizza/order/noteTag/update',
+          body: {
+            orderSn: normalizedOrderSn,
+            source,
+            remark: finalNote,
+            remarkTag: '',
+            remarkTagName: '',
+          },
+        },
+        {
+          url: '/pizza/order/note/update',
+          body: {
+            orderSn: normalizedOrderSn,
+            source,
+            remark: finalNote,
+          },
+        },
+      ];
+    let lastError = null;
+    let responsePayload = null;
+    let latestRemark = null;
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
+      let canRetryAfterIntervalError = true;
+      while (true) {
+        try {
+          responsePayload = await this._requestOrderRemarkApi(candidate.url, candidate.body);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (canRetryAfterIntervalError && this._isOrderRemarkSaveIntervalError(error)) {
+            canRetryAfterIntervalError = false;
+            await this._sleep(1100);
+            continue;
+          }
+          break;
+        }
+      }
+      if (lastError) {
+        continue;
+      }
+      latestRemark = null;
+      try {
+        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
+      } catch (error) {
+        lastError = error;
+      }
+      if (!lastError && this._isOrderRemarkSaveMatched(latestRemark, finalNote, tag)) {
+        break;
+      }
+      if (!lastError) {
+        this._log('[API] 订单备注写入后回读未生效', {
+          candidateUrl: candidate.url,
+          orderSn: this._maskOrderRemarkOrderSn(normalizedOrderSn),
+          expected: {
+            noteLength: this._extractOrderRemarkText(finalNote).length,
+            tag,
+          },
+          actual: {
+            noteLength: this._extractOrderRemarkText(latestRemark?.note).length,
+            tag: this._normalizeOrderRemarkTag(latestRemark?.tag),
+          },
+        });
+        lastError = new Error('备注保存未生效，请重试');
+      }
+      if (index < candidates.length - 1) {
+        await this._sleep(1100);
+      }
+    }
+    if (lastError && this._isOrderRemarkSaveIntervalError(lastError)) {
+      try {
+        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
+        if (this._isOrderRemarkSaveMatched(latestRemark, finalNote, tag)) {
+          lastError = null;
+        }
+      } catch {}
+    }
+    if (lastError) {
+      throw lastError;
+    }
+    if (!latestRemark) {
+      try {
+        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
+      } catch {}
+    }
+    const cachedRemark = this._setOrderRemarkCache(normalizedOrderSn, {
+      orderSn: normalizedOrderSn,
+      note: latestRemark?.note || finalNote,
+      tag: latestRemark?.tag || tag,
+      tagName: latestRemark?.tagName || '',
+      source,
+    });
+    return {
+      success: true,
+      ...cachedRemark,
+      response: responsePayload,
+    };
+  }
+
+  _buildSideOrderSources(item = {}, fallback = {}) {
+    return [
+      item,
+      item?.raw,
+      item?.orderGoodsList,
+      item?.order_goods_list,
+      item?.goods_info,
+      item?.goodsInfo,
+      item?.goods,
+      item?.order_info,
+      item?.orderInfo,
+      item?.afterSalesInfo,
+      item?.after_sales_info,
+      item?.compensate,
+      item?.compensateInfo,
+      item?.pendingCompensate,
+      item?.raw?.afterSalesInfo,
+      item?.raw?.after_sales_info,
+      item?.raw?.compensate,
+      item?.raw?.compensateInfo,
+      item?.raw?.pendingCompensate,
+      fallback?.goodsInfo,
+      fallback?.raw?.goods_info,
+      fallback?.raw?.goods,
+      fallback?.raw,
+      fallback,
+    ].filter(Boolean);
+  }
+
+  _resolveSideOrderHeadline(tab = 'personal', sources = []) {
+    const afterSalesStatus = this._pickRefundText(sources, ['afterSalesStatus', 'after_sales_status', 'afterSalesStatusDesc', 'after_sales_status_desc']);
+    const orderStatusText = this._pickRefundText(sources, [
+      'orderStatusStr',
+      'order_status_str',
+      'order_status_desc',
+      'order_status_text',
+      'statusDesc',
+      'status_desc',
+      'statusText',
+      'status_text',
+      'shippingStatusText',
+      'shipping_status_text',
+      'shippingStatus',
+      'shipping_status',
+    ]);
+    const compensateText = this._pickRefundText(sources, [
+      'pendingCompensateText',
+      'pending_compensate_text',
+      'detail',
+      'text',
+      'desc',
+    ]);
+    if (tab === 'aftersale') {
+      return [orderStatusText, afterSalesStatus].filter(Boolean).join('，') || afterSalesStatus || orderStatusText || '售后处理中';
+    }
+    if (tab === 'pending') {
+      return [orderStatusText, compensateText].filter(Boolean).join('，') || orderStatusText || '店铺待支付';
+    }
+    return [orderStatusText, afterSalesStatus].filter(Boolean).join('，') || orderStatusText || '订单状态待确认';
+  }
+
+  _buildSideOrderMetaRows(tab = 'personal', sources = []) {
+    const rows = [];
+    const orderTimeText = this._formatSideOrderDateTime(this._pickRefundNumber(sources, ['orderTime', 'order_time', 'createdAt', 'created_at']));
+    const afterSalesStatus = this._pickRefundText(sources, ['afterSalesStatus', 'after_sales_status', 'afterSalesStatusDesc', 'after_sales_status_desc']);
+    const compensateText = this._pickRefundText(sources, [
+      'pendingCompensateText',
+      'pending_compensate_text',
+      'detail',
+      'text',
+      'desc',
+    ]);
+    const refundShippingBenefitText = this._resolveRefundShippingBenefitText(sources);
+    const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
+    if (orderTimeText) {
+      rows.push({ label: '下单时间', value: orderTimeText });
+    }
+    if (afterSalesStatus) {
+      rows.push({ label: '售后状态', value: afterSalesStatus });
+    }
+    if (tab === 'pending' && compensateText) {
+      rows.push({ label: '待支付说明', value: compensateText });
+    } else if (refundShippingBenefitText) {
+      rows.push({ label: '退货包运费', value: refundShippingBenefitText });
+    }
+    if (shippingInfo.shippingStatusText) {
+      rows.push({ label: '物流状态', value: shippingInfo.shippingStatusText });
+    } else if (shippingInfo.trackingNo) {
+      rows.push({ label: '物流单号', value: shippingInfo.trackingNo });
+    }
+    return rows.slice(0, 4);
+  }
+
+  _formatSideOrderAmount(value, { negative = false } = {}) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return '';
+    return `${negative ? '-' : ''}¥${(numeric / 100).toFixed(2)}`;
+  }
+
+  _resolveSideOrderDiscountText(sources = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of ['manualDiscount', 'merchantDiscount', 'discountAmount', 'totalDiscount']) {
+        if (source[key] === undefined || source[key] === null || source[key] === '') continue;
+        const numeric = Number(source[key]);
+        if (Number.isFinite(numeric) && numeric >= 0) {
+          return this._formatSideOrderAmount(numeric, { negative: true });
+        }
+      }
+    }
+    return '-¥0.00';
+  }
+
+  _resolveSideOrderPendingCountdown(sources = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const rawOrderTime = source.orderTime ?? source.order_time ?? source.createdAt ?? source.created_at;
+      const numeric = Number(rawOrderTime);
+      if (!Number.isFinite(numeric) || numeric <= 0) continue;
+      const orderTimeMs = numeric > 1e12 ? numeric : numeric * 1000;
+      const countdownEndTime = orderTimeMs + 24 * 60 * 60 * 1000;
+      const remainMs = Math.max(0, countdownEndTime - Date.now());
+      const totalSeconds = Math.floor(remainMs / 1000);
+      const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+      const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+      const seconds = String(totalSeconds % 60).padStart(2, '0');
+      return {
+        countdownEndTime,
+        countdownText: `${hours}:${minutes}:${seconds}`,
+      };
+    }
+    return {
+      countdownEndTime: 0,
+      countdownText: '',
+    };
+  }
+
+  _buildSideOrderSummaryRows(tab = 'personal', sources = [], amountText = '') {
+    const rows = [];
+    rows.push({
+      label: '店铺优惠抵扣',
+      value: this._resolveSideOrderDiscountText(sources),
+      tone: 'muted',
+    });
+    if (amountText) {
+      rows.push({
+        label: tab === 'pending' ? '待支付金额' : '实收',
+        value: amountText,
+        tone: 'danger',
+      });
+    }
+    return rows.slice(0, 2);
+  }
+
+  _buildSideOrderActionTags(tab = 'personal', sources = []) {
+    const tags = ['备注'];
+    const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
+    if (shippingInfo.isShipped || shippingInfo.trackingNo) {
+      tags.push('物流信息');
+    }
+    if (tab === 'pending') {
+      tags.push('小额打款');
+    }
+    if (this._pickRefundBoolean(sources, ['showGoodsInstructEntrance', 'show_goods_instruct_entrance'])) {
+      tags.push('查看说明书');
+    }
+    if (this._pickRefundBoolean(sources, ['showExtraPackageTool', 'show_extra_package_tool'])) {
+      tags.push('新增额外包裹');
+    }
+    const statusText = this._pickRefundText(sources, ['orderStatusStr', 'order_status_str']);
+    if (tab === 'pending' || /待支付/.test(statusText)) {
+      tags.push('改价');
+    }
+    return [...new Set(tags)].slice(0, 6);
+  }
+
+  _normalizeSideOrderCard(item = {}, fallback = {}, tab = 'personal', index = 0) {
+    const sources = this._buildSideOrderSources(item, fallback);
+    const goodsInfo = Array.isArray(item?.orderGoodsList)
+      ? (item.orderGoodsList[0] || {})
+      : (item?.orderGoodsList || item?.goodsInfo || item?.goods_info || item?.raw?.orderGoodsList || {});
+    const orderId = this._pickRefundText(sources, ['order_id', 'order_sn', 'orderSn', 'parent_order_sn', 'mall_order_sn', 'orderId'])
+      || String(fallback?.orderId || '').trim();
+    const title = this._pickRefundText(sources, ['goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'title'])
+      || fallback?.title
+      || `订单 ${index + 1}`;
+    const imageUrl = this._pickRefundText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url']);
+    const amountText = this._normalizeRefundAmountByKeys(sources, ['order_amount', 'orderAmount', 'pay_amount', 'refund_amount', 'amount', 'order_price', 'price'])
+      || this._pickRefundText(sources, ['priceText', 'price_text'])
+      || this._normalizeGoodsPrice(this._pickRefundNumber(sources, ['goodsPrice', 'min_price', 'group_price']))
+      || '';
+    const quantityValue = this._pickRefundText(
+      [goodsInfo, ...sources],
+      ['goodsNumber', 'quantity', 'num', 'count', 'goods_count', 'buy_num', 'buyNum'],
+    );
+    const specText = this._pickRefundText(
+      [goodsInfo, ...sources],
+      ['spec', 'specText', 'spec_text', 'sku_spec', 'skuSpec', 'spec_desc', 'specDesc', 'sub_name', 'subName'],
+    );
+    const normalizedQuantity = String(quantityValue || '').replace(/^x/i, '').trim();
+    const detailText = this._pickRefundText([item, goodsInfo, ...sources], ['detailText', 'detail_text']) || (normalizedQuantity && specText
+      ? `${specText} x${normalizedQuantity}`
+      : (specText || (normalizedQuantity ? `x${normalizedQuantity}` : '所拍规格待确认')));
+    const pendingCountdown = tab === 'pending'
+      ? this._resolveSideOrderPendingCountdown(sources)
+      : { countdownEndTime: 0, countdownText: '' };
+    const remarkNote = this._extractOrderRemarkText(this._pickRefundText(sources, ['note']));
+    const remarkTag = this._normalizeOrderRemarkTag(this._pickRefundText(sources, ['tag']));
+    const remarkTagName = this._pickRefundText(sources, ['tagName', 'tag_name']);
+    const cachedRemark = this._getOrderRemarkCache(orderId);
+    if (orderId && (remarkNote || remarkTag || remarkTagName)) {
+      this._setOrderRemarkCache(orderId, {
+        note: remarkNote,
+        tag: remarkTag,
+        tagName: remarkTagName,
+      });
+    }
+    return {
+      key: `${tab}::${orderId || 'order'}::${index}`,
+      orderId: orderId || '-',
+      title,
+      imageUrl,
+      detailText,
+      amountText,
+      headline: this._resolveSideOrderHeadline(tab, sources),
+      countdownEndTime: pendingCountdown.countdownEndTime,
+      countdownText: pendingCountdown.countdownText,
+      metaRows: this._buildSideOrderMetaRows(tab, sources),
+      summaryRows: this._buildSideOrderSummaryRows(tab, sources, amountText),
+      note: remarkNote || cachedRemark?.note || '',
+      noteTag: remarkTag || cachedRemark?.tag || '',
+      noteTagName: remarkTagName || cachedRemark?.tagName || '',
+      actionTags: this._buildSideOrderActionTags(tab, sources),
+    };
+  }
+
+  async _extractPendingOrdersFromPageApis(sessionMeta = {}) {
+    const uid = this._getRefundOrderUid(sessionMeta);
+    if (!uid) return null;
+    const pendingPayload = await this._requestRefundOrderPageApi('/latitude/order/userUnfinishedOrder', {
+      pageNo: 1,
+      pageSize: 50,
+      uid,
+    });
+    const pendingOrders = Array.isArray(pendingPayload?.result?.orders) ? pendingPayload.result.orders : [];
+    if (!pendingOrders.length) return [];
+    const compensateMap = {};
+    const validOrderSns = [...new Set(pendingOrders.map(item => String(item?.orderSn || item?.orderId || '').trim()).filter(Boolean))].slice(0, 20);
+    await Promise.all(validOrderSns.map(async orderSn => {
+      try {
+        const payload = await this._requestRefundOrderPageApi('/latitude/order/orderCompensate', { orderSn });
+        const result = payload?.result || {};
+        const text = this._pickRefundText([result], ['detail', 'text', 'desc']);
+        if (text) {
+          compensateMap[orderSn] = {
+            pendingCompensateText: text,
+          };
+        }
+      } catch (error) {
+        this._log('[API] 店铺待支付补充查询失败', { orderSn, message: error.message });
+      }
+    }));
+    return this._dedupeRefundOrders(pendingOrders.map(item => {
+      const orderSn = String(item?.orderSn || item?.orderId || '').trim();
+      return {
+        ...(item || {}),
+        ...(compensateMap[orderSn] || {}),
+      };
+    }), sessionMeta);
+  }
+
+  _getOrderTrafficEntries(urlPart = '', sessionMeta = {}) {
+    const uid = this._getRefundOrderUid(sessionMeta);
+    return this._getApiTrafficEntries()
+      .filter(entry => String(entry?.url || '').includes(urlPart))
+      .filter(entry => {
+        if (!uid) return true;
+        const body = typeof entry?.requestBody === 'string' ? this._safeParseJson(entry.requestBody) : entry?.requestBody;
+        const requestUid = String(body?.uid || body?.data?.uid || '').trim();
+        return !requestUid || requestUid === uid;
+      });
+  }
+
+  _extractAfterSalesStatusMapFromTraffic(orderSns = [], sessionMeta = {}) {
+    const validOrderSns = [...new Set((Array.isArray(orderSns) ? orderSns : []).map(item => String(item || '').trim()).filter(Boolean))];
+    if (!validOrderSns.length) return {};
+    const targetSet = new Set(validOrderSns);
+    const statusMap = {};
+    const entries = this._getOrderTrafficEntries('/mercury/chat/afterSales/queryList', sessionMeta);
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
+        ? entries[i].responseBody
+        : this._safeParseJson(entries[i]?.responseBody);
+      const map = responseBody?.result?.orderSn2AfterSalesListMap;
+      if (!map || typeof map !== 'object') continue;
+      Object.entries(map).forEach(([orderSn, list]) => {
+        if (!targetSet.has(String(orderSn)) || statusMap[String(orderSn)]) return;
+        const text = this._extractAfterSalesStatusText(list);
+        if (text) statusMap[String(orderSn)] = text;
+      });
+      if (validOrderSns.every(orderSn => statusMap[orderSn])) break;
+    }
+    return statusMap;
+  }
+
+  _attachAfterSalesStatusFromTraffic(orders = [], sessionMeta = {}) {
+    const orderSns = orders.map(item => String(item?.orderId || item?.orderSn || '').trim()).filter(Boolean);
+    if (!orderSns.length) return orders;
+    const statusMap = this._extractAfterSalesStatusMapFromTraffic(orderSns, sessionMeta);
+    return orders.map(order => {
+      const orderSn = String(order?.orderId || order?.orderSn || '').trim();
+      return {
+        ...order,
+        afterSalesStatus: order?.afterSalesStatus || statusMap[orderSn] || '',
+      };
+    });
+  }
+
+  _extractPersonalOrdersFromTraffic(sessionMeta = {}) {
+    const entries = this._getOrderTrafficEntries('/latitude/order/userAllOrder', sessionMeta);
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
+        ? entries[i].responseBody
+        : this._safeParseJson(entries[i]?.responseBody);
+      const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
+      if (!orders.length) continue;
+      return this._attachAfterSalesStatusFromTraffic(this._dedupeRefundOrders(orders, sessionMeta), sessionMeta);
+    }
+    return [];
+  }
+
+  _extractPendingOrdersFromTraffic(sessionMeta = {}) {
+    const entries = this._getOrderTrafficEntries('/latitude/order/userUnfinishedOrder', sessionMeta);
+    let pendingOrders = [];
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
+        ? entries[i].responseBody
+        : this._safeParseJson(entries[i]?.responseBody);
+      const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
+      if (!orders.length) continue;
+      pendingOrders = orders;
+      break;
+    }
+    if (!pendingOrders.length) return [];
+    const compensateEntries = this._getOrderTrafficEntries('/latitude/order/orderCompensate', sessionMeta);
+    const compensateMap = {};
+    for (let i = compensateEntries.length - 1; i >= 0; i -= 1) {
+      const requestBody = typeof compensateEntries[i]?.requestBody === 'string'
+        ? this._safeParseJson(compensateEntries[i].requestBody)
+        : compensateEntries[i]?.requestBody;
+      const responseBody = compensateEntries[i]?.responseBody && typeof compensateEntries[i].responseBody === 'object'
+        ? compensateEntries[i].responseBody
+        : this._safeParseJson(compensateEntries[i]?.responseBody);
+      const orderSn = String(requestBody?.orderSn || '').trim();
+      const text = this._pickRefundText([responseBody?.result || {}], ['detail', 'text', 'desc']);
+      if (orderSn && text && !compensateMap[orderSn]) {
+        compensateMap[orderSn] = {
+          pendingCompensateText: text,
+        };
+      }
+    }
+    return this._dedupeRefundOrders(pendingOrders.map(item => {
+      const orderSn = String(item?.orderSn || item?.orderId || '').trim();
+      return {
+        ...(item || {}),
+        ...(compensateMap[orderSn] || {}),
+      };
+    }), sessionMeta);
+  }
+
+  async getSideOrders(sessionRef, tab = 'personal') {
+    const sessionMeta = this._normalizeSessionMeta(sessionRef);
+    const normalizedTab = ['personal', 'aftersale', 'pending'].includes(String(tab || ''))
+      ? String(tab)
+      : 'personal';
+    if (normalizedTab === 'pending') {
+      let pendingOrders = [];
+      try {
+        const pagePendingOrders = await this._extractPendingOrdersFromPageApis(sessionMeta);
+        if (Array.isArray(pagePendingOrders)) {
+          pendingOrders = pagePendingOrders;
+        }
+      } catch (error) {
+        this._log('[API] 侧栏待支付接口查询失败', { message: error.message });
+      }
+      if (!pendingOrders.length) {
+        pendingOrders = this._extractPendingOrdersFromTraffic(sessionMeta);
+      }
+      if (!Array.isArray(pendingOrders) || !pendingOrders.length) return [];
+      return pendingOrders.map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
+    }
+    let orders = [];
+    try {
+      const pageOrders = await this._extractRefundOrdersFromPageApis(sessionMeta);
+      if (Array.isArray(pageOrders)) {
+        orders = pageOrders;
+      }
+    } catch (error) {
+      this._log('[API] 侧栏订单接口查询失败', { tab: normalizedTab, message: error.message });
+    }
+    if (!orders.length) {
+      orders = this._extractPersonalOrdersFromTraffic(sessionMeta);
+    }
+    if (!orders.length) {
+      try {
+        orders = await this.getRefundOrders(sessionMeta);
+      } catch (error) {
+        this._log('[API] 侧栏订单回退失败', { tab: normalizedTab, message: error.message });
+      }
+    }
+    const filtered = normalizedTab === 'aftersale'
+      ? orders.filter(item => String(item?.afterSalesStatus || '').trim())
+      : orders;
+    return filtered.map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
   }
 
   async getSessionMessages(sessionRef, page = 1, pageSize = 30) {
@@ -1742,8 +3657,13 @@ class PddApiClient extends EventEmitter {
     if (!filePath) {
       throw new Error('缺少图片路径');
     }
-    const fileBuffer = await fs.readFile(filePath);
     const attempts = [];
+    try {
+      return await this._uploadImageViaPreUpload(filePath);
+    } catch (error) {
+      attempts.push({ baseUrl: '/plateau/file/pre_upload', error: error.message });
+    }
+    const fileBuffer = await fs.readFile(filePath);
     for (const baseUrl of this._getUploadBases()) {
       try {
         const signature = await this._getUploadSignature(baseUrl, options.bucketTag || 'chat-merchant');
@@ -1766,7 +3686,7 @@ class PddApiClient extends EventEmitter {
     throw this._createStepError('upload', attempts[0]?.error || '图片上传失败', { attempts });
   }
 
-  _buildSendImageBody(sessionRef, imageUrl) {
+  _buildSendImageBody(sessionRef, imageUrl, imageMeta = {}) {
     const { sessionMeta, ids } = this._getSessionIdentityCandidates(sessionRef);
     const latestTraffic = this._getLatestSessionTraffic('/plateau/chat/send_message', ids);
     const templateBody = this._safeParseJson(latestTraffic?.requestBody);
@@ -1785,7 +3705,7 @@ class PddApiClient extends EventEmitter {
     const ts = Math.floor(Date.now() / 1000);
     const random = this._randomHex(32);
     const hash = this._buildMessageHash(sessionMeta.sessionId || sessionMeta.userUid || sessionMeta.customerId || '', imageUrl, ts, random);
-    const message = this._buildSendImageTemplate(sessionMeta, imageUrl, ts, hash);
+    const message = this._buildSendImageTemplate(sessionMeta, imageUrl, ts, hash, imageMeta);
 
     if (templateBody) {
       const body = this._cloneJson(templateBody);
@@ -1841,17 +3761,27 @@ class PddApiClient extends EventEmitter {
       hasUserInfo: !!requestBody?.data?.message?.user_info,
       preMsgId: requestBody?.data?.message?.pre_msg_id || '',
     });
+    const sentAtMs = Date.now();
     const payload = await this._post('/plateau/chat/send_message', requestBody);
-    this._log('[API] 消息发送成功', {
+    const confirmResult = await this._confirmSentTextMessage(sessionMeta, text, { sentAtMs });
+    if (!confirmResult.confirmed) {
+      const error = new Error('发送接口未确认消息已入会话，请稍后刷新重试');
+      error.payload = payload;
+      throw error;
+    }
+    this._log('[API] 消息发送确认成功', {
       sessionId: String(sessionMeta.sessionId || ''),
       targetUid: String(requestBody?.data?.message?.to?.uid || ''),
       payloadKeys: Object.keys(payload?.result || payload?.data || payload || {}),
+      messageId: confirmResult.messageId,
     });
 
     const result = {
+      success: true,
       sessionId: String(sessionMeta.sessionId || ''),
       customerId: String(sessionMeta.customerId || ''),
       userUid: String(sessionMeta.userUid || ''),
+      messageId: confirmResult.messageId,
       text,
       response: payload
     };
@@ -1875,7 +3805,8 @@ class PddApiClient extends EventEmitter {
     }
     const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
     const imageUrl = uploadResult?.processed_url || uploadResult?.url;
-    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl);
+    const imageMeta = await this._buildImageMessageMeta(filePath, uploadResult);
+    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl, imageMeta);
     this._log('[API] 发送图片', {
       sessionId: String(sessionMeta.sessionId || ''),
       targetUid: String(requestBody?.data?.message?.to?.uid || ''),
@@ -1911,7 +3842,8 @@ class PddApiClient extends EventEmitter {
       await this.initSession();
     }
     const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
-    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl);
+    const imageMeta = await this._buildImageMessageMeta(extra?.filePath || '', extra);
+    const requestBody = this._buildSendImageBody(sessionMeta, imageUrl, imageMeta);
     this._log('[API] 发送图片', {
       sessionId: String(sessionMeta.sessionId || ''),
       targetUid: String(requestBody?.data?.message?.to?.uid || ''),

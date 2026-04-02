@@ -420,6 +420,12 @@
   function umCreateRule(index) {
     const item = umLog[index];
     if (!item) return;
+    prefillQARuleFromMessage(item);
+  }
+
+  function prefillQARuleFromMessage(item = {}) {
+    const sourceMessage = String(item.message || '').trim();
+    if (!sourceMessage) return false;
     const suggestedKeywords = item.message
       .replace(/[，。！？、；：""（）\s]+/g, ',')
       .split(',')
@@ -442,6 +448,57 @@
 
     showModal('modalQA');
     qaToast('已预填关键词，请补充回复内容');
+    return true;
+  }
+
+  function findUnmatchedLogIndex(criteria = {}) {
+    const customer = String(criteria.customer || '').trim();
+    const message = String(criteria.message || '').trim();
+    if (customer && message) {
+      for (let index = umLog.length - 1; index >= 0; index -= 1) {
+        const item = umLog[index];
+        if (String(item.customer || '').trim() === customer && String(item.message || '').trim() === message) {
+          return index;
+        }
+      }
+    }
+    if (customer) {
+      for (let index = umLog.length - 1; index >= 0; index -= 1) {
+        const item = umLog[index];
+        if (String(item.customer || '').trim() === customer) {
+          return index;
+        }
+      }
+    }
+    if (message) {
+      for (let index = umLog.length - 1; index >= 0; index -= 1) {
+        const item = umLog[index];
+        if (String(item.message || '').trim() === message) {
+          return index;
+        }
+      }
+    }
+    return -1;
+  }
+
+  async function openQAUnmatchedFromContext(criteria = {}) {
+    await loadRules();
+    const unmatchedButton = document.querySelector('.qa-sub-tab[data-qatab="unmatched"]');
+    if (unmatchedButton) {
+      switchQATab(unmatchedButton);
+    }
+    await loadUnmatchedLog();
+    const matchedIndex = findUnmatchedLogIndex(criteria);
+    if (matchedIndex >= 0) {
+      umCreateRule(matchedIndex);
+      return { matched: true };
+    }
+    const prefilled = prefillQARuleFromMessage(criteria);
+    if (prefilled) {
+      qaToast('未在记录中定位到该条消息，已按当前消息预填规则');
+      return { matched: false, prefilled: true };
+    }
+    return { matched: false, prefilled: false };
   }
 
   async function clearUM() {
@@ -565,6 +622,7 @@
   window.plUseFallback = plUseFallback;
   window.plDelete = plDelete;
   window.umCreateRule = umCreateRule;
+  window.openQAUnmatchedFromContext = openQAUnmatchedFromContext;
   window.fbConfig = fbConfig;
 
   if (typeof window.registerRendererModule === 'function') {

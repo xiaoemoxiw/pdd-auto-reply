@@ -1,3 +1,5 @@
+const zlib = require('zlib');
+
 /**
  * 网络请求监控模块
  * 通过 Chrome DevTools Protocol (CDP) 拦截 BrowserView 中的网络请求，
@@ -183,6 +185,132 @@ class NetworkMonitor {
     return String(payloadData).slice(0, 4000);
   }
 
+  _extractPrintableSegments(text, limit = 20) {
+    const source = String(text || '');
+    if (!source) return [];
+    const matches = source.match(/[A-Za-z0-9_./:#-]{4,}/g) || [];
+    const result = [];
+    for (const item of matches) {
+      if (result.includes(item)) continue;
+      result.push(item);
+      if (result.length >= limit) break;
+    }
+    return result;
+  }
+
+  _tryGunzipBuffer(buffer) {
+    if (!Buffer.isBuffer(buffer) || buffer.length < 2) return null;
+    for (let index = 0; index < buffer.length - 1; index++) {
+      if (buffer[index] !== 0x1f || buffer[index + 1] !== 0x8b) continue;
+      for (let end = buffer.length; end > index + 18; end--) {
+        try {
+          return zlib.gunzipSync(buffer.slice(index, end));
+        } catch {}
+      }
+    }
+    return null;
+  }
+
+  _extractAsciiFromBuffer(buffer, limit = 40) {
+    if (!Buffer.isBuffer(buffer) || !buffer.length) return [];
+    const text = buffer.toString('latin1');
+    return this._extractPrintableSegments(text, limit);
+  }
+
+  _extractJsonObjectFromText(text) {
+    const source = String(text || '');
+    const start = source.indexOf('{');
+    if (start < 0) return null;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < source.length; index++) {
+      const char = source[index];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+      if (char === '{') depth += 1;
+      if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = source.slice(start, index + 1);
+          try {
+            return JSON.parse(candidate);
+          } catch {
+            return null;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  _buildDecodedFrameSummary(payloadData, opcode) {
+    if (!payloadData) return null;
+    const payloadText = String(payloadData);
+    const summary = {
+      encoding: 'text',
+      opcode: Number(opcode || 0) || 0,
+      rawPreview: payloadText.slice(0, 240),
+    };
+    let buffer = null;
+    if (/^[A-Za-z0-9+/=]+$/.test(payloadText) && payloadText.length % 4 === 0) {
+      try {
+        buffer = Buffer.from(payloadText, 'base64');
+        summary.encoding = 'base64';
+        summary.base64Length = buffer.length;
+      } catch {}
+    }
+    if (!buffer) {
+      buffer = Buffer.from(payloadText, 'utf8');
+    }
+    const bufferTokens = this._extractAsciiFromBuffer(buffer, 30);
+    if (bufferTokens.length) {
+      summary.bufferTokens = bufferTokens;
+    }
+    const gunzipped = this._tryGunzipBuffer(buffer);
+    if (gunzipped) {
+      const decodedText = gunzipped.toString('latin1').replace(/[^\x09\x0a\x0d\x20-\x7e]/g, ' ');
+      const compactText = decodedText.replace(/\s+/g, ' ').trim();
+      summary.gzipDecodedLength = gunzipped.length;
+      summary.textPreview = compactText.slice(0, 1200);
+      summary.tokens = this._extractPrintableSegments(compactText, 30);
+      const notifyPayload = this._extractJsonObjectFromText(compactText);
+      if (notifyPayload) {
+        summary.notifyPayload = notifyPayload;
+      }
+      const joined = [...(summary.tokens || []), ...(summary.bufferTokens || [])].join(' ');
+      summary.hasNotifyDataLite = joined.includes('titan.notifyDataLite');
+      summary.hasAck = joined.includes('.ack');
+      return summary;
+    }
+    const plainText = payloadText.replace(/\s+/g, ' ').trim();
+    const tokens = this._extractPrintableSegments(plainText, 20);
+    if (tokens.length) {
+      summary.textPreview = plainText.slice(0, 600);
+      summary.tokens = tokens;
+      const joined = [...tokens, ...(summary.bufferTokens || [])].join(' ');
+      summary.hasNotifyDataLite = joined.includes('titan.notifyDataLite');
+      summary.hasAck = joined.includes('.ack');
+      return summary;
+    }
+    const joined = (summary.bufferTokens || []).join(' ');
+    summary.hasNotifyDataLite = joined.includes('titan.notifyDataLite');
+    summary.hasAck = joined.includes('.ack');
+    return summary;
+  }
+
   _isWebSocketCaptureUrl(url) {
     return /pinduoduo\.com|m-ws\.pinduoduo\.com/.test(String(url || ''));
   }
@@ -248,6 +376,7 @@ class NetworkMonitor {
     try {
       parsed = JSON.parse(payloadData);
     } catch {}
+    const decodedFrame = parsed ? null : this._buildDecodedFrameSummary(payloadData, response?.opcode);
 
     this.onApiTraffic({
       type: `websocket-${direction}`,
@@ -258,12 +387,14 @@ class NetworkMonitor {
       method: direction === 'sent' ? 'WS-SEND' : 'WS-RECV',
       requestHeaders: {},
       requestBody: direction === 'sent' ? payloadData : '',
+      requestDecodedFrame: direction === 'sent' ? decodedFrame : null,
       initiator: 'websocket',
       resourceType: 'WebSocket',
       status: 101,
       mimeType: 'websocket',
       responseHeaders: {},
       responseBody: direction === 'received' ? (parsed || payloadData) : '',
+      decodedFrame: direction === 'received' ? decodedFrame : null,
       isJson: !!parsed,
       opcode: response?.opcode,
     });

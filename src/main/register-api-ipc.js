@@ -23,6 +23,43 @@ function registerApiIpc({
     return params.shopId || getActiveShopId();
   }
 
+  function buildApiErrorMessage(error) {
+    const payload = error?.payload && typeof error.payload === 'object' ? error.payload : null;
+    const payloadMessage = payload
+      ? String(
+        payload.error_msg
+        || payload.errorMsg
+        || payload.message
+        || payload.msg
+        || payload?.result?.error_msg
+        || payload?.result?.errorMsg
+        || payload?.result?.message
+        || payload?.data?.error_msg
+        || payload?.data?.errorMsg
+        || payload?.data?.message
+        || ''
+      ).trim()
+      : '';
+    const payloadCode = payload
+      ? String(
+        payload.error_code
+        || payload.code
+        || payload.err_no
+        || payload.errno
+        || payload?.result?.error_code
+        || payload?.result?.code
+        || payload?.data?.error_code
+        || payload?.data?.code
+        || ''
+      ).trim()
+      : '';
+    const fallbackMessage = String(error?.message || '').trim() || 'API 请求失败';
+    if (payloadMessage && payloadCode) return `${payloadMessage}（${payloadCode}）`;
+    if (payloadMessage) return payloadMessage;
+    if (payloadCode && fallbackMessage === 'API 请求失败') return `${fallbackMessage}（${payloadCode}）`;
+    return fallbackMessage;
+  }
+
   function getLastApiSessionSelection() {
     const selection = store.get('lastApiSessionSelection') || null;
     if (!selection?.shopId || !selection?.sessionId) return null;
@@ -112,6 +149,17 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-submit-refund-apply', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn && !params.order_sn) return { error: '缺少订单编号' };
+    try {
+      return await getApiClient(shopId).submitRefundApply(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
   ipcMain.handle('api-get-side-orders', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
@@ -174,7 +222,7 @@ function registerApiIpc({
     try {
       return await getApiClient(shopId).sendMessage(params.session || params.sessionId, params.text);
     } catch (error) {
-      return { error: error.message };
+      return { error: buildApiErrorMessage(error) };
     }
   });
 
@@ -379,6 +427,8 @@ function registerApiIpc({
       customerAvatar: session.customerAvatar || '',
       lastMessage: session.lastMessage || '',
       lastMessageTime: session.lastMessageTime || 0,
+      lastMessageActor: session.lastMessageActor || '',
+      lastMessageIsFromBuyer: session.lastMessageIsFromBuyer === true,
       unreadCount: session.unreadCount || 0,
       orderId: session.orderId || '',
       updatedAt: Date.now()

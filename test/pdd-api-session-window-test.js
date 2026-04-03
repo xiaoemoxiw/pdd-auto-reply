@@ -127,6 +127,31 @@ function testParseNestedSessionPreview() {
   assert.strictEqual(sessions[0].lastMessageTime, 1743352800);
 }
 
+function testParseSessionListMarksLastMessageActor() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const sessions = client._parseSessionList({
+    data: {
+      list: [{
+        session_id: 'session-actor',
+        buyer_id: 'buyer-actor',
+        last_msg: {
+          text: '买家最新消息',
+          send_time: 1743352800,
+          sender_role: 'buyer',
+        },
+      }]
+    }
+  });
+
+  assert.strictEqual(sessions[0].lastMessageActor, 'buyer');
+  assert.strictEqual(sessions[0].lastMessageIsFromBuyer, true);
+}
+
 function testParseSessionListKeepsConversationIdentity() {
   const client = new PddApiClient('shop-1', {
     getApiTraffic() {
@@ -267,6 +292,46 @@ function testSystemNoticeOverridesBuyerRole() {
   assert.strictEqual(messages[0].isFromBuyer, false);
 }
 
+function testParseMessagesMarksRefundSystemNotices() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    },
+    getShopInfo() {
+      return { mallId: 90001 };
+    }
+  });
+
+  const messages = client._parseMessages({
+    data: {
+      msg_list: [
+        {
+          msg_id: 'refund-system-1',
+          content: '[消费者已同意您发起的退款申请，请及时处理]',
+          send_time: 1743446495,
+          from: { uid: 'buyer-8' },
+          to: { uid: '90001' },
+        },
+        {
+          msg_id: 'refund-system-2',
+          content: '退款成功',
+          send_time: 1743446496,
+          from: { uid: 'buyer-8' },
+          to: { uid: '90001' },
+        }
+      ]
+    }
+  });
+
+  assert.strictEqual(messages.length, 2);
+  assert.strictEqual(messages[0].actor, 'system');
+  assert.strictEqual(messages[0].isSystem, true);
+  assert.strictEqual(messages[0].isFromBuyer, false);
+  assert.strictEqual(messages[1].actor, 'system');
+  assert.strictEqual(messages[1].isSystem, true);
+  assert.strictEqual(messages[1].isFromBuyer, false);
+}
+
 function testFilterDisplaySessions() {
   const client = new PddApiClient('shop-1', {
     getApiTraffic() {
@@ -285,6 +350,38 @@ function testFilterDisplaySessions() {
   ]);
 
   assert.deepStrictEqual(sessions.map(item => item.sessionId), ['today-chat', 'today-created']);
+}
+
+function testFilterDisplaySessionsIgnoresSellerPendingState() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    }
+  });
+
+  const now = new Date();
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 10, 0, 0).getTime() / 1000;
+
+  const sessions = client._filterDisplaySessions([
+    {
+      sessionId: 'buyer-pending',
+      lastMessageTime: yesterday,
+      createdAt: yesterday,
+      lastMessageActor: 'buyer',
+      waitTime: 60,
+    },
+    {
+      sessionId: 'seller-replied',
+      lastMessageTime: yesterday,
+      createdAt: yesterday,
+      lastMessageActor: 'seller',
+      waitTime: 60,
+      unreadCount: 1,
+      isTimeout: true,
+    },
+  ]);
+
+  assert.deepStrictEqual(sessions.map(item => item.sessionId), ['buyer-pending']);
 }
 
 async function testGetSessionListFiltersOldSessions() {
@@ -709,13 +806,16 @@ async function main() {
     await testResetStaleCursor();
     await testReuseLatestWindow();
     testParseNestedSessionPreview();
+    testParseSessionListMarksLastMessageActor();
     testParseSessionListKeepsConversationIdentity();
     testParseSessionIdentityPrefersBuyerUid();
     testParseSessionIdentityUsesBuyerFromUidForPendingSession();
     testParseMessagesMarksSystemNotice();
     testParseMessagesMarksSystemNoticeByContent();
     testSystemNoticeOverridesBuyerRole();
+    testParseMessagesMarksRefundSystemNotices();
     testFilterDisplaySessions();
+    testFilterDisplaySessionsIgnoresSellerPendingState();
     await testGetSessionListFiltersOldSessions();
     await testGetSessionMessagesRetriesConversationIdentity();
     testBuildSendImageBody();

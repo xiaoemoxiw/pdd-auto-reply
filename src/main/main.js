@@ -428,6 +428,7 @@ function detectChatPage(view, shopId) {
 // 网络监控提取的消息去重（避免与 DOM 监听重复触发）
 const networkMsgDedup = new Map(); // text -> timestamp
 const apiSessionTrafficSnapshot = new Map();
+const apiTrafficMessageSnapshot = new Set();
 
 function buildApiSessionTrafficSignature(sessions = []) {
   if (!Array.isArray(sessions)) return '';
@@ -506,6 +507,268 @@ function pushApiSessionsFromTraffic(shopId, entry) {
   }
 }
 
+function getShopDisplayName(shopId) {
+  const shop = (store.get('shops') || []).find(item => item.id === shopId);
+  return shop?.name || shopId || '未知店铺';
+}
+
+function getApiRefundTemplateFallbackText() {
+  return '亲亲，这边帮您申请退款，您看可以吗？若同意可以点击下方卡片按钮哦～';
+}
+
+function getTrafficNotifyPayload(entry = {}) {
+  const decodedFrame = entry?.decodedFrame && typeof entry.decodedFrame === 'object' ? entry.decodedFrame : null;
+  return decodedFrame?.notifyPayload && typeof decodedFrame.notifyPayload === 'object'
+    ? decodedFrame.notifyPayload
+    : null;
+}
+
+function extractTrafficNotifyMessages(notifyPayload = {}) {
+  const records = [];
+  const pushDataList = Array.isArray(notifyPayload?.push_data?.data) ? notifyPayload.push_data.data : [];
+  pushDataList.forEach(item => {
+    const message = item?.message && typeof item.message === 'object'
+      ? item.message
+      : (item && typeof item === 'object' ? item : null);
+    if (!message) return;
+    records.push({
+      message,
+      sourceType: 'push-data',
+      notifyResponse: String(notifyPayload?.response || '').trim(),
+      requestId: String(notifyPayload?.request_id || '').trim(),
+    });
+  });
+  if (notifyPayload?.message && typeof notifyPayload.message === 'object') {
+    records.push({
+      message: notifyPayload.message,
+      sourceType: 'direct-message',
+      notifyResponse: String(notifyPayload?.response || '').trim(),
+      requestId: String(notifyPayload?.request_id || '').trim(),
+    });
+  }
+  return records;
+}
+
+function normalizeTrafficNotifyText(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function buildRefundCardStateDebugPayload(message = {}) {
+  const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+  const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+  if (String(info.card_id || '').trim() !== 'ask_refund_apply') return null;
+  const state = info?.state && typeof info.state === 'object' ? info.state : {};
+  const itemRows = (Array.isArray(info?.item_list) ? info.item_list : [])
+    .map(item => {
+      const label = normalizeTrafficNotifyText(item?.left || item?.label || item?.name || '');
+      const value = Array.isArray(item?.right)
+        ? item.right.map(entry => normalizeTrafficNotifyText(entry?.text || entry?.value || '')).filter(Boolean).join(' ')
+        : '';
+      if (!label && !value) return null;
+      return { label, value };
+    })
+    .filter(Boolean);
+  const buttonTexts = (Array.isArray(info?.button_list) ? info.button_list : [])
+    .map(item => normalizeTrafficNotifyText(
+      item?.text || item?.title || item?.label || item?.button_text || item?.buttonText || item?.name || ''
+    ))
+    .filter(Boolean);
+  return {
+    shopId: message.shopId || '',
+    sessionId: message.sessionId || '',
+    messageId: message.messageId || '',
+    timestamp: Number(message?.timestamp || 0) || Date.now(),
+    type: Number(raw?.type ?? -1),
+    templateName: String(raw?.template_name || message?.templateName || '').trim(),
+    cardId: String(info.card_id || '').trim(),
+    title: normalizeTrafficNotifyText(info?.title || message?.refundCard?.title || ''),
+    content: normalizeTrafficNotifyText(message?.content || raw?.content || ''),
+    footerText: normalizeTrafficNotifyText(message?.refundCard?.footerText || ''),
+    stateStatus: state?.status ?? '',
+    stateExpireText: normalizeTrafficNotifyText(state?.expire_text || ''),
+    stateText: normalizeTrafficNotifyText(state?.text || state?.desc || state?.label || ''),
+    stateKeys: Object.keys(state),
+    buttonTexts,
+    itemRows,
+  };
+}
+
+function buildRefundCardFromNotify(rawMessage = {}) {
+  const info = rawMessage?.info && typeof rawMessage.info === 'object' ? rawMessage.info : {};
+  if (String(info.card_id || '').trim() !== 'ask_refund_apply') return null;
+  const goodsInfo = info?.goods_info && typeof info.goods_info === 'object' ? info.goods_info : {};
+  const itemList = Array.isArray(info?.item_list) ? info.item_list : [];
+  const rows = itemList.map(item => {
+    const label = normalizeTrafficNotifyText(item?.left || item?.label || item?.name || '');
+    const values = Array.isArray(item?.right)
+      ? item.right.map(entry => normalizeTrafficNotifyText(entry?.text || entry?.value || '')).filter(Boolean)
+      : [];
+    return { label, value: values.join(' ') };
+  });
+  const findRowValue = (...keywords) => {
+    const row = rows.find(item => keywords.some(keyword => item.label.includes(keyword)));
+    return row?.value || '';
+  };
+  const amountFen = Number(goodsInfo?.total_amount || 0) || 0;
+  return {
+    localKey: String(rawMessage?.msg_id || rawMessage?.message_id || ''),
+    orderSn: String(goodsInfo?.order_sequence_no || ''),
+    title: normalizeTrafficNotifyText(info?.title || '') || '商家想帮您申请快捷退款',
+    actionText: findRowValue('申请类型') || '退款',
+    goodsTitle: normalizeTrafficNotifyText(goodsInfo?.goods_name || '') || '订单商品',
+    imageUrl: normalizeTrafficNotifyText(goodsInfo?.goods_thumb_url || ''),
+    specText: [normalizeTrafficNotifyText(goodsInfo?.extra || ''), goodsInfo?.count ? `x${goodsInfo.count}` : ''].filter(Boolean).join(' '),
+    reasonText: findRowValue('申请原因') || '其他原因',
+    amountText: findRowValue('退款金额') || (amountFen > 0 ? `¥${(amountFen / 100).toFixed(2)}` : ''),
+    noteText: findRowValue('申请说明') || '商家代消费者填写售后单',
+    contactText: findRowValue('联系方式'),
+    footerText: normalizeTrafficNotifyText(info?.state?.expire_text || '') || '等待消费者确认',
+  };
+}
+
+function buildRefundStatusUpdateFromNotify(rawMessage = {}) {
+  const messageType = Number(rawMessage?.type ?? -1);
+  const data = rawMessage?.data && typeof rawMessage.data === 'object' ? rawMessage.data : {};
+  if (messageType !== 90) return null;
+  const targetMessageId = String(data?.msg_id || '').trim();
+  const statusValue = Number(data?.status);
+  if (!targetMessageId || !Number.isFinite(statusValue)) return null;
+  if (statusValue === 2) {
+    return {
+      kind: 'refund-pending',
+      targetMessageId,
+      status: statusValue,
+      displayText: '消费者已同意您发起的退款申请，请及时处理',
+    };
+  }
+  return null;
+}
+
+function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {}) {
+  const fromRole = String(rawMessage?.from?.role || '').trim();
+  const toRole = String(rawMessage?.to?.role || '').trim();
+  const isFromBuyer = fromRole === 'user' || toRole === 'mall_cs' || toRole === 'mall';
+  const sessionId = String(
+    (
+      isFromBuyer
+        ? (rawMessage?.from?.uid || rawMessage?.to?.uid || '')
+        : (rawMessage?.to?.uid || rawMessage?.from?.uid || '')
+    )
+    || rawMessage?.data?.user_id
+    || rawMessage?.data?.customer_id
+    || rawMessage?.buyer_id
+    || rawMessage?.customer_id
+  ).trim();
+  if (!sessionId) return null;
+  const messageType = Number(rawMessage?.type ?? -1);
+  const templateName = String(rawMessage?.template_name || options?.notifyResponse || '').trim();
+  const defaultContent = templateName === 'apply_after_sales_for_customer_automatic_message'
+    ? getApiRefundTemplateFallbackText()
+    : '';
+  const content = normalizeTrafficNotifyText(
+    rawMessage?.content
+    || rawMessage?.push_biz_context?.replace_content
+    || rawMessage?.push_biz_context?.replaceContent
+    || rawMessage?.data?.content
+    || defaultContent
+  ) || defaultContent;
+  const refundCard = messageType === 19 ? buildRefundCardFromNotify(rawMessage) : null;
+  const refundStatusUpdate = buildRefundStatusUpdateFromNotify(rawMessage);
+  const normalizedContent = content || normalizeTrafficNotifyText(refundStatusUpdate?.displayText || '');
+  if (!normalizedContent && !refundCard && !refundStatusUpdate) return null;
+  return {
+    shopId,
+    sessionId,
+    customer: String(rawMessage?.to?.uid || rawMessage?.from?.uid || '').trim(),
+    messageId: String(rawMessage?.msg_id || rawMessage?.message_id || ''),
+    timestamp: Number(rawMessage?.ts || 0) * 1000 || Date.now(),
+    isFromBuyer,
+    senderName: isFromBuyer ? '买家' : getShopDisplayName(shopId),
+    readState: String(rawMessage?.status || '').trim().toLowerCase() === 'read' ? 'read' : '',
+    content: normalizedContent,
+    templateName,
+    refundCard,
+    refundStatusUpdate,
+    trafficSourceType: String(options?.sourceType || '').trim(),
+    notifyRequestId: String(options?.requestId || '').trim(),
+    raw: rawMessage,
+  };
+}
+
+function updateApiSessionSnapshotWithMessages(shopId, messages = []) {
+  if (!shopId || !Array.isArray(messages) || !messages.length) return null;
+  const currentSessions = getApiSessionSnapshot(shopId);
+  if (!currentSessions.length) return null;
+  let changed = false;
+  const nextSessions = currentSessions.map(session => {
+    const matched = messages.filter(message => String(message?.sessionId || '') === String(session?.sessionId || ''));
+    if (!matched.length) return session;
+    const latest = matched.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0)).slice(-1)[0];
+    changed = true;
+    return {
+      ...session,
+      lastMessage: String(latest?.content || latest?.refundCard?.title || session?.lastMessage || '').trim(),
+      lastMessageTime: Number(latest?.timestamp || session?.lastMessageTime || 0),
+    };
+  });
+  if (!changed) return null;
+  setApiSessionSnapshot(shopId, nextSessions, 'traffic-notify');
+  return nextSessions;
+}
+
+function pushApiMessagesFromTraffic(shopId, entry) {
+  if (!shopId || !entry) return;
+  const notifyPayload = getTrafficNotifyPayload(entry);
+  const notifyMessages = extractTrafficNotifyMessages(notifyPayload);
+  if (!notifyMessages.length) return;
+  const normalizedMessages = notifyMessages
+    .map(item => normalizeApiTrafficNotifyMessage(shopId, item?.message || {}, item))
+    .filter(Boolean);
+  if (!normalizedMessages.length) return;
+  const dedupedMessages = normalizedMessages.filter(message => {
+    const key = `${shopId}::${message.sessionId}::${message.messageId || message.timestamp}`;
+    if (apiTrafficMessageSnapshot.has(key)) return false;
+    apiTrafficMessageSnapshot.add(key);
+    if (apiTrafficMessageSnapshot.size > 500) {
+      const firstKey = apiTrafficMessageSnapshot.values().next().value;
+      if (firstKey) apiTrafficMessageSnapshot.delete(firstKey);
+    }
+    return true;
+  });
+  if (!dedupedMessages.length) return;
+  const nextSessions = updateApiSessionSnapshotWithMessages(shopId, dedupedMessages);
+  if (nextSessions) {
+    mainWindow?.webContents.send('api-session-updated', { shopId, sessions: nextSessions });
+    sendToDebug('api-session-updated', { shopId, count: nextSessions.length, source: 'traffic-notify' });
+  }
+  dedupedMessages.forEach(message => {
+    const refundCardStateDebug = buildRefundCardStateDebugPayload(message);
+    if (refundCardStateDebug) {
+      sendToDebug('api-refund-card-state', refundCardStateDebug);
+      console.log(
+        `[PDD接口:${shopId}] 快捷退款卡片状态`,
+        JSON.stringify({
+          sessionId: refundCardStateDebug.sessionId,
+          messageId: refundCardStateDebug.messageId,
+          stateStatus: refundCardStateDebug.stateStatus,
+          stateExpireText: refundCardStateDebug.stateExpireText,
+          stateText: refundCardStateDebug.stateText,
+          buttonTexts: refundCardStateDebug.buttonTexts,
+        })
+      );
+    }
+    const payload = {
+      shopId,
+      sessionId: message.sessionId,
+      customer: message.customer,
+      source: 'traffic-notify',
+      messages: [message],
+    };
+    mainWindow?.webContents.send('api-new-message', payload);
+    sendToDebug('api-new-message', { shopId, sessionId: message.sessionId, source: 'traffic-notify', messageId: message.messageId || '' });
+  });
+}
+
 function startNetworkMonitor(view, shopId) {
   if (networkMonitors.has(shopId)) {
     networkMonitors.get(shopId).stop();
@@ -549,6 +812,7 @@ function startNetworkMonitor(view, shopId) {
       console.log(`[接口抓取:${shopId}] [${entry.method}] ${entry.url} -> ${entry.status}`);
       sendToDebug('api-traffic', { shopId, entry });
       pushApiSessionsFromTraffic(shopId, entry);
+      pushApiMessagesFromTraffic(shopId, entry);
     },
     onCustomerMessage(msg) {
       if (!store.get('autoReplyEnabled')) return;

@@ -1885,13 +1885,14 @@
       flex-direction: column;
       justify-content: center;
       position: relative;
-      padding-right: 58px;
+      padding-right: 50px;
     }
 
     .api-session-item-title {
       display: flex;
       align-items: center;
       min-width: 0;
+      position: relative;
     }
 
     .api-session-item-info-row {
@@ -1900,6 +1901,7 @@
       gap: 8px;
       min-width: 0;
       flex: 1;
+      /* padding-right: 12px; */
     }
 
     .api-session-item-name {
@@ -1922,10 +1924,12 @@
     }
 
     .api-session-item-time {
+      display: block;
       font-size: 11px;
       color: #999;
       white-space: nowrap;
       flex-shrink: 0;
+      text-align: right;
     }
 
     .api-session-item-wait {
@@ -1949,7 +1953,7 @@
 
     .api-session-shop {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       gap: 6px;
       min-width: 0;
       flex-shrink: 0;
@@ -1957,12 +1961,14 @@
 
     .api-session-time-group {
       position: absolute;
-      top: 0;
-      right: 0;
-      display: flex;
-      align-items: flex-end;
-      justify-content: flex-start;
+      top: 50%;
+      right: -53px;
+      /* display: flex;
+      align-items: flex-start;
+      justify-content: flex-start; */
+      width: 48px;
       flex-shrink: 0;
+      transform: translateY(-50%);
     }
 
     .api-session-shop-tag,
@@ -2276,6 +2282,13 @@
       margin: 6px auto 10px;
     }
 
+    .api-message-item.platform-card {
+      display: flex;
+      justify-content: center;
+      margin: 8px auto 14px;
+      padding: 0 16px;
+    }
+
     .api-message-avatar {
       width: 36px;
       height: 36px;
@@ -2347,6 +2360,321 @@
       font-size: 12px;
       line-height: 1.5;
       letter-spacing: 0;
+    }
+
+    .api-message-system-bubble.refund-notice {
+      display: block;
+      max-width: min(96%, 560px);
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+
+    .api-system-refund-card {
+      display: flex;
+      flex-direction: column;
+      width: 540px;
+      max-width: 100%;
+      border: 1px solid #d9d9d9;
+      border-radius: 0;
+      background: #fff;
+      box-shadow: none;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .api-system-refund-card.pending {
+      width: 368px;
+      border-color: #ececec;
+    }
+
+    .api-system-refund-card-header {
+      padding: 15px 10px 9px;
+      border-bottom: 1px solid #e6e6e6;
+      color: #333;
+      font-size: 14px;
+      line-height: 1.3;
+      font-weight: 500;
+      word-break: break-word;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-header {
+      padding: 5px;
+      border-bottom-color: #ececec;
+      line-height: 1.4;
+    }
+
+    .api-system-refund-card-body {
+      background: #fff;
+    }
+
+    .api-system-refund-card-goods {
+      display: flex;
+      gap: 16px;
+      padding: 8px 16px;
+      border-bottom: 1px solid #e6e6e6;
+      background: #fff;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-goods {
+      gap: 10px;
+      padding: 10px 18px;
+      border-bottom-color: #ececec;
+    }
+
+    .api-system-refund-card-media,
+    .api-system-refund-card-media-placeholder {
+      width: 66px;
+      height: 66px;
+      flex-shrink: 0;
+      border-radius: 0;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-media,
+    .api-system-refund-card.pending .api-system-refund-card-media-placeholder {
+      width: 53px;
+      height: 53px;
+    }
+
+    .api-system-refund-card-media {
+      display: block;
+      object-fit: cover;
+      background: #eceef2;
+    }
+
+    .api-system-refund-card-media-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #eceef2;
+      color: #a1a8b3;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .api-system-refund-card-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-main {
+      gap: 4px;
+    }
+
+    .api-system-refund-card-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .api-system-refund-card-goods-title {
+      min-width: 0;
+      flex: 1;
+      color: #333;
+      font-size: 12px;
+      line-height: 1.56;
+      word-break: break-word;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-goods-title {
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .api-system-refund-card-price {
+      flex-shrink: 0;
+      color: #333;
+      font-size: 12px;
+      line-height: 1;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-price {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .api-system-refund-card-spec {
+      color: #999;
+      font-size: 12px;
+      line-height: 1;
+      word-break: break-word;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-spec {
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .api-system-refund-card-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px 10px;
+      background: #fff;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-rows {
+      gap: 10px;
+      padding: 16px 18px 18px;
+    }
+
+    .api-system-refund-card-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-row {
+      gap: 14px;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .api-system-refund-card-label {
+      width: 48px;
+      flex-shrink: 0;
+      color: #999;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-label {
+      width: 50px;
+    }
+
+    .api-system-refund-card-value {
+      min-width: 0;
+      flex: 1;
+      color: #333;
+      font-size: 11px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-value {
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .api-system-refund-card-value.is-emphasis {
+      color: #f03b2f;
+      font-weight: 600;
+    }
+
+    .api-system-refund-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-height: 25px;
+      padding: 8px 10px;
+      border-top: 1px solid #e6e6e6;
+      background: #fff;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-footer {
+      padding: 14px 18px 16px;
+      border-top-color: #ececec;
+    }
+
+    .api-system-refund-card-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 25px;
+      padding: 0 16px;
+      border: 1px solid #4f74f9;
+      border-radius: 7px;
+      color: #4f74f9;
+      font-size: 10px;
+      line-height: 1;
+      background: #fff;
+      box-sizing: border-box;
+    }
+
+    .api-system-refund-card.pending .api-system-refund-card-action {
+      font-size: 11px;
+    }
+
+    .api-system-refund-card.success {
+      border-color: #e6e7ea;
+    }
+
+    .api-system-refund-card-success-head {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 14px 16px 12px;
+      color: #333;
+      font-size: 13px;
+      line-height: 1.2;
+      font-weight: 600;
+      border-bottom: 1px solid #ececec;
+      background: #fff;
+    }
+
+    .api-system-refund-card-success-icon {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #21b45b;
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .api-system-refund-card-success-icon::before {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 3px;
+      width: 6px;
+      height: 3px;
+      border-left: 2px solid #fff;
+      border-bottom: 2px solid #fff;
+      transform: rotate(-45deg);
+    }
+
+    .api-system-refund-card-success-meta {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: auto;
+    }
+
+    .api-system-refund-card-success-actual {
+      flex-shrink: 0;
+      color: #333;
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .api-system-refund-card-success-amount {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px 14px;
+      color: #333;
+      font-size: 12px;
+      line-height: 1.2;
+      background: #fff;
+    }
+
+    .api-system-refund-card-success-amount-label {
+      color: #999;
+    }
+
+    .api-system-refund-card-success-amount-value {
+      color: #e14b44;
+      font-size: 13px;
+      font-weight: 600;
     }
 
     .api-message-system-main {
@@ -2435,6 +2763,150 @@
     .api-goods-card-bubble {
       width: 238px;
       padding: 10px 10px 9px;
+    }
+
+    .api-refund-card-bubble {
+      width: 368px;
+      padding: 0;
+      background: #fff !important;
+      border: 1px solid #e7e7ea !important;
+      border-radius: 2px !important;
+      box-shadow: none !important;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .api-refund-card-header {
+      padding: 5px 5px;
+      font-size: 14px;
+      line-height: 1.4;
+      color: #333;
+      font-weight: 400;
+      border-bottom: 1px solid #ececec;
+    }
+
+    .api-refund-card-goods {
+      display: flex;
+      gap: 10px;
+      margin: 0;
+      padding: 14px 18px;
+      background: #fff;
+      border-radius: 0;
+      border-bottom: 1px solid #ececec;
+    }
+
+    .api-refund-card-media,
+    .api-refund-card-media-placeholder {
+      width: 53px;
+      height: 53px;
+      border-radius: 0;
+      flex-shrink: 0;
+    }
+
+    .api-refund-card-media {
+      display: block;
+      object-fit: cover;
+      background: #eceef2;
+    }
+
+    .api-refund-card-media-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #eceef2;
+      color: #a1a8b3;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .api-refund-card-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .api-refund-card-goods-title {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow: hidden;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #333;
+      word-break: break-word;
+    }
+
+    .api-refund-card-goods-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-top: auto;
+    }
+
+    .api-refund-card-goods-price {
+      color: #333;
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .api-refund-card-goods-spec {
+      color: #999;
+      font-size: 12px;
+      line-height: 1.2;
+      text-align: right;
+    }
+
+    .api-refund-card-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 16px 18px 18px;
+    }
+
+    .api-refund-card-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .api-refund-card-label {
+      width: 50px;
+      flex-shrink: 0;
+      color: #999;
+    }
+
+    .api-refund-card-value {
+      min-width: 0;
+      flex: 1;
+      color: #333;
+      word-break: break-word;
+    }
+
+    .api-refund-card-value.is-emphasis {
+      color: #e14b44;
+      font-weight: 600;
+    }
+
+    .api-refund-card-footer {
+      display: flex;
+      justify-content: flex-end;
+      padding: 14px 18px 16px;
+      color: #b3b3b3;
+      font-size: 12px;
+      line-height: 1.2;
+      border-top: 1px solid #ececec;
+      background: #fff;
+    }
+
+    .api-refund-card-section {
+      background: #fff;
     }
 
     .api-goods-card-top {
@@ -4885,9 +5357,12 @@
             <div class="violation-api-filter-bar">
               <div class="violation-api-filter-group">
                 <span class="violation-api-filter-label">快速筛选:</span>
-                <button class="violation-api-quick-tab active" data-violation-quick="all">待申诉 <span id="violationApiQuickPendingCount">0</span></button>
-                <button class="violation-api-quick-tab" data-violation-quick="appealing">待完善资料 <span id="violationApiQuickAppealingCount">0</span></button>
-                <button class="violation-api-quick-tab" data-violation-quick="processing">平台处理中 <span id="violationApiQuickProcessingCount">0</span></button>
+                <button class="violation-api-quick-tab active" data-violation-quick="all">待申诉 <span
+                    id="violationApiQuickPendingCount">0</span></button>
+                <button class="violation-api-quick-tab" data-violation-quick="appealing">待完善资料 <span
+                    id="violationApiQuickAppealingCount">0</span></button>
+                <button class="violation-api-quick-tab" data-violation-quick="processing">平台处理中 <span
+                    id="violationApiQuickProcessingCount">0</span></button>
               </div>
             </div>
             <div class="violation-api-filter-panel">
@@ -5037,10 +5512,14 @@
             <div class="ticket-api-query-title">工单查询</div>
             <div class="ticket-api-filter-row">
               <div class="ticket-api-filter-inline-label">工单筛选</div>
-              <button class="ticket-api-quick-tab active" data-ticket-quick="pending">待处理 <span id="ticketApiQuickPendingCount">0</span></button>
-              <button class="ticket-api-quick-tab" data-ticket-quick="timeout">2小时内将逾期 <span id="ticketApiQuickTimeoutCount">0</span></button>
-              <button class="ticket-api-quick-tab" data-ticket-quick="processing">处理中 <span id="ticketApiQuickProcessingCount">0</span></button>
-              <button class="ticket-api-quick-tab" data-ticket-quick="closed">违规已处理 <span id="ticketApiQuickClosedCount">0</span></button>
+              <button class="ticket-api-quick-tab active" data-ticket-quick="pending">待处理 <span
+                  id="ticketApiQuickPendingCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="timeout">2小时内将逾期 <span
+                  id="ticketApiQuickTimeoutCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="processing">处理中 <span
+                  id="ticketApiQuickProcessingCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="closed">违规已处理 <span
+                  id="ticketApiQuickClosedCount">0</span></button>
             </div>
             <div class="ticket-api-filter-panel">
               <div class="ticket-api-filter-grid">
@@ -5998,6 +6477,7 @@
     let apiLastLoadedSessionScope = '';
     const apiGoodsCardCache = new Map();
     const apiGoodsCardPending = new Set();
+    let apiSyntheticRefundMessages = [];
     window.__chatApiModuleAccess = {
       getState() {
         return {
@@ -6021,6 +6501,7 @@
           apiHasUserSelectedSession,
           apiGoodsCardCache,
           apiGoodsCardPending,
+          apiSyntheticRefundMessages,
           API_ALL_SHOPS,
           API_EMOJI_MAP,
           API_EMOJIS,
@@ -6056,6 +6537,7 @@
       recordApiSyncState,
       clearApiPendingReplyState,
       appendApiLocalServiceMessage,
+      appendApiIncomingMessage,
       refreshApiAfterMessageSent,
       mergeApiSessionsForShop,
       renderApiStatus,
@@ -6576,6 +7058,196 @@
       </div>`;
     }
 
+    function normalizeApiRefundCardAmountText(value) {
+      return String(value || '').trim().replace(/^¥\s+/, '¥');
+    }
+
+    function resolveApiRefundCardFooterText(state = {}, fallbackText = '') {
+      const statusValue = Number(state?.status);
+      if (statusValue === 0) return '等待消费者确认';
+      const normalizedFallback = String(fallbackText || '').trim();
+      if (!normalizedFallback || normalizedFallback === '已过期') {
+        return '等待消费者确认';
+      }
+      return normalizedFallback;
+    }
+
+    function getApiRefundStatusUpdateMeta(message = {}) {
+      const directMeta = message?.refundStatusUpdate && typeof message.refundStatusUpdate === 'object'
+        ? message.refundStatusUpdate
+        : null;
+      if (directMeta) {
+        const kind = String(directMeta.kind || '').trim();
+        if (kind) {
+          return {
+            kind,
+            targetMessageId: String(directMeta.targetMessageId || '').trim(),
+            status: Number(directMeta.status ?? ''),
+            displayText: String(directMeta.displayText || '').trim(),
+            footerText: kind === 'refund-pending' ? '消费者已同意' : '',
+          };
+        }
+      }
+      const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+      const data = raw?.data && typeof raw.data === 'object' ? raw.data : {};
+      const messageType = Number(raw?.type ?? message?.type ?? -1);
+      if (messageType === 90) {
+        const targetMessageId = String(data?.msg_id || '').trim();
+        const statusValue = Number(data?.status);
+        if (targetMessageId && statusValue === 2) {
+          return {
+            kind: 'refund-pending',
+            targetMessageId,
+            status: statusValue,
+            displayText: '消费者已同意您发起的退款申请，请及时处理',
+            footerText: '消费者已同意',
+          };
+        }
+      }
+      const source = String(message?.content || raw?.content || '').trim();
+      if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) {
+        return {
+          kind: 'refund-pending',
+          targetMessageId: '',
+          status: 2,
+          displayText: '消费者已同意您发起的退款申请，请及时处理',
+          footerText: '消费者已同意',
+        };
+      }
+      if (/^退款成功(?:通知)?$/.test(source)) {
+        return {
+          kind: 'refund-success',
+          targetMessageId: '',
+          status: 3,
+          displayText: '退款成功',
+          footerText: '退款成功',
+        };
+      }
+      return null;
+    }
+
+    function extractApiRefundCard(message = {}) {
+      const card = message?.refundCard
+        || message?.extra?.refundCard
+        || message?.raw?.extra?.refundCard
+        || message?.raw?.ext?.refundCard;
+      const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+      const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+      const goodsInfo = info?.goods_info && typeof info.goods_info === 'object' ? info.goods_info : {};
+      const isRawRefundCard = Number(raw?.type ?? message?.type ?? -1) === 19 && String(info.card_id || '').trim() === 'ask_refund_apply';
+      const fallbackCard = !card && isRawRefundCard ? {
+        localKey: String(raw?.msg_id || raw?.message_id || '').trim(),
+        orderSn: String(goodsInfo?.order_sequence_no || '').trim(),
+        title: String(info?.title || message?.content || '商家想帮您申请快捷退款').replace(/^\[|\]$/g, '').trim(),
+        actionText: (() => {
+          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请类型'));
+          const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+          return value || '退款';
+        })(),
+        goodsTitle: String(goodsInfo?.goods_name || '').trim(),
+        imageUrl: String(goodsInfo?.goods_thumb_url || '').trim(),
+        specText: [String(goodsInfo?.extra || '').trim(), goodsInfo?.count ? `x${goodsInfo.count}` : ''].filter(Boolean).join(' '),
+        reasonText: (() => {
+          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请原因'));
+          const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+          return value || '其他原因';
+        })(),
+        amountText: (() => {
+          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('退款金额'));
+          const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+          if (value) return value.includes('¥') ? value : `¥${value}`;
+          const amountFen = Number(goodsInfo?.total_amount || 0) || 0;
+          return amountFen > 0 ? `¥${(amountFen / 100).toFixed(2)}` : '';
+        })(),
+        noteText: (() => {
+          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请说明'));
+          const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+          return value || '商家代消费者填写售后单';
+        })(),
+        contactText: (() => {
+          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('联系方式'));
+          return Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+        })(),
+        footerText: resolveApiRefundCardFooterText(info?.state, info?.state?.expire_text),
+      } : null;
+      const normalizedCard = (card && typeof card === 'object') ? card : fallbackCard;
+      if (!normalizedCard || typeof normalizedCard !== 'object') return null;
+      const rawActionText = String(normalizedCard.actionText || '').trim();
+      const actionText = rawActionText === 'refund'
+        ? '退款'
+        : (rawActionText || '退款');
+      return {
+        localKey: String(normalizedCard.localKey || '').trim(),
+        orderSn: String(normalizedCard.orderSn || '').trim(),
+        title: String(normalizedCard.title || '商家想帮您申请快捷退款').trim(),
+        actionText,
+        goodsTitle: String(normalizedCard.goodsTitle || '订单商品').trim(),
+        imageUrl: String(normalizedCard.imageUrl || '').trim(),
+        specText: String(normalizedCard.specText || '').trim(),
+        reasonText: String(normalizedCard.reasonText || '其他原因').trim(),
+        amountText: normalizeApiRefundCardAmountText(normalizedCard.amountText || ''),
+        noteText: String(normalizedCard.noteText || '商家代消费者填写售后单').trim(),
+        contactText: String(normalizedCard.contactText || '').trim(),
+        footerText: String(normalizedCard.footerText || '等待消费者确认').trim(),
+      };
+    }
+
+    function renderApiRefundCardHtml(card = {}) {
+      const imageHtml = card.imageUrl
+        ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+        : `<div class="api-refund-card-media-placeholder">商品</div>`;
+      const rows = [
+        { label: '申请类型', value: card.actionText || '退款' },
+        { label: '申请原因', value: card.reasonText || '其他原因' },
+        card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
+        { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
+        card.contactText ? { label: '联系方式', value: card.contactText } : null,
+      ].filter(Boolean);
+      return `<div class="api-message-bubble api-refund-card-bubble">
+        <div class="api-refund-card-header">${esc(card.title || '商家想帮您申请快捷退款')}</div>
+        <div class="api-refund-card-section">
+          <div class="api-refund-card-goods">
+            ${imageHtml}
+            <div class="api-refund-card-main">
+              <div class="api-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+              <div class="api-refund-card-goods-meta">
+                ${card.specText ? `<span class="api-refund-card-goods-spec">${esc(card.specText)}</span>` : '<span class="api-refund-card-goods-spec"></span>'}
+                ${card.amountText ? `<span class="api-refund-card-goods-price">${esc(card.amountText)}</span>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="api-refund-card-section api-refund-card-rows">
+          ${rows.map(row => `<div class="api-refund-card-row"><span class="api-refund-card-label">${esc(row.label)}</span><span class="api-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
+        </div>
+        <div class="api-refund-card-section api-refund-card-footer">${esc(card.footerText || '等待消费者确认')}</div>
+      </div>`;
+    }
+
+    function getApiDisplayMessages(activeSession = null) {
+      const sessionKey = getApiSessionKey(activeSession || {});
+      const displayMessages = apiMessages.slice();
+      apiSyntheticRefundMessages
+        .filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey)
+        .forEach(item => {
+          const syntheticKey = String(item?.syntheticKey || item?.refundCard?.localKey || item?.extra?.refundCard?.localKey || '');
+          const duplicated = syntheticKey && displayMessages.some(message => {
+            const messageKey = String(
+              message?.syntheticKey
+              || message?.refundCard?.localKey
+              || message?.extra?.refundCard?.localKey
+              || message?.raw?.extra?.refundCard?.localKey
+              || ''
+            );
+            return messageKey === syntheticKey;
+          });
+          if (!duplicated) {
+            displayMessages.push(item);
+          }
+        });
+      return displayMessages.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+    }
+
     async function ensureApiGoodsCardLoaded(linkInfo, fallbackCard) {
       if (!linkInfo?.url || apiGoodsCardCache.has(linkInfo.cacheKey) || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
       if (!window.pddApi?.apiGetGoodsCard) return;
@@ -6701,6 +7373,163 @@
       return /机器人未找到对应(?:的)?回复/.test(getApiSystemNoticeText(message));
     }
 
+    function getApiRefundSystemNoticeKind(message = {}) {
+      const statusMeta = getApiRefundStatusUpdateMeta(message);
+      if (statusMeta?.kind) return statusMeta.kind;
+      const source = getApiSystemNoticeText(message);
+      if (!source) return '';
+      if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) return 'refund-pending';
+      if (/^退款成功(?:通知)?$/.test(source)) return 'refund-success';
+      return '';
+    }
+
+    function getApiRefundSystemNoticeDisplayText(message = {}) {
+      const statusMeta = getApiRefundStatusUpdateMeta(message);
+      if (statusMeta?.displayText) return statusMeta.displayText;
+      const source = getApiSystemNoticeText(message);
+      const kind = getApiRefundSystemNoticeKind(message);
+      if (kind === 'refund-pending') return '消费者已同意您发起的退款申请，请及时处理';
+      if (kind === 'refund-success') return '退款成功';
+      return source;
+    }
+
+    function findApiRefundStatusUpdateForCard(sortedMessages = [], options = {}) {
+      const targetMessageId = String(options?.targetMessageId || '').trim();
+      if (!Array.isArray(sortedMessages) || !sortedMessages.length) return null;
+      if (targetMessageId) {
+        for (const message of sortedMessages) {
+          const statusMeta = getApiRefundStatusUpdateMeta(message);
+          if (statusMeta && String(statusMeta.targetMessageId || '').trim() === targetMessageId) {
+            return statusMeta;
+          }
+        }
+      }
+      const cardIndex = Number.isInteger(options?.cardIndex) ? options.cardIndex : -1;
+      if (cardIndex < 0) return null;
+      for (let distance = 1; distance <= 6; distance++) {
+        const nextIndex = cardIndex + distance;
+        if (nextIndex >= sortedMessages.length) break;
+        const candidate = sortedMessages[nextIndex];
+        const statusMeta = getApiRefundStatusUpdateMeta(candidate);
+        if (statusMeta) return statusMeta;
+        const anotherCard = extractApiRefundCard(candidate);
+        if (anotherCard) break;
+      }
+      return null;
+    }
+
+    function applyApiRefundStatusToCard(card = {}, sortedMessages = [], options = {}) {
+      if (!card || typeof card !== 'object') return null;
+      const localKey = String(card.localKey || '').trim();
+      const statusMeta = findApiRefundStatusUpdateForCard(sortedMessages, {
+        targetMessageId: localKey,
+        cardIndex: options?.cardIndex,
+      });
+      if (statusMeta?.footerText) {
+        return {
+          ...card,
+          footerText: statusMeta.footerText,
+        };
+      }
+      return card;
+    }
+
+    function findApiNeighborRefundCard(sortedMessages = [], messageIndex = -1) {
+      if (!Array.isArray(sortedMessages) || !Number.isInteger(messageIndex) || messageIndex < 0) return null;
+      const statusMeta = getApiRefundStatusUpdateMeta(sortedMessages[messageIndex]);
+      const targetMessageId = String(statusMeta?.targetMessageId || '').trim();
+      if (targetMessageId) {
+        for (const candidate of sortedMessages) {
+          const card = extractApiRefundCard(candidate);
+          if (card && String(card.localKey || '').trim() === targetMessageId) return card;
+        }
+      }
+      for (let distance = 0; distance <= 6; distance++) {
+        const candidateIndexes = distance === 0
+          ? [messageIndex]
+          : [messageIndex - distance, messageIndex + distance];
+        for (const candidateIndex of candidateIndexes) {
+          if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= sortedMessages.length) continue;
+          const card = extractApiRefundCard(sortedMessages[candidateIndex]);
+          if (card) return card;
+        }
+      }
+      return null;
+    }
+
+    function renderApiRefundSystemNoticeCardHtml(message = {}, options = {}) {
+      const kind = getApiRefundSystemNoticeKind(message);
+      if (!kind) return '';
+      const card = findApiNeighborRefundCard(options.sortedMessages, options.messageIndex);
+      const displayText = getApiRefundSystemNoticeDisplayText(message);
+      if (!card) {
+        if (kind === 'refund-success') {
+          return `<div class="api-system-refund-card success">
+            <div class="api-system-refund-card-success-head">
+              <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+              <span>${esc(displayText)}</span>
+            </div>
+          </div>`;
+        }
+        return `<div class="api-system-refund-card pending">
+          <div class="api-system-refund-card-header">${esc(displayText)}</div>
+        </div>`;
+      }
+      const imageHtml = card.imageUrl
+        ? `<img class="api-system-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+        : `<div class="api-system-refund-card-media-placeholder">商品</div>`;
+      if (kind === 'refund-success') {
+        return `<div class="api-system-refund-card success">
+          <div class="api-system-refund-card-success-head">
+            <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+            <span>退款成功</span>
+          </div>
+          <div class="api-system-refund-card-goods">
+            ${imageHtml}
+            <div class="api-system-refund-card-main">
+              <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+              <div class="api-system-refund-card-success-meta">
+                <div class="api-system-refund-card-spec">${esc(card.specText || '')}</div>
+                <div class="api-system-refund-card-success-actual">实收： ${esc(card.amountText || '--')}</div>
+              </div>
+            </div>
+          </div>
+          <div class="api-system-refund-card-success-amount">
+            <span class="api-system-refund-card-success-amount-label">退款金额</span>
+            <span class="api-system-refund-card-success-amount-value">${esc(card.amountText || '--')}</span>
+          </div>
+        </div>`;
+      }
+      const rows = [
+        { label: '申请类型', value: card.actionText || '退款' },
+        { label: '申请原因', value: card.reasonText || '其他原因' },
+        card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
+        { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
+        card.contactText ? { label: '联系方式', value: card.contactText } : null,
+      ].filter(Boolean);
+      return `<div class="api-system-refund-card success">
+        <div class="api-system-refund-card-header">${esc(displayText)}</div>
+        <div class="api-system-refund-card-goods">
+            ${imageHtml}
+            <div class="api-system-refund-card-main">
+                <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+                <div class="api-system-refund-card-success-meta">
+                ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
+                  ${card.amountText ? `<div class="api-system-refund-card-price">${esc(card.amountText)}</div>` : ''}
+                </div>
+
+            </div>
+          </div>
+          <div class="api-system-refund-card-rows">
+            ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
+          </div>
+          <div class="api-system-refund-card-footer">
+            <span class="api-system-refund-card-action">去处理</span>
+          </div>
+        </div>
+      </div>`;
+    }
+
     function isApiSystemNoticeMessage(message = {}) {
       if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
       const source = getApiSystemNoticeText(message);
@@ -6715,6 +7544,9 @@
         /为避免抢答/,
         /当前用户来自/,
         /商品详情页/,
+        /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
+        /^退款成功通知$/,
+        /^退款成功$/,
       ].some(pattern => pattern.test(source));
     }
 
@@ -6779,6 +7611,10 @@
     function renderApiSystemMessageHtml(messageOrText = '', options = {}) {
       const source = getApiSystemNoticeText(messageOrText);
       if (!source) return '';
+      const refundNoticeKind = getApiRefundSystemNoticeKind(messageOrText);
+      if (refundNoticeKind) {
+        return renderApiRefundSystemNoticeCardHtml(messageOrText, options);
+      }
       const actionPattern = /(>>[^<>\n]+<<|点击(?:添加|【[^】\n]+】))/g;
       const normalizedSource = source.replace(/^(\s*>>[^<>\n]+<<\s*)+/, '').trim();
       const target = normalizedSource || source;
@@ -6925,6 +7761,52 @@
       return num < 1e12 ? num * 1000 : num;
     }
 
+    function getApiSessionLastMessageActor(session = {}) {
+      const actor = String(session.lastMessageActor || '').toLowerCase();
+      if (actor) return actor;
+      const raw = session?.raw && typeof session.raw === 'object' ? session.raw : null;
+      const context = {
+        customer_id: session.customerId || raw?.customer_id,
+        buyer_id: session.customerId || raw?.buyer_id,
+        user_info: raw?.user_info,
+        from: raw?.from,
+        to: raw?.to,
+      };
+      const candidates = [
+        raw?.last_msg,
+        raw?.last_message,
+        raw?.latest_msg,
+        raw?.content,
+        raw,
+      ];
+      for (const candidate of candidates) {
+        if (!candidate || typeof candidate !== 'object') continue;
+        const role = String(
+          candidate.role
+          || candidate.msg_from
+          || candidate.from_type
+          || candidate.sender_role
+          || candidate?.from?.role
+          || candidate?.sender?.role
+          || candidate?.to?.role
+          || ''
+        ).toLowerCase();
+        if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return 'buyer';
+        if (['system', 'robot', 'bot', 'notice', 'tips', '99'].includes(role)) return 'system';
+        if (['seller', 'service', 'kf', 'agent', 'mall_cs', '2', '3', '4'].includes(role)) return 'seller';
+        const merged = { ...context, ...candidate };
+        if (merged.is_buyer || merged.is_buyer === 1 || merged.sender_type === 1 || merged.sender_type === 0) return 'buyer';
+        if (merged.is_robot || merged.is_system) return 'system';
+        if (merged.is_seller) return 'seller';
+      }
+      return 'unknown';
+    }
+
+    function isApiSessionLastMessageFromBuyer(session = {}) {
+      if (session.lastMessageIsFromBuyer === true) return true;
+      return getApiSessionLastMessageActor(session) === 'buyer';
+    }
+
     function getApiPendingReplyElapsedMs(session = {}) {
       const lastMessageMs = getApiTimeMs(session.lastMessageTime);
       if (lastMessageMs > 0) {
@@ -6950,7 +7832,7 @@
     function getApiPendingReplyDisplayState(session = {}) {
       const unreadCount = Number(session.unreadCount || 0);
       const waitValue = Number(session.waitTime || 0);
-      const pending = unreadCount > 0 || waitValue > 0 || !!session.isTimeout;
+      const pending = isApiSessionLastMessageFromBuyer(session) && (unreadCount > 0 || waitValue > 0 || !!session.isTimeout);
       if (!pending) {
         return {
           pending: false,
@@ -7056,6 +7938,8 @@
           unreadCount: 0,
           isTimeout: false,
           waitTime: 0,
+          lastMessageActor: 'seller',
+          lastMessageIsFromBuyer: false,
           lastMessage: previewText || session.lastMessage,
           lastMessageTime: now,
           updatedAt: now,
@@ -7071,22 +7955,93 @@
       renderApiMessages();
     }
 
+    function buildApiSyntheticRefundMessageKey(payload = {}) {
+      const refundCard = payload?.refundCard && typeof payload.refundCard === 'object' ? payload.refundCard : {};
+      return [
+        String(payload.shopId || ''),
+        String(payload.sessionId || ''),
+        String(refundCard.localKey || ''),
+        String(refundCard.orderSn || ''),
+        String(refundCard.actionText || ''),
+        String(refundCard.amountText || '')
+      ].join('::');
+    }
+
     function appendApiLocalServiceMessage(payload = {}) {
       const shopId = String(payload.shopId || apiActiveSessionShopId || '');
       const sessionId = String(payload.sessionId || apiActiveSessionId || '');
       const text = String(payload.text || '').trim();
-      if (!shopId || !sessionId || !text) return;
-      if (shopId !== String(apiActiveSessionShopId || '') || sessionId !== String(apiActiveSessionId || '')) return;
-      apiMessages = apiMessages.concat([{
+      const refundCard = payload?.refundCard && typeof payload.refundCard === 'object'
+        ? { ...payload.refundCard }
+        : null;
+      if (!shopId || !sessionId || (!text && !refundCard)) return;
+      const timestamp = Number(payload.timestamp || Date.now()) || Date.now();
+      const localMessage = {
         sessionId,
+        shopId,
         content: text,
-        timestamp: Date.now(),
+        timestamp,
         isFromBuyer: false,
         senderName: getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号',
         readState: '',
+        refundCard,
+        extra: refundCard ? { refundCard } : null,
         raw: {},
+      };
+      if (refundCard) {
+        const syntheticKey = buildApiSyntheticRefundMessageKey({
+          shopId,
+          sessionId,
+          refundCard,
+        });
+        localMessage.syntheticKey = syntheticKey;
+        apiSyntheticRefundMessages = apiSyntheticRefundMessages
+          .filter(item => String(item?.syntheticKey || '') !== syntheticKey)
+          .concat([{ ...localMessage }]);
+      }
+      if (shopId !== String(apiActiveSessionShopId || '') || sessionId !== String(apiActiveSessionId || '')) return;
+      apiMessages = apiMessages.concat([localMessage]);
+      renderApiMessages();
+    }
+
+    function appendApiIncomingMessage(payload = {}) {
+      const shopId = String(payload.shopId || apiActiveSessionShopId || '');
+      const sessionId = String(payload.sessionId || apiActiveSessionId || '');
+      const content = String(payload.content ?? payload.text ?? '').trim();
+      const refundCard = payload?.refundCard && typeof payload.refundCard === 'object'
+        ? { ...payload.refundCard }
+        : null;
+      const refundStatusUpdate = payload?.refundStatusUpdate && typeof payload.refundStatusUpdate === 'object'
+        ? { ...payload.refundStatusUpdate }
+        : null;
+      if (!shopId || !sessionId || (!content && !refundCard && !refundStatusUpdate)) return false;
+      if (shopId !== String(apiActiveSessionShopId || '') || sessionId !== String(apiActiveSessionId || '')) return false;
+      const messageId = String(payload.messageId || payload.msgId || payload?.raw?.msg_id || payload?.raw?.message_id || '').trim();
+      const duplicated = apiMessages.some(item => {
+        const itemMessageId = String(item?.messageId || item?.raw?.msg_id || item?.raw?.message_id || '').trim();
+        if (messageId && itemMessageId && itemMessageId === messageId) return true;
+        if (!refundCard) return false;
+        const currentKey = String(item?.refundCard?.localKey || item?.extra?.refundCard?.localKey || '');
+        return currentKey && currentKey === String(refundCard.localKey || '');
+      });
+      if (duplicated) return false;
+      apiMessages = apiMessages.concat([{
+        sessionId,
+        shopId,
+        messageId,
+        content,
+        timestamp: Number(payload.timestamp || Date.now()) || Date.now(),
+        isFromBuyer: payload.isFromBuyer === true,
+        senderName: String(payload.senderName || getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号'),
+        readState: String(payload.readState || '').trim(),
+        templateName: String(payload.templateName || '').trim(),
+        refundCard,
+        refundStatusUpdate,
+        extra: refundCard ? { refundCard } : null,
+        raw: payload?.raw && typeof payload.raw === 'object' ? payload.raw : {},
       }]);
       renderApiMessages();
+      return true;
     }
 
     function getApiSessionKey(sessionOrShopId, maybeSessionId = '') {
@@ -7125,11 +8080,14 @@
     function buildApiSession(session = {}) {
       const shop = shops.find(item => item.id === session.shopId) || null;
       const shopId = session.shopId || shop?.id || apiActiveSessionShopId || activeShopId || '';
+      const lastMessageActor = getApiSessionLastMessageActor(session);
       return {
         ...session,
         shopId,
         shopName: session.shopName || shop?.name || '未命名店铺',
         sessionKey: session.sessionKey || getApiSessionKey(shopId, session.sessionId),
+        lastMessageActor,
+        lastMessageIsFromBuyer: session.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer',
       };
     }
 
@@ -7157,6 +8115,7 @@
         normalized.shopId || '',
         normalized.sessionId || '',
         normalized.lastMessageTime || 0,
+        normalized.lastMessageActor || '',
         normalized.unreadCount || 0,
         normalized.waitTime || 0,
         normalized.lastMessage || '',
@@ -7648,26 +8607,31 @@
           return;
         }
 
-        if (!apiMessages.length) {
+        const displayMessages = getApiDisplayMessages(activeSession);
+        if (!displayMessages.length) {
           container.innerHTML = `<div class="api-empty">${isLoadingCurrentSession ? '正在加载会话消息...' : '当前会话暂无消息，或尚未从接口拿到消息数据。'}</div>`;
           return;
         }
 
-        const sortedMessages = apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+        const sortedMessages = displayMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
         let previousTimestamp = 0;
         container.innerHTML = sortedMessages.map((message, index) => {
           const isSystem = isApiSystemNoticeMessage(message);
+          const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
           const isBuyer = !!message.isFromBuyer;
           const buyerAvatar = activeSession?.customerAvatar || '';
           const sellerText = (shopName || apiTokenStatus?.mallName || '主账号').slice(0, 4);
           if (isSystem) {
-            const systemVariantClass = isApiUnmatchedReplyNoticeMessage(message) ? ' unmatched-reply' : '';
+            const systemVariantClass = [
+              isApiUnmatchedReplyNoticeMessage(message) ? 'unmatched-reply' : '',
+              refundSystemNoticeKind ? 'refund-notice' : '',
+            ].filter(Boolean).join(' ');
             const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
               ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
               : '';
             previousTimestamp = message.timestamp;
-            return `${divider}<div class="api-message-item system${systemVariantClass}">
-              <div class="api-message-system-bubble${systemVariantClass}">${renderApiSystemMessageHtml(message, { message, messageIndex: index })}</div>
+            return `${divider}<div class="api-message-item system${systemVariantClass ? ` ${systemVariantClass}` : ''}">
+              <div class="api-message-system-bubble${systemVariantClass ? ` ${systemVariantClass}` : ''}">${renderApiSystemMessageHtml(message, { message, messageIndex: index, sortedMessages })}</div>
             </div>`;
           }
           const avatarHtml = isBuyer
@@ -7682,20 +8646,24 @@
           const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
           const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
           const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
+          const refundCard = !isBuyer ? extractApiRefundCard(message) : null;
+          const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, { cardIndex: index }) : null;
           if (goodsLinkInfo && fallbackGoodsCard) {
             void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
           }
           const imageMessage = isApiImageMessage(message);
-          const bubbleHtml = goodsLinkInfo
-            ? renderApiGoodsCardHtml(goodsCard)
-            : imageMessage
-              ? `<div class="api-message-bubble">
+          const bubbleHtml = resolvedRefundCard
+            ? renderApiRefundCardHtml(resolvedRefundCard)
+            : goodsLinkInfo
+              ? renderApiGoodsCardHtml(goodsCard)
+              : imageMessage
+                ? `<div class="api-message-bubble">
                 <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
               </div>`
-              : `<div class="api-message-bubble">
+                : `<div class="api-message-bubble">
                 <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
               </div>`;
-          const copyButtonHtml = isBuyer && !goodsLinkInfo && !imageMessage && String(message.content || '').trim()
+          const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !imageMessage && String(message.content || '').trim()
             ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
             : '';
           const footerHtml = !isBuyer
@@ -7705,6 +8673,9 @@
             ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
             : '';
           previousTimestamp = message.timestamp;
+          if (resolvedRefundCard) {
+            return `${divider}<div class="api-message-item platform-card">${bubbleHtml}</div>`;
+          }
           return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
             <div class="api-message-avatar">${avatarHtml}</div>
             <div class="api-message-body">
@@ -8569,9 +9540,18 @@
       window.pddApi.onApiNewMessage(async (payload) => {
         if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
         await loadApiTraffic(getApiStatusShopId(true));
-        if (String(payload?.sessionId || '') === String(apiActiveSessionId) && String(payload?.shopId || '') === String(apiActiveSessionShopId || '')) {
-          await openApiSession(apiActiveSessionId, apiActiveSessionName || payload.customer || '', apiActiveSessionShopId);
-        } else {
+        const isCurrentSession = String(payload?.sessionId || '') === String(apiActiveSessionId)
+          && String(payload?.shopId || '') === String(apiActiveSessionShopId || '');
+        const incomingMessages = Array.isArray(payload?.messages) ? payload.messages : [];
+        if (isCurrentSession && incomingMessages.length) {
+          incomingMessages.forEach(message => {
+            appendApiIncomingMessage({
+              ...message,
+              shopId: payload.shopId || message?.shopId || apiActiveSessionShopId,
+              sessionId: payload.sessionId || message?.sessionId || apiActiveSessionId,
+            });
+          });
+        } else if (!isCurrentSession) {
           await loadApiSessions({ keepCurrent: true });
         }
         setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);

@@ -771,6 +771,9 @@ class PddApiClient extends EventEmitter {
       /为避免抢答/,
       /当前用户来自/,
       /商品详情页/,
+      /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
+      /^退款成功通知$/,
+      /^退款成功$/,
     ].some(pattern => pattern.test(source));
   }
 
@@ -795,6 +798,41 @@ class PddApiClient extends EventEmitter {
           confirmed: true,
           messageId: String(matched.messageId || ''),
           timestamp: matched.timestamp || 0,
+        };
+      }
+      if (index < attempts - 1) {
+        await this._sleep(delayMs);
+      }
+    }
+    return { confirmed: false };
+  }
+
+  async _confirmRefundApplyConversationMessage(sessionRef, options = {}) {
+    const attempts = Math.max(1, Number(options.attempts || 6));
+    const delayMs = Math.max(0, Number(options.delayMs || 800));
+    const pageSize = Math.max(20, Number(options.pageSize || 30));
+    const sentAtMs = Number(options.sentAtMs || Date.now());
+    const expectedText = this._normalizeComparableMessageText(options.expectedText || '');
+    for (let index = 0; index < attempts; index++) {
+      const messages = await this.getSessionMessages(sessionRef, 1, pageSize);
+      const matched = messages.find(message => {
+        const actor = this._getMessageActor(message?.raw || message);
+        if (actor === 'buyer' || actor === 'system') return false;
+        const timestampMs = this._normalizeTimestampMs(message.timestamp);
+        if (timestampMs && (timestampMs < sentAtMs - 15000 || timestampMs > Date.now() + 60000)) {
+          return false;
+        }
+        const messageText = this._normalizeComparableMessageText(message.content);
+        if (expectedText && messageText && messageText === expectedText) return true;
+        if (/快捷退款|申请退款|退货退款|待消费者确认/.test(messageText || '')) return true;
+        return !!timestampMs && timestampMs >= sentAtMs - 15000;
+      });
+      if (matched) {
+        return {
+          confirmed: true,
+          messageId: String(matched.messageId || ''),
+          timestamp: matched.timestamp || 0,
+          content: String(matched.content || ''),
         };
       }
       if (index < attempts - 1) {
@@ -1274,6 +1312,31 @@ class PddApiClient extends EventEmitter {
     return candidates.find(value => value !== undefined && value !== null && value !== '') || 0;
   }
 
+  _extractSessionLastMessageActor(item = {}) {
+    const context = {
+      customer_id: item?.customer_id,
+      buyer_id: item?.buyer_id,
+      uid: item?.user_info?.uid,
+      user_info: item?.user_info,
+      from: item?.from,
+      to: item?.to,
+    };
+    const candidates = [
+      item?.last_msg,
+      item?.last_message,
+      item?.latest_msg,
+      item?.content,
+      item?.preview,
+      item,
+    ];
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const actor = this._getMessageActor({ ...context, ...candidate });
+      if (actor !== 'unknown') return actor;
+    }
+    return 'unknown';
+  }
+
   _normalizeTimestampMs(value) {
     if (value === undefined || value === null || value === '') return 0;
     if (value instanceof Date) return value.getTime();
@@ -1301,6 +1364,9 @@ class PddApiClient extends EventEmitter {
   }
 
   _hasPendingReplySession(session = {}) {
+    const lastMessageActor = String(session?.lastMessageActor || '').toLowerCase();
+    const lastMessageIsFromBuyer = session?.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer';
+    if (!lastMessageIsFromBuyer) return false;
     const waitValue = Number(session?.waitTime || 0);
     if (Number.isFinite(waitValue) && waitValue > 0) return true;
     if (session?.isTimeout) return true;
@@ -1360,6 +1426,7 @@ class PddApiClient extends EventEmitter {
 
     return list.map(item => {
       const identity = this._parseSessionIdentity(item);
+      const lastMessageActor = this._extractSessionLastMessageActor(item);
       return {
       sessionId: identity.sessionId,
       explicitSessionId: identity.explicitSessionId,
@@ -1372,6 +1439,8 @@ class PddApiClient extends EventEmitter {
       customerAvatar: item.avatar || item.head_img || item.buyer_avatar || item?.user_info?.avatar || '',
       lastMessage: this._extractSessionPreviewText(item),
       lastMessageTime: this._extractSessionPreviewTime(item),
+      lastMessageActor,
+      lastMessageIsFromBuyer: lastMessageActor === 'buyer',
       createdAt: this._extractSessionCreatedTime(item),
       unreadCount: item.unread_count || item.unread || item.unread_num || item?.context?.unread || 0,
       isTimeout: item.is_timeout || item.timeout || false,
@@ -2166,6 +2235,53 @@ class PddApiClient extends EventEmitter {
     };
   }
 
+  _resolveRefundOrderStatusText(sources = []) {
+    return this._pickRefundText(sources, [
+      'orderStatusStr',
+      'order_status_str',
+      'order_status_desc',
+      'order_status_text',
+      'order_status_name',
+      'order_status',
+      'statusDesc',
+      'status_desc',
+      'statusText',
+      'status_text',
+      'shippingStatusText',
+      'shipping_status_text',
+      'shippingStatus',
+      'shipping_status',
+      'payStatusDesc',
+      'pay_status_desc',
+      'payStatusText',
+      'pay_status_text',
+    ]);
+  }
+
+  _isRefundOrderEligible(order = {}) {
+    const mergedStatusText = [
+      order?.orderStatusText,
+      order?.shippingStatusText,
+      order?.shippingState,
+    ].filter(Boolean).join(' ').replace(/\s+/g, '');
+    if (!mergedStatusText) {
+      return order?.shippingState === 'unshipped' || order?.shippingState === 'shipped';
+    }
+    if (/(待支付|待付款|未支付|未付款|付款中|待成团|未成团)/.test(mergedStatusText)) {
+      return false;
+    }
+    if (/(已签收|已收货|交易成功|已完成|已关闭|已取消|退款成功|已退款|售后完成|退款中止)/.test(mergedStatusText)) {
+      return false;
+    }
+    return /(待发货|未发货|待揽收|待出库|待配送|未揽件|待收货|已发货|运输中|派送中|配送中|揽收|物流)/.test(mergedStatusText)
+      || order?.shippingState === 'unshipped'
+      || order?.shippingState === 'shipped';
+  }
+
+  _filterEligibleRefundOrders(orders = []) {
+    return (Array.isArray(orders) ? orders : []).filter(order => this._isRefundOrderEligible(order));
+  }
+
   _resolveRefundShippingBenefitText(sources = []) {
     const rawText = this._pickRefundText(sources, [
       'refundShippingText',
@@ -2341,6 +2457,7 @@ class PddApiClient extends EventEmitter {
       ? `${specText} x${normalizedQuantity}`
       : (specText || (normalizedQuantity ? `x${normalizedQuantity}` : '所拍规格待确认'));
     const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
+    const orderStatusText = this._resolveRefundOrderStatusText(sources);
     return {
       key: `${orderId || 'order'}::${title}::${index}`,
       orderId: orderId || '-',
@@ -2348,6 +2465,7 @@ class PddApiClient extends EventEmitter {
       imageUrl,
       amountText,
       detailText,
+      orderStatusText,
       trackingNo: shippingInfo.trackingNo,
       shippingState: shippingInfo.shippingState,
       shippingStatusText: shippingInfo.shippingStatusText,
@@ -2494,6 +2612,218 @@ class PddApiClient extends EventEmitter {
     return this._post(url, body || {});
   }
 
+  async _requestRefundApplyApi(urlPath, body = {}, method = 'POST') {
+    const normalizedMethod = String(method || 'POST').toUpperCase();
+    const headers = {
+      accept: 'application/json, text/plain, */*',
+      'content-type': 'application/json;charset=UTF-8',
+    };
+    if (normalizedMethod === 'GET') {
+      delete headers['content-type'];
+    }
+    if (typeof this._requestInPddPage === 'function') {
+      return this._requestInPddPage({
+        method: normalizedMethod,
+        url: urlPath,
+        headers,
+        body: normalizedMethod === 'GET' ? null : JSON.stringify(body || {}),
+      });
+    }
+    if (normalizedMethod === 'GET') {
+      return this._request('GET', urlPath, null, headers);
+    }
+    return this._post(urlPath, body || {}, headers);
+  }
+
+  _normalizeRefundApplyType(type) {
+    const normalized = String(type || '').trim();
+    if (!normalized || normalized === 'refund' || normalized === '1') {
+      return 1;
+    }
+    if (normalized === 'returnRefund') {
+      throw new Error('当前仅已接通“退款”申请接口，请继续抓取“退货退款”提交请求后再补齐');
+    }
+    if (normalized === 'resend') {
+      throw new Error('当前仅已接通“退款”申请接口，请继续抓取“补寄”提交请求后再补齐');
+    }
+    throw new Error('暂不支持当前申请类型');
+  }
+
+  _normalizeRefundApplyShipStatus(status) {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (['2', 'received', '已收到货'].includes(normalized)) return 2;
+    if (['1', 'not_received', '未收到货', ''].includes(normalized)) return 1;
+    return 1;
+  }
+
+  _resolveRefundApplyQuestionType(params = {}) {
+    const directCode = Number(params?.questionType ?? params?.question_type);
+    if (Number.isFinite(directCode) && directCode > 0) {
+      return directCode;
+    }
+    const reasonText = String(params?.reasonText || params?.reason || '').trim();
+    const knownMap = {
+      '不喜欢、效果不好': 103,
+      '不喜欢': 103,
+      '其他原因': 111,
+    };
+    if (knownMap[reasonText]) {
+      return knownMap[reasonText];
+    }
+    throw new Error(`退款原因“${reasonText || '未选择'}”暂未完成真实接口映射，请先使用“不喜欢、效果不好”或继续抓取该原因的请求体`);
+  }
+
+  _buildRefundApplyReposeInfo(params = {}) {
+    const raw = params?.reposeInfo && typeof params.reposeInfo === 'object' ? params.reposeInfo : {};
+    return {
+      userName: raw.userName ?? null,
+      mobile: raw.mobile ?? null,
+      provinceId: raw.provinceId ?? null,
+      provinceName: raw.provinceName ?? null,
+      cityId: raw.cityId ?? null,
+      cityName: raw.cityName ?? null,
+      districtId: raw.districtId ?? null,
+      districtName: raw.districtName ?? null,
+      address: raw.address ?? null,
+      isApply: Boolean(raw.isApply),
+      inGray: raw.inGray === undefined ? true : Boolean(raw.inGray),
+      orderSn: raw.orderSn ?? null,
+      mallId: raw.mallId ?? null,
+      uid: raw.uid ?? null,
+    };
+  }
+
+  _resolveRefundApplyReposeInfo(infoPayload = {}, params = {}) {
+    const info = infoPayload?.result && typeof infoPayload.result === 'object'
+      ? infoPayload.result
+      : (infoPayload && typeof infoPayload === 'object' ? infoPayload : {});
+    const infoReposeInfo = info?.reposeInfo && typeof info.reposeInfo === 'object' ? info.reposeInfo : {};
+    return this._buildRefundApplyReposeInfo({
+      reposeInfo: {
+        userName: infoReposeInfo.userName ?? info.userName ?? null,
+        mobile: infoReposeInfo.mobile ?? info.mobile ?? info.phone ?? null,
+        provinceId: infoReposeInfo.provinceId ?? info.provinceId ?? null,
+        provinceName: infoReposeInfo.provinceName ?? info.provinceName ?? null,
+        cityId: infoReposeInfo.cityId ?? info.cityId ?? null,
+        cityName: infoReposeInfo.cityName ?? info.cityName ?? null,
+        districtId: infoReposeInfo.districtId ?? info.districtId ?? null,
+        districtName: infoReposeInfo.districtName ?? info.districtName ?? null,
+        address: infoReposeInfo.address ?? info.address ?? null,
+        isApply: infoReposeInfo.isApply ?? info.isApply ?? false,
+        inGray: infoReposeInfo.inGray ?? info.inGray ?? true,
+        orderSn: infoReposeInfo.orderSn ?? info.orderSn ?? params?.orderSn ?? params?.order_sn ?? null,
+        mallId: infoReposeInfo.mallId ?? info.mallId ?? null,
+        uid: infoReposeInfo.uid ?? info.uid ?? null,
+        ...(params?.reposeInfo && typeof params.reposeInfo === 'object' ? params.reposeInfo : {}),
+      },
+    });
+  }
+
+  _normalizeRefundApplyFlag(value, defaultValue = false) {
+    if (value === undefined || value === null || value === '') return defaultValue;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value > 0;
+    const normalized = String(value).trim().toLowerCase();
+    if (!normalized) return defaultValue;
+    if (['1', 'true', 'yes', 'y'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'n'].includes(normalized)) return false;
+    return defaultValue;
+  }
+
+  async getRefundApplyInfo(orderSn) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const payload = await this._requestRefundApplyApi('/plateau/message/ask_refund_apply/infoV2', {
+      order_sn: normalizedOrderSn,
+    });
+    return this._cloneJson(payload);
+  }
+
+  async submitRefundApply(params = {}) {
+    const normalizedOrderSn = String(params?.orderSn || params?.order_sn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const afterSalesType = this._normalizeRefundApplyType(params?.type || params?.afterSalesType || params?.after_sales_type);
+    const infoPayload = await this.getRefundApplyInfo(normalizedOrderSn);
+    const info = infoPayload?.result && typeof infoPayload.result === 'object' ? infoPayload.result : {};
+    const shopProfile = await this.getShopProfile().catch(() => ({}));
+    if (afterSalesType !== 1) {
+      throw new Error('当前仅已接通“退款”申请接口');
+    }
+    const refundAmountFen = Number.isFinite(Number(params?.refundAmountFen))
+      ? Math.max(0, Math.round(Number(params.refundAmountFen)))
+      : this._parseOrderPriceYuanToFen(params?.refundAmount || params?.amount);
+    const maxRefundAmountFen = Number(info?.total_amount || 0);
+    if (!refundAmountFen) {
+      throw new Error('缺少退款金额');
+    }
+    if (maxRefundAmountFen > 0 && refundAmountFen > maxRefundAmountFen) {
+      throw new Error('退款金额不能超过订单实付金额');
+    }
+    const requestReposeInfo = this._resolveRefundApplyReposeInfo(infoPayload, {
+      ...params,
+      reposeInfo: {
+        ...(params?.reposeInfo && typeof params.reposeInfo === 'object' ? params.reposeInfo : {}),
+        mobile: params?.reposeInfo?.mobile ?? info?.mobile ?? info?.phone ?? shopProfile?.mobile ?? null,
+      },
+    });
+    const requestBody = {
+      order_sn: normalizedOrderSn,
+      after_sales_type: afterSalesType,
+      user_ship_status: this._normalizeRefundApplyShipStatus(params?.userShipStatus || params?.user_ship_status || params?.receiptStatus),
+      question_type: this._resolveRefundApplyQuestionType(params),
+      refund_amount: refundAmountFen,
+      reposeInfo: requestReposeInfo,
+      message: String(params?.message || '').trim(),
+      manualEditedNote: Boolean(params?.manualEditedNote),
+      send_card_before_message: this._normalizeRefundApplyFlag(info?.send_card_before_message, true),
+    };
+    if (!requestBody.message && this._normalizeRefundApplyFlag(info?.need_show_message_box, false)) {
+      throw new Error('缺少留言内容');
+    }
+    this._log('[API] 提交申请售后', {
+      orderSn: normalizedOrderSn,
+      afterSalesType: requestBody.after_sales_type,
+      questionType: requestBody.question_type,
+      refundAmountFen,
+      userShipStatus: requestBody.user_ship_status,
+      hasMessage: !!requestBody.message,
+    });
+    const sentAtMs = Date.now();
+    const payload = await this._requestRefundApplyApi('/plateau/message/ask_refund_apply/send', requestBody);
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      const error = new Error(businessError.message);
+      error.errorCode = businessError.code;
+      error.payload = payload;
+      throw error;
+    }
+    const sessionRef = params.session || params.sessionId || normalizedOrderSn;
+    const conversationConfirm = sessionRef
+      ? await this._confirmRefundApplyConversationMessage(sessionRef, {
+          sentAtMs,
+          expectedText: requestBody.message,
+        }).catch(() => ({ confirmed: false }))
+      : { confirmed: false };
+    return {
+      success: true,
+      orderSn: normalizedOrderSn,
+      afterSalesType: requestBody.after_sales_type,
+      questionType: requestBody.question_type,
+      refundAmountFen,
+      requestBody: this._cloneJson(requestBody),
+      reposeInfo: this._cloneJson(requestReposeInfo),
+      response: payload,
+      info: this._cloneJson(info),
+      messageConfirmed: !!conversationConfirm.confirmed,
+      confirmedMessageId: conversationConfirm.messageId || '',
+      confirmedMessageText: conversationConfirm.content || '',
+    };
+  }
+
   _parseOrderPriceYuanToFen(value) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric) || numeric < 0) return 0;
@@ -2617,7 +2947,9 @@ class PddApiClient extends EventEmitter {
       uid,
     });
     const orders = Array.isArray(orderPayload?.result?.orders) ? orderPayload.result.orders : [];
-    const normalized = await this._attachAfterSalesStatus(this._dedupeRefundOrders(orders, sessionMeta));
+    const normalized = this._filterEligibleRefundOrders(
+      await this._attachAfterSalesStatus(this._dedupeRefundOrders(orders, sessionMeta))
+    );
     if (normalized.length) {
       return normalized;
     }
@@ -2629,13 +2961,15 @@ class PddApiClient extends EventEmitter {
         uid,
       });
       const unshippedOrders = Array.isArray(unshippedPayload?.result?.orders) ? unshippedPayload.result.orders : [];
-      return this._attachAfterSalesStatus(this._dedupeRefundOrders(
-        unshippedOrders.map(item => ({
-          ...(item || {}),
-          refund_shipping_state: 'unshipped',
-        })),
-        sessionMeta
-      ));
+      return this._filterEligibleRefundOrders(
+        await this._attachAfterSalesStatus(this._dedupeRefundOrders(
+          unshippedOrders.map(item => ({
+            ...(item || {}),
+            refund_shipping_state: 'unshipped',
+          })),
+          sessionMeta
+        ))
+      );
     }
     return [];
   }
@@ -2724,14 +3058,14 @@ class PddApiClient extends EventEmitter {
     try {
       const pageOrders = await this._extractRefundOrdersFromPageApis(sessionMeta);
       if (Array.isArray(pageOrders)) {
-        return pageOrders;
+        return this._filterEligibleRefundOrders(pageOrders);
       }
     } catch (error) {
       this._log('[API] 售后订单接口查询失败', { message: error.message });
     }
     try {
       const domOrders = await this._extractRefundOrdersFromDom(sessionMeta);
-      const normalizedDomOrders = this._dedupeRefundOrders(domOrders, sessionMeta);
+      const normalizedDomOrders = this._filterEligibleRefundOrders(this._dedupeRefundOrders(domOrders, sessionMeta));
       if (normalizedDomOrders.length) {
         return normalizedDomOrders;
       }
@@ -2761,7 +3095,7 @@ class PddApiClient extends EventEmitter {
       .map((item, index) => this._normalizeRefundOrder(item, sessionMeta, index))
       .concat(this._extractRefundOrdersFromMessages(sessionMeta, messages))
       .concat(this._extractRefundOrdersFromTraffic(sessionMeta));
-    return this._dedupeRefundOrders(merged, sessionMeta);
+    return this._filterEligibleRefundOrders(this._dedupeRefundOrders(merged, sessionMeta));
   }
 
   _formatSideOrderDateTime(value) {

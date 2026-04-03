@@ -1569,6 +1569,53 @@
     };
   }
 
+  function resolveApiRefundOrderStatusText(sources = []) {
+    return pickApiRefundText(sources, [
+      'orderStatusStr',
+      'order_status_str',
+      'order_status_desc',
+      'order_status_text',
+      'order_status_name',
+      'order_status',
+      'statusDesc',
+      'status_desc',
+      'statusText',
+      'status_text',
+      'shippingStatusText',
+      'shipping_status_text',
+      'shippingStatus',
+      'shipping_status',
+      'payStatusDesc',
+      'pay_status_desc',
+      'payStatusText',
+      'pay_status_text',
+    ]);
+  }
+
+  function isApiRefundOrderEligible(order = {}) {
+    const mergedStatusText = [
+      order?.orderStatusText,
+      order?.shippingStatusText,
+      order?.shippingState,
+    ].filter(Boolean).join(' ').replace(/\s+/g, '');
+    if (!mergedStatusText) {
+      return order?.shippingState === 'unshipped' || order?.shippingState === 'shipped';
+    }
+    if (/(待支付|待付款|未支付|未付款|付款中|待成团|未成团)/.test(mergedStatusText)) {
+      return false;
+    }
+    if (/(已签收|已收货|交易成功|已完成|已关闭|已取消|退款成功|已退款|售后完成|退款中止)/.test(mergedStatusText)) {
+      return false;
+    }
+    return /(待发货|未发货|待揽收|待出库|待配送|未揽件|待收货|已发货|运输中|派送中|配送中|揽收|物流)/.test(mergedStatusText)
+      || order?.shippingState === 'unshipped'
+      || order?.shippingState === 'shipped';
+  }
+
+  function filterEligibleApiRefundOrders(list = []) {
+    return (Array.isArray(list) ? list : []).filter(order => isApiRefundOrderEligible(order));
+  }
+
   function formatApiRefundAmount(value) {
     if (value === undefined || value === null || value === '') return '';
     if (typeof value === 'string') {
@@ -1666,6 +1713,435 @@
     return amountText ? `实付：${amountText}` : '实付待确认';
   }
 
+  function getApiRefundCardTitle(type = 'refund') {
+    if (type === 'returnRefund') return '商家想帮您申请退货退款';
+    if (type === 'resend') return '商家想帮您申请补寄';
+    return '商家想帮您申请快捷退款';
+  }
+
+  function normalizeApiRefundCardAmountText(value) {
+    const amountText = normalizeApiRefundAmountText(value);
+    return amountText.replace(/^¥\s+/, '¥');
+  }
+
+  function resolveApiRefundCardFooterText(state = {}, fallbackText = '') {
+    const statusValue = Number(state?.status);
+    if (statusValue === 0) return '等待消费者确认';
+    const normalizedFallback = String(fallbackText || '').trim();
+    if (!normalizedFallback || normalizedFallback === '已过期') {
+      return '等待消费者确认';
+    }
+    return normalizedFallback;
+  }
+
+  function getApiRefundStatusUpdateMeta(message = {}) {
+    const directMeta = message?.refundStatusUpdate && typeof message.refundStatusUpdate === 'object'
+      ? message.refundStatusUpdate
+      : null;
+    if (directMeta) {
+      const kind = String(directMeta.kind || '').trim();
+      if (kind) {
+        return {
+          kind,
+          targetMessageId: String(directMeta.targetMessageId || '').trim(),
+          status: Number(directMeta.status ?? ''),
+          displayText: String(directMeta.displayText || '').trim(),
+          footerText: kind === 'refund-pending' ? '消费者已同意' : '',
+        };
+      }
+    }
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const data = raw?.data && typeof raw.data === 'object' ? raw.data : {};
+    const messageType = Number(raw?.type ?? message?.type ?? -1);
+    if (messageType === 90) {
+      const targetMessageId = String(data?.msg_id || '').trim();
+      const statusValue = Number(data?.status);
+      if (targetMessageId && statusValue === 2) {
+        return {
+          kind: 'refund-pending',
+          targetMessageId,
+          status: statusValue,
+          displayText: '消费者已同意您发起的退款申请，请及时处理',
+          footerText: '消费者已同意',
+        };
+      }
+    }
+    const source = String(message?.content || raw?.content || '').trim();
+    if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) {
+      return {
+        kind: 'refund-pending',
+        targetMessageId: '',
+        status: 2,
+        displayText: '消费者已同意您发起的退款申请，请及时处理',
+        footerText: '消费者已同意',
+      };
+    }
+    if (/^退款成功(?:通知)?$/.test(source)) {
+      return {
+        kind: 'refund-success',
+        targetMessageId: '',
+        status: 3,
+        displayText: '退款成功',
+        footerText: '退款成功',
+      };
+    }
+    return null;
+  }
+
+  function findApiMatchedRefundCard(sortedMessages = [], options = {}) {
+    const targetMessageId = String(options?.targetMessageId || '').trim();
+    if (targetMessageId && Array.isArray(sortedMessages)) {
+      for (const candidate of sortedMessages) {
+        const card = extractApiRefundCard(candidate, options?.activeSession || {});
+        if (card && String(card.localKey || '').trim() === targetMessageId) {
+          return card;
+        }
+      }
+    }
+    const messageIndex = Number.isInteger(options?.messageIndex) ? options.messageIndex : -1;
+    if (!Array.isArray(sortedMessages) || messageIndex < 0) return null;
+    for (let distance = 0; distance <= 6; distance++) {
+      const candidateIndexes = distance === 0
+        ? [messageIndex]
+        : [messageIndex - distance, messageIndex + distance];
+      for (const candidateIndex of candidateIndexes) {
+        if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= sortedMessages.length) continue;
+        const card = extractApiRefundCard(sortedMessages[candidateIndex], options?.activeSession || {});
+        if (card) return card;
+      }
+    }
+    return null;
+  }
+
+  function findApiRefundStatusUpdateForCard(sortedMessages = [], options = {}) {
+    const targetMessageId = String(options?.targetMessageId || '').trim();
+    if (!Array.isArray(sortedMessages) || !sortedMessages.length) return null;
+    if (targetMessageId) {
+      for (const message of sortedMessages) {
+        const statusMeta = getApiRefundStatusUpdateMeta(message);
+        if (statusMeta && String(statusMeta.targetMessageId || '').trim() === targetMessageId) {
+          return statusMeta;
+        }
+      }
+    }
+    const cardIndex = Number.isInteger(options?.cardIndex) ? options.cardIndex : -1;
+    if (cardIndex < 0) return null;
+    for (let distance = 1; distance <= 6; distance++) {
+      const nextIndex = cardIndex + distance;
+      if (nextIndex >= sortedMessages.length) break;
+      const candidate = sortedMessages[nextIndex];
+      const statusMeta = getApiRefundStatusUpdateMeta(candidate);
+      if (statusMeta) return statusMeta;
+      const anotherCard = extractApiRefundCard(candidate, options?.activeSession || {});
+      if (anotherCard) break;
+    }
+    return null;
+  }
+
+  function applyApiRefundStatusToCard(card = {}, sortedMessages = [], options = {}) {
+    if (!card || typeof card !== 'object') return null;
+    const localKey = String(card.localKey || '').trim();
+    const statusMeta = findApiRefundStatusUpdateForCard(sortedMessages, {
+      targetMessageId: localKey,
+      cardIndex: options?.cardIndex,
+      activeSession: options?.activeSession,
+    });
+    if (statusMeta?.footerText) {
+      return {
+        ...card,
+        footerText: statusMeta.footerText,
+      };
+    }
+    return card;
+  }
+
+  function renderApiRefundStatusUpdateCardHtml(message = {}, options = {}) {
+    const statusMeta = getApiRefundStatusUpdateMeta(message);
+    if (!statusMeta) return '';
+    const card = findApiMatchedRefundCard(options?.sortedMessages, {
+      targetMessageId: statusMeta.targetMessageId,
+      messageIndex: options?.messageIndex,
+      activeSession: options?.activeSession,
+    });
+    const displayText = statusMeta.displayText || '消费者已同意您发起的退款申请，请及时处理';
+    if (!card) {
+      return `<div class="api-system-refund-card pending">
+        <div class="api-system-refund-card-header">${esc(displayText)}</div>
+      </div>`;
+    }
+    const imageHtml = card.imageUrl
+      ? `<img class="api-system-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+      : `<div class="api-system-refund-card-media-placeholder">商品</div>`;
+    const rows = [
+      { label: '申请类型', value: card.actionText || '退款' },
+      { label: '申请原因', value: card.reasonText || '其他原因' },
+      card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
+      { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
+      card.contactText ? { label: '联系方式', value: card.contactText } : null,
+    ].filter(Boolean);
+    return `<div class="api-system-refund-card success">
+      <div class="api-system-refund-card-header">${esc(displayText)}</div>
+      <div class="api-system-refund-card-goods">
+        ${imageHtml}
+        <div class="api-system-refund-card-main">
+          <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+          <div class="api-system-refund-card-success-meta">
+            ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
+            ${card.amountText ? `<div class="api-system-refund-card-price">${esc(card.amountText)}</div>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="api-system-refund-card-rows">
+        ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
+      </div>
+      <div class="api-system-refund-card-footer">
+        <span class="api-system-refund-card-action">去处理</span>
+      </div>
+    </div>`;
+  }
+
+  function getApiRefundCardTypeText(type = 'refund') {
+    if (type === 'refund') return '退款';
+    if (type === 'returnRefund') return '退货退款';
+    if (type === 'resend') return '补寄';
+    if (type === '1' || type === 1) return '退款';
+    if (type === '2' || type === 2) return '退货退款';
+    if (type === '3' || type === 3) return '补寄';
+    return String(type || '').trim() || '退款';
+  }
+
+  function getApiRefundCardButtonTexts(buttons = []) {
+    const list = Array.isArray(buttons) ? buttons : [];
+    return list
+      .map(item => {
+        if (typeof item === 'string') return item.trim();
+        if (!item || typeof item !== 'object') return '';
+        return String(
+          item.text
+          || item.title
+          || item.label
+          || item.button_text
+          || item.buttonText
+          || item.name
+          || ''
+        ).trim();
+      })
+      .filter(Boolean);
+  }
+
+  function findApiRefundCardNode(source) {
+    const queue = [{ value: source, depth: 0 }];
+    const visited = new WeakSet();
+    while (queue.length) {
+      const currentEntry = queue.shift();
+      const current = currentEntry?.value;
+      const depth = Number(currentEntry?.depth || 0);
+      if (!current || typeof current !== 'object') continue;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      if (Array.isArray(current)) {
+        if (depth < 4) {
+          current.forEach(item => {
+            if (item && typeof item === 'object') queue.push({ value: item, depth: depth + 1 });
+          });
+        }
+        continue;
+      }
+      const sources = [
+        current,
+        current.goods,
+        current.goodsInfo,
+        current.goods_info,
+        current.item,
+        current.product,
+      ].filter(Boolean);
+      const text = [
+        pickApiRefundText(sources, ['title', 'card_title', 'cardTitle', 'header', 'header_text', 'headerText', 'name']),
+        pickApiRefundText(sources, ['content', 'text', 'desc', 'description', 'message']),
+        ...getApiRefundCardButtonTexts(
+          current.buttons || current.button_list || current.buttonList || current.actions || current.action_list
+        ),
+      ].filter(Boolean).join(' ');
+      const hasRefundText = /(快捷退款|申请退款|同意退款|暂不退款|退货退款|申请补寄)/.test(text);
+      const hasCardPayload = !!(
+        pickApiRefundText(sources, ['goods_name', 'goodsName', 'item_title', 'itemTitle', 'order_sn', 'orderSn'])
+        || pickApiRefundNumber(sources, ['refund_amount', 'refundAmount', 'amount', 'price'])
+      );
+      if (hasRefundText && hasCardPayload) {
+        return current;
+      }
+      if (depth >= 4) continue;
+      Object.keys(current).forEach(key => {
+        const value = current[key];
+        if (value && typeof value === 'object') {
+          queue.push({ value, depth: depth + 1 });
+        }
+      });
+    }
+    return null;
+  }
+
+  function normalizeApiRefundCardData(card = {}, fallback = {}) {
+    const sources = [
+      card,
+      card?.goods,
+      card?.goodsInfo,
+      card?.goods_info,
+      card?.item,
+      card?.product,
+      card?.order,
+      card?.orderInfo,
+      card?.order_info,
+      card?.reposeInfo,
+      card?.repose_info,
+      fallback,
+    ].filter(Boolean);
+    const orderSn = pickApiRefundText(sources, ['orderSn', 'order_sn', 'orderId', 'order_id']) || String(fallback?.orderSn || '').trim();
+    const goodsTitle = pickApiRefundText(sources, ['goodsTitle', 'goods_title', 'goodsName', 'goods_name', 'itemTitle', 'item_title', 'title'])
+      || String(fallback?.goodsTitle || '').trim()
+      || '订单商品';
+    const imageUrl = pickApiRefundText(sources, ['imageUrl', 'image_url', 'thumb_url', 'goods_thumb_url', 'pic_url'])
+      || String(fallback?.imageUrl || '').trim();
+    const specText = pickApiRefundText(sources, ['specText', 'spec_text', 'spec', 'skuSpec', 'sku_spec', 'detailText', 'detail_text'])
+      || String(fallback?.specText || '').trim();
+    const reasonText = pickApiRefundText(sources, ['reasonText', 'reason_text', 'reason', 'questionTypeText', 'question_type_text'])
+      || String(fallback?.reasonText || '').trim();
+    const contactText = pickApiRefundText(sources, ['contactText', 'contact_text', 'mobile', 'phone', 'phoneNum', 'phone_num', 'telephone'])
+      || String(fallback?.contactText || '').trim();
+    const noteText = pickApiRefundText(sources, ['noteText', 'note_text', 'applyNote', 'apply_note', 'description', 'desc'])
+      || String(fallback?.noteText || '').trim()
+      || '商家代消费者填写售后单';
+    const footerText = resolveApiRefundCardFooterText(
+      card?.state || card?.status || fallback?.state || {},
+      pickApiRefundText(sources, ['footerText', 'footer_text', 'statusText', 'status_text', 'statusDesc', 'status_desc'])
+      || String(fallback?.footerText || '').trim()
+    );
+    const actionTypeRaw = pickApiRefundText(sources, ['actionText', 'action_text', 'applyTypeText', 'apply_type_text', 'afterSalesTypeDesc', 'after_sales_type_desc', 'type'])
+      || fallback?.actionText
+      || fallback?.type
+      || 'refund';
+    const amountText = normalizeApiRefundCardAmountText(
+      pickApiRefundText(sources, ['amountText', 'amount_text', 'refundAmountText', 'refund_amount_text'])
+      || pickApiRefundText(sources, ['refund_amount', 'refundAmount', 'amount', 'price'])
+      || fallback?.amountText
+      || ''
+    );
+    const localKey = String(
+      fallback?.localKey
+      || card?.localKey
+      || [orderSn, actionTypeRaw, reasonText, amountText].filter(Boolean).join('::')
+    ).trim();
+    return {
+      localKey,
+      orderSn,
+      title: String(fallback?.title || card?.title || getApiRefundCardTitle(actionTypeRaw)),
+      actionText: getApiRefundCardTypeText(actionTypeRaw),
+      goodsTitle,
+      imageUrl,
+      specText,
+      reasonText,
+      amountText,
+      noteText,
+      contactText,
+      footerText,
+    };
+  }
+
+  function extractApiRefundCard(message = {}, session = {}) {
+    const directCard = message?.refundCard
+      || message?.extra?.refundCard
+      || message?.raw?.extra?.refundCard
+      || message?.raw?.ext?.refundCard;
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const goodsInfo = info?.goods_info && typeof info.goods_info === 'object' ? info.goods_info : {};
+    const rawRefundCard = !directCard && Number(raw?.type ?? message?.type ?? -1) === 19 && String(info.card_id || '').trim() === 'ask_refund_apply'
+      ? {
+          localKey: String(raw?.msg_id || raw?.message_id || '').trim(),
+          orderSn: String(goodsInfo?.order_sequence_no || '').trim(),
+          title: String(info?.title || message?.content || '商家想帮您申请快捷退款').replace(/^\[|\]$/g, '').trim(),
+          actionText: (() => {
+            const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请类型'));
+            const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+            return value || '退款';
+          })(),
+          goodsTitle: String(goodsInfo?.goods_name || '').trim(),
+          imageUrl: String(goodsInfo?.goods_thumb_url || '').trim(),
+          specText: [String(goodsInfo?.extra || '').trim(), goodsInfo?.count ? `x${goodsInfo.count}` : ''].filter(Boolean).join(' '),
+          reasonText: (() => {
+            const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请原因'));
+            const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+            return value || '其他原因';
+          })(),
+          amountText: (() => {
+            const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('退款金额'));
+            const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+            if (value) return value.includes('¥') ? value : `¥${value}`;
+            const amountFen = Number(goodsInfo?.total_amount || 0) || 0;
+            return amountFen > 0 ? `¥${(amountFen / 100).toFixed(2)}` : '';
+          })(),
+          noteText: (() => {
+            const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请说明'));
+            const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+            return value || '商家代消费者填写售后单';
+          })(),
+          contactText: (() => {
+            const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('联系方式'));
+            return Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
+          })(),
+          footerText: resolveApiRefundCardFooterText(info?.state, info?.state?.expire_text),
+        }
+      : null;
+    const sourceCard = (directCard && typeof directCard === 'object') ? directCard : rawRefundCard;
+    if (sourceCard && typeof sourceCard === 'object') {
+      return normalizeApiRefundCardData(sourceCard, sourceCard);
+    }
+    const cardNode = findApiRefundCardNode(message?.raw || message);
+    if (!cardNode) return null;
+    return normalizeApiRefundCardData(cardNode, {
+      orderSn: pickApiRefundText([message?.raw, session?.raw, session], ['order_sn', 'orderSn', 'order_id', 'orderId']),
+      goodsTitle: pickApiRefundText([message?.raw, session?.goodsInfo, session?.raw?.goods_info, session?.raw, session], ['goods_name', 'goodsName', 'title', 'item_title']),
+      imageUrl: pickApiRefundText([message?.raw, session?.goodsInfo, session?.raw?.goods_info], ['image_url', 'imageUrl', 'thumb_url', 'goods_thumb_url']),
+      specText: pickApiRefundText([message?.raw, session?.goodsInfo, session?.raw?.goods_info], ['spec_text', 'specText', 'spec', 'sku_spec', 'skuSpec']),
+    });
+  }
+
+  function buildApiRefundCardFromSubmit({
+    orderContext = {},
+    refundType = 'refund',
+    reason = '',
+    amountText = '',
+    result = {},
+    activeSession = {},
+  } = {}) {
+    const contactText = pickApiRefundText([
+      result?.requestBody?.reposeInfo,
+      result?.requestBody?.repose_info,
+      result?.reposeInfo,
+      result?.repose_info,
+      result?.info?.reposeInfo,
+      result?.info?.repose_info,
+      result?.info,
+      activeSession?.raw,
+      activeSession,
+    ], ['mobile', 'phone', 'phoneNum', 'phone_num', 'telephone']);
+    const normalizedAmountText = refundType === 'resend' ? '' : normalizeApiRefundCardAmountText(amountText);
+    return normalizeApiRefundCardData({
+      localKey: [orderContext?.orderId || '', refundType, reason || '', normalizedAmountText || ''].join('::'),
+      title: getApiRefundCardTitle(refundType),
+      type: refundType,
+      orderSn: orderContext?.orderId || '',
+      goodsTitle: orderContext?.title || '订单商品',
+      imageUrl: orderContext?.imageUrl || '',
+      specText: orderContext?.detailText || '',
+      reasonText: reason || '',
+      amountText: normalizedAmountText,
+      noteText: '商家代消费者填写售后单',
+      contactText,
+      footerText: '等待消费者确认',
+    });
+  }
+
   function normalizeApiRefundOrderContext(order = {}, fallback = {}, index = 0) {
     const sources = [
       order,
@@ -1733,6 +2209,7 @@
       ? `${specText} x${normalizedQuantity}`
       : (specText || (normalizedQuantity ? `x${normalizedQuantity}` : '所拍规格待确认')));
     const shippingInfo = resolveApiRefundShippingInfo(sources);
+    const orderStatusText = resolveApiRefundOrderStatusText(sources);
     const key = `${orderId || 'order'}::${title}::${index}`;
     return {
       key,
@@ -1742,6 +2219,7 @@
       amountText,
       detailText,
       afterSalesStatus,
+      orderStatusText,
       trackingNo: shippingInfo.trackingNo,
       shippingState: shippingInfo.shippingState,
       shippingStatusText: shippingInfo.shippingStatusText,
@@ -1958,6 +2436,19 @@
     return document.querySelector('input[name="apiRefundReceiptStatus"]:checked')?.value || '';
   }
 
+  function getCurrentApiRefundReasonSelection() {
+    const reasonSelect = document.getElementById('apiRefundReason');
+    const selectedOption = reasonSelect?.selectedOptions?.[0] || null;
+    const reasonValue = String(selectedOption?.value || '').trim();
+    const reasonText = String(selectedOption?.textContent || selectedOption?.value || '').trim();
+    const numericQuestionType = Number(selectedOption?.dataset?.questionType || reasonValue);
+    return {
+      reasonValue,
+      reasonText,
+      questionType: Number.isFinite(numericQuestionType) && numericQuestionType > 0 ? numericQuestionType : 0,
+    };
+  }
+
   function getSelectedApiRefundContext() {
     return apiRefundSelectedOrder || getApiRefundContext(getApiActiveSession() || getState());
   }
@@ -2133,10 +2624,10 @@
         }
       } catch {}
     }
-    apiRefundOrderCandidates = dedupeApiRefundOrders(
+    apiRefundOrderCandidates = filterEligibleApiRefundOrders(dedupeApiRefundOrders(
       remoteOrders.concat(getApiRefundOrderCandidates(session)),
       session
-    );
+    ));
     if (!apiRefundOrderCandidates.length) {
       apiRefundSelectedOrder = null;
       closeApiRefundOrderSelector();
@@ -2174,7 +2665,7 @@
     openApiRefundOrderSelector();
   }
 
-  function handleApiRefundSubmit() {
+  async function handleApiRefundSubmit() {
     const state = getState();
     if (!state.apiActiveSessionId) {
       setApiHint('请先选择一个接口会话');
@@ -2182,11 +2673,8 @@
       return;
     }
     const refundType = getCurrentApiRefundType();
-    const reasonSelect = document.getElementById('apiRefundReason');
-    const selectedReason = reasonSelect?.selectedOptions?.[0] || null;
-    const reason = String(selectedReason?.value || '').trim()
-      ? String(selectedReason?.textContent || selectedReason.value).trim()
-      : '';
+    const { reasonText, questionType } = getCurrentApiRefundReasonSelection();
+    const reason = reasonText;
     if (!reason) {
       setApiHint('请选择退款原因');
       return;
@@ -2214,12 +2702,8 @@
       if (amountInput) amountInput.value = amountText;
     }
     const noteText = String(document.getElementById('apiRefundNote')?.value || '').trim();
-    const input = document.getElementById('apiMessageInput');
-    if (input && noteText) {
-      input.value = noteText;
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-    }
+    const noteMeta = getApiRefundTypeMeta(refundType);
+    const manualEditedNote = noteText !== noteMeta.defaultNote;
     const actionText = getApiRefundTypeMeta(refundType).actionText;
     const amountDetail = refundType === 'resend' ? '' : (amountText ? `；金额：${amountText}` : '');
     const orderDetail = orderContext?.orderId && orderContext.orderId !== '-' ? `；订单：${orderContext.orderId}` : '';
@@ -2228,8 +2712,57 @@
       : (receiptStatus === 'not_received' ? '未收到货' : '');
     const receiptDetail = receiptStatusText ? `；收货状态：${receiptStatusText}` : '';
     recordApiSyncState('退款弹窗', `类型：${actionText}${orderDetail}${receiptDetail}；原因：${reason}${amountDetail}`);
-    closeApiRefundModal();
-    setApiHint(`已生成${actionText}留言，请确认后发送`);
+    const submitButton = document.getElementById('btnApiRefundSubmit');
+    const previousText = submitButton?.textContent || '提交';
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = '提交中...';
+    }
+    setApiHint(`正在提交${actionText}申请，请稍候...`);
+    const activeSession = getApiActiveSession();
+    const refundAmountFen = refundType === 'resend'
+      ? 0
+      : Math.max(0, Math.round(Number(amountText || 0) * 100));
+    try {
+      const result = await window.pddApi.apiSubmitRefundApply({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession || undefined,
+        orderSn: orderContext?.orderId || '',
+        type: refundType,
+        receiptStatus,
+        reason,
+        questionType: questionType || undefined,
+        refundAmount: amountText,
+        refundAmountFen,
+        message: noteText,
+        manualEditedNote,
+      });
+      if (result?.error) {
+        recordApiSyncState('售后失败', result.error);
+        setApiHint(`申请售后失败：${result.error}`);
+        return;
+      }
+      closeApiRefundModal();
+      recordApiSyncState('售后成功', `类型：${actionText}${orderDetail}；等待 websocket 回流`);
+      setApiHint(`${actionText}申请已提交，正在等待原生消息回流...`);
+      try {
+        await loadApiSessions({ keepCurrent: true });
+        if (activeSession?.sessionId || state.apiActiveSessionId) {
+          await openApiSession(
+            activeSession?.sessionId || state.apiActiveSessionId,
+            activeSession?.customerName || state.apiActiveSessionName || '',
+            state.apiActiveSessionShopId,
+            { keepCurrent: true }
+          );
+        }
+      } catch {}
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = previousText;
+      }
+    }
   }
 
   function getApiMessageReadState(message = {}) {
@@ -2373,6 +2906,55 @@
         </div>
       </div>
     </div>`;
+  }
+
+  function renderApiRefundCardHtml(card = {}) {
+    const imageHtml = card.imageUrl
+      ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+      : '<div class="api-refund-card-media-placeholder">商品</div>';
+    const rows = [
+      { label: '申请类型', value: card.actionText || '退款' },
+      { label: '申请原因', value: card.reasonText || '其他原因' },
+      card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
+      { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
+      card.contactText ? { label: '联系方式', value: card.contactText } : null,
+    ].filter(Boolean);
+    return `<div class="api-message-bubble api-refund-card-bubble">
+      <div class="api-refund-card-header">${esc(card.title || '商家想帮您申请快捷退款')}</div>
+      <div class="api-refund-card-section">
+        <div class="api-refund-card-goods">
+          ${imageHtml}
+          <div class="api-refund-card-main">
+            <div class="api-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+            <div class="api-refund-card-goods-meta">
+              ${card.specText ? `<span class="api-refund-card-goods-spec">${esc(card.specText)}</span>` : '<span class="api-refund-card-goods-spec"></span>'}
+              ${card.amountText ? `<span class="api-refund-card-goods-price">${esc(card.amountText)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="api-refund-card-section api-refund-card-rows">
+        ${rows.map(row => `<div class="api-refund-card-row"><span class="api-refund-card-label">${esc(row.label)}</span><span class="api-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
+      </div>
+      <div class="api-refund-card-section api-refund-card-footer">${esc(card.footerText || '等待消费者确认')}</div>
+    </div>`;
+  }
+
+  function getApiDisplayMessages(state = {}, activeSession = null) {
+    const sessionKey = getApiSessionKey(activeSession || {});
+    const remoteMessages = Array.isArray(state.apiMessages) ? state.apiMessages.slice() : [];
+    const syntheticMessages = (Array.isArray(state.apiSyntheticRefundMessages) ? state.apiSyntheticRefundMessages : [])
+      .filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey);
+    const mergedMessages = remoteMessages.slice();
+    syntheticMessages.forEach(item => {
+      const syntheticKey = String(item?.syntheticKey || item?.refundCard?.localKey || '');
+      const duplicated = syntheticKey
+        && remoteMessages.some(remote => String(extractApiRefundCard(remote, activeSession)?.localKey || '') === syntheticKey);
+      if (!duplicated) {
+        mergedMessages.push(item);
+      }
+    });
+    return mergedMessages.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
   }
 
   async function ensureApiGoodsCardLoaded(linkInfo, fallbackCard) {
@@ -2548,7 +3130,8 @@
         return;
       }
 
-      if (!(state.apiMessages || []).length) {
+      const displayMessages = getApiDisplayMessages(state, activeSession);
+      if (!displayMessages.length) {
         container.innerHTML = renderApiEmptyStateHtml({
           title: '当前会话暂无消息',
           subtitle: '可继续等待买家消息，或手动发送一条新消息',
@@ -2557,7 +3140,7 @@
         return;
       }
 
-      const sortedMessages = state.apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+      const sortedMessages = displayMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
       let previousTimestamp = 0;
       container.innerHTML = sortedMessages.map((message, index) => {
         const isBuyer = !!message.isFromBuyer;
@@ -2575,16 +3158,26 @@
         const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
         const cachedGoodsCard = goodsLinkInfo ? state.apiGoodsCardCache?.get(goodsLinkInfo.cacheKey) : null;
         const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
+        const refundCard = !isBuyer ? extractApiRefundCard(message, activeSession) : null;
+        const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
+        const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, {
+          cardIndex: index,
+          activeSession,
+        }) : null;
         if (goodsLinkInfo && fallbackGoodsCard) {
           void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
         }
         const imageMessage = isApiImageMessage(message);
-        const bubbleHtml = goodsLinkInfo
+        const bubbleHtml = refundStatusUpdate
+          ? renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index, activeSession })
+          : resolvedRefundCard
+          ? renderApiRefundCardHtml(resolvedRefundCard)
+          : goodsLinkInfo
           ? renderApiGoodsCardHtml(goodsCard)
           : imageMessage
             ? `<div class="api-message-bubble"><div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div></div>`
             : `<div class="api-message-bubble"><div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div></div>`;
-        const copyButtonHtml = isBuyer && !goodsLinkInfo && !imageMessage && String(message.content || '').trim()
+        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !refundStatusUpdate && !imageMessage && String(message.content || '').trim()
           ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
           : '';
         const footerHtml = !isBuyer
@@ -2594,6 +3187,9 @@
           ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
           : '';
         previousTimestamp = message.timestamp;
+        if (resolvedRefundCard || refundStatusUpdate) {
+          return `${divider}<div class="api-message-item platform-card">${bubbleHtml}</div>`;
+        }
         return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
           <div class="api-message-avatar">${avatarHtml}</div>
           <div class="api-message-body">
@@ -3050,9 +3646,18 @@
     if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
     await loadApiTraffic(getApiStatusShopId(true));
     const nextState = getState();
-    if (String(payload?.sessionId || '') === String(nextState.apiActiveSessionId) && String(payload?.shopId || '') === String(nextState.apiActiveSessionShopId || '')) {
-      await openApiSession(nextState.apiActiveSessionId, nextState.apiActiveSessionName || payload.customer || '', nextState.apiActiveSessionShopId);
-    } else {
+    const isCurrentSession = String(payload?.sessionId || '') === String(nextState.apiActiveSessionId)
+      && String(payload?.shopId || '') === String(nextState.apiActiveSessionShopId || '');
+    const incomingMessages = Array.isArray(payload?.messages) ? payload.messages : [];
+    if (isCurrentSession && incomingMessages.length) {
+      incomingMessages.forEach(message => {
+        callRuntime('appendApiIncomingMessage', {
+          ...message,
+          shopId: payload.shopId || message?.shopId || nextState.apiActiveSessionShopId,
+          sessionId: payload.sessionId || message?.sessionId || nextState.apiActiveSessionId,
+        });
+      });
+    } else if (!isCurrentSession) {
       await loadApiSessions({ keepCurrent: true });
     }
     setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);

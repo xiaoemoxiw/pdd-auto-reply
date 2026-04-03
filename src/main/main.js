@@ -530,6 +530,22 @@ function startNetworkMonitor(view, shopId) {
       }
       apiTrafficStore.set(shopId, list);
       appendApiTrafficLog(shopId, entry);
+      if (String(entry?.url || '').includes('/latitude/order/price/update')) {
+        const requestBody = typeof entry?.requestBody === 'string' ? entry.requestBody : '';
+        if (requestBody) {
+          try {
+            const parsedBody = JSON.parse(requestBody);
+            if (parsedBody && typeof parsedBody === 'object' && (parsedBody.crawlerInfo || parsedBody.crawler_info)) {
+              store.set(`apiOrderPriceUpdateTemplate.${shopId}`, {
+                url: entry.url,
+                method: entry.method || 'POST',
+                requestBody: JSON.stringify(parsedBody),
+                updatedAt: Date.now(),
+              });
+            }
+          } catch {}
+        }
+      }
       console.log(`[接口抓取:${shopId}] [${entry.method}] ${entry.url} -> ${entry.status}`);
       sendToDebug('api-traffic', { shopId, entry });
       pushApiSessionsFromTraffic(shopId, entry);
@@ -581,6 +597,9 @@ function getApiClient(shopId) {
     },
     getApiTraffic() {
       return getApiTraffic(shopId);
+    },
+    getOrderPriceUpdateTemplate() {
+      return store.get(`apiOrderPriceUpdateTemplate.${shopId}`) || null;
     },
     requestInPddPage(request) {
       return requestViaPddPage(shopId, request);

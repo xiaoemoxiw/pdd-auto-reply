@@ -42,6 +42,7 @@ class PddApiClient extends EventEmitter {
     this._getApiTraffic = options.getApiTraffic || (() => []);
     this._requestInPddPage = options.requestInPddPage || null;
     this._executeInPddPage = options.executeInPddPage || null;
+    this._getOrderPriceUpdateTemplate = options.getOrderPriceUpdateTemplate || (() => null);
   }
 
   _log(message, extra) {
@@ -2493,6 +2494,113 @@ class PddApiClient extends EventEmitter {
     return this._post(url, body || {});
   }
 
+  _parseOrderPriceYuanToFen(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return 0;
+    return Math.round(numeric * 100);
+  }
+
+  _getLatestOrderPriceUpdateTemplate(orderSn = '') {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    const latestTrafficTemplate = this._findLatestTrafficEntry((entry) => {
+      if (!String(entry?.url || '').includes('/latitude/order/price/update')) return false;
+      if (!normalizedOrderSn) return true;
+      const body = this._safeParseJson(entry?.requestBody);
+      const targetOrderSn = String(body?.order_sn || body?.orderSn || '').trim();
+      return targetOrderSn === normalizedOrderSn;
+    }) || this._findLatestTraffic('/latitude/order/price/update');
+    if (latestTrafficTemplate) {
+      return latestTrafficTemplate;
+    }
+    const persistedTemplate = this._getOrderPriceUpdateTemplate();
+    if (!persistedTemplate || typeof persistedTemplate !== 'object') {
+      return null;
+    }
+    const persistedBody = this._safeParseJson(persistedTemplate?.requestBody);
+    if (!persistedBody || typeof persistedBody !== 'object') {
+      return null;
+    }
+    return {
+      url: persistedTemplate.url || `${PDD_BASE}/latitude/order/price/update`,
+      method: persistedTemplate.method || 'POST',
+      requestBody: JSON.stringify(persistedBody),
+    };
+  }
+
+  async updateOrderPrice(params = {}) {
+    const normalizedOrderSn = String(params?.orderSn || params?.order_sn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const sessionMeta = this._normalizeSessionMeta(params.session || params.sessionId || {});
+    const templateEntry = this._getLatestOrderPriceUpdateTemplate(normalizedOrderSn);
+    const templateBody = this._safeParseJson(templateEntry?.requestBody) || {};
+    const uid = Number(params?.uid || templateBody?.uid || this._getRefundOrderUid(sessionMeta) || 0);
+    if (!Number.isFinite(uid) || uid <= 0) {
+      throw new Error('缺少消费者 UID，请先在嵌入网页中打开对应会话后重试');
+    }
+    const discount = Number(params?.discount);
+    if (!Number.isFinite(discount) || discount < 1 || discount > 10) {
+      throw new Error('您仅可对订单进行一次改价操作，且优惠折扣不能低于1折');
+    }
+    const originalAmountFen = Number.isFinite(Number(params?.originalAmountFen))
+      ? Math.max(0, Math.round(Number(params.originalAmountFen)))
+      : this._parseOrderPriceYuanToFen(params?.originalAmount);
+    if (!originalAmountFen) {
+      throw new Error('缺少原始实收金额');
+    }
+    const shippingAmountFen = Number.isFinite(Number(params?.shippingAmountFen))
+      ? Math.max(0, Math.round(Number(params.shippingAmountFen)))
+      : this._parseOrderPriceYuanToFen(params?.shippingFee);
+    const goodsReceiveFen = Math.max(0, Math.ceil(originalAmountFen * (discount / 10)));
+    const goodsDiscountFen = Math.max(0, originalAmountFen - goodsReceiveFen);
+    const receiveAmountFen = goodsReceiveFen + shippingAmountFen;
+    const requestBody = {
+      uid,
+      order_sn: normalizedOrderSn,
+      goodsDiscount: String(goodsDiscountFen),
+      shippingDiscount: String(0),
+      receiveAmount: String(receiveAmountFen),
+      shippingAmount: shippingAmountFen,
+      crawlerInfo: String(params?.crawlerInfo || templateBody?.crawlerInfo || templateBody?.crawler_info || '').trim(),
+    };
+    if (!requestBody.crawlerInfo) {
+      throw new Error('缺少改价校验参数。请先在当前店铺初始化一次改价模板后再试；初始化完成后即可长期在接口页直接改价');
+    }
+    const payload = await this._requestRefundOrderPageApi('/latitude/order/price/update', requestBody);
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      throw new Error(businessError.message || '改价失败');
+    }
+    let verifiedOrder = null;
+    const normalizedTab = String(params?.tab || 'pending').trim() || 'pending';
+    try {
+      const latestOrders = await this._extractRefundOrdersFromPageApis(sessionMeta);
+      verifiedOrder = (Array.isArray(latestOrders) ? latestOrders : []).find(item => {
+        const currentOrderSn = String(item?.orderSn || item?.order_id || item?.order_sn || item?.orderId || '').trim();
+        return currentOrderSn === normalizedOrderSn;
+      }) || null;
+    } catch (error) {
+      this._log('[API] 改价后订单回读失败', {
+        orderSn: normalizedOrderSn,
+        message: error.message,
+      });
+    }
+    return {
+      success: true,
+      orderSn: normalizedOrderSn,
+      uid,
+      discount,
+      originalAmount: originalAmountFen / 100,
+      discountAmount: goodsDiscountFen / 100,
+      receiveAmount: receiveAmountFen / 100,
+      shippingFee: shippingAmountFen / 100,
+      verifiedOrder: this._cloneJson(verifiedOrder),
+      verifiedCard: verifiedOrder ? this._normalizeSideOrderCard(verifiedOrder, {}, normalizedTab, 0) : null,
+      response: payload,
+    };
+  }
+
   async _extractRefundOrdersFromPageApis(sessionMeta = {}) {
     const uid = this._getRefundOrderUid(sessionMeta);
     if (!uid) return null;
@@ -3128,7 +3236,7 @@ class PddApiClient extends EventEmitter {
   _resolveSideOrderDiscountText(sources = []) {
     for (const source of sources) {
       if (!source || typeof source !== 'object') continue;
-      for (const key of ['manualDiscount', 'merchantDiscount', 'discountAmount', 'totalDiscount']) {
+      for (const key of ['merchantDiscount', 'discountAmount', 'totalDiscount']) {
         if (source[key] === undefined || source[key] === null || source[key] === '') continue;
         const numeric = Number(source[key]);
         if (Number.isFinite(numeric) && numeric >= 0) {
@@ -3137,6 +3245,53 @@ class PddApiClient extends EventEmitter {
       }
     }
     return '-¥0.00';
+  }
+
+  _resolveSideOrderManualPriceInfo(sources = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const manualDiscount = Number(
+        source.manualDiscount
+        ?? source.manual_discount
+        ?? source.goodsDiscount
+        ?? source.goods_discount
+        ?? ''
+      );
+      const orderAmount = Number(
+        source.orderAmount
+        ?? source.order_amount
+        ?? source.pay_amount
+        ?? source.amount
+        ?? ''
+      );
+      const shippingAmount = Number(
+        source.shippingAmount
+        ?? source.shipping_amount
+        ?? 0
+      );
+      if (!Number.isFinite(manualDiscount) || manualDiscount <= 0) continue;
+      if (!Number.isFinite(orderAmount) || orderAmount < 0) continue;
+      const originalAmount = Math.max(0, orderAmount + manualDiscount);
+      const discount = originalAmount > 0
+        ? Number(((orderAmount / originalAmount) * 10).toFixed(2))
+        : 0;
+      return {
+        applied: true,
+        originalAmount,
+        currentAmount: Math.max(0, orderAmount),
+        discountAmount: Math.max(0, manualDiscount),
+        shippingFee: Math.max(0, shippingAmount),
+        discount,
+      };
+    }
+    return {
+      applied: false,
+      originalAmount: 0,
+      currentAmount: 0,
+      discountAmount: 0,
+      shippingFee: 0,
+      discount: 0,
+    };
   }
 
   _resolveSideOrderPendingCountdown(sources = []) {
@@ -3183,6 +3338,7 @@ class PddApiClient extends EventEmitter {
   _buildSideOrderActionTags(tab = 'personal', sources = []) {
     const tags = ['备注'];
     const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
+    const manualPriceInfo = this._resolveSideOrderManualPriceInfo(sources);
     if (shippingInfo.isShipped || shippingInfo.trackingNo) {
       tags.push('物流信息');
     }
@@ -3196,7 +3352,7 @@ class PddApiClient extends EventEmitter {
       tags.push('新增额外包裹');
     }
     const statusText = this._pickRefundText(sources, ['orderStatusStr', 'order_status_str']);
-    if (tab === 'pending' || /待支付/.test(statusText)) {
+    if (!manualPriceInfo.applied && (tab === 'pending' || /待支付/.test(statusText))) {
       tags.push('改价');
     }
     return [...new Set(tags)].slice(0, 6);
@@ -3204,6 +3360,7 @@ class PddApiClient extends EventEmitter {
 
   _normalizeSideOrderCard(item = {}, fallback = {}, tab = 'personal', index = 0) {
     const sources = this._buildSideOrderSources(item, fallback);
+    const manualPriceInfo = this._resolveSideOrderManualPriceInfo(sources);
     const goodsInfo = Array.isArray(item?.orderGoodsList)
       ? (item.orderGoodsList[0] || {})
       : (item?.orderGoodsList || item?.goodsInfo || item?.goods_info || item?.raw?.orderGoodsList || {});
@@ -3259,6 +3416,11 @@ class PddApiClient extends EventEmitter {
       noteTag: remarkTag || cachedRemark?.tag || '',
       noteTagName: remarkTagName || cachedRemark?.tagName || '',
       actionTags: this._buildSideOrderActionTags(tab, sources),
+      manualPriceApplied: manualPriceInfo.applied,
+      manualPriceOriginalAmount: manualPriceInfo.originalAmount / 100,
+      manualPriceDiscount: manualPriceInfo.discount,
+      manualPriceDiscountAmount: manualPriceInfo.discountAmount / 100,
+      manualPriceShippingFee: manualPriceInfo.shippingFee / 100,
     };
   }
 

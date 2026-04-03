@@ -24,6 +24,9 @@ class NetworkMonitor {
     // 需要捕获响应体的 URL 关键词（从 DevTools 截图中识别的关键接口）
     this.capturePatterns = [
       '/plateau/',    // PDD 客服平台核心 API（含 sync/message, chat/list 等）
+      '/latitude/',   // 订单、改价、待支付等接口
+      '/mercury/',    // 售后与订单辅助接口
+      '/pizza/order/', // 订单备注等页面接口
       '/chats/',
       '/get_signature',
       '/store_image',

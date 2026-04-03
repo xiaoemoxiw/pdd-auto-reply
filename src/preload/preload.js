@@ -82,6 +82,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiGetOrderRemark: (params) => ipcRenderer.invoke('api-get-order-remark', params),
   apiGetOrderRemarkTags: (params) => ipcRenderer.invoke('api-get-order-remark-tags', params),
   apiSaveOrderRemark: (params) => ipcRenderer.invoke('api-save-order-remark', params),
+  apiUpdateOrderPrice: (params) => ipcRenderer.invoke('api-update-order-price', params),
   apiSendMessage: (params) => ipcRenderer.invoke('api-send-message', params),
   apiSelectImage: () => ipcRenderer.invoke('api-select-image'),
   apiSendImage: (params) => ipcRenderer.invoke('api-send-image', params),

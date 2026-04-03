@@ -155,6 +155,17 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-update-order-price', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn) return { error: '缺少订单编号' };
+    try {
+      return await getApiClient(shopId).updateOrderPrice(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
   ipcMain.handle('api-send-message', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

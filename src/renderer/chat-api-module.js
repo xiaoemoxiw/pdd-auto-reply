@@ -26,6 +26,9 @@
     BLUE: '蓝色',
     PURPLE: '紫色',
   };
+  const API_SIDE_ORDER_PRICE_MIN_DISCOUNT = 1;
+  const API_SIDE_ORDER_PRICE_MAX_DISCOUNT = 10;
+  const API_SIDE_ORDER_PRICE_ERROR_TEXT = '您仅可对订单进行一次改价操作，且优惠折扣不能低于1折';
   let apiSideOrderRemarkState = {
     visible: false,
     loading: false,
@@ -37,6 +40,19 @@
     autoAppendMeta: true,
     error: '',
     tags: { ...API_ORDER_REMARK_TAG_LABELS },
+  };
+  let apiSideOrderPriceState = {
+    visible: false,
+    saving: false,
+    orderKey: '',
+    orderId: '',
+    originalAmount: 0,
+    shippingFee: 0,
+    discount: '',
+    amount: '',
+    error: '',
+    previewAmount: 0,
+    hasChange: false,
   };
 
   function getRuntime() {
@@ -153,6 +169,19 @@
       tag: '',
       error: '',
     };
+    apiSideOrderPriceState = {
+      ...apiSideOrderPriceState,
+      visible: false,
+      saving: false,
+      orderKey: '',
+      orderId: '',
+      originalAmount: 0,
+      discount: '',
+      amount: '',
+      error: '',
+      previewAmount: 0,
+      hasChange: false,
+    };
     Object.values(apiSideOrderStore).forEach(entry => {
       entry.cacheKey = '';
       entry.loading = false;
@@ -236,6 +265,274 @@
         <strong>${esc(item?.value || '')}</strong>
       </div>
     `).join('');
+  }
+
+  function normalizeApiSideOrderDecimalInput(value = '', decimals = 2) {
+    const raw = String(value ?? '').replace(/[^\d.]/g, '');
+    if (!raw) return '';
+    const dotIndex = raw.indexOf('.');
+    if (dotIndex === -1) return raw;
+    const integer = raw.slice(0, dotIndex) || '0';
+    const decimal = raw.slice(dotIndex + 1).replace(/\./g, '').slice(0, decimals);
+    return `${integer}.${decimal}`;
+  }
+
+  function formatApiSideOrderMoneyNumber(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    return numeric.toFixed(2);
+  }
+
+  function formatApiSideOrderDiscountNumber(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    return numeric.toFixed(2).replace(/\.?0+$/, '');
+  }
+
+  function parseApiSideOrderMoneyValue(value = '') {
+    const numeric = Number(String(value ?? '').replace(/[^\d.-]/g, ''));
+    if (!Number.isFinite(numeric)) return 0;
+    return numeric;
+  }
+
+  function formatApiSideOrderSummaryMoney(value = 0, { negative = false } = {}) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return negative ? '-¥0.00' : '¥0.00';
+    const normalized = Math.max(0, numeric);
+    return `${negative ? '-' : ''}¥${normalized.toFixed(2)}`;
+  }
+
+  function buildApiSideOrderPriceMetrics(payload = {}) {
+    const originalAmount = Math.max(0, Number(payload.originalAmount) || 0);
+    const shippingFee = Math.max(0, Number(payload.shippingFee) || 0);
+    const source = payload.source === 'amount' ? 'amount' : 'discount';
+    let discount = normalizeApiSideOrderDecimalInput(payload.discount, 2);
+    let amount = normalizeApiSideOrderDecimalInput(payload.amount, 2);
+    if (source === 'discount') {
+      const discountValue = Number(discount);
+      if (discount && Number.isFinite(discountValue)) {
+        const boundedDiscount = Math.min(discountValue, API_SIDE_ORDER_PRICE_MAX_DISCOUNT);
+        discount = boundedDiscount === discountValue
+          ? discount
+          : formatApiSideOrderDiscountNumber(boundedDiscount);
+        amount = formatApiSideOrderMoneyNumber(originalAmount * (1 - boundedDiscount / 10));
+      } else {
+        amount = '';
+      }
+    } else {
+      const amountValue = Number(amount);
+      if (amount && Number.isFinite(amountValue) && originalAmount > 0) {
+        const boundedAmount = Math.min(Math.max(amountValue, 0), originalAmount);
+        amount = formatApiSideOrderMoneyNumber(boundedAmount);
+        const discountValue = (1 - boundedAmount / originalAmount) * 10;
+        discount = formatApiSideOrderDiscountNumber(discountValue);
+      } else {
+        discount = '';
+      }
+    }
+    const discountValue = Number(discount);
+    const amountValue = Number(amount);
+    const hasDiscount = discount !== '' && Number.isFinite(discountValue);
+    const hasAmount = amount !== '' && Number.isFinite(amountValue);
+    const invalidDiscount = hasDiscount && discountValue <= API_SIDE_ORDER_PRICE_MIN_DISCOUNT;
+    const previewAmount = hasAmount
+      ? Math.max(0, originalAmount - amountValue + shippingFee)
+      : Math.max(0, originalAmount + shippingFee);
+    return {
+      discount,
+      amount,
+      error: invalidDiscount ? API_SIDE_ORDER_PRICE_ERROR_TEXT : '',
+      previewAmount,
+      hasChange: hasAmount && amountValue > 0,
+    };
+  }
+
+  function getApiSideOrderPriceBaseAmount(order = {}) {
+    const savedBaseAmount = Number(order?.manualPriceOriginalAmount);
+    if (order?.manualPriceApplied && Number.isFinite(savedBaseAmount) && savedBaseAmount > 0) {
+      return savedBaseAmount;
+    }
+    return Math.max(0, parseApiSideOrderMoneyValue(order?.amountText));
+  }
+
+  function closeApiSideOrderPriceEditor() {
+    apiSideOrderPriceState = {
+      ...apiSideOrderPriceState,
+      visible: false,
+      saving: false,
+      orderKey: '',
+      orderId: '',
+      originalAmount: 0,
+      discount: '',
+      amount: '',
+      error: '',
+      previewAmount: 0,
+      hasChange: false,
+    };
+  }
+
+  function getApiSideOrderSummaryConfig(order = {}) {
+    const rows = Array.isArray(order?.summaryRows) ? order.summaryRows : [];
+    let receiveIndex = -1;
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (rows[index]?.tone === 'danger') {
+        receiveIndex = index;
+        break;
+      }
+    }
+    const normalRows = receiveIndex >= 0 ? rows.slice(0, receiveIndex) : rows;
+    const receiveRow = receiveIndex >= 0
+      ? rows[receiveIndex]
+      : {
+          label: '实收',
+          value: formatApiSideOrderSummaryMoney(getApiSideOrderPriceBaseAmount(order)),
+          tone: 'danger',
+        };
+    return {
+      normalRows,
+      receiveRow,
+    };
+  }
+
+  function renderApiSideOrderSummaryRow(row = {}) {
+    return `
+      <div class="api-side-order-card-summary-row${row?.tone === 'danger' ? ' is-danger' : ''}">
+        <span>${esc(row?.label || '')}</span>
+        <strong>${esc(row?.value || '')}</strong>
+      </div>
+    `;
+  }
+
+  function renderApiSideOrderPriceEditor(order = {}) {
+    const isVisible = apiSideOrderPriceState.visible && String(apiSideOrderPriceState.orderKey || '') === String(order?.key || '');
+    if (!isVisible) return '';
+    const state = apiSideOrderPriceState;
+    const tipHtml = `<div class="api-side-order-price-error${state.error ? ' is-danger' : ''}" data-api-side-price-error="1">${esc(API_SIDE_ORDER_PRICE_ERROR_TEXT)}</div>`;
+    return `
+      <div class="api-side-order-price-editor" data-api-side-price-editor="1">
+        <div class="api-side-order-card-summary-row api-side-order-card-summary-row--edit">
+          <span>手工改价</span>
+          <div class="api-side-order-price-formula">
+            <input
+              type="text"
+              class="api-side-order-price-input is-discount"
+              value="${esc(state.discount)}"
+              inputmode="decimal"
+              placeholder="0"
+              ${state.saving ? 'disabled' : ''}
+              data-api-side-price-discount="1"
+            >
+            <span class="api-side-order-price-unit">折</span>
+            <span class="api-side-order-price-equal">=</span>
+            <span class="api-side-order-price-prefix">-</span>
+            <input
+              type="text"
+              class="api-side-order-price-input is-amount"
+              value="${esc(state.amount)}"
+              inputmode="decimal"
+              placeholder="0.00"
+              ${state.saving ? 'disabled' : ''}
+              data-api-side-price-amount="1"
+            >
+            <span class="api-side-order-price-unit">元</span>
+          </div>
+        </div>
+        ${tipHtml}
+        <div class="api-side-order-card-summary-row api-side-order-card-summary-row--edit">
+          <span>配送费用</span>
+          <div class="api-side-order-price-shipping">
+            <span class="api-side-order-price-prefix">¥</span>
+            <input
+              type="text"
+              class="api-side-order-price-input is-disabled"
+              value="${esc(formatApiSideOrderMoneyNumber(state.shippingFee))}"
+              disabled
+              data-api-side-price-shipping="1"
+            >
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderApiSideOrderPriceActions(order = {}) {
+    const isVisible = apiSideOrderPriceState.visible && String(apiSideOrderPriceState.orderKey || '') === String(order?.key || '');
+    if (!isVisible) return '';
+    return `
+      <div class="api-side-order-price-actions">
+        <button type="button" class="api-side-order-remark-btn is-primary is-compact" data-api-side-price-save="1" ${apiSideOrderPriceState.saving || apiSideOrderPriceState.error || !apiSideOrderPriceState.hasChange ? 'disabled' : ''}>${apiSideOrderPriceState.saving ? '保存中...' : '保存'}</button>
+        <button type="button" class="api-side-order-remark-btn is-compact" data-api-side-price-cancel="1" ${apiSideOrderPriceState.saving ? 'disabled' : ''}>取消</button>
+      </div>
+    `;
+  }
+
+  function renderApiSideOrderPriceSummary(order = {}) {
+    const { normalRows, receiveRow } = getApiSideOrderSummaryConfig(order);
+    const baseAmount = getApiSideOrderPriceBaseAmount(order);
+    const savedDiscountAmount = Number(order?.manualPriceDiscountAmount);
+    const savedShippingFee = Math.max(0, Number(order?.manualPriceShippingFee) || 0);
+    const isEditing = apiSideOrderPriceState.visible && String(apiSideOrderPriceState.orderKey || '') === String(order?.key || '');
+    const receiveValue = isEditing
+      ? String(receiveRow?.value || '')
+      : (order?.manualPriceApplied
+        ? formatApiSideOrderSummaryMoney(baseAmount - (Number.isFinite(savedDiscountAmount) ? Math.max(0, savedDiscountAmount) : 0) + savedShippingFee)
+        : String(receiveRow?.value || ''));
+    const parts = normalRows.map(renderApiSideOrderSummaryRow);
+    if (isEditing) {
+      parts.push(renderApiSideOrderPriceEditor(order));
+    } else if (order?.manualPriceApplied) {
+      parts.push(renderApiSideOrderSummaryRow({
+        label: '手工改价',
+        value: `${esc(formatApiSideOrderDiscountNumber(order?.manualPriceDiscount || 0))}折 = ${esc(formatApiSideOrderSummaryMoney(savedDiscountAmount, { negative: true }))}`,
+      }));
+      parts.push(renderApiSideOrderSummaryRow({
+        label: '配送费用',
+        value: formatApiSideOrderSummaryMoney(savedShippingFee),
+      }));
+    }
+    parts.push(`
+      <div class="api-side-order-card-summary-row is-danger">
+        <span>${esc(receiveRow?.label || '实收')}</span>
+        <strong data-api-side-price-receive="1">${esc(receiveValue || '¥0.00')}</strong>
+      </div>
+    `);
+    return `<div class="api-side-order-card-summary">${parts.join('')}</div>`;
+  }
+
+  function syncApiSideOrderPriceEditorDom(orderKey = '') {
+    const normalizedOrderKey = String(orderKey || '');
+    if (!normalizedOrderKey || !apiSideOrderPriceState.visible || apiSideOrderPriceState.orderKey !== normalizedOrderKey) return;
+    const cardEl = document.querySelector(`.api-side-order-card[data-api-side-order-key="${CSS.escape(normalizedOrderKey)}"]`);
+    if (!cardEl) return;
+    const discountInput = cardEl.querySelector('[data-api-side-price-discount]');
+    const amountInput = cardEl.querySelector('[data-api-side-price-amount]');
+    const errorEl = cardEl.querySelector('[data-api-side-price-error]');
+    const saveButton = cardEl.querySelector('[data-api-side-price-save]');
+    if (discountInput) discountInput.value = apiSideOrderPriceState.discount;
+    if (amountInput) amountInput.value = apiSideOrderPriceState.amount;
+    if (errorEl) {
+      errorEl.textContent = API_SIDE_ORDER_PRICE_ERROR_TEXT;
+      errorEl.classList.toggle('is-danger', !!apiSideOrderPriceState.error);
+    }
+    if (saveButton) {
+      saveButton.disabled = !!apiSideOrderPriceState.saving || !!apiSideOrderPriceState.error || !apiSideOrderPriceState.hasChange;
+    }
+  }
+
+  function setApiSideOrderPriceValue(source = 'discount', rawValue = '') {
+    if (!apiSideOrderPriceState.visible || !apiSideOrderPriceState.orderKey) return;
+    const nextState = buildApiSideOrderPriceMetrics({
+      originalAmount: apiSideOrderPriceState.originalAmount,
+      shippingFee: apiSideOrderPriceState.shippingFee,
+      discount: source === 'discount' ? rawValue : apiSideOrderPriceState.discount,
+      amount: source === 'amount' ? rawValue : apiSideOrderPriceState.amount,
+      source,
+    });
+    apiSideOrderPriceState = {
+      ...apiSideOrderPriceState,
+      ...nextState,
+    };
+    syncApiSideOrderPriceEditorDom(apiSideOrderPriceState.orderKey);
   }
 
   function showApiSideOrderToast(message) {
@@ -415,15 +712,19 @@
   function renderApiSideOrderCard(order = {}) {
     const actionTags = Array.isArray(order?.actionTags) ? order.actionTags : [];
     const metaRowsHtml = buildApiSideOrderMetaRows(order?.metaRows || []);
-    const summaryRowsHtml = buildApiSideOrderSummaryRows(order?.summaryRows || []);
+    const summaryRowsHtml = renderApiSideOrderPriceSummary(order);
+    const isPriceEditing = apiSideOrderPriceState.visible && String(apiSideOrderPriceState.orderKey || '') === String(order?.key || '');
     const countdownHtml = order?.countdownEndTime
       ? `<span class="api-side-order-card-countdown" data-api-side-countdown-end="${esc(order.countdownEndTime)}">${esc(order?.countdownText || '')}</span>`
       : '';
-    const actionTagsHtml = actionTags.length
+    const actionTagsHtml = !isPriceEditing && actionTags.length
       ? `<div class="api-side-order-card-actions">${actionTags.map(tag => {
           const label = String(tag || '').trim();
           if (label === '备注') {
             return `<button type="button" class="api-side-order-card-action is-button" data-api-side-action="remark" data-api-side-order-key="${esc(order?.key || '')}">${esc(label)}</button>`;
+          }
+          if (label === '改价' && !order?.manualPriceApplied) {
+            return `<button type="button" class="api-side-order-card-action is-button" data-api-side-action="price" data-api-side-order-key="${esc(order?.key || '')}">${esc(label)}</button>`;
           }
           return `<span class="api-side-order-card-action">${esc(label)}</span>`;
         }).join('')}</div>`
@@ -454,8 +755,9 @@
             <div class="api-side-order-card-price">${esc(order?.amountText || '待确认')}</div>
           </div>
         </div>
-        ${summaryRowsHtml ? `<div class="api-side-order-card-summary">${summaryRowsHtml}</div>` : ''}
+        ${summaryRowsHtml}
         ${renderApiSideOrderRemarkSummary(order)}
+        ${renderApiSideOrderPriceActions(order)}
         ${actionTagsHtml}
         ${renderApiSideOrderRemarkEditor(order)}
       </div>
@@ -601,6 +903,7 @@
       showApiSideOrderToast('未找到对应订单');
       return;
     }
+    closeApiSideOrderPriceEditor();
     if (apiSideOrderRemarkState.visible && apiSideOrderRemarkState.orderKey === orderKey && !apiSideOrderRemarkState.loading) {
       apiSideOrderRemarkState = {
         ...apiSideOrderRemarkState,
@@ -688,6 +991,151 @@
     });
   }
 
+  function applyApiSideOrderPrice(orderId = '', payload = {}) {
+    const normalizedOrderId = String(orderId || '').trim();
+    if (!normalizedOrderId) return;
+    Object.values(apiSideOrderStore).forEach(entry => {
+      entry.items = (Array.isArray(entry.items) ? entry.items : []).map(item => {
+        if (String(item?.orderId || '').trim() !== normalizedOrderId) return item;
+        const actionTags = Array.isArray(item?.actionTags) ? item.actionTags.filter(tag => String(tag || '').trim() !== '改价') : [];
+        return {
+          ...item,
+          manualPriceApplied: true,
+          manualPriceOriginalAmount: Number(payload.originalAmount) || 0,
+          manualPriceDiscount: Number(payload.discount) || 0,
+          manualPriceDiscountAmount: Number(payload.discountAmount ?? payload.amount) || 0,
+          manualPriceShippingFee: Math.max(0, Number(payload.shippingFee) || 0),
+          amountText: formatApiSideOrderSummaryMoney(Number(payload.receiveAmount) || 0),
+          actionTags,
+        };
+      });
+    });
+  }
+
+  function replaceApiSideOrderItem(orderId = '', nextOrder = null) {
+    const normalizedOrderId = String(orderId || '').trim();
+    if (!normalizedOrderId || !nextOrder || typeof nextOrder !== 'object') return false;
+    let replaced = false;
+    Object.values(apiSideOrderStore).forEach(entry => {
+      entry.items = (Array.isArray(entry.items) ? entry.items : []).map(item => {
+        if (String(item?.orderId || '').trim() !== normalizedOrderId) return item;
+        replaced = true;
+        return {
+          ...item,
+          ...nextOrder,
+          key: item?.key || nextOrder?.key || item?.orderId || normalizedOrderId,
+        };
+      });
+    });
+    return replaced;
+  }
+
+  function openApiSideOrderPrice(orderKey = '') {
+    const order = getApiSideOrderItem(orderKey);
+    if (!order) {
+      showApiSideOrderToast('未找到对应订单');
+      return;
+    }
+    apiSideOrderRemarkState = {
+      ...apiSideOrderRemarkState,
+      visible: false,
+      loading: false,
+      saving: false,
+      orderKey: '',
+      orderId: '',
+      note: '',
+      tag: '',
+      error: '',
+    };
+    if (apiSideOrderPriceState.visible && apiSideOrderPriceState.orderKey === orderKey) {
+      closeApiSideOrderPriceEditor();
+      renderApiSideOrders();
+      return;
+    }
+    const originalAmount = getApiSideOrderPriceBaseAmount(order);
+    const hasSavedAmount = !!order?.manualPriceApplied;
+    const initialDiscount = hasSavedAmount ? order?.manualPriceDiscount : '9.5';
+    const nextState = buildApiSideOrderPriceMetrics({
+      originalAmount,
+      shippingFee: 0,
+      discount: initialDiscount,
+      amount: hasSavedAmount ? order?.manualPriceDiscountAmount : '',
+      source: hasSavedAmount ? 'amount' : 'discount',
+    });
+    apiSideOrderPriceState = {
+      ...apiSideOrderPriceState,
+      visible: true,
+      saving: false,
+      orderKey: String(order.key || ''),
+      orderId: String(order.orderId || ''),
+      originalAmount,
+      shippingFee: 0,
+      ...nextState,
+    };
+    renderApiSideOrders();
+  }
+
+  async function saveApiSideOrderPrice() {
+    const state = getState();
+    const order = getApiSideOrderItem(apiSideOrderPriceState.orderKey);
+    if (!order) {
+      showApiSideOrderToast('未找到对应订单');
+      return;
+    }
+    if (!window.pddApi?.apiUpdateOrderPrice) {
+      showApiSideOrderToast('当前版本尚未提供改价接口');
+      return;
+    }
+    if (apiSideOrderPriceState.error || !apiSideOrderPriceState.hasChange) {
+      showApiSideOrderToast(apiSideOrderPriceState.error || '请先输入有效改价信息');
+      return;
+    }
+    apiSideOrderPriceState = {
+      ...apiSideOrderPriceState,
+      saving: true,
+      error: '',
+    };
+    renderApiSideOrders();
+    try {
+      const result = await window.pddApi.apiUpdateOrderPrice({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: getApiSideOrderSession(),
+        tab: state.apiSideTab || 'pending',
+        orderSn: order.orderId,
+        discount: Number(apiSideOrderPriceState.discount),
+        amount: Number(apiSideOrderPriceState.amount),
+        originalAmount: Number(apiSideOrderPriceState.originalAmount),
+        shippingFee: Number(apiSideOrderPriceState.shippingFee),
+      });
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      const replaced = replaceApiSideOrderItem(order.orderId, result?.verifiedCard);
+      if (!replaced) {
+        applyApiSideOrderPrice(order.orderId, {
+          originalAmount: result?.originalAmount ?? apiSideOrderPriceState.originalAmount,
+          shippingFee: result?.shippingFee ?? apiSideOrderPriceState.shippingFee,
+          discount: result?.discount ?? apiSideOrderPriceState.discount,
+          discountAmount: result?.discountAmount ?? apiSideOrderPriceState.amount,
+          receiveAmount: result?.receiveAmount ?? apiSideOrderPriceState.previewAmount,
+        });
+      }
+      const currentEntry = getApiSideOrderEntry(state.apiSideTab || 'pending');
+      currentEntry.stale = true;
+      closeApiSideOrderPriceEditor();
+      renderApiSideOrders();
+      showApiSideOrderToast('改价保存成功');
+    } catch (error) {
+      showApiSideOrderToast(error?.message || '改价保存失败');
+      apiSideOrderPriceState = {
+        ...apiSideOrderPriceState,
+        saving: false,
+      };
+      renderApiSideOrders();
+    }
+  }
+
   async function saveApiSideOrderRemark() {
     const state = getState();
     const order = getApiSideOrderItem(apiSideOrderRemarkState.orderKey);
@@ -753,18 +1201,29 @@
 
   function handleApiSideOrderListInput(event) {
     const textarea = event.target.closest('[data-api-side-remark-textarea]');
-    if (!textarea) return;
-    const value = String(textarea.value || '').slice(0, API_ORDER_REMARK_MAX_LENGTH);
-    if (textarea.value !== value) {
-      textarea.value = value;
+    if (textarea) {
+      const value = String(textarea.value || '').slice(0, API_ORDER_REMARK_MAX_LENGTH);
+      if (textarea.value !== value) {
+        textarea.value = value;
+      }
+      apiSideOrderRemarkState = {
+        ...apiSideOrderRemarkState,
+        note: value,
+      };
+      const countEl = textarea.closest('.api-side-order-remark-editor')?.querySelector('[data-api-side-remark-count]');
+      if (countEl) {
+        countEl.textContent = `${value.length} / ${API_ORDER_REMARK_MAX_LENGTH}`;
+      }
+      return;
     }
-    apiSideOrderRemarkState = {
-      ...apiSideOrderRemarkState,
-      note: value,
-    };
-    const countEl = textarea.closest('.api-side-order-remark-editor')?.querySelector('[data-api-side-remark-count]');
-    if (countEl) {
-      countEl.textContent = `${value.length} / ${API_ORDER_REMARK_MAX_LENGTH}`;
+    const discountInput = event.target.closest('[data-api-side-price-discount]');
+    if (discountInput) {
+      setApiSideOrderPriceValue('discount', discountInput.value);
+      return;
+    }
+    const amountInput = event.target.closest('[data-api-side-price-amount]');
+    if (amountInput) {
+      setApiSideOrderPriceValue('amount', amountInput.value);
     }
   }
 
@@ -809,6 +1268,11 @@
       await openApiSideOrderRemark(remarkTrigger.dataset.apiSideOrderKey || '');
       return;
     }
+    const priceTrigger = event.target.closest('[data-api-side-action="price"]');
+    if (priceTrigger) {
+      openApiSideOrderPrice(priceTrigger.dataset.apiSideOrderKey || '');
+      return;
+    }
     const tagButton = event.target.closest('[data-api-side-remark-color]');
     if (tagButton) {
       apiSideOrderRemarkState = {
@@ -843,6 +1307,15 @@
     }
     if (event.target.closest('[data-api-side-remark-save]')) {
       await saveApiSideOrderRemark();
+      return;
+    }
+    if (event.target.closest('[data-api-side-price-cancel]')) {
+      closeApiSideOrderPriceEditor();
+      renderApiSideOrders();
+      return;
+    }
+    if (event.target.closest('[data-api-side-price-save]')) {
+      saveApiSideOrderPrice();
     }
   }
 

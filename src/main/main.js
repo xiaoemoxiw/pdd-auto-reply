@@ -51,6 +51,7 @@ const store = new Store({
     mailUrl: '',
     invoiceUrl: '',
     violationUrl: '',
+    ticketUrl: '',
     shops: [],
     activeShopId: '',
     shopGroups: [],
@@ -83,6 +84,7 @@ const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
 const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=441077635572';
 const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav';
 const PDD_VIOLATION_URL = 'https://mms.pinduoduo.com/pg/violation_list/mall_manage?msfrom=mms_sidenav';
+const PDD_TICKET_URL = 'https://mms.pinduoduo.com/aftersales/work_order/list?msfrom=mms_sidenav';
 
 const MOCK_SHOPS = [
   { id: 'shop_1', name: '环球优品旗舰店', account: 'huanqiu_001', mallId: '', group: 'group_1', remark: '主力店铺', status: 'online', loginMethod: 'token', userAgent: '', bindTime: '2025-10-15', category: '日用百货', balance: 15280.50 },
@@ -285,8 +287,12 @@ function getPddViolationUrl() {
   return store.get('violationUrl') || PDD_VIOLATION_URL;
 }
 
+function getPddTicketUrl() {
+  return store.get('ticketUrl') || PDD_TICKET_URL;
+}
+
 function isEmbeddedPddView(view) {
-  return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation';
+  return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket';
 }
 
 function isMailRelatedView(view) {
@@ -301,10 +307,15 @@ function isViolationRelatedView(view) {
   return view === 'violation' || view === 'violation-api';
 }
 
+function isTicketRelatedView(view) {
+  return view === 'ticket' || view === 'ticket-api';
+}
+
 function getEmbeddedViewUrl(view) {
   if (isMailRelatedView(view)) return getPddMailUrl();
   if (isInvoiceRelatedView(view)) return getPddInvoiceUrl();
   if (isViolationRelatedView(view)) return getPddViolationUrl();
+  if (isTicketRelatedView(view)) return getPddTicketUrl();
   return getPddChatUrl();
 }
 
@@ -325,22 +336,31 @@ function isViolationPageUrl(url) {
   return text.includes('/pg/violation_list/') || text.includes('/violation_list/');
 }
 
+function isTicketPageUrl(url) {
+  const text = String(url || '');
+  return text.includes('/aftersales/work_order/') || text.includes('/work_order/');
+}
+
 function normalizeStoredPddUrls() {
   const storedChatUrl = store.get('chatUrl');
-  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl) || isViolationPageUrl(storedChatUrl)) {
+  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl) || isViolationPageUrl(storedChatUrl) || isTicketPageUrl(storedChatUrl)) {
     store.set('chatUrl', PDD_CHAT_URL);
   }
   const storedMailUrl = store.get('mailUrl');
-  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl) || isViolationPageUrl(storedMailUrl)) {
+  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl) || isViolationPageUrl(storedMailUrl) || isTicketPageUrl(storedMailUrl)) {
     store.set('mailUrl', PDD_MAIL_URL);
   }
   const storedInvoiceUrl = store.get('invoiceUrl');
-  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl) || isViolationPageUrl(storedInvoiceUrl)) {
+  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl) || isViolationPageUrl(storedInvoiceUrl) || isTicketPageUrl(storedInvoiceUrl)) {
     store.set('invoiceUrl', PDD_INVOICE_URL);
   }
   const storedViolationUrl = store.get('violationUrl');
-  if (!storedViolationUrl || isChatPageUrl(storedViolationUrl) || isMailPageUrl(storedViolationUrl) || isInvoicePageUrl(storedViolationUrl)) {
+  if (!storedViolationUrl || isChatPageUrl(storedViolationUrl) || isMailPageUrl(storedViolationUrl) || isInvoicePageUrl(storedViolationUrl) || isTicketPageUrl(storedViolationUrl)) {
     store.set('violationUrl', PDD_VIOLATION_URL);
+  }
+  const storedTicketUrl = store.get('ticketUrl');
+  if (!storedTicketUrl || isChatPageUrl(storedTicketUrl) || isMailPageUrl(storedTicketUrl) || isInvoicePageUrl(storedTicketUrl) || isViolationPageUrl(storedTicketUrl)) {
+    store.set('ticketUrl', PDD_TICKET_URL);
   }
 }
 
@@ -376,6 +396,10 @@ function detectChatPage(view, shopId) {
   if (isViolationPageUrl(currentUrl) && currentUrl !== store.get('violationUrl')) {
     store.set('violationUrl', currentUrl);
     console.log('[PDD助手] 自动检测到违规管理页面，已保存:', currentUrl);
+  }
+  if (isTicketPageUrl(currentUrl) && currentUrl !== store.get('ticketUrl')) {
+    store.set('ticketUrl', currentUrl);
+    console.log('[PDD助手] 自动检测到工单管理页面，已保存:', currentUrl);
   }
 
   view.webContents.executeJavaScript(`
@@ -1499,10 +1523,12 @@ registerEmbeddedViewIpc({
   isMailPageUrl,
   isInvoicePageUrl,
   isViolationPageUrl,
+  isTicketPageUrl,
   isChatPageUrl,
   getPddMailUrl,
   getPddInvoiceUrl,
   getPddViolationUrl,
+  getPddTicketUrl,
   getPddChatUrl,
   getEmbeddedViewUrl
 });

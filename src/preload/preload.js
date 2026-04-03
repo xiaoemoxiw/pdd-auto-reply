@@ -60,6 +60,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   setInvoiceUrl: (url) => ipcRenderer.invoke('set-invoice-url', url),
   getViolationUrl: () => ipcRenderer.invoke('get-violation-url'),
   setViolationUrl: (url) => ipcRenderer.invoke('set-violation-url', url),
+  getTicketUrl: () => ipcRenderer.invoke('get-ticket-url'),
+  setTicketUrl: (url) => ipcRenderer.invoke('set-ticket-url', url),
   getCurrentUrl: () => ipcRenderer.invoke('get-current-url'),
 
   // Cookie 注入

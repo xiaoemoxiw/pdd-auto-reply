@@ -4030,6 +4030,7 @@
   <link rel="stylesheet" href="./mail-api-module.css">
   <link rel="stylesheet" href="./invoice-api-module.css">
   <link rel="stylesheet" href="./violation-api-module.css">
+  <link rel="stylesheet" href="./ticket-api-module.css">
   <link rel="stylesheet" href="./qa-module.css">
   <link rel="stylesheet" href="./test-flow-module.css">
 </head>
@@ -4145,6 +4146,27 @@
           </svg>
           <span>违规管理（接口对接）</span>
         </div>
+        <div class="nav-item" data-view="ticket">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          <span>工单管理（嵌入网页）</span>
+        </div>
+        <div class="nav-item" data-view="ticket-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <path d="M8 9h4"></path>
+          </svg>
+          <span>工单管理（接口对接）</span>
+        </div>
         <div class="nav-item" data-view="shops">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
@@ -4193,15 +4215,6 @@
             <rect x="3" y="14" width="7" height="7"></rect>
           </svg>
           <span>数据中心</span>
-        </div>
-        <div class="nav-item" data-view="sub-ticket">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-          </svg>
-          <span>工单管理</span>
         </div>
         <div class="nav-item" data-view="sub-aftersale">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -4302,6 +4315,23 @@
           <div class="chat-placeholder">
             <p>拼多多违规管理页面加载中...</p>
             <p style="margin-top:8px;color:#999;">进入列表后可切换违规分类、打开详情并观察抓包。</p>
+          </div>
+        </div>
+      </div>
+      <div class="view-page" id="viewTicket">
+        <div class="chat-bar">
+          <button class="chat-bar-btn" id="btnTicketListTip">工单列表</button>
+          <button class="chat-bar-btn" id="btnTicketDispatchTip">批量派发</button>
+          <button class="chat-bar-btn" id="btnTicketDetailTip">工单详情</button>
+          <div class="chat-bar-sep"></div>
+          <button class="chat-bar-btn" id="btnTicketOpenDebug">调试窗口</button>
+          <div style="flex:1"></div>
+          <span class="api-panel-subtitle" id="ticketCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开工单管理后台</span>
+        </div>
+        <div style="position:relative;flex:1;">
+          <div class="chat-placeholder">
+            <p>拼多多工单管理页面加载中...</p>
+            <p style="margin-top:8px;color:#999;">进入列表后可筛选工单、查看详情并观察抓包。</p>
           </div>
         </div>
       </div>
@@ -4852,6 +4882,163 @@
               </div>
               <div class="violation-api-traffic-panel">
                 <div class="mail-api-traffic-list violation-api-traffic-list" id="violationApiTrafficList">
+                  <span class="mail-api-traffic-chip">暂无抓包</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="view-page" id="viewTicketApi">
+        <div class="ticket-api-page">
+          <div class="ticket-api-header-bar">
+            <div class="ticket-api-header-main">
+              <span class="ticket-api-header-title">工单数据</span>
+              <span class="ticket-api-header-updated">更新时间 <span id="ticketApiUpdatedAt">-</span></span>
+            </div>
+          </div>
+
+          <div class="ticket-api-section">
+            <div class="ticket-api-banner">
+              <span class="ticket-api-banner-icon">!</span>
+              <span id="ticketApiBannerText">请先进入工单管理后台列表页，再切到接口对接页查看同步结果。</span>
+            </div>
+          </div>
+
+          <div class="ticket-api-section">
+            <div class="ticket-api-metrics" id="ticketApiMetrics">
+              <div class="ticket-api-metric-card">
+                <div class="ticket-api-metric-label">工单量</div>
+                <div class="ticket-api-metric-value" id="ticketApiMetricTotal">0</div>
+                <div class="ticket-api-metric-unit">单</div>
+              </div>
+              <div class="ticket-api-metric-card">
+                <div class="ticket-api-metric-label">违规处理量</div>
+                <div class="ticket-api-metric-value is-warn" id="ticketApiMetricViolationHandled">0</div>
+                <div class="ticket-api-metric-unit">单</div>
+              </div>
+              <div class="ticket-api-metric-card">
+                <div class="ticket-api-metric-label">违规处理率</div>
+                <div class="ticket-api-metric-value is-warn" id="ticketApiMetricViolationRate">0.00</div>
+                <div class="ticket-api-metric-unit">%</div>
+              </div>
+              <div class="ticket-api-metric-card">
+                <div class="ticket-api-metric-label">完结率</div>
+                <div class="ticket-api-metric-value" id="ticketApiMetricClosedRate">0.00</div>
+                <div class="ticket-api-metric-unit">%</div>
+              </div>
+              <div class="ticket-api-metric-card">
+                <div class="ticket-api-metric-label">有效完结率</div>
+                <div class="ticket-api-metric-value" id="ticketApiMetricEffectiveClosedRate">0.00</div>
+                <div class="ticket-api-metric-unit">%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ticket-api-section">
+            <div class="ticket-api-query-title">工单查询</div>
+            <div class="ticket-api-filter-row">
+              <div class="ticket-api-filter-inline-label">工单筛选</div>
+              <button class="ticket-api-quick-tab active" data-ticket-quick="pending">待处理 <span id="ticketApiQuickPendingCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="timeout">2小时内将逾期 <span id="ticketApiQuickTimeoutCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="processing">处理中 <span id="ticketApiQuickProcessingCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="closed">违规已处理 <span id="ticketApiQuickClosedCount">0</span></button>
+            </div>
+            <div class="ticket-api-filter-panel">
+              <div class="ticket-api-filter-grid">
+                <div class="ticket-api-filter-item">
+                  <label class="ticket-api-filter-label" for="ticketApiKeyword">订单编号</label>
+                  <input class="form-input" id="ticketApiKeyword" placeholder="请输入订单编号">
+                </div>
+                <div class="ticket-api-filter-item">
+                  <label class="ticket-api-filter-label" for="ticketApiStatusFilter">工单状态</label>
+                  <select class="form-select" id="ticketApiStatusFilter">
+                    <option value="">全部</option>
+                  </select>
+                </div>
+                <div class="ticket-api-filter-item">
+                  <label class="ticket-api-filter-label" for="ticketApiTypeFilter">问题类型</label>
+                  <select class="form-select" id="ticketApiTypeFilter">
+                    <option value="">全部</option>
+                  </select>
+                </div>
+                <div class="ticket-api-filter-item">
+                  <label class="ticket-api-filter-label" for="ticketApiDatePreset">创建时间</label>
+                  <select class="form-select" id="ticketApiDatePreset">
+                    <option value="all">全部时间</option>
+                    <option value="60">近60天内</option>
+                    <option value="30">近30天内</option>
+                    <option value="7">近7天内</option>
+                  </select>
+                </div>
+                <div class="ticket-api-filter-item ticket-api-filter-item-span2">
+                  <label class="ticket-api-filter-label">时间范围</label>
+                  <div class="ticket-api-date-range" id="ticketApiDateRangeText">-</div>
+                </div>
+              </div>
+              <div class="ticket-api-filter-actions">
+                <button class="btn btn-primary" id="btnTicketApiApplyFilters">搜索</button>
+                <button class="btn btn-secondary" id="btnTicketApiResetFilters">重置</button>
+                <span class="spacer"></span>
+                <button class="btn btn-secondary" id="btnTicketApiRefreshList">刷新列表</button>
+                <button class="btn btn-secondary" id="btnTicketApiRefreshPage">刷新工单页</button>
+                <button class="btn btn-secondary" id="btnTicketApiReloadTraffic">刷新抓包</button>
+                <button class="btn btn-secondary" id="btnTicketApiOpenDebug">调试窗口</button>
+                <button class="btn btn-secondary" id="btnTicketApiClearTraffic">清空记录</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="ticket-api-section">
+            <div class="ticket-api-table-header">
+              <div class="ticket-api-table-title">
+                <span>查询结果</span>
+                <span class="ticket-api-table-meta">共查询到 <span id="ticketApiResultCount">0</span> 个工单</span>
+              </div>
+              <div class="ticket-api-table-status" id="ticketApiListStatus">当前仅展示工单管理相关抓包与接口提取结果</div>
+            </div>
+            <div class="ticket-api-list-head">
+              <div>订单信息</div>
+              <div>处理进度</div>
+              <div>处理时间</div>
+              <div>操作</div>
+            </div>
+            <div class="ticket-api-list-wrap" id="ticketApiList">
+            </div>
+            <div class="ticket-api-table-footer">
+              <span class="ticket-api-table-meta" id="ticketApiFooterTotal">共 0 条</span>
+            </div>
+          </div>
+
+          <div class="ticket-api-detail-shell">
+            <div class="ticket-api-detail-main ticket-api-section">
+              <div class="ticket-api-table-header">
+                <div class="ticket-api-table-title">
+                  <span>工单详情</span>
+                  <span class="ticket-api-table-meta" id="ticketApiDetailMeta">点击表格中的“查看详情”打开详情</span>
+                </div>
+                <button class="btn btn-secondary" id="btnTicketApiBackToTicket">切回工单页</button>
+              </div>
+              <div class="ticket-api-detail-head" id="ticketApiDetailHead">
+                <div class="mail-api-detail-title">请选择一条工单记录</div>
+                <div class="mail-api-detail-meta">
+                  <span>工单号：-</span>
+                  <span>提交时间：-</span>
+                </div>
+              </div>
+              <div class="ticket-api-detail-panel" id="ticketApiDetailPanel">
+                <div class="invoice-api-detail-empty">请选择一条工单记录查看详情</div>
+              </div>
+            </div>
+            <div class="ticket-api-detail-side ticket-api-section">
+              <div class="ticket-api-table-header">
+                <div class="ticket-api-table-title">
+                  <span>接口抓包</span>
+                  <span class="ticket-api-table-meta" id="ticketApiTrafficSummary">0 条抓包记录</span>
+                </div>
+              </div>
+              <div class="ticket-api-traffic-panel">
+                <div class="mail-api-traffic-list ticket-api-traffic-list" id="ticketApiTrafficList">
                   <span class="mail-api-traffic-chip">暂无抓包</span>
                 </div>
               </div>
@@ -5575,6 +5762,7 @@
   <script src="./mail-api-module.js"></script>
   <script src="./invoice-api-module.js"></script>
   <script src="./violation-api-module.js"></script>
+  <script src="./ticket-api-module.js"></script>
   <script src="./qa-module.js"></script>
   <script src="./shops-module.js"></script>
   <script src="./test-flow-module.js"></script>
@@ -5903,10 +6091,12 @@
         mail: 'viewMail',
         invoice: 'viewInvoice',
         violation: 'viewViolation',
+        ticket: 'viewTicket',
         'chat-api': 'viewChatApi',
         'mail-api': 'viewMailApi',
         'invoice-api': 'viewInvoiceApi',
         'violation-api': 'viewViolationApi',
+        'ticket-api': 'viewTicketApi',
         shops: 'viewShops',
         qa: 'viewQA',
         ai: 'viewAI',
@@ -5932,6 +6122,8 @@
         await loadInvoiceApiView(options);
       } else if (view === 'violation-api') {
         await loadViolationApiView(options);
+      } else if (view === 'ticket-api') {
+        await loadTicketApiView(options);
       } else if (view === 'shops') {
         await loadShops();
       } else if (view === 'qa') {
@@ -5954,6 +6146,9 @@
 
       if (nextView === 'sub-violation') {
         nextView = 'violation';
+      }
+      if (nextView === 'sub-ticket') {
+        nextView = 'ticket';
       }
 
       currentView = nextView;
@@ -6586,7 +6781,7 @@
     }
 
     function isEmbeddedPddView(view) {
-      return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation';
+      return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket';
     }
 
     function isMailPageUrl(url) {
@@ -6604,6 +6799,11 @@
     function isViolationPageUrl(url) {
       const text = String(url || '');
       return text.includes('/pg/violation_list/') || text.includes('/violation_list/');
+    }
+
+    function isTicketPageUrl(url) {
+      const text = String(url || '');
+      return text.includes('/aftersales/work_order/') || text.includes('/work_order/');
     }
 
     function formatApiListTime(value) {
@@ -7992,7 +8192,7 @@
     window.pddApi.onShopSwitched(async (data) => {
       updateShopSwitcherDisplay(data.shop);
       addLog(`已切换到: ${data.shop?.name || '未知店铺'}`, 'info');
-      if (currentView === 'mail' || currentView === 'mail-api' || currentView === 'invoice' || currentView === 'invoice-api' || currentView === 'violation' || currentView === 'violation-api') {
+      if (currentView === 'mail' || currentView === 'mail-api' || currentView === 'invoice' || currentView === 'invoice-api' || currentView === 'violation' || currentView === 'violation-api' || currentView === 'ticket' || currentView === 'ticket-api') {
         await window.pddApi.reloadPdd();
       }
       if (currentView === 'chat-api') {
@@ -8006,6 +8206,9 @@
       }
       if (currentView === 'violation-api') {
         loadViolationApiView();
+      }
+      if (currentView === 'ticket-api') {
+        loadTicketApiView();
       }
     });
 
@@ -8041,6 +8244,9 @@
       }
       if (currentView === 'violation-api') {
         loadViolationApiView();
+      }
+      if (currentView === 'ticket-api') {
+        loadTicketApiView();
       }
     });
 
@@ -8755,12 +8961,16 @@
     document.getElementById('btnMailOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
     document.getElementById('btnInvoiceOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
     document.getElementById('btnViolationOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
+    document.getElementById('btnTicketOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
     document.getElementById('btnInvoiceListTip').addEventListener('click', () => addLog('请在嵌入网页中查看待开票列表并观察抓包', 'info'));
     document.getElementById('btnInvoiceActionTip').addEventListener('click', () => addLog('请在嵌入网页中点击“立即开票”，当前接口版先完成列表与统计对接', 'info'));
     document.getElementById('btnInvoiceSkipTip').addEventListener('click', () => addLog('请在嵌入网页中处理“暂不开票”动作，当前接口版保留抓包观察能力', 'info'));
     document.getElementById('btnViolationListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看店铺违规管理列表并观察抓包', 'info'));
     document.getElementById('btnViolationAppealTip')?.addEventListener('click', () => addLog('请在嵌入网页中进入申诉/整改页签，接口版将复用抓包与接口解析', 'info'));
     document.getElementById('btnViolationWarnTip')?.addEventListener('click', () => addLog('请在嵌入网页中进入违规预警页签，接口版将同步扩展筛选与详情', 'info'));
+    document.getElementById('btnTicketListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看工单列表并观察抓包', 'info'));
+    document.getElementById('btnTicketDispatchTip')?.addEventListener('click', () => addLog('请在嵌入网页中尝试批量派发或切换筛选条件并观察抓包', 'info'));
+    document.getElementById('btnTicketDetailTip')?.addEventListener('click', () => addLog('请在嵌入网页中打开工单详情并观察抓包', 'info'));
 
     document.getElementById('btnTestReply').addEventListener('click', async () => {
       const btn = document.getElementById('btnTestReply');
@@ -8808,6 +9018,13 @@
           }
           await window.pddApi.setViolationUrl(url);
           addLog(`已保存违规管理入口: ${url}`, 'info');
+        } else if (currentView === 'ticket' || currentView === 'ticket-api') {
+          if (!isTicketPageUrl(url)) {
+            addLog('当前不是工单管理页面，未保存入口', 'error');
+            return;
+          }
+          await window.pddApi.setTicketUrl(url);
+          addLog(`已保存工单管理入口: ${url}`, 'info');
         } else {
           if (!isChatPageUrl(url)) {
             addLog('当前不是客户对话页面，未保存入口', 'error');

@@ -50,6 +50,7 @@ const store = new Store({
     chatUrl: '',
     mailUrl: '',
     invoiceUrl: '',
+    violationUrl: '',
     shops: [],
     activeShopId: '',
     shopGroups: [],
@@ -81,6 +82,7 @@ const messageDedup = new Map(); // "customer|message" -> timestamp
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
 const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=441077635572';
 const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav';
+const PDD_VIOLATION_URL = 'https://mms.pinduoduo.com/pg/violation_list/mall_manage?msfrom=mms_sidenav';
 
 const MOCK_SHOPS = [
   { id: 'shop_1', name: '环球优品旗舰店', account: 'huanqiu_001', mallId: '', group: 'group_1', remark: '主力店铺', status: 'online', loginMethod: 'token', userAgent: '', bindTime: '2025-10-15', category: '日用百货', balance: 15280.50 },
@@ -279,8 +281,12 @@ function getPddInvoiceUrl() {
   return store.get('invoiceUrl') || PDD_INVOICE_URL;
 }
 
+function getPddViolationUrl() {
+  return store.get('violationUrl') || PDD_VIOLATION_URL;
+}
+
 function isEmbeddedPddView(view) {
-  return view === 'chat' || view === 'mail' || view === 'invoice';
+  return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation';
 }
 
 function isMailRelatedView(view) {
@@ -291,9 +297,14 @@ function isInvoiceRelatedView(view) {
   return view === 'invoice' || view === 'invoice-api';
 }
 
+function isViolationRelatedView(view) {
+  return view === 'violation' || view === 'violation-api';
+}
+
 function getEmbeddedViewUrl(view) {
   if (isMailRelatedView(view)) return getPddMailUrl();
   if (isInvoiceRelatedView(view)) return getPddInvoiceUrl();
+  if (isViolationRelatedView(view)) return getPddViolationUrl();
   return getPddChatUrl();
 }
 
@@ -309,18 +320,27 @@ function isInvoicePageUrl(url) {
   return String(url || '').includes('/invoice/');
 }
 
+function isViolationPageUrl(url) {
+  const text = String(url || '');
+  return text.includes('/pg/violation_list/') || text.includes('/violation_list/');
+}
+
 function normalizeStoredPddUrls() {
   const storedChatUrl = store.get('chatUrl');
-  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl)) {
+  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl) || isViolationPageUrl(storedChatUrl)) {
     store.set('chatUrl', PDD_CHAT_URL);
   }
   const storedMailUrl = store.get('mailUrl');
-  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl)) {
+  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl) || isViolationPageUrl(storedMailUrl)) {
     store.set('mailUrl', PDD_MAIL_URL);
   }
   const storedInvoiceUrl = store.get('invoiceUrl');
-  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl)) {
+  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl) || isViolationPageUrl(storedInvoiceUrl)) {
     store.set('invoiceUrl', PDD_INVOICE_URL);
+  }
+  const storedViolationUrl = store.get('violationUrl');
+  if (!storedViolationUrl || isChatPageUrl(storedViolationUrl) || isMailPageUrl(storedViolationUrl) || isInvoicePageUrl(storedViolationUrl)) {
+    store.set('violationUrl', PDD_VIOLATION_URL);
   }
 }
 
@@ -352,6 +372,10 @@ function detectChatPage(view, shopId) {
   if (isInvoicePageUrl(currentUrl) && currentUrl !== store.get('invoiceUrl')) {
     store.set('invoiceUrl', currentUrl);
     console.log('[PDD助手] 自动检测到待开票页面，已保存:', currentUrl);
+  }
+  if (isViolationPageUrl(currentUrl) && currentUrl !== store.get('violationUrl')) {
+    store.set('violationUrl', currentUrl);
+    console.log('[PDD助手] 自动检测到违规管理页面，已保存:', currentUrl);
   }
 
   view.webContents.executeJavaScript(`
@@ -1474,9 +1498,11 @@ registerEmbeddedViewIpc({
   isEmbeddedPddView,
   isMailPageUrl,
   isInvoicePageUrl,
+  isViolationPageUrl,
   isChatPageUrl,
   getPddMailUrl,
   getPddInvoiceUrl,
+  getPddViolationUrl,
   getPddChatUrl,
   getEmbeddedViewUrl
 });

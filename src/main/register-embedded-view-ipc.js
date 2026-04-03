@@ -7,9 +7,11 @@ function registerEmbeddedViewIpc({
   isEmbeddedPddView,
   isMailPageUrl,
   isInvoicePageUrl,
+  isViolationPageUrl,
   isChatPageUrl,
   getPddMailUrl,
   getPddInvoiceUrl,
+  getPddViolationUrl,
   getPddChatUrl,
   getEmbeddedViewUrl
 }) {
@@ -37,6 +39,12 @@ function registerEmbeddedViewIpc({
     return true;
   });
 
+  ipcMain.handle('get-violation-url', () => store.get('violationUrl'));
+  ipcMain.handle('set-violation-url', (event, url) => {
+    store.set('violationUrl', url);
+    return true;
+  });
+
   ipcMain.handle('get-current-url', () => {
     const view = getShopManager()?.getActiveView();
     return view ? view.webContents.getURL() : '';
@@ -60,6 +68,9 @@ function registerEmbeddedViewIpc({
         }
         if (view === 'invoice' && !isInvoicePageUrl(currentUrl)) {
           activeView.webContents.loadURL(getPddInvoiceUrl());
+        }
+        if (view === 'violation' && !isViolationPageUrl(currentUrl)) {
+          activeView.webContents.loadURL(getPddViolationUrl());
         }
         if (view === 'chat' && !isChatPageUrl(currentUrl)) {
           activeView.webContents.loadURL(getPddChatUrl());

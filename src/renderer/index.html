@@ -3124,6 +3124,96 @@
       font-weight: 600;
     }
 
+    .api-side-order-card-summary-row--edit {
+      align-items: flex-start;
+    }
+
+    .api-side-order-price-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 2px 0 4px;
+    }
+
+    .api-side-order-price-formula,
+    .api-side-order-price-shipping {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .api-side-order-price-input {
+      width: 56px;
+      height: 28px;
+      padding: 0 6px;
+      border: 1px solid #cfd6e4;
+      border-radius: 4px;
+      background: #fff;
+      color: #4f5663;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 28px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .api-side-order-price-input:focus {
+      border-color: #7b9cff;
+      box-shadow: 0 0 0 2px rgba(93, 131, 239, 0.12);
+    }
+
+    .api-side-order-price-input.is-discount {
+      width: 50px;
+    }
+
+    .api-side-order-price-input.is-amount,
+    .api-side-order-price-input.is-disabled {
+      width: 64px;
+    }
+
+    .api-side-order-price-input.is-disabled {
+      border-color: #d7dce7;
+      background: #f3f4f7;
+      color: #a1a8b5;
+      box-shadow: none;
+    }
+
+    .api-side-order-price-unit,
+    .api-side-order-price-prefix,
+    .api-side-order-price-equal {
+      color: #5f6877;
+      font-size: 12px;
+      line-height: 1.4;
+      flex-shrink: 0;
+    }
+
+    .api-side-order-price-prefix {
+      font-weight: 600;
+    }
+
+    .api-side-order-price-error {
+      color: #9aa3b2;
+      font-size: 11px;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+
+    .api-side-order-price-error.is-danger {
+      color: #ef3f3f;
+    }
+
+    .api-side-order-price-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      width: 100%;
+      gap: 8px;
+      padding-top: 6px;
+    }
+
     .api-side-order-card-actions {
       display: flex;
       flex-wrap: wrap;
@@ -3403,6 +3493,14 @@
       font-size: 13px;
       font-weight: 500;
       transition: all 0.18s ease;
+    }
+
+    .api-side-order-remark-btn.is-compact {
+      min-width: 54px;
+      height: 28px;
+      padding: 0 12px;
+      border-radius: 6px;
+      font-size: 12px;
     }
 
     .api-side-order-remark-btn:hover {

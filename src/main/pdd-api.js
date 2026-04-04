@@ -546,6 +546,12 @@ class PddApiClient extends EventEmitter {
     if (ext === '.gif') return 'image/gif';
     if (ext === '.webp') return 'image/webp';
     if (ext === '.bmp') return 'image/bmp';
+    if (ext === '.mp4') return 'video/mp4';
+    if (ext === '.mov') return 'video/quicktime';
+    if (ext === '.m4v') return 'video/x-m4v';
+    if (ext === '.webm') return 'video/webm';
+    if (ext === '.avi') return 'video/x-msvideo';
+    if (ext === '.mkv') return 'video/x-matroska';
     return 'application/octet-stream';
   }
 
@@ -2635,6 +2641,47 @@ class PddApiClient extends EventEmitter {
     return this._post(urlPath, body || {}, headers);
   }
 
+  async _requestVideoMaterialApi(urlPath, body = {}) {
+    const headers = {
+      accept: 'application/json, text/plain, */*',
+      'content-type': 'application/json',
+      Referer: `${PDD_BASE}/material/service`,
+      Origin: PDD_BASE,
+    };
+    if (typeof this._requestInPddPage === 'function') {
+      return this._requestInPddPage({
+        method: 'POST',
+        url: urlPath,
+        headers,
+        body: JSON.stringify(body || {}),
+      });
+    }
+    return this._post(urlPath, body || {}, headers);
+  }
+
+  _normalizeVideoFile(item = {}) {
+    const extra = item?.extra_info && typeof item.extra_info === 'object' ? item.extra_info : {};
+    return {
+      id: Number(item.id || item.file_id || 0) || 0,
+      name: String(item.name || item.file_name || '').trim(),
+      extension: String(item.extension || '').trim(),
+      url: String(item.url || '').trim(),
+      fileType: String(item.file_type || item.fileType || '').trim(),
+      size: Number(item.size || extra.size || 0) || 0,
+      checkStatus: Number(item.check_status || item.checkStatus || 0) || 0,
+      checkComment: String(item.check_comment || item.checkComment || '').trim(),
+      createTime: Number(item.create_time || item.createTime || 0) || 0,
+      updateTime: Number(item.update_time || item.updateTime || 0) || 0,
+      coverUrl: String(extra.video_cover_url || extra.cover_url || extra.coverUrl || '').trim(),
+      duration: Number(extra.duration || 0) || 0,
+      width: Number(extra.width || 0) || 0,
+      height: Number(extra.height || 0) || 0,
+      f20Url: String(extra.f20_url || extra.f20Url || '').trim(),
+      f30Url: String(extra.f30_url || extra.f30Url || extra.transcode_f30_url || '').trim(),
+      raw: this._cloneJson(item),
+    };
+  }
+
   _normalizeRefundApplyType(type) {
     const normalized = String(type || '').trim();
     if (!normalized || normalized === 'refund' || normalized === '1') {
@@ -4365,6 +4412,118 @@ class PddApiClient extends EventEmitter {
       imageUrl,
       uploadBaseUrl: extra?.uploadBaseUrl || '',
       response: payload
+    };
+    this.emit('messageSent', result);
+    return result;
+  }
+
+  async getVideoLibrary(params = {}) {
+    if (!this._sessionInited) {
+      await this.initSession();
+    }
+    const includePending = params.includePending === true;
+    const requestBody = {
+      file_type_desc: 'video',
+      file_name: String(params.fileName || '').trim(),
+      order_by: 'create_time desc',
+      page: Math.max(1, Number(params.page || 1) || 1),
+      page_size: Math.max(1, Math.min(100, Number(params.pageSize || 100) || 100)),
+    };
+    if (!includePending) {
+      requestBody.check_status_list = [2];
+    }
+    const payload = await this._post('/latitude/user/file/list', requestBody, {
+      accept: 'application/json, text/plain, */*',
+      'content-type': 'application/json',
+      Referer: CHAT_URL,
+      Origin: PDD_BASE,
+    });
+    const result = payload?.result && typeof payload.result === 'object' ? payload.result : {};
+    const list = Array.isArray(result.file_with_check_dtolist) ? result.file_with_check_dtolist : [];
+    return {
+      total: Number(result.total || list.length || 0) || 0,
+      list: list.map(item => this._normalizeVideoFile(item)),
+    };
+  }
+
+  async getVideoFileDetail(params = {}) {
+    if (!this._sessionInited) {
+      await this.initSession();
+    }
+    const fileId = Number(params.fileId || params.file_id || 0) || 0;
+    const fileUrl = String(params.fileUrl || params.file_url || '').trim();
+    if (!fileId && !fileUrl) {
+      throw new Error('缺少视频文件标识');
+    }
+    const requestBody = {};
+    if (fileId) requestBody.file_id = fileId;
+    if (fileUrl) requestBody.file_url = fileUrl;
+    const payload = await this._requestVideoMaterialApi('/garner/mms/file/queryFileDetail', requestBody);
+    const detail = payload?.result && typeof payload.result === 'object' ? payload.result : {};
+    return this._normalizeVideoFile(detail);
+  }
+
+  async waitVideoFileReady(params = {}) {
+    const timeoutMs = Math.max(1000, Number(params.timeoutMs || 120000) || 120000);
+    const pollMs = Math.max(500, Number(params.pollMs || 2000) || 2000);
+    const deadline = Date.now() + timeoutMs;
+    let lastDetail = null;
+    let lastError = null;
+    while (Date.now() < deadline) {
+      try {
+        lastDetail = await this.getVideoFileDetail(params);
+        lastError = null;
+        if (Number(lastDetail?.checkStatus || 0) === 2 && String(lastDetail?.url || '').trim()) {
+          return lastDetail;
+        }
+        if ([3, 4, 5].includes(Number(lastDetail?.checkStatus || 0))) {
+          throw new Error(lastDetail?.checkComment || '视频审核未通过');
+        }
+      } catch (error) {
+        lastError = error;
+      }
+      await this._sleep(pollMs);
+    }
+    throw new Error(lastDetail?.checkComment || lastError?.message || '视频转码超时，请稍后重试');
+  }
+
+  async sendVideoUrl(sessionRef, videoUrl, extra = {}) {
+    if (!this._sessionInited) {
+      await this.initSession();
+    }
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const url = String(videoUrl || '').trim();
+    const uid = String(sessionMeta.userUid || sessionMeta.customerId || sessionMeta.sessionId || '').trim();
+    if (!url) {
+      throw new Error('缺少视频地址');
+    }
+    if (!uid) {
+      throw new Error('缺少会话 uid');
+    }
+    const requestBody = {
+      uid,
+      url,
+    };
+    this._log('[API] 发送视频', {
+      sessionId: String(sessionMeta.sessionId || ''),
+      targetUid: uid,
+      videoUrl: url,
+    });
+    const payload = await this._post('/plateau/message/library_file/send', requestBody, {
+      accept: 'application/json, text/plain, */*',
+      'content-type': 'application/json',
+      Referer: CHAT_URL,
+      Origin: PDD_BASE,
+    });
+    const result = {
+      success: true,
+      sessionId: String(sessionMeta.sessionId || ''),
+      customerId: String(sessionMeta.customerId || ''),
+      userUid: uid,
+      videoUrl: url,
+      videoCoverUrl: String(extra.coverUrl || extra.video_cover_url || '').trim(),
+      videoDuration: Number(extra.duration || 0) || 0,
+      response: payload,
     };
     this.emit('messageSent', result);
     return result;

@@ -2417,7 +2417,9 @@
     }
 
     .api-system-refund-card.pending .api-system-refund-card-goods {
-      gap: 10px;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
       padding: 10px 18px;
       border-bottom-color: #ececec;
     }
@@ -2432,8 +2434,8 @@
 
     .api-system-refund-card.pending .api-system-refund-card-media,
     .api-system-refund-card.pending .api-system-refund-card-media-placeholder {
-      width: 53px;
-      height: 53px;
+      width: 100px;
+      height: 100px;
     }
 
     .api-system-refund-card-media {
@@ -2462,6 +2464,44 @@
 
     .api-system-refund-card.pending .api-system-refund-card-main {
       gap: 4px;
+    }
+
+    .api-system-refund-card-media-block {
+      width: 100px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .api-system-refund-card-media-title {
+      color: #333;
+      font-size: 12px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .api-system-refund-card-side {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .api-system-refund-card-side-top {
+      width: 100%;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .api-system-refund-card-side-price {
+      color: #333;
+      font-size: 16px;
+      line-height: 1.2;
+      font-weight: 600;
+      white-space: nowrap;
     }
 
     .api-system-refund-card-title-row {
@@ -3091,7 +3131,358 @@
       max-width: 180px;
       max-height: 180px;
       border-radius: 8px;
+      cursor: zoom-in;
+    }
+
+    .api-image-preview-modal {
+      width: min(90vw, 960px);
+      max-width: 960px;
+      background: #111827;
+    }
+
+    .api-image-preview-modal .modal-header {
+      border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .api-image-preview-modal .modal-header h3,
+    .api-image-preview-modal .modal-close {
+      color: #fff;
+    }
+
+    .api-image-preview-modal .modal-close:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .api-image-preview-body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: #111827;
+      max-height: 80vh;
+    }
+
+    .api-image-preview-content {
+      display: block;
+      max-width: 100%;
+      max-height: calc(80vh - 32px);
+      object-fit: contain;
+      border-radius: 8px;
+      background: #0f172a;
+    }
+
+    .api-message-video {
+      display: block;
+      position: relative;
+      width: 100px;
+      min-width: 100px;
+      max-width: 100px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #111827;
+      color: #fff;
+    }
+
+    .api-message-video-cover {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      display: block;
+      background: linear-gradient(135deg, #eef2ff, #c7d2fe);
+    }
+
+    .api-message-video-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 180px;
+      background: linear-gradient(135deg, #64748b, #0f172a);
+      font-size: 42px;
+    }
+
+    .api-message-video-mask {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.32));
+      pointer-events: none;
+    }
+
+    .api-message-video-play {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.62);
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
+      position: relative;
+    }
+
+    .api-message-video-play::before {
+      content: '';
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-left: 10px solid #fff;
+    }
+
+    .api-message-video-footer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 6px 8px;
+      background: linear-gradient(rgba(15, 23, 42, 0), rgba(15, 23, 42, 0.82));
+      font-size: 10px;
+      line-height: 1.3;
+    }
+
+    .api-message-video-duration,
+    .api-message-video-label {
+      color: #fff;
+    }
+
+    .api-video-popover-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.08);
+      backdrop-filter: blur(1px);
+      z-index: 2090;
+    }
+
+    .api-video-popover-backdrop.visible {
+      display: block;
+    }
+
+    .api-video-popover {
+      display: none;
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: min(400px, calc(100vw - 32px));
+      max-height: min(320px, calc(100vh - 32px));
+      background: #fff;
+      border: 1px solid #e6ebf5;
+      border-radius: 12px;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
+      overflow: hidden;
+      z-index: 2100;
+    }
+
+    .api-video-popover.visible {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .api-video-popover-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid #eef1f6;
+    }
+
+    .api-video-popover-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #202939;
+    }
+
+    .api-video-popover-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .api-video-popover-content {
+      flex: 1;
+      padding: 10px 12px;
+      min-height: 0;
+    }
+
+    .api-video-popover-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 8px 12px 10px;
+      border-top: 1px solid #eef1f6;
+      background: #fff;
+    }
+
+    .api-video-empty {
+      min-height: 132px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #2f3a4a;
+      font-size: 15px;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)),
+        repeating-linear-gradient(-25deg, rgba(229, 231, 235, 0.22) 0, rgba(229, 231, 235, 0.22) 12px, rgba(255, 255, 255, 0) 12px, rgba(255, 255, 255, 0) 120px);
+    }
+
+    .api-video-empty-action {
+      border: none;
+      background: none;
+      color: #5b7cff;
       cursor: pointer;
+      font-size: inherit;
+      padding: 0;
+    }
+
+    .api-video-grid {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      max-height: 188px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .api-video-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      border: 1px solid #e7eaf0;
+      border-radius: 10px;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+      text-align: left;
+      padding: 10px;
+    }
+
+    .api-video-card-media {
+      width: 100%;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+
+    .api-video-card:hover {
+      border-color: #c8d4ff;
+      box-shadow: 0 8px 20px rgba(91, 124, 255, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .api-video-card.is-selected {
+      border-color: #5b7cff;
+      box-shadow: 0 0 0 2px rgba(91, 124, 255, 0.12);
+    }
+
+    .api-video-card.is-selected .api-video-card-media {
+      border-color: #9bb6eb;
+    }
+
+    .api-video-card-cover-wrap {
+      position: relative;
+      width: 98px;
+      height: 98px;
+      background: linear-gradient(135deg, #dbeafe, #e9d5ff);
+      border: 1px solid #d8dfeb;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .api-video-card-cover {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .api-video-card-fallback {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: #fff;
+      background: linear-gradient(135deg, #94a3b8, #334155);
+    }
+
+    .api-video-card-duration {
+      position: absolute;
+      right: 3px;
+      bottom: 3px;
+      padding: 1px 4px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #fff;
+      font-size: 8px;
+      line-height: 1.4;
+    }
+
+    .api-video-card-send {
+      border: 0;
+      min-width: 50px;
+      height: 24px;
+      padding: 0 10px;
+      border-radius: 4px;
+      background: #c7d4e3;
+      color: #2f3d52;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 24px;
+      cursor: pointer;
+      box-shadow: none;
+      flex-shrink: 0;
+    }
+
+    .api-video-card-send:hover {
+      background: #bccbdd;
+    }
+
+    .api-video-card-body {
+      min-width: 0;
+      width: auto;
+      padding: 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+      max-width: 100%;
+    }
+
+    .api-video-card-name {
+      font-size: 12px;
+      line-height: 1.35;
+      color: #243041;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 46px;
+    }
+
+    .api-video-card-meta {
+      margin-top: 2px;
+      font-size: 10px;
+      color: #8a94a6;
+    }
+
+    .api-video-loading,
+    .api-video-error {
+      min-height: 132px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #7b8494;
+      font-size: 13px;
+      padding: 16px;
     }
 
     .api-inline-emoji {
@@ -4998,7 +5389,14 @@
                       <path d="M12.7 16l2.7-2.7a1 1 0 0 1 1.4 0l1.7 1.7"></path>
                     </svg>
                   </button>
-                  <span>视频</span>
+                  <button class="api-composer-tool is-muted" id="btnApiVideoModal" type="button" aria-label="选择视频发送"
+                    onclick="openApiVideoLibraryModal()">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="6" width="12" height="12" rx="2"></rect>
+                      <path d="M16 10.2l4-2.2v8l-4-2.2"></path>
+                      <circle cx="9" cy="12" r="1.3"></circle>
+                    </svg>
+                  </button>
                   <!-- <span>🎫</span> -->
                   <span>🔗</span>
                   <span>🛡</span>
@@ -6320,6 +6718,35 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modalApiImagePreview">
+    <div class="modal api-image-preview-modal">
+      <div class="modal-header">
+        <h3>查看图片</h3>
+        <button class="modal-close" type="button" onclick="hideApiImagePreview()">&times;</button>
+      </div>
+      <div class="modal-body api-image-preview-body">
+        <img class="api-image-preview-content" id="apiImagePreviewContent" alt="对话图片预览">
+      </div>
+    </div>
+  </div>
+
+  <div class="api-video-popover-backdrop" id="apiVideoLibraryBackdrop" onclick="hideApiVideoLibraryPopover()"></div>
+
+  <div class="api-video-popover" id="apiVideoLibraryPanel">
+    <div class="api-video-popover-header">
+      <div class="api-video-popover-title">请选择视频</div>
+      <div class="api-video-popover-actions">
+        <button class="btn btn-secondary" id="btnApiVideoUpload">添加视频</button>
+        <button class="modal-close" type="button" onclick="hideApiVideoLibraryPopover()">&times;</button>
+      </div>
+    </div>
+    <div class="api-video-popover-content" id="apiVideoLibraryContent"></div>
+    <div class="api-video-popover-footer">
+      <button class="btn btn-secondary" type="button" onclick="hideApiVideoLibraryPopover()">取消</button>
+      <button class="btn btn-primary" id="btnApiVideoSend">发送</button>
+    </div>
+  </div>
+
   <!-- 日志已移至独立调试窗口 -->
 
   <div class="toast-msg" id="toastMsg"></div>
@@ -6478,6 +6905,10 @@
     const apiGoodsCardCache = new Map();
     const apiGoodsCardPending = new Set();
     let apiSyntheticRefundMessages = [];
+    let apiVideoLibrary = [];
+    let apiVideoLibraryLoading = false;
+    let apiVideoLibraryError = '';
+    let apiSelectedVideo = null;
     window.__chatApiModuleAccess = {
       getState() {
         return {
@@ -6502,6 +6933,8 @@
           apiGoodsCardCache,
           apiGoodsCardPending,
           apiSyntheticRefundMessages,
+          apiVideoLibrary,
+          apiSelectedVideo,
           API_ALL_SHOPS,
           API_EMOJI_MAP,
           API_EMOJIS,
@@ -6792,6 +7225,17 @@
       if (!document.getElementById('shopSwitcher').contains(e.target)) {
         shopDropdown.classList.remove('visible');
         shopSwitcherBtn.classList.remove('open');
+      }
+      const videoButton = document.getElementById('btnApiVideoModal');
+      const videoPanel = document.getElementById('apiVideoLibraryPanel');
+      if (
+        videoButton
+        && videoPanel
+        && videoPanel.classList.contains('visible')
+        && !videoButton.contains(e.target)
+        && !videoPanel.contains(e.target)
+      ) {
+        hideApiVideoLibraryPopover();
       }
     });
 
@@ -7315,6 +7759,44 @@
       panel.style.top = `${top}px`;
     }
 
+    function isApiVideoLibraryVisible() {
+      return document.getElementById('apiVideoLibraryPanel')?.classList.contains('visible') || false;
+    }
+
+    function showApiVideoLibraryPopover() {
+      const backdrop = document.getElementById('apiVideoLibraryBackdrop');
+      const panel = document.getElementById('apiVideoLibraryPanel');
+      const button = document.getElementById('btnApiVideoModal');
+      if (!backdrop || !panel || !button) return false;
+      backdrop.classList.add('visible');
+      panel.classList.add('visible');
+      button.classList.add('active');
+      requestAnimationFrame(syncApiVideoLibraryPopoverPosition);
+      return true;
+    }
+
+    function hideApiVideoLibraryPopover() {
+      const backdrop = document.getElementById('apiVideoLibraryBackdrop');
+      const panel = document.getElementById('apiVideoLibraryPanel');
+      const button = document.getElementById('btnApiVideoModal');
+      if (!backdrop || !panel || !button) return false;
+      backdrop.classList.remove('visible');
+      panel.classList.remove('visible');
+      button.classList.remove('active');
+      return true;
+    }
+
+    function syncApiVideoLibraryPopoverPosition() {
+      const panel = document.getElementById('apiVideoLibraryPanel');
+      if (!panel || !panel.classList.contains('visible')) return;
+      const panelWidth = panel.offsetWidth || 560;
+      const panelHeight = panel.offsetHeight || 360;
+      const left = Math.max(12, Math.round((window.innerWidth - panelWidth) / 2));
+      const top = Math.max(12, Math.round((window.innerHeight - panelHeight) / 2));
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+    }
+
     function insertApiMessageText(text) {
       const input = document.getElementById('apiMessageInput');
       if (!input || !text) return;
@@ -7507,24 +7989,22 @@
         { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
         card.contactText ? { label: '联系方式', value: card.contactText } : null,
       ].filter(Boolean);
-      return `<div class="api-system-refund-card success">
+      return `<div class="api-system-refund-card pending">
         <div class="api-system-refund-card-header">${esc(displayText)}</div>
         <div class="api-system-refund-card-goods">
+          <div class="api-system-refund-card-media-block">
             ${imageHtml}
-            <div class="api-system-refund-card-main">
-                <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
-                <div class="api-system-refund-card-success-meta">
-                ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
-                  ${card.amountText ? `<div class="api-system-refund-card-price">${esc(card.amountText)}</div>` : ''}
-                </div>
-
+            <div class="api-system-refund-card-media-title">${esc(card.goodsTitle || '订单商品')}</div>
+          </div>
+          <div class="api-system-refund-card-side">
+            <div class="api-system-refund-card-side-top">
+              <span class="api-system-refund-card-action">去处理</span>
             </div>
+            ${card.amountText ? `<div class="api-system-refund-card-side-price">${esc(card.amountText)}</div>` : ''}
+          </div>
           </div>
           <div class="api-system-refund-card-rows">
             ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
-          </div>
-          <div class="api-system-refund-card-footer">
-            <span class="api-system-refund-card-action">去处理</span>
           </div>
         </div>
       </div>`;
@@ -7928,7 +8408,7 @@
       const now = Date.now();
       const previewText = payload.text
         ? String(payload.text)
-        : (payload.imageUrl ? '[图片]' : '');
+        : (payload.imageUrl ? '[图片]' : (payload.videoUrl ? '[视频]' : ''));
       let changed = false;
       const patchSession = (session = {}) => {
         if (getApiSessionKey(session) !== sessionKey) return session;
@@ -7955,6 +8435,217 @@
       renderApiMessages();
     }
 
+    function formatApiVideoDuration(value) {
+      const totalSeconds = Math.max(0, Number(value || 0) || 0);
+      if (!totalSeconds) return '00:00';
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function normalizeApiVideoItem(item = {}) {
+      if (!item || typeof item !== 'object') return null;
+      const normalized = {
+        id: Number(item.id || item.fileId || 0) || 0,
+        name: String(item.name || item.fileName || '').trim(),
+        extension: String(item.extension || '').trim(),
+        url: String(item.url || item.videoUrl || '').trim(),
+        coverUrl: String(item.coverUrl || item.videoCoverUrl || item.video_cover_url || '').trim(),
+        duration: Number(item.duration || item.videoDuration || 0) || 0,
+        width: Number(item.width || 0) || 0,
+        height: Number(item.height || 0) || 0,
+        size: Number(item.size || 0) || 0,
+        checkStatus: Number(item.checkStatus || item.check_status || 0) || 0,
+      };
+      if (!normalized.url && !normalized.id) return null;
+      return normalized;
+    }
+
+    function renderApiVideoMessageHtml(message = {}) {
+      const videoUrl = getApiVideoMessageUrl(message);
+      const coverUrl = getApiVideoMessageCoverUrl(message);
+      const durationText = formatApiVideoDuration(getApiVideoMessageDuration(message));
+      return `<div class="api-message-bubble">
+        <a class="api-message-video" href="${esc(videoUrl || '#')}" target="_blank" rel="noopener noreferrer">
+          ${coverUrl
+          ? `<img class="api-message-video-cover" src="${esc(coverUrl)}" alt="视频封面">`
+          : `<div class="api-message-video-fallback">▶</div>`}
+          <div class="api-message-video-mask"><span class="api-message-video-play"></span></div>
+          <div class="api-message-video-footer">
+            <span class="api-message-video-label">视频</span>
+            <span class="api-message-video-duration">${esc(durationText)}</span>
+          </div>
+        </a>
+      </div>`;
+    }
+
+    function renderApiVideoLibraryModal() {
+      const container = document.getElementById('apiVideoLibraryContent');
+      if (!container) return;
+      const footer = document.querySelector('#apiVideoLibraryPanel .api-video-popover-footer');
+      if (footer) footer.style.display = 'flex';
+      const syncPopover = () => {
+        if (isApiVideoLibraryVisible()) {
+          requestAnimationFrame(syncApiVideoLibraryPopoverPosition);
+        }
+      };
+      if (!apiActiveSessionId) {
+        container.innerHTML = '<div class="api-video-empty">请先选择一个接口会话，再发送视频</div>';
+        syncPopover();
+        return;
+      }
+      if (apiVideoLibraryLoading) {
+        container.innerHTML = '<div class="api-video-loading">正在加载视频列表...</div>';
+        syncPopover();
+        return;
+      }
+      if (apiVideoLibraryError) {
+        container.innerHTML = `<div class="api-video-error">${esc(apiVideoLibraryError)}</div>`;
+        syncPopover();
+        return;
+      }
+      if (!apiVideoLibrary.length) {
+        if (footer) footer.style.display = 'flex';
+        container.innerHTML = `<div class="api-video-empty">暂无视频，去 <button class="api-video-empty-action" id="btnApiVideoEmptyUpload" type="button">添加</button> 吧~</div>`;
+        document.getElementById('btnApiVideoEmptyUpload')?.addEventListener('click', () => {
+          document.getElementById('btnApiVideoUpload')?.click();
+        });
+        syncPopover();
+        return;
+      }
+      if (footer) footer.style.display = 'none';
+      container.innerHTML = `<div class="api-video-grid">
+        ${apiVideoLibrary.map(item => {
+        const selected = apiSelectedVideo && Number(apiSelectedVideo.id || 0) === Number(item.id || 0);
+        return `<div class="api-video-card${selected ? ' is-selected' : ''}" role="button" tabindex="0" data-video-id="${esc(item.id)}">
+            <div class="api-video-card-media">
+              <div class="api-video-card-cover-wrap">
+                ${item.coverUrl
+            ? `<img class="api-video-card-cover" src="${esc(item.coverUrl)}" alt="视频封面">`
+            : `<div class="api-video-card-fallback">▶</div>`}
+                <span class="api-video-card-duration">${esc(formatApiVideoDuration(item.duration))}</span>
+              </div>
+            </div>
+            <div class="api-video-card-body">
+              <div class="api-video-card-name">${esc(item.name || '未命名视频')}</div>
+              <button class="api-video-card-send" type="button" data-video-send-id="${esc(item.id)}">发送</button>
+            </div>
+          </div>`;
+      }).join('')}
+      </div>`;
+      container.querySelectorAll('[data-video-id]').forEach(button => {
+        button.addEventListener('click', () => {
+          const matched = apiVideoLibrary.find(item => String(item.id) === String(button.dataset.videoId));
+          if (!matched) return;
+          apiSelectedVideo = matched;
+          renderApiVideoLibraryModal();
+        });
+        button.addEventListener('keydown', event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          button.click();
+        });
+      });
+      container.querySelectorAll('[data-video-send-id]').forEach(button => {
+        button.addEventListener('click', async event => {
+          event.stopPropagation();
+          const matched = apiVideoLibrary.find(item => String(item.id) === String(button.dataset.videoSendId));
+          if (!matched) return;
+          apiSelectedVideo = matched;
+          renderApiVideoLibraryModal();
+          await sendSelectedApiVideo(matched);
+        });
+      });
+      syncPopover();
+    }
+
+    async function loadApiVideoLibrary(options = {}) {
+      apiVideoLibraryLoading = true;
+      apiVideoLibraryError = '';
+      if (!options.keepSelection) {
+        apiSelectedVideo = null;
+      }
+      renderApiVideoLibraryModal();
+      const result = await window.pddApi.apiGetVideoLibrary({
+        shopId: apiActiveSessionShopId,
+        includePending: false,
+      });
+      apiVideoLibraryLoading = false;
+      if (result?.error) {
+        apiVideoLibrary = [];
+        apiVideoLibraryError = result.error;
+        renderApiVideoLibraryModal();
+        return false;
+      }
+      apiVideoLibrary = Array.isArray(result?.list)
+        ? result.list.map(normalizeApiVideoItem).filter(Boolean)
+        : [];
+      if (!options.keepSelection || !apiSelectedVideo) {
+        apiSelectedVideo = apiVideoLibrary[0] || null;
+      } else {
+        apiSelectedVideo = apiVideoLibrary.find(item => Number(item.id || 0) === Number(apiSelectedVideo?.id || 0)) || apiVideoLibrary[0] || null;
+      }
+      renderApiVideoLibraryModal();
+      return true;
+    }
+
+    async function openApiVideoLibraryModal() {
+      toggleApiEmojiPanel(false);
+      apiVideoLibrary = [];
+      apiVideoLibraryError = '';
+      apiSelectedVideo = null;
+      showApiVideoLibraryPopover();
+      renderApiVideoLibraryModal();
+      if (!apiActiveSessionId) {
+        setApiHint('请先选择一个接口会话');
+        return;
+      }
+      await loadApiVideoLibrary();
+    }
+
+    async function sendSelectedApiVideo(video = apiSelectedVideo) {
+      if (!apiActiveSessionId) {
+        setApiHint('请先选择一个接口会话');
+        return;
+      }
+      if (!video?.url) {
+        setApiHint('请先选择一个可发送的视频');
+        return;
+      }
+      apiSelectedVideo = video;
+      const currentVideo = video;
+      recordApiSyncState('视频发送', `${currentVideo.name || '未命名视频'} → ${apiActiveSessionName || apiActiveSessionId}`);
+      setApiHint('正在发送视频，请稍候...');
+      const result = await window.pddApi.apiSendVideo({
+        shopId: apiActiveSessionShopId,
+        sessionId: apiActiveSessionId,
+        session: getApiActiveSession() || undefined,
+        videoUrl: currentVideo.url,
+        coverUrl: currentVideo.coverUrl,
+        duration: currentVideo.duration,
+        videoName: currentVideo.name,
+        videoId: currentVideo.id,
+      });
+      if (result?.error) {
+        recordApiSyncState('视频失败', result.error || '视频发送失败');
+        setApiHint(`视频发送失败：${result.error || '未知错误'}`);
+        return;
+      }
+      const successPayload = {
+        shopId: apiActiveSessionShopId,
+        sessionId: apiActiveSessionId,
+        videoUrl: currentVideo.url,
+        videoCoverUrl: currentVideo.coverUrl,
+        videoDuration: currentVideo.duration,
+        videoName: currentVideo.name,
+        videoId: currentVideo.id,
+      };
+      clearApiPendingReplyState(successPayload);
+      appendApiLocalServiceMessage(successPayload);
+      hideApiVideoLibraryPopover();
+      setApiHint('视频已发送，正在同步最新消息');
+    }
+
     function buildApiSyntheticRefundMessageKey(payload = {}) {
       const refundCard = payload?.refundCard && typeof payload.refundCard === 'object' ? payload.refundCard : {};
       return [
@@ -7974,18 +8665,25 @@
       const refundCard = payload?.refundCard && typeof payload.refundCard === 'object'
         ? { ...payload.refundCard }
         : null;
-      if (!shopId || !sessionId || (!text && !refundCard)) return;
+      const videoMeta = normalizeApiVideoItem({
+        id: payload.videoId,
+        url: payload.videoUrl,
+        coverUrl: payload.videoCoverUrl,
+        duration: payload.videoDuration,
+        name: payload.videoName,
+      });
+      if (!shopId || !sessionId || (!text && !refundCard && !videoMeta)) return;
       const timestamp = Number(payload.timestamp || Date.now()) || Date.now();
       const localMessage = {
         sessionId,
         shopId,
-        content: text,
+        content: text || (videoMeta?.url || ''),
         timestamp,
         isFromBuyer: false,
         senderName: getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号',
         readState: '',
         refundCard,
-        extra: refundCard ? { refundCard } : null,
+        extra: refundCard ? { refundCard } : (videoMeta ? { video: videoMeta } : null),
         raw: {},
       };
       if (refundCard) {
@@ -8411,11 +9109,16 @@
     }
 
     function clearApiActiveSession() {
+      hideApiVideoLibraryPopover();
       apiActiveSessionId = '';
       apiActiveSessionName = '';
       apiActiveSessionShopId = '';
       apiActiveSessionSnapshot = null;
       apiMessages = [];
+      apiVideoLibrary = [];
+      apiVideoLibraryLoading = false;
+      apiVideoLibraryError = '';
+      apiSelectedVideo = null;
       apiHasUserSelectedSession = false;
       apiActiveSessionSyncSignature = '';
       apiOpenSessionRequestId += 1;
@@ -8580,6 +9283,62 @@
       return jsonMatch?.[1] || '';
     }
 
+    function isApiVideoMessage(message = {}) {
+      const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
+      if (['video', 'short_video', 'small_video'].includes(msgType)) return true;
+      const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
+      if (/(video_cover_url|f20_url|f30_url|transcode_f30_url|library_file)/.test(rawContent)) return true;
+      if (/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i.test(rawContent)) return true;
+      return !!getApiVideoMessageUrl(message);
+    }
+
+    function getApiVideoMessageUrl(message = {}) {
+      const candidates = [
+        message?.extra?.video?.url,
+        message?.extra?.url,
+        message?.extra?.video_url,
+        message?.extra?.f30_url,
+        message?.extra?.f20_url,
+        message?.raw?.extra?.video?.url,
+        message?.raw?.extra?.url,
+        message?.raw?.extra?.video_url,
+        message?.raw?.extra?.f30_url,
+        message?.raw?.extra?.f20_url,
+        message?.raw?.ext?.url,
+        message?.raw?.ext?.video_url,
+        message?.raw?.ext?.f30_url,
+        message?.raw?.ext?.f20_url,
+      ].filter(Boolean);
+      if (candidates.length) return String(candidates[0] || '');
+      const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
+      const urlMatch = rawText.match(/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i);
+      return urlMatch?.[0] || '';
+    }
+
+    function getApiVideoMessageCoverUrl(message = {}) {
+      return String(
+        message?.extra?.video?.coverUrl
+        || message?.extra?.coverUrl
+        || message?.extra?.video_cover_url
+        || message?.raw?.extra?.video?.coverUrl
+        || message?.raw?.extra?.coverUrl
+        || message?.raw?.extra?.video_cover_url
+        || message?.raw?.ext?.video_cover_url
+        || ''
+      );
+    }
+
+    function getApiVideoMessageDuration(message = {}) {
+      return Number(
+        message?.extra?.video?.duration
+        || message?.extra?.duration
+        || message?.raw?.extra?.video?.duration
+        || message?.raw?.extra?.duration
+        || message?.raw?.ext?.duration
+        || 0
+      ) || 0;
+    }
+
     function renderApiMessages() {
       try {
         const container = document.getElementById('apiMessageList');
@@ -8642,6 +9401,7 @@
           const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
           const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
           const imageUrl = getApiImageMessageUrl(message);
+          const videoMessage = isApiVideoMessage(message);
           const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
           const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
           const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
@@ -8651,19 +9411,21 @@
           if (goodsLinkInfo && fallbackGoodsCard) {
             void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
           }
-          const imageMessage = isApiImageMessage(message);
+          const imageMessage = !videoMessage && isApiImageMessage(message);
           const bubbleHtml = resolvedRefundCard
             ? renderApiRefundCardHtml(resolvedRefundCard)
             : goodsLinkInfo
               ? renderApiGoodsCardHtml(goodsCard)
-              : imageMessage
-                ? `<div class="api-message-bubble">
-                <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
+              : videoMessage
+                ? renderApiVideoMessageHtml(message)
+                : imageMessage
+                  ? `<div class="api-message-bubble">
+                <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息" data-preview-url="${esc(imageUrl)}">` : '[图片消息]'}</div>
               </div>`
-                : `<div class="api-message-bubble">
+                  : `<div class="api-message-bubble">
                 <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
               </div>`;
-          const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !imageMessage && String(message.content || '').trim()
+          const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !imageMessage && !videoMessage && String(message.content || '').trim()
             ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
             : '';
           const footerHtml = !isBuyer
@@ -8698,6 +9460,13 @@
             } catch {
               setApiHint('复制失败，请稍后重试');
             }
+          });
+        });
+        container.querySelectorAll('.api-message-image[data-preview-url]').forEach(image => {
+          image.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showApiImagePreview(image.dataset.previewUrl || image.getAttribute('src') || '');
           });
         });
         container.querySelectorAll('.api-message-system-action-button').forEach(button => {
@@ -9465,6 +10234,56 @@
         recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
         setApiHint('图片已发送，正在同步最新消息');
       });
+      window.addEventListener('resize', syncApiVideoLibraryPopoverPosition);
+      window.addEventListener('scroll', syncApiVideoLibraryPopoverPosition, true);
+      document.getElementById('btnApiVideoUpload')?.addEventListener('click', async () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        recordApiSyncState('选择视频', `会话：${apiActiveSessionName || apiActiveSessionId}`);
+        const selected = await window.pddApi.apiSelectVideo();
+        if (selected?.canceled) {
+          recordApiSyncState('视频取消', '用户取消选择视频');
+          setApiHint('已取消选择视频');
+          return;
+        }
+        if (!selected?.filePath) {
+          recordApiSyncState('视频失败', '未拿到视频路径');
+          setApiHint('未选择视频文件');
+          return;
+        }
+        const fileName = String(selected.filePath).split(/[\\/]/).pop() || '视频';
+        apiVideoLibraryLoading = true;
+        apiVideoLibraryError = '';
+        renderApiVideoLibraryModal();
+        recordApiSyncState('视频上传', `文件：${fileName}`);
+        setApiHint('正在上传视频并等待审核，请稍候...');
+        const result = await window.pddApi.apiUploadVideo({
+          shopId: apiActiveSessionShopId,
+          filePath: selected.filePath,
+          timeoutMs: 120000,
+        });
+        if (result?.error) {
+          apiVideoLibraryLoading = false;
+          apiVideoLibraryError = result.error;
+          renderApiVideoLibraryModal();
+          recordApiSyncState('视频失败', result.error || '视频上传失败');
+          setApiHint(`视频上传失败：${result.error || '未知错误'}`);
+          return;
+        }
+        recordApiSyncState('视频完成', `${fileName} 已进入可发送列表`);
+        setApiHint('视频已上传完成，正在刷新素材列表');
+        await loadApiVideoLibrary({ keepSelection: false });
+        const uploadedVideo = normalizeApiVideoItem(result);
+        if (uploadedVideo?.id) {
+          apiSelectedVideo = apiVideoLibrary.find(item => Number(item.id || 0) === Number(uploadedVideo.id || 0)) || uploadedVideo;
+          renderApiVideoLibraryModal();
+        }
+      });
+      document.getElementById('btnApiVideoSend')?.addEventListener('click', async () => {
+        await sendSelectedApiVideo();
+      });
 
       document.getElementById('btnApiTransfer')?.addEventListener('click', async () => {
         if (!apiActiveSessionId) {
@@ -10169,6 +10988,25 @@
     // ==================== 通用工具 ====================
     function showModal(id) { document.getElementById(id).classList.add('visible'); }
     function hideModal(id) { document.getElementById(id).classList.remove('visible'); }
+
+    function showApiImagePreview(url) {
+      const normalizedUrl = String(url || '').trim();
+      const previewImage = document.getElementById('apiImagePreviewContent');
+      if (!normalizedUrl || !previewImage) {
+        showToast('图片地址无效');
+        return;
+      }
+      previewImage.src = normalizedUrl;
+      showModal('modalApiImagePreview');
+    }
+
+    function hideApiImagePreview() {
+      hideModal('modalApiImagePreview');
+      const previewImage = document.getElementById('apiImagePreviewContent');
+      if (previewImage) {
+        previewImage.removeAttribute('src');
+      }
+    }
 
     let toastTimer = null;
 

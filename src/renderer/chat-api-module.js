@@ -3054,6 +3054,32 @@
     return html;
   }
 
+  function formatApiVideoDuration(value) {
+    const totalSeconds = Math.max(0, Math.round(Number(value || 0) || 0));
+    if (!totalSeconds) return '00:00';
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function renderApiVideoMessageHtml(message = {}) {
+    const videoUrl = getApiVideoMessageUrl(message);
+    const coverUrl = getApiVideoMessageCoverUrl(message);
+    const durationText = formatApiVideoDuration(getApiVideoMessageDuration(message));
+    return `<div class="api-message-bubble">
+      <a class="api-message-video" href="${esc(videoUrl || '#')}" target="_blank" rel="noopener noreferrer">
+        ${coverUrl
+          ? `<img class="api-message-video-cover" src="${esc(coverUrl)}" alt="视频封面">`
+          : `<div class="api-message-video-fallback">▶</div>`}
+        <div class="api-message-video-mask"><span class="api-message-video-play"></span></div>
+        <div class="api-message-video-footer">
+          <span class="api-message-video-label">视频</span>
+          <span class="api-message-video-duration">${esc(durationText)}</span>
+        </div>
+      </a>
+    </div>`;
+  }
+
   function renderApiEmojiPanel() {
     const grid = document.getElementById('apiEmojiGrid');
     if (!grid) return;
@@ -3168,16 +3194,19 @@
           void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
         }
         const imageMessage = isApiImageMessage(message);
+        const videoMessage = isApiVideoMessage(message);
         const bubbleHtml = refundStatusUpdate
           ? renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index, activeSession })
           : resolvedRefundCard
           ? renderApiRefundCardHtml(resolvedRefundCard)
           : goodsLinkInfo
           ? renderApiGoodsCardHtml(goodsCard)
+          : videoMessage
+          ? renderApiVideoMessageHtml(message)
           : imageMessage
             ? `<div class="api-message-bubble"><div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div></div>`
             : `<div class="api-message-bubble"><div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div></div>`;
-        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !refundStatusUpdate && !imageMessage && String(message.content || '').trim()
+        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !refundStatusUpdate && !imageMessage && !videoMessage && String(message.content || '').trim()
           ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
           : '';
         const footerHtml = !isBuyer
@@ -3267,6 +3296,62 @@
     if (urlMatch) return urlMatch[0];
     const jsonMatch = rawText.match(/\{[^{}]*"picture_url"\s*:\s*"([^"]+)"[^{}]*\}/);
     return jsonMatch?.[1] || '';
+  }
+
+  function isApiVideoMessage(message = {}) {
+    const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
+    if (['video', 'short_video', 'small_video'].includes(msgType)) return true;
+    const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
+    if (/(video_cover_url|f20_url|f30_url|transcode_f30_url|library_file)/.test(rawContent)) return true;
+    if (/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i.test(rawContent)) return true;
+    return !!getApiVideoMessageUrl(message);
+  }
+
+  function getApiVideoMessageUrl(message = {}) {
+    const candidates = [
+      message?.extra?.video?.url,
+      message?.extra?.url,
+      message?.extra?.video_url,
+      message?.extra?.f30_url,
+      message?.extra?.f20_url,
+      message?.raw?.extra?.video?.url,
+      message?.raw?.extra?.url,
+      message?.raw?.extra?.video_url,
+      message?.raw?.extra?.f30_url,
+      message?.raw?.extra?.f20_url,
+      message?.raw?.ext?.url,
+      message?.raw?.ext?.video_url,
+      message?.raw?.ext?.f30_url,
+      message?.raw?.ext?.f20_url,
+    ].filter(Boolean);
+    if (candidates.length) return String(candidates[0] || '');
+    const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
+    const urlMatch = rawText.match(/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i);
+    return urlMatch?.[0] || '';
+  }
+
+  function getApiVideoMessageCoverUrl(message = {}) {
+    return String(
+      message?.extra?.video?.coverUrl
+      || message?.extra?.coverUrl
+      || message?.extra?.video_cover_url
+      || message?.raw?.extra?.video?.coverUrl
+      || message?.raw?.extra?.coverUrl
+      || message?.raw?.extra?.video_cover_url
+      || message?.raw?.ext?.video_cover_url
+      || ''
+    );
+  }
+
+  function getApiVideoMessageDuration(message = {}) {
+    return Number(
+      message?.extra?.video?.duration
+      || message?.extra?.duration
+      || message?.raw?.extra?.video?.duration
+      || message?.raw?.extra?.duration
+      || message?.raw?.ext?.duration
+      || 0
+    ) || 0;
   }
 
   function renderApiPhrasePanel() {

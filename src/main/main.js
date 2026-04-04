@@ -1241,9 +1241,17 @@ async function waitForViewUploadResult(view, filePath) {
           try {
             payload = JSON.parse(raw || '{}');
           } catch {}
-          if (payload?.url || payload?.processed_url) {
+          const result = payload?.result && typeof payload.result === 'object' ? payload.result : null;
+          const hasUploadResult = payload?.url || payload?.processed_url
+            || payload?.download_url
+            || payload?.file_id
+            || result?.url
+            || result?.processed_url
+            || result?.download_url
+            || result?.file_id;
+          if (hasUploadResult) {
             cleanup();
-            resolve({ ...payload, uploadBaseUrl: 'embedded-pdd-page' });
+            resolve({ ...payload, ...(result || {}), uploadBaseUrl: 'embedded-pdd-page' });
           }
         }
         if (method === 'Network.loadingFailed' && trackedRequestIds.has(params.requestId)) {

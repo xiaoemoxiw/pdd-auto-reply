@@ -9,6 +9,13 @@
   let apiRefundCustomAmount = '';
   let apiSideOrderSessionKey = '';
   let apiSideOrderCountdownTimer = null;
+  let apiGoodsSpecModalState = {
+    requestKey: '',
+    loading: false,
+    error: '',
+    card: null,
+    specItems: [],
+  };
   const apiSideOrderStore = {
     personal: { cacheKey: '', loading: false, stale: false, error: '', items: [] },
     aftersale: { cacheKey: '', loading: false, stale: false, error: '', items: [] },
@@ -2991,9 +2998,34 @@
     return `¥${amount.toFixed(2)}`;
   }
 
+  function normalizeApiGoodsSpecItems(items = []) {
+    return (Array.isArray(items) ? items : [])
+      .map(item => ({
+        specLabel: String(item?.specLabel || '').trim(),
+        styleLabel: String(item?.styleLabel || '').trim(),
+        priceText: String(item?.priceText || '').trim(),
+        stockText: String(item?.stockText || '').trim(),
+        salesText: String(item?.salesText || '').trim(),
+      }))
+      .filter(item => item.specLabel || item.styleLabel || item.priceText || item.stockText || item.salesText);
+  }
+
+  function buildApiGoodsSpecFallbackItems(card = {}) {
+    const specText = String(card?.specText || '').trim();
+    if (!specText || specText === '查看商品规格') return [];
+    return [{
+      specLabel: specText,
+      styleLabel: '',
+      priceText: String(card?.priceText || '').trim(),
+      stockText: '',
+      salesText: '',
+    }];
+  }
+
   function normalizeApiGoodsCard(card = {}, fallback = {}) {
     const goodsId = String(card.goodsId || fallback.goodsId || '');
     return {
+      cacheKey: String(card.cacheKey || fallback.cacheKey || ''),
       goodsId,
       url: String(card.url || fallback.url || ''),
       title: String(card.title || fallback.title || '拼多多商品'),
@@ -3001,6 +3033,10 @@
       priceText: String(card.priceText || fallback.priceText || ''),
       groupText: String(card.groupText || fallback.groupText || '2人团'),
       specText: String(card.specText || fallback.specText || '查看商品规格'),
+      specItems: normalizeApiGoodsSpecItems(card.specItems || fallback.specItems || []),
+      stockText: String(card.stockText || fallback.stockText || ''),
+      salesText: String(card.salesText || fallback.salesText || ''),
+      pendingGroupText: String(card.pendingGroupText || fallback.pendingGroupText || ''),
     };
   }
 
@@ -3036,6 +3072,7 @@
     const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
     const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'customerNumber', 'group_member_count', 'group_count']);
     return normalizeApiGoodsCard({
+      cacheKey: String(linkInfo?.cacheKey || ''),
       goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'id']),
       url: linkInfo?.url || '',
       title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'goodsTitle', 'name']) || '拼多多商品',
@@ -3054,6 +3091,7 @@
     const priceHtml = card.priceText
       ? `<div class="api-goods-card-price-row"><span class="api-goods-card-price">${esc(card.priceText)}</span><span class="api-goods-card-group">${esc(card.groupText ? `/${card.groupText}` : '')}</span></div>`
       : (card.groupText ? `<div class="api-goods-card-price-row"><span class="api-goods-card-group">${esc(card.groupText)}</span></div>` : '');
+    const specItems = card.specItems?.length ? card.specItems : buildApiGoodsSpecFallbackItems(card);
     return `<div class="api-message-bubble api-goods-card-bubble">
       <div class="api-goods-card-top">
         <span class="api-goods-card-id">${esc(goodsIdLabel)}</span>
@@ -3065,10 +3103,180 @@
         <div class="api-goods-card-main">
           <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
           ${priceHtml}
-          <span class="api-goods-card-spec">${esc(card.specText || '查看商品规格')}</span>
+          <button
+            class="api-goods-card-spec"
+            type="button"
+            data-goods-cache-key="${esc(card.cacheKey || '')}"
+            data-goods-id="${esc(card.goodsId || '')}"
+            data-goods-url="${esc(card.url || '')}"
+            data-goods-title="${esc(card.title || '')}"
+            data-goods-image-url="${esc(card.imageUrl || '')}"
+            data-goods-price-text="${esc(card.priceText || '')}"
+            data-goods-group-text="${esc(card.groupText || '')}"
+            data-goods-spec-text="${esc(card.specText || '查看商品规格')}"
+            data-goods-stock-text="${esc(card.stockText || '')}"
+            data-goods-sales-text="${esc(card.salesText || '')}"
+            data-goods-pending-group-text="${esc(card.pendingGroupText || '')}"
+            data-goods-spec-items="${esc(JSON.stringify(specItems || []))}"
+          >${esc(card.specText || '查看商品规格')}</button>
         </div>
       </div>
     </div>`;
+  }
+
+  function showApiGoodsSpecModalOverlay() {
+    const modal = document.getElementById('modalApiGoodsSpec');
+    if (!modal) return;
+    if (typeof window.showModal === 'function') {
+      window.showModal('modalApiGoodsSpec');
+      return;
+    }
+    modal.classList.add('visible');
+  }
+
+  function hideApiGoodsSpecModalOverlay() {
+    const modal = document.getElementById('modalApiGoodsSpec');
+    if (!modal) return;
+    if (typeof window.hideModal === 'function') {
+      window.hideModal('modalApiGoodsSpec');
+      return;
+    }
+    modal.classList.remove('visible');
+  }
+
+  function renderApiGoodsSpecModal() {
+    const summaryEl = document.getElementById('apiGoodsSpecSummary');
+    const loadingEl = document.getElementById('apiGoodsSpecLoading');
+    const errorEl = document.getElementById('apiGoodsSpecError');
+    const emptyEl = document.getElementById('apiGoodsSpecEmpty');
+    const tableWrapEl = document.getElementById('apiGoodsSpecTableWrap');
+    const tableBodyEl = document.getElementById('apiGoodsSpecTableBody');
+    if (!summaryEl || !loadingEl || !errorEl || !emptyEl || !tableWrapEl || !tableBodyEl) return;
+    const card = apiGoodsSpecModalState.card || {};
+    const specItems = normalizeApiGoodsSpecItems(apiGoodsSpecModalState.specItems);
+    const metaParts = [
+      card.stockText ? `库存 ${card.stockText}` : '',
+      card.salesText ? `销量 ${card.salesText}` : '',
+      card.pendingGroupText ? `待成团 ${card.pendingGroupText}` : '',
+    ].filter(Boolean);
+    summaryEl.innerHTML = `<div class="api-goods-spec-product">
+      ${card.imageUrl ? `<img class="api-goods-spec-product-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">` : '<div class="api-goods-spec-product-image placeholder">商品</div>'}
+      <div class="api-goods-spec-product-main">
+        <div class="api-goods-spec-product-id-row">
+          <div class="api-goods-spec-product-id">${esc(card.goodsId ? `商品ID：${card.goodsId}` : '拼多多商品')}</div>
+          ${card.goodsId ? `<button class="api-goods-card-copy api-goods-spec-copy" type="button" data-goods-id="${esc(card.goodsId)}">复制</button>` : ''}
+        </div>
+        <div class="api-goods-spec-product-title">${esc(card.title || '拼多多商品')}</div>
+        ${metaParts.length ? `<div class="api-goods-spec-product-meta">${metaParts.map(item => `<span>${esc(item)}</span>`).join('')}</div>` : ''}
+      </div>
+    </div>`;
+    const copyButton = summaryEl.querySelector('.api-goods-spec-copy');
+    if (copyButton) {
+      copyButton.addEventListener('click', async event => {
+        event.stopPropagation();
+        const goodsId = String(copyButton.dataset.goodsId || '');
+        if (!goodsId) return;
+        try {
+          await navigator.clipboard.writeText(goodsId);
+          showApiSideOrderToast('已复制到剪切板！');
+        } catch {
+          showApiSideOrderToast('复制失败，请稍后重试');
+        }
+      });
+    }
+    loadingEl.style.display = apiGoodsSpecModalState.loading ? 'flex' : 'none';
+    errorEl.style.display = apiGoodsSpecModalState.error ? 'block' : 'none';
+    errorEl.textContent = apiGoodsSpecModalState.error || '';
+    const shouldShowTable = !apiGoodsSpecModalState.loading && !apiGoodsSpecModalState.error && specItems.length > 0;
+    tableWrapEl.style.display = shouldShowTable ? 'block' : 'none';
+    emptyEl.style.display = !apiGoodsSpecModalState.loading && !apiGoodsSpecModalState.error && !specItems.length ? 'block' : 'none';
+    tableBodyEl.innerHTML = specItems.map(item => {
+      const specLabel = String(item.specLabel || '--');
+      const styleLabel = String(item.styleLabel || '--');
+      return `<tr>
+      <td><span class="api-goods-spec-cell is-truncate" title="${esc(specLabel)}">${esc(specLabel)}</span></td>
+      <td><span class="api-goods-spec-cell is-truncate" title="${esc(styleLabel)}">${esc(styleLabel)}</span></td>
+      <td><span class="api-goods-spec-cell">${esc(item.priceText || '--')}</span></td>
+      <td><span class="api-goods-spec-cell">${esc(item.stockText || '--')}</span></td>
+    </tr>`;
+    }).join('');
+  }
+
+  async function loadApiGoodsSpecModalData(card = {}) {
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    const requestKey = apiGoodsSpecModalState.requestKey;
+    if (!window.pddApi?.apiGetGoodsCard) {
+      apiGoodsSpecModalState.loading = false;
+      apiGoodsSpecModalState.error = '当前环境不支持加载商品规格';
+      renderApiGoodsSpecModal();
+      return;
+    }
+    try {
+      const result = await window.pddApi.apiGetGoodsCard({
+        shopId: state.apiActiveSessionShopId,
+        url: card.url,
+        goodsId: card.goodsId,
+        session: activeSession,
+        fallback: {
+          goodsId: card.goodsId,
+          url: card.url,
+          title: card.title,
+          imageUrl: card.imageUrl,
+          priceText: card.priceText,
+          groupText: card.groupText,
+          specText: card.specText,
+          stockText: card.stockText,
+          salesText: card.salesText,
+          pendingGroupText: card.pendingGroupText,
+        },
+      });
+      if (apiGoodsSpecModalState.requestKey !== requestKey) return;
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      const normalized = normalizeApiGoodsCard({
+        ...result,
+        cacheKey: card.cacheKey,
+      }, card);
+      apiGoodsSpecModalState.loading = false;
+      apiGoodsSpecModalState.error = '';
+      apiGoodsSpecModalState.card = normalized;
+      apiGoodsSpecModalState.specItems = normalized.specItems.length
+        ? normalized.specItems
+        : buildApiGoodsSpecFallbackItems(normalized);
+      if (normalized.cacheKey && state.apiGoodsCardCache) {
+        state.apiGoodsCardCache.set(normalized.cacheKey, normalized);
+      }
+      renderApiGoodsSpecModal();
+    } catch (error) {
+      if (apiGoodsSpecModalState.requestKey !== requestKey) return;
+      apiGoodsSpecModalState.loading = false;
+      apiGoodsSpecModalState.error = error?.message || '加载商品规格失败';
+      apiGoodsSpecModalState.specItems = buildApiGoodsSpecFallbackItems(card);
+      renderApiGoodsSpecModal();
+    }
+  }
+
+  function openApiGoodsSpecModal(card = {}) {
+    const normalizedCard = normalizeApiGoodsCard(card, card);
+    apiGoodsSpecModalState.requestKey = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    apiGoodsSpecModalState.loading = normalizedCard.specItems.length === 0;
+    apiGoodsSpecModalState.error = '';
+    apiGoodsSpecModalState.card = normalizedCard;
+    apiGoodsSpecModalState.specItems = normalizedCard.specItems.length
+      ? normalizedCard.specItems
+      : buildApiGoodsSpecFallbackItems(normalizedCard);
+    renderApiGoodsSpecModal();
+    showApiGoodsSpecModalOverlay();
+    if (!apiGoodsSpecModalState.loading) return;
+    void loadApiGoodsSpecModalData(normalizedCard);
+  }
+
+  function closeApiGoodsSpecModal() {
+    apiGoodsSpecModalState.requestKey = '';
+    apiGoodsSpecModalState.loading = false;
+    hideApiGoodsSpecModalOverlay();
   }
 
   function renderApiRefundCardHtml(card = {}) {
@@ -3369,7 +3577,10 @@
         const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
         const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
         const cachedGoodsCard = goodsLinkInfo ? state.apiGoodsCardCache?.get(goodsLinkInfo.cacheKey) : null;
-        const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
+        const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
+          goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
+          goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
+        ) : null;
         const refundCard = !isBuyer ? extractApiRefundCard(message, activeSession) : null;
         const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
         const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, {
@@ -3436,10 +3647,36 @@
           if (!goodsId) return;
           try {
             await navigator.clipboard.writeText(goodsId);
-            setApiHint('已复制商品ID');
+            showApiSideOrderToast('已复制到剪切板！');
           } catch {
-            setApiHint('复制失败，请稍后重试');
+            showApiSideOrderToast('复制失败，请稍后重试');
           }
+        });
+      });
+      container.querySelectorAll('.api-goods-card-spec').forEach(button => {
+        button.addEventListener('click', event => {
+          event.stopPropagation();
+          let inlineSpecItems = [];
+          try {
+            inlineSpecItems = normalizeApiGoodsSpecItems(JSON.parse(button.dataset.goodsSpecItems || '[]'));
+          } catch {}
+          const state = getState();
+          const cacheKey = String(button.dataset.goodsCacheKey || '');
+          const cachedCard = cacheKey ? state.apiGoodsCardCache?.get(cacheKey) : null;
+          openApiGoodsSpecModal(normalizeApiGoodsCard(cachedCard || {}, {
+            cacheKey,
+            goodsId: button.dataset.goodsId || '',
+            url: button.dataset.goodsUrl || '',
+            title: button.dataset.goodsTitle || '',
+            imageUrl: button.dataset.goodsImageUrl || '',
+            priceText: button.dataset.goodsPriceText || '',
+            groupText: button.dataset.goodsGroupText || '',
+            specText: button.dataset.goodsSpecText || '查看商品规格',
+            specItems: inlineSpecItems,
+            stockText: button.dataset.goodsStockText || '',
+            salesText: button.dataset.goodsSalesText || '',
+            pendingGroupText: button.dataset.goodsPendingGroupText || '',
+          }));
         });
       });
       container.scrollTop = container.scrollHeight;
@@ -4156,6 +4393,8 @@
   window.renderApiSideOrders = renderApiSideOrders;
   window.invalidateApiSideOrders = invalidateApiSideOrders;
   window.syncApiSelectionWithFilter = syncApiSelectionWithFilter;
+  window.openApiGoodsSpecModal = openApiGoodsSpecModal;
+  window.closeApiGoodsSpecModal = closeApiGoodsSpecModal;
 
   if (typeof window.registerRendererModule === 'function') {
     window.registerRendererModule('chat-api-module', bindChatApiModule);

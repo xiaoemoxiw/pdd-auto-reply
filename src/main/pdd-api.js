@@ -1774,6 +1774,13 @@ class PddApiClient extends EventEmitter {
     }
   }
 
+  _normalizeGoodsId(value = '') {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const digitsOnly = text.replace(/[^\d]/g, '');
+    return digitsOnly || '';
+  }
+
   _extractGoodsJsonObject(source = '') {
     const text = String(source || '').trim();
     if (!text) return null;
@@ -1918,6 +1925,327 @@ class PddApiClient extends EventEmitter {
     return '';
   }
 
+  _pickGoodsNumber(source = {}, keys = []) {
+    if (!source || typeof source !== 'object') return null;
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+      const numeric = Number(source[key]);
+      if (Number.isFinite(numeric)) return numeric;
+    }
+    return null;
+  }
+
+  _splitGoodsSpecText(value = '') {
+    return String(value || '')
+      .split(/[|/,，；;]/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
+  _formatGoodsSpecSegment(segment = {}) {
+    const group = String(segment.group || '').trim();
+    const name = String(segment.name || '').trim();
+    if (!group) return name;
+    return `${group}：${name}`;
+  }
+
+  _appendGoodsSpecSegments(segments, value) {
+    if (!value) return;
+    const pushSegment = (group, name) => {
+      const normalizedName = String(name || '').trim();
+      if (!normalizedName) return;
+      segments.push({
+        group: String(group || '').trim(),
+        name: normalizedName,
+      });
+    };
+    if (typeof value === 'string' || typeof value === 'number') {
+      this._splitGoodsSpecText(value).forEach(part => pushSegment('', part));
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(item => this._appendGoodsSpecSegments(segments, item));
+      return;
+    }
+    if (typeof value !== 'object') return;
+    const group = this._pickGoodsText([
+      value.parent_spec_name,
+      value.parentSpecName,
+      value.spec_key,
+      value.specKey,
+      value.group_name,
+      value.groupName,
+      value.label,
+      value.key,
+      value.name,
+      value.title,
+    ]);
+    const name = this._pickGoodsText([
+      value.spec_name,
+      value.specName,
+      value.spec_value,
+      value.specValue,
+      value.value,
+      value.text,
+      value.desc,
+      value.display_name,
+      value.displayName,
+    ]);
+    if (name) {
+      pushSegment(group, name);
+      return;
+    }
+    ['items', 'children', 'list', 'values', 'specs', 'spec_list', 'specList'].forEach((key) => {
+      if (value[key]) this._appendGoodsSpecSegments(segments, value[key]);
+    });
+  }
+
+  _extractGoodsSpecSegments(item = {}) {
+    const segments = [];
+    [
+      item.specs,
+      item.spec_list,
+      item.specList,
+      item.spec_info,
+      item.specInfo,
+      item.spec_values,
+      item.specValues,
+      item.properties,
+      item.props,
+      item.sku_props,
+      item.skuProps,
+    ].forEach(value => this._appendGoodsSpecSegments(segments, value));
+    if (segments.length) return segments;
+    const combined = this._pickGoodsText([
+      item.spec,
+      item.specText,
+      item.spec_text,
+      item.sku_spec,
+      item.skuSpec,
+      item.spec_desc,
+      item.specDesc,
+      item.sku_name,
+      item.skuName,
+      item.sub_name,
+      item.subName,
+      item.option_desc,
+      item.optionDesc,
+      item.name,
+      item.title,
+    ]);
+    this._appendGoodsSpecSegments(segments, combined);
+    return segments;
+  }
+
+  _normalizeGoodsSpecItem(item = {}) {
+    if (!item || typeof item !== 'object') return null;
+    const segments = this._extractGoodsSpecSegments(item);
+    const formattedSegments = segments
+      .map(segment => this._formatGoodsSpecSegment(segment))
+      .filter(Boolean);
+    const specLabel = formattedSegments[0]
+      || this._pickGoodsText([
+        item.spec,
+        item.specText,
+        item.spec_text,
+        item.sku_spec,
+        item.skuSpec,
+        item.spec_desc,
+        item.specDesc,
+        item.sku_name,
+        item.skuName,
+        item.sub_name,
+        item.subName,
+        item.name,
+      ]);
+    const styleLabel = formattedSegments.slice(1).join(' / ')
+      || this._pickGoodsText([
+        item.style,
+        item.style_name,
+        item.styleName,
+        item.mode,
+        item.mode_name,
+        item.modeName,
+        item.option,
+        item.option_name,
+        item.optionName,
+      ]);
+    const priceText = this._pickGoodsText([
+      this._normalizeGoodsPrice(this._pickGoodsNumber(item, [
+        'group_price',
+        'min_group_price',
+        'single_price',
+        'origin_price',
+        'normal_price',
+        'price',
+        'promotion_price',
+        'promotionPrice',
+        'discount_price',
+        'discountPrice',
+        'min_price',
+      ])),
+      item.priceText,
+      item.price_text,
+      item.price,
+      item.group_price_text,
+      item.groupPriceText,
+    ]);
+    const stockNumber = this._pickGoodsNumber(item, [
+      'quantity',
+      'stock',
+      'stock_num',
+      'stockNum',
+      'stock_number',
+      'stockNumber',
+      'left_quantity',
+      'leftQuantity',
+      'available_stock',
+      'availableStock',
+      'inventory',
+      'inventory_num',
+      'inventoryNum',
+      'warehouse_num',
+      'warehouseNum',
+      'goods_number',
+      'goodsNumber',
+    ]);
+    const salesNumber = this._pickGoodsNumber(item, [
+      'sales',
+      'sales_num',
+      'salesNum',
+      'sold',
+      'sold_num',
+      'soldNum',
+      'sold_quantity',
+      'soldQuantity',
+      'sales_volume',
+      'salesVolume',
+      'deal_num',
+      'dealNum',
+      'cnt',
+    ]);
+    const stockText = Number.isFinite(stockNumber)
+      ? String(stockNumber)
+      : this._pickGoodsText([item.stockText, item.stock_text, item.stock]);
+    const salesText = Number.isFinite(salesNumber)
+      ? String(salesNumber)
+      : this._pickGoodsText([item.salesText, item.sales_text, item.sales]);
+    const imageUrl = this._pickGoodsText([
+      item.imageUrl,
+      item.image_url,
+      item.thumb_url,
+      item.hd_thumb_url,
+      item.goods_thumb_url,
+      item.pic_url,
+    ]);
+    if (!specLabel && !styleLabel && !priceText && !stockText && !salesText) {
+      return null;
+    }
+    return {
+      specLabel,
+      styleLabel,
+      priceText,
+      stockText,
+      salesText,
+      imageUrl,
+    };
+  }
+
+  _collectGoodsSpecCandidates(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    const results = [];
+    const seen = new Set();
+    const preferredKeys = new Set([
+      'sku',
+      'skus',
+      'sku_list',
+      'skuList',
+      'sku_map',
+      'skuMap',
+      'sku_info',
+      'skuInfo',
+      'specs',
+      'spec_list',
+      'specList',
+      'spec_info',
+      'specInfo',
+      'goods_sku',
+      'goodsSku',
+    ]);
+    const pushCandidate = (value) => {
+      let list = null;
+      if (Array.isArray(value)) {
+        list = value;
+      } else if (value && typeof value === 'object') {
+        const values = Object.values(value);
+        if (values.length && values.every(item => item && typeof item === 'object')) {
+          list = values;
+        }
+      }
+      if (!list || !list.length) return;
+      const serialized = JSON.stringify(list.slice(0, 10));
+      if (seen.has(serialized)) return;
+      seen.add(serialized);
+      results.push(list);
+    };
+    const queue = [payload];
+    const visited = new Set();
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || visited.has(current)) continue;
+      visited.add(current);
+      if (Array.isArray(current)) {
+        current.forEach(item => queue.push(item));
+        continue;
+      }
+      Object.entries(current).forEach(([key, value]) => {
+        if (preferredKeys.has(key)) pushCandidate(value);
+        if (value && typeof value === 'object') queue.push(value);
+      });
+    }
+    return results;
+  }
+
+  _extractGoodsSpecItems(payloadCandidates = [], fallback = {}) {
+    const rows = [];
+    const seen = new Set();
+    const pushRow = (row) => {
+      if (!row) return;
+      const dedupeKey = [
+        row.specLabel,
+        row.styleLabel,
+        row.priceText,
+        row.stockText,
+        row.salesText,
+      ].join('|');
+      if (!dedupeKey.replace(/\|/g, '').trim() || seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+      rows.push(row);
+    };
+    payloadCandidates.forEach((payload) => {
+      this._collectGoodsSpecCandidates(payload).forEach((list) => {
+        list.forEach((item) => {
+          pushRow(this._normalizeGoodsSpecItem(item));
+        });
+      });
+    });
+    if (!rows.length) {
+      const fallbackSpecText = String(fallback?.specText || '').trim();
+      const fallbackPriceText = String(fallback?.priceText || '').trim();
+      if (fallbackSpecText && fallbackSpecText !== '查看商品规格') {
+        pushRow({
+          specLabel: fallbackSpecText,
+          styleLabel: '',
+          priceText: fallbackPriceText,
+          stockText: '',
+          salesText: '',
+          imageUrl: String(fallback?.imageUrl || '').trim(),
+        });
+      }
+    }
+    return rows.slice(0, 50);
+  }
+
   _extractGoodsCardFromHtml(html = '', fallback = {}) {
     const source = String(html || '');
     const payloadCandidates = this._extractGoodsPayloadCandidates(source);
@@ -1991,6 +2319,7 @@ class PddApiClient extends EventEmitter {
       fallback.groupText,
       '2人团',
     ]);
+    const specItems = this._extractGoodsSpecItems(payloadCandidates, fallback);
     return {
       goodsId,
       title: title.replace(/\s*-\s*拼多多.*$/i, '').trim(),
@@ -1998,6 +2327,7 @@ class PddApiClient extends EventEmitter {
       priceText,
       groupText: /^\d+$/.test(groupText) ? `${groupText}人团` : groupText,
       specText: fallback.specText || '查看商品规格',
+      specItems,
     };
   }
 
@@ -2924,6 +3254,72 @@ class PddApiClient extends EventEmitter {
     return this._post(url, body || {});
   }
 
+  async _requestGoodsPageApi(urlPath, body = {}, method = 'GET') {
+    const normalizedMethod = String(method || 'GET').toUpperCase();
+    const headers = {
+      accept: 'application/json, text/plain, */*',
+      Referer: CHAT_URL,
+      Origin: PDD_BASE,
+    };
+    if (normalizedMethod !== 'GET') {
+      headers['content-type'] = 'application/json;charset=UTF-8';
+    }
+    if (typeof this._requestInPddPage === 'function') {
+      return this._requestInPddPage({
+        method: normalizedMethod,
+        url: urlPath,
+        headers,
+        body: normalizedMethod === 'GET' ? null : JSON.stringify(body || {}),
+      });
+    }
+    if (normalizedMethod === 'GET') {
+      return this._request('GET', urlPath, null, headers);
+    }
+    return this._post(urlPath, body || {}, headers);
+  }
+
+  _buildGoodsCardFromPageApis(goodsPayload, skuPayload, fallback = {}) {
+    const goods = Array.isArray(goodsPayload?.result?.goods)
+      ? (goodsPayload.result.goods[0] || {})
+      : (goodsPayload?.goods || {});
+    const skus = Array.isArray(skuPayload?.skus)
+      ? skuPayload.skus
+      : (Array.isArray(skuPayload?.result?.skus) ? skuPayload.result.skus : []);
+    const specKeys = Array.isArray(skuPayload?.specKeys)
+      ? skuPayload.specKeys
+      : (Array.isArray(skuPayload?.result?.specKeys) ? skuPayload.result.specKeys : []);
+    const specItems = skus.map(item => {
+      const specs = Array.isArray(item?.spec) ? item.spec.map(value => String(value || '').trim()).filter(Boolean) : [];
+      const priceText = this._pickGoodsText([
+        this._normalizeGoodsPrice(item?.price),
+        item?.price,
+      ]);
+      return {
+        specLabel: specs[0] || specKeys[0] || '',
+        styleLabel: specs[1] || (specs.length > 1 ? specs.slice(1).join(' / ') : (specKeys[1] || '')),
+        priceText,
+        stockText: item?.stock !== undefined && item?.stock !== null ? String(item.stock) : '',
+        salesText: '',
+      };
+    }).filter(item => item.specLabel || item.styleLabel || item.priceText || item.stockText);
+    const customerNumber = Number(goods?.customerNumber || goods?.customer_number || 0) || 0;
+    const quantity = Number(goods?.quantity || goods?.stock || 0) || 0;
+    const soldQuantity = Number(goods?.soldQuantity || goods?.sold_quantity || 0) || 0;
+    const ungroupedNum = Number(goods?.ungroupedNum || goods?.ungrouped_num || 0) || 0;
+    return {
+      goodsId: String(goods?.goodsId || goods?.goods_id || fallback.goodsId || ''),
+      title: String(goods?.goodsName || goods?.goods_name || fallback.title || '拼多多商品').trim(),
+      imageUrl: String(goods?.thumbUrl || goods?.thumb_url || fallback.imageUrl || '').trim(),
+      priceText: this._normalizeGoodsPrice(goods?.price) || String(fallback.priceText || '').trim(),
+      groupText: customerNumber > 0 ? `${customerNumber}人团` : String(fallback.groupText || '2人团').trim(),
+      specText: String(fallback.specText || '查看商品规格').trim(),
+      stockText: quantity > 0 ? String(quantity) : '',
+      salesText: soldQuantity > 0 ? String(soldQuantity) : '',
+      pendingGroupText: String(ungroupedNum),
+      specItems,
+    };
+  }
+
   async _requestRefundApplyApi(urlPath, body = {}, method = 'POST') {
     const normalizedMethod = String(method || 'POST').toUpperCase();
     const headers = {
@@ -3420,6 +3816,152 @@ class PddApiClient extends EventEmitter {
       })()
     `);
     return Array.isArray(result) ? result : [];
+  }
+
+  async _extractGoodsSpecFromChatPage(sessionMeta = {}, goodsMeta = {}) {
+    if (typeof this._executeInPddPage !== 'function') return null;
+    const target = {
+      customerName: String(sessionMeta?.customerName || sessionMeta?.raw?.nick || sessionMeta?.raw?.nickname || '').trim(),
+      customerId: String(sessionMeta?.customerId || sessionMeta?.raw?.customer_id || sessionMeta?.raw?.buyer_id || '').trim(),
+      goodsId: this._normalizeGoodsId(goodsMeta?.goodsId || ''),
+      goodsTitle: String(goodsMeta?.title || '').trim(),
+    };
+    if (!target.goodsId && !target.goodsTitle) return null;
+    const result = await this._executeInPddPage(`
+      (async () => {
+        const target = ${JSON.stringify(target)};
+        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+        const normalizeText = value => String(value || '').replace(/\\s+/g, ' ').trim();
+        const isVisible = el => {
+          if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+          const rect = el.getBoundingClientRect();
+          return rect.width > 8 && rect.height > 8 && el.offsetParent !== null;
+        };
+        const getText = el => normalizeText(el?.innerText || el?.textContent || '');
+        const lowerIncludes = (text, keyword) => !!(text && keyword && text.toLowerCase().includes(keyword.toLowerCase()));
+        const maybeClickConversation = async () => {
+          const keywords = [target.customerName, target.customerId].filter(Boolean);
+          if (!keywords.length) return false;
+          const nodes = Array.from(document.querySelectorAll('div, li, section, article, a, button'));
+          const candidate = nodes.find(el => {
+            if (!isVisible(el)) return false;
+            const rect = el.getBoundingClientRect();
+            if (rect.left > window.innerWidth * 0.42 || rect.width < 120 || rect.height < 28) return false;
+            const text = getText(el);
+            if (!text || text.length > 300) return false;
+            return keywords.some(keyword => text.includes(keyword));
+          });
+          if (!candidate) return false;
+          candidate.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          candidate.click();
+          candidate.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          await sleep(600);
+          return true;
+        };
+        const findSpecTrigger = () => {
+          const nodes = Array.from(document.querySelectorAll('button, span, div, a')).filter(isVisible);
+          const triggers = nodes.filter(el => getText(el) === '查看商品规格');
+          if (!triggers.length) return null;
+          const scored = triggers.map(el => {
+            let container = el;
+            for (let i = 0; i < 6 && container?.parentElement; i += 1) {
+              container = container.parentElement;
+              const text = getText(container);
+              if (!text) continue;
+              if (target.goodsId && text.includes(target.goodsId)) {
+                return { el, score: 100, text };
+              }
+              if (target.goodsTitle && lowerIncludes(text, target.goodsTitle.slice(0, 12))) {
+                return { el, score: 80, text };
+              }
+            }
+            return { el, score: 0, text: '' };
+          }).sort((a, b) => b.score - a.score);
+          return scored[0]?.el || null;
+        };
+        const readStat = (text, label) => {
+          const match = String(text || '').match(new RegExp(label + '[:：]?\\\\s*([0-9]+)', 'i'));
+          return match?.[1] || '';
+        };
+        const parseModal = () => {
+          const dialogs = Array.from(document.querySelectorAll('[role="dialog"], .ant-modal, .MDL_root, .PNK_modal, .dialog, .modal'))
+            .filter(isVisible)
+            .filter(el => getText(el).includes('商品规格'));
+          const modal = dialogs[0];
+          if (!modal) return null;
+          const modalText = getText(modal);
+          const goodsIdMatch = modalText.match(/商品ID[:：]?\\s*(\\d{6,})/);
+          const titleEl = modal.querySelector('a, h1, h2, h3, h4, strong, [class*="title"], [class*="name"]');
+          const imageEl = modal.querySelector('img');
+          const rows = [];
+          const rowNodes = Array.from(modal.querySelectorAll('tbody tr, table tr')).filter(isVisible);
+          rowNodes.forEach(row => {
+            const cells = Array.from(row.querySelectorAll('td, th')).map(cell => getText(cell)).filter(Boolean);
+            if (cells.length >= 4 && !cells.includes('规格') && !cells.includes('款式')) {
+              rows.push({
+                specLabel: cells[0] || '',
+                styleLabel: cells[1] || '',
+                priceText: cells[2] || '',
+                stockText: cells[3] || '',
+                salesText: cells[4] || '',
+              });
+            }
+          });
+          if (!rows.length) {
+            const blocks = Array.from(modal.querySelectorAll('div, li')).filter(isVisible);
+            blocks.forEach(node => {
+              const text = getText(node);
+              if (!text || text.length > 200) return;
+              if (!(/[¥￥]\\s*\\d/.test(text) && /(库存|销量)/.test(text))) return;
+              const segments = text.split(/\\s+/).filter(Boolean);
+              rows.push({
+                specLabel: segments[0] || '',
+                styleLabel: segments[1] || '',
+                priceText: segments.find(item => /[¥￥]/.test(item)) || '',
+                stockText: readStat(text, '库存'),
+                salesText: readStat(text, '销量'),
+              });
+            });
+          }
+          return {
+            goodsId: goodsIdMatch?.[1] || target.goodsId,
+            title: getText(titleEl) || target.goodsTitle,
+            imageUrl: imageEl?.src || '',
+            stockText: readStat(modalText, '库存'),
+            salesText: readStat(modalText, '销量'),
+            groupText: readStat(modalText, '待成团'),
+            specItems: rows.filter(item => item.specLabel || item.styleLabel || item.priceText || item.stockText || item.salesText),
+          };
+        };
+        await maybeClickConversation();
+        const trigger = findSpecTrigger();
+        if (!trigger) {
+          return { error: 'SPEC_TRIGGER_NOT_FOUND' };
+        }
+        trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        trigger.click();
+        trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        for (let i = 0; i < 8; i += 1) {
+          await sleep(350);
+          const parsed = parseModal();
+          if (parsed?.specItems?.length) {
+            return parsed;
+          }
+        }
+        return parseModal() || { error: 'SPEC_MODAL_NOT_FOUND' };
+      })()
+    `);
+    if (!result || typeof result !== 'object' || result.error) {
+      this._log('[API] 聊天页规格提取失败', { goodsId: target.goodsId, reason: result?.error || 'EMPTY_RESULT' });
+      return null;
+    }
+    return {
+      goodsId: result.goodsId || target.goodsId,
+      title: result.title || target.goodsTitle,
+      imageUrl: result.imageUrl || '',
+      groupText: result.groupText ? `${result.groupText}件待成团` : '',
+      specItems: Array.isArray(result.specItems) ? result.specItems : [],
+    };
   }
 
   async getRefundOrders(sessionRef) {
@@ -4984,11 +5526,19 @@ class PddApiClient extends EventEmitter {
 
   async getGoodsCard(params = {}) {
     const inputUrl = String(params.url || '').trim();
-    const explicitGoodsId = String(params.goodsId || params?.fallback?.goodsId || '').trim();
-    const normalizedGoodsId = explicitGoodsId || this._extractGoodsIdFromUrl(inputUrl);
-    const url = normalizedGoodsId
+    const explicitGoodsId = this._normalizeGoodsId(params.goodsId || params?.fallback?.goodsId || '');
+    const extractedGoodsId = this._normalizeGoodsId(this._extractGoodsIdFromUrl(inputUrl));
+    const normalizedGoodsId = explicitGoodsId || extractedGoodsId;
+    const sessionMeta = this._normalizeSessionMeta(params.session || params.sessionId || {});
+    const rawUrl = normalizedGoodsId
       ? `https://mobile.yangkeduo.com/goods.html?goods_id=${normalizedGoodsId}`
       : inputUrl;
+    let url = '';
+    try {
+      url = rawUrl ? new URL(rawUrl).toString() : '';
+    } catch {
+      url = normalizedGoodsId ? `https://mobile.yangkeduo.com/goods.html?goods_id=${normalizedGoodsId}` : '';
+    }
     if (!url) {
       throw new Error('缺少商品链接');
     }
@@ -5009,19 +5559,61 @@ class PddApiClient extends EventEmitter {
     delete headers['windows-app-shop-token'];
     delete headers.VerifyAuthToken;
     delete headers.etag;
-    const response = await this._getSession().fetch(url, {
-      method: 'GET',
-      headers,
-      redirect: 'follow',
-    });
     const fallbackForParse = {
       ...fallback,
       goodsId: fallback.goodsId || normalizedGoodsId || this._extractGoodsIdFromUrl(url),
       specText: fallback.specText || '查看商品规格',
     };
-    let html = await response.text();
+    if (normalizedGoodsId) {
+      try {
+        const [goodsPayload, skuPayload] = await Promise.all([
+          this._requestGoodsPageApi('/latitude/goods/queryGoods', {
+            pageNo: 1,
+            pageSize: 1,
+            goodsId: Number(normalizedGoodsId),
+          }, 'POST'),
+          this._requestGoodsPageApi(`/latitude/goods/skuList?pageNo=1&pageSize=30&goodsId=${encodeURIComponent(normalizedGoodsId)}`, null, 'GET'),
+        ]);
+        const goodsError = this._normalizeBusinessError(goodsPayload);
+        const skuError = this._normalizeBusinessError(skuPayload);
+        if (!goodsError && !skuError) {
+          const pageCard = this._buildGoodsCardFromPageApis(goodsPayload, skuPayload, fallbackForParse);
+          if (pageCard.specItems?.length || this._hasMeaningfulGoodsCardData(pageCard, fallbackForParse)) {
+            return {
+              goodsId: pageCard.goodsId || fallback.goodsId || normalizedGoodsId,
+              url,
+              title: pageCard.title || fallback.title || '拼多多商品',
+              imageUrl: pageCard.imageUrl || fallback.imageUrl || '',
+              priceText: pageCard.priceText || fallback.priceText || '',
+              groupText: pageCard.groupText || fallback.groupText || '2人团',
+              specText: pageCard.specText || fallback.specText || '查看商品规格',
+              specItems: Array.isArray(pageCard.specItems) ? pageCard.specItems : [],
+              stockText: pageCard.stockText || '',
+              salesText: pageCard.salesText || '',
+              pendingGroupText: pageCard.pendingGroupText || '',
+            };
+          }
+        }
+      } catch (error) {
+        this._log('[API] 商品规格页接口失败', { goodsId: normalizedGoodsId, message: error.message });
+      }
+    }
+    let response = null;
+    let html = '';
+    let fetchError = null;
+    try {
+      response = await this._getSession().fetch(url, {
+        method: 'GET',
+        headers,
+        redirect: 'follow',
+      });
+      html = await response.text();
+    } catch (error) {
+      fetchError = error;
+      this._log('[API] 商品卡片直连失败', { url, message: error.message });
+    }
     let parsed = this._extractGoodsCardFromHtml(html, fallbackForParse);
-    if (!this._hasMeaningfulGoodsCardData(parsed, fallbackForParse) || this._isGoodsLoginPageHtml(html)) {
+    if (fetchError || !this._hasMeaningfulGoodsCardData(parsed, fallbackForParse) || this._isGoodsLoginPageHtml(html)) {
       try {
         const pageResult = await this._loadGoodsHtmlInWindow(url);
         if (pageResult?.html) {
@@ -5032,7 +5624,46 @@ class PddApiClient extends EventEmitter {
         this._log('[API] 商品卡片窗口兜底失败', { url, message: error.message });
       }
     }
-    if (!response.ok && !parsed.title && !parsed.imageUrl) {
+    if (!parsed.specItems?.length) {
+      try {
+        const pageSpec = await this._extractGoodsSpecFromChatPage(sessionMeta, {
+          goodsId: normalizedGoodsId || fallbackForParse.goodsId,
+          title: fallback.title || parsed.title || '',
+        });
+        if (pageSpec?.specItems?.length) {
+          parsed = {
+            ...parsed,
+            goodsId: parsed.goodsId || pageSpec.goodsId || normalizedGoodsId,
+            title: parsed.title || pageSpec.title || fallback.title || '拼多多商品',
+            imageUrl: parsed.imageUrl || pageSpec.imageUrl || fallback.imageUrl || '',
+            specItems: pageSpec.specItems,
+          };
+        }
+      } catch (error) {
+        this._log('[API] 聊天页规格提取异常', { goodsId: normalizedGoodsId || fallbackForParse.goodsId, message: error.message });
+      }
+    }
+    if (!this._hasMeaningfulGoodsCardData(parsed, fallbackForParse) && !parsed.specItems?.length) {
+      if (fetchError) {
+        this._log('[API] 商品卡片回退占位', { url, message: fetchError.message });
+      } else if (response && !response.ok) {
+        this._log('[API] 商品卡片 HTTP 占位', { url, status: response.status });
+      }
+      return {
+        goodsId: fallback.goodsId || normalizedGoodsId || this._extractGoodsIdFromUrl(url),
+        url,
+        title: fallback.title || '拼多多商品',
+        imageUrl: fallback.imageUrl || '',
+        priceText: fallback.priceText || '',
+        groupText: fallback.groupText || '2人团',
+        specText: fallback.specText || '查看商品规格',
+        specItems: Array.isArray(fallback.specItems) ? fallback.specItems : [],
+        stockText: String(fallback.stockText || ''),
+        salesText: String(fallback.salesText || ''),
+        pendingGroupText: String(fallback.pendingGroupText || ''),
+      };
+    }
+    if (response && !response.ok && !parsed.title && !parsed.imageUrl) {
       throw new Error(`HTTP ${response.status}`);
     }
     return {
@@ -5043,6 +5674,10 @@ class PddApiClient extends EventEmitter {
       priceText: parsed.priceText || fallback.priceText || '',
       groupText: parsed.groupText || fallback.groupText || '2人团',
       specText: parsed.specText || fallback.specText || '查看商品规格',
+      specItems: Array.isArray(parsed.specItems) ? parsed.specItems : [],
+      stockText: String(parsed.stockText || fallback.stockText || ''),
+      salesText: String(parsed.salesText || fallback.salesText || ''),
+      pendingGroupText: String(parsed.pendingGroupText || fallback.pendingGroupText || ''),
     };
   }
 

@@ -3180,6 +3180,165 @@
       box-sizing: border-box;
       white-space: nowrap;
       letter-spacing: 0;
+      cursor: pointer;
+    }
+
+    .api-goods-spec-modal {
+      width: min(90vw, 400px);
+      max-width: 400px;
+    }
+
+    .api-goods-spec-summary {
+      margin-bottom: 14px;
+      padding: 14px;
+      border: 1px solid #e8ebf2;
+      border-radius: 8px;
+      background: #f8f9fc;
+    }
+
+    .api-goods-spec-product {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .api-goods-spec-product-image {
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #eef2f7;
+    }
+
+    .api-goods-spec-product-image.placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #8c94a3;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .api-goods-spec-product-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .api-goods-spec-product-id-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .api-goods-spec-product-id {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #7f8794;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .api-goods-spec-product-title {
+      margin-top: 4px;
+      color: #1f2430;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .api-goods-spec-product-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .api-goods-spec-product-meta span {
+      padding: 2px 8px;
+      color: #474748;
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .api-goods-spec-loading,
+    .api-goods-spec-empty,
+    .api-goods-spec-error {
+      padding: 18px 12px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .api-goods-spec-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #5b6472;
+      background: #f8f9fc;
+    }
+
+    .api-goods-spec-empty {
+      color: #7f8794;
+      background: #f8f9fc;
+    }
+
+    .api-goods-spec-error {
+      color: #cf3d33;
+      background: #fff3f1;
+      border: 1px solid #ffd9d3;
+    }
+
+    .api-goods-spec-table-wrap {
+      overflow: auto;
+      border: 1px solid #e8ebf2;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .api-goods-spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      table-layout: fixed;
+    }
+
+    .api-goods-spec-table th,
+    .api-goods-spec-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #edf0f5;
+      text-align: left;
+      color: #303546;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    .api-goods-spec-cell {
+      display: block;
+      min-width: 0;
+    }
+
+    .api-goods-spec-cell.is-truncate {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      word-break: normal;
+      cursor: default;
+    }
+
+    .api-goods-spec-table th {
+      background: #f7f8fb;
+      color: #5b6472;
+      font-weight: 600;
+    }
+
+    .api-goods-spec-table tbody tr:last-child td {
+      border-bottom: 0;
     }
 
     .api-message-bubble {
@@ -6838,6 +6997,37 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modalApiGoodsSpec">
+    <div class="modal api-goods-spec-modal">
+      <!-- <div class="modal-header">
+        <h3>商品规格</h3>
+        <button class="modal-close" type="button" onclick="window.closeApiGoodsSpecModal ? window.closeApiGoodsSpecModal() : hideModal('modalApiGoodsSpec')">&times;</button>
+      </div> -->
+      <div class="modal-body">
+        <div class="api-goods-spec-summary" id="apiGoodsSpecSummary"></div>
+        <div class="api-goods-spec-loading" id="apiGoodsSpecLoading" style="display:none;">正在加载商品规格...</div>
+        <div class="api-goods-spec-error" id="apiGoodsSpecError" style="display:none;"></div>
+        <div class="api-goods-spec-empty" id="apiGoodsSpecEmpty" style="display:none;">暂未解析到可展示的商品规格</div>
+        <div class="api-goods-spec-table-wrap" id="apiGoodsSpecTableWrap">
+          <table class="api-goods-spec-table">
+            <thead>
+              <tr>
+                <th>规格</th>
+                <th>款式</th>
+                <th>价格</th>
+                <th>库存</th>
+              </tr>
+            </thead>
+            <tbody id="apiGoodsSpecTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" type="button" onclick="window.closeApiGoodsSpecModal ? window.closeApiGoodsSpecModal() : hideModal('modalApiGoodsSpec')">我知道了</button>
+      </div>
+    </div>
+  </div>
+
   <div class="api-video-popover-backdrop" id="apiVideoLibraryBackdrop" onclick="hideApiVideoLibraryPopover()"></div>
 
   <div class="api-video-popover" id="apiVideoLibraryPanel">
@@ -7571,9 +7761,34 @@
       return `¥${amount.toFixed(2)}`;
     }
 
+    function normalizeApiGoodsSpecItems(items = []) {
+      return (Array.isArray(items) ? items : [])
+        .map(item => ({
+          specLabel: String(item?.specLabel || '').trim(),
+          styleLabel: String(item?.styleLabel || '').trim(),
+          priceText: String(item?.priceText || '').trim(),
+          stockText: String(item?.stockText || '').trim(),
+          salesText: String(item?.salesText || '').trim(),
+        }))
+        .filter(item => item.specLabel || item.styleLabel || item.priceText || item.stockText || item.salesText);
+    }
+
+    function buildApiGoodsSpecFallbackItems(card = {}) {
+      const specText = String(card?.specText || '').trim();
+      if (!specText || specText === '查看商品规格') return [];
+      return [{
+        specLabel: specText,
+        styleLabel: '',
+        priceText: String(card?.priceText || '').trim(),
+        stockText: '',
+        salesText: '',
+      }];
+    }
+
     function normalizeApiGoodsCard(card = {}, fallback = {}) {
       const goodsId = String(card.goodsId || fallback.goodsId || '');
       return {
+        cacheKey: String(card.cacheKey || fallback.cacheKey || ''),
         goodsId,
         url: String(card.url || fallback.url || ''),
         title: String(card.title || fallback.title || '拼多多商品'),
@@ -7581,6 +7796,10 @@
         priceText: String(card.priceText || fallback.priceText || ''),
         groupText: String(card.groupText || fallback.groupText || '2人团'),
         specText: String(card.specText || fallback.specText || '查看商品规格'),
+        specItems: normalizeApiGoodsSpecItems(card.specItems || fallback.specItems || []),
+        stockText: String(card.stockText || fallback.stockText || ''),
+        salesText: String(card.salesText || fallback.salesText || ''),
+        pendingGroupText: String(card.pendingGroupText || fallback.pendingGroupText || ''),
       };
     }
 
@@ -7616,6 +7835,7 @@
       const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
       const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'customerNumber', 'group_member_count', 'group_count']);
       return normalizeApiGoodsCard({
+        cacheKey: String(linkInfo?.cacheKey || ''),
         goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'id']),
         url: linkInfo?.url || '',
         title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'share_title', 'name']) || '拼多多商品',
@@ -7634,6 +7854,7 @@
       const priceHtml = card.priceText
         ? `<div class="api-goods-card-price-row"><span class="api-goods-card-price">${esc(card.priceText)}</span><span class="api-goods-card-group">${esc(card.groupText ? `/${card.groupText}` : '')}</span></div>`
         : (card.groupText ? `<div class="api-goods-card-price-row"><span class="api-goods-card-group">${esc(card.groupText)}</span></div>` : '');
+      const specItems = card.specItems?.length ? card.specItems : buildApiGoodsSpecFallbackItems(card);
       return `<div class="api-message-bubble api-goods-card-bubble">
         <div class="api-goods-card-top">
           <span class="api-goods-card-id">${esc(goodsIdLabel)}</span>
@@ -7648,9 +7869,24 @@
             <div class="api-goods-card-main">
               <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
               ${priceHtml}
+              <button
+                class="api-goods-card-spec"
+                type="button"
+                data-goods-cache-key="${esc(card.cacheKey || '')}"
+                data-goods-id="${esc(card.goodsId || '')}"
+                data-goods-url="${esc(card.url || '')}"
+                data-goods-title="${esc(card.title || '')}"
+                data-goods-image-url="${esc(card.imageUrl || '')}"
+                data-goods-price-text="${esc(card.priceText || '')}"
+                data-goods-group-text="${esc(card.groupText || '')}"
+                data-goods-spec-text="${esc(card.specText || '查看商品规格')}"
+                data-goods-stock-text="${esc(card.stockText || '')}"
+                data-goods-sales-text="${esc(card.salesText || '')}"
+                data-goods-pending-group-text="${esc(card.pendingGroupText || '')}"
+                data-goods-spec-items="${esc(JSON.stringify(specItems || []))}"
+              >${esc(card.specText || '查看商品规格')}</button>
             </div>
           </div>
-          <span class="api-goods-card-spec">${esc(card.specText || '查看商品规格')}</span>
         </div>
       </div>`;
     }
@@ -9610,7 +9846,10 @@
           const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
           const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
           const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
-          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
+          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
+            goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
+            goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
+          ) : null;
           const refundCard = !isBuyer ? extractApiRefundCard(message) : null;
           const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, { cardIndex: index }) : null;
           if (goodsLinkInfo && fallbackGoodsCard) {
@@ -9688,10 +9927,35 @@
             if (!goodsId) return;
             try {
               await navigator.clipboard.writeText(goodsId);
-              setApiHint('已复制商品ID');
+              showToast('已复制到剪切板！');
             } catch {
-              setApiHint('复制失败，请稍后重试');
+              showToast('复制失败，请稍后重试');
             }
+          });
+        });
+        container.querySelectorAll('.api-goods-card-spec').forEach(button => {
+          button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            let inlineSpecItems = [];
+            try {
+              inlineSpecItems = normalizeApiGoodsSpecItems(JSON.parse(button.dataset.goodsSpecItems || '[]'));
+            } catch {}
+            const cacheKey = String(button.dataset.goodsCacheKey || '');
+            const cachedCard = cacheKey ? apiGoodsCardCache.get(cacheKey) : null;
+            window.openApiGoodsSpecModal?.(normalizeApiGoodsCard(cachedCard || {}, {
+              cacheKey,
+              goodsId: button.dataset.goodsId || '',
+              url: button.dataset.goodsUrl || '',
+              title: button.dataset.goodsTitle || '',
+              imageUrl: button.dataset.goodsImageUrl || '',
+              priceText: button.dataset.goodsPriceText || '',
+              groupText: button.dataset.goodsGroupText || '',
+              specText: button.dataset.goodsSpecText || '查看商品规格',
+              specItems: inlineSpecItems,
+              stockText: button.dataset.goodsStockText || '',
+              salesText: button.dataset.goodsSalesText || '',
+              pendingGroupText: button.dataset.goodsPendingGroupText || '',
+            }));
           });
         });
         container.scrollTop = container.scrollHeight;
@@ -11209,6 +11473,8 @@
     // ==================== 通用工具 ====================
     function showModal(id) { document.getElementById(id).classList.add('visible'); }
     function hideModal(id) { document.getElementById(id).classList.remove('visible'); }
+    window.showModal = showModal;
+    window.hideModal = hideModal;
 
     function showApiImagePreview(url) {
       const normalizedUrl = String(url || '').trim();

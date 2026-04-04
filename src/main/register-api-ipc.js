@@ -130,7 +130,7 @@ function registerApiIpc({
   ipcMain.handle('api-get-goods-card', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
-    if (!params.url) return { error: '缺少商品链接' };
+    if (!params.url && !params.goodsId) return { error: '缺少商品链接' };
     try {
       return await getApiClient(shopId).getGoodsCard(params);
     } catch (error) {

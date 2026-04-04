@@ -1339,6 +1339,15 @@
     return callRuntime('getApiStatusShopId', preferActiveSession) || '';
   }
 
+  function getApiSessionGroupNumber(session = {}) {
+    const rawValue = session.groupNumber
+      ?? session.group_number
+      ?? session.raw?.groupNumber
+      ?? session.raw?.group_number;
+    const numericValue = Number(rawValue);
+    return Number.isFinite(numericValue) ? numericValue : 0;
+  }
+
   function clearApiActiveSession() {
     return callRuntime('clearApiActiveSession');
   }
@@ -1408,6 +1417,73 @@
         const value = source[key];
         if (typeof value === 'string' && value.trim()) return value.trim();
       }
+    }
+    return '';
+  }
+
+  function pickApiDisplayAfterSalesStatus(sources = []) {
+    const descKeys = [
+      'afterSalesStatusDesc',
+      'after_sales_status_desc',
+      'aftersaleStatusDesc',
+      'aftersale_status_desc',
+    ];
+    const statusKeys = [
+      'afterSalesStatus',
+      'after_sales_status',
+    ];
+    function mapAfterSalesStatusCodeToText(value) {
+      const code = String(value || '').trim();
+      if (!code || !/^\d+$/.test(code)) return '';
+      const map = {
+        '0': '无售后',
+        '2': '买家申请退款，待商家处理',
+        '3': '退货退款，待商家处理',
+        '4': '商家同意退款，退款中',
+        '5': '未发货，退款成功',
+        '6': '驳回退款，待用户处理',
+        '7': '已同意退货退款,待用户发货',
+        '8': '平台处理中',
+        '9': '平台拒绝退款，退款关闭',
+        '10': '已发货，退款成功',
+        '11': '买家撤销',
+        '12': '买家逾期未处理，退款失败',
+        '13': '部分退款成功',
+        '14': '商家拒绝退款，退款关闭',
+        '15': '退货完成，待退款',
+        '16': '换货补寄成功',
+        '17': '换货补寄失败',
+        '18': '换货补寄待用户确认完成',
+        '21': '待商家同意维修',
+        '22': '待用户确认发货',
+        '24': '维修关闭',
+        '25': '维修成功',
+        '27': '待用户确认收货',
+        '31': '已同意拒收退款，待用户拒收',
+        '32': '补寄待商家发货',
+      };
+      return map[code] || '';
+    }
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const descText = pickApiRefundText([source], descKeys);
+      if (descText) return descText;
+      const hasAfterSalesContext = descKeys.some(key => source[key] !== undefined && source[key] !== null && source[key] !== '')
+        || statusKeys.some(key => source[key] !== undefined && source[key] !== null && source[key] !== '');
+      if (!hasAfterSalesContext) continue;
+      const scopedText = pickApiRefundText([source], ['statusDesc', 'status_desc', 'label', 'desc']);
+      if (scopedText && !/^\d+$/.test(scopedText)) return scopedText;
+    }
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const statusText = pickApiRefundText([source], statusKeys);
+      if (statusText && !/^\d+$/.test(statusText)) return statusText;
+    }
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const statusCode = pickApiRefundText([source], statusKeys);
+      const mappedText = mapAfterSalesStatusCodeToText(statusCode);
+      if (mappedText) return mappedText;
     }
     return '';
   }
@@ -2203,7 +2279,7 @@
       || '待确认';
     const quantityValue = pickApiRefundText(sources, ['quantity', 'num', 'count', 'goods_count', 'goodsNumber', 'buy_num', 'buyNum']) || String(pickApiRefundNumber(sources, ['quantity', 'num', 'count', 'goods_count', 'goodsNumber', 'buy_num', 'buyNum']) || '').trim();
     const specText = pickApiRefundText(sources, ['specText', 'spec_text', 'spec', 'sku_spec', 'skuSpec', 'spec_desc', 'specDesc', 'sub_name', 'subName']);
-    const afterSalesStatus = pickApiRefundText(sources, ['afterSalesStatus', 'after_sales_status', 'afterSalesStatusDesc', 'after_sales_status_desc']);
+    const afterSalesStatus = pickApiDisplayAfterSalesStatus(sources);
     const normalizedQuantity = String(quantityValue || '').replace(/^x/i, '').trim();
     const detailText = pickApiRefundText(sources, ['detailText', 'detail_text']) || (normalizedQuantity && specText
       ? `${specText} x${normalizedQuantity}`
@@ -2794,12 +2870,39 @@
       message?.raw?.content,
       message?.raw?.msg_content,
     ].filter(Boolean).join('\n');
+    const structuredSources = [
+      message?.extra,
+      message?.raw?.extra,
+      message?.raw?.info,
+      message?.raw?.biz_context,
+      message?.raw,
+      message,
+    ].filter(Boolean);
     const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
       || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
-    if (!match?.[0]) return null;
-    const url = match[0].replace(/&amp;/gi, '&');
-    const goodsIdMatch = url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i);
-    const goodsId = goodsIdMatch?.[1] || '';
+    let url = match?.[0]
+      ? match[0].replace(/&amp;/gi, '&')
+      : pickApiGoodsText(structuredSources, ['url', 'share_url', 'shareUrl', 'goods_url', 'goodsUrl', 'jump_url', 'jumpUrl', 'link_url', 'linkUrl']);
+    if (url && !/^https?:\/\//i.test(url) && /(?:^|[?&])goods_id=\d+/i.test(url)) {
+      url = `https://mobile.yangkeduo.com/${String(url).replace(/^\/+/, '')}`;
+    }
+    if (url && /^\/(?:goods2?|goods)\.html\?/i.test(url)) {
+      url = `https://mobile.yangkeduo.com${url}`;
+    }
+    const isHttpGoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
+    const isH5GoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
+    if (url && !isHttpGoodsUrl && !isH5GoodsUrl) {
+      url = '';
+    }
+    const goodsIdMatch = url
+      ? (url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i))
+      : null;
+    const goodsId = goodsIdMatch?.[1]
+      || pickApiGoodsText(structuredSources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']);
+    if (goodsId) {
+      url = `https://mobile.yangkeduo.com/goods.html?goods_id=${goodsId}`;
+    }
+    if (!url && !goodsId) return null;
     return {
       url,
       goodsId,
@@ -2808,23 +2911,65 @@
   }
 
   function pickApiGoodsText(sources = [], keys = []) {
+    const extractText = (value, preferredKeys = [], seen = new Set()) => {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+      if (!value || typeof value !== 'object' || seen.has(value)) return '';
+      seen.add(value);
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const matched = extractText(item, preferredKeys, seen);
+          if (matched) return matched;
+        }
+        return '';
+      }
+      for (const key of preferredKeys) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        const matched = extractText(value[key], preferredKeys, seen);
+        if (matched) return matched;
+      }
+      for (const item of Object.values(value)) {
+        const matched = extractText(item, preferredKeys, seen);
+        if (matched) return matched;
+      }
+      return '';
+    };
     for (const source of sources) {
       if (!source || typeof source !== 'object') continue;
       for (const key of keys) {
-        const value = source[key];
-        if (typeof value === 'string' && value.trim()) return value.trim();
+        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+        const matched = extractText(source[key], ['title', 'name', 'text', 'content', 'url', 'src', 'imageUrl', 'image_url']);
+        if (matched) return matched;
       }
     }
     return '';
   }
 
   function pickApiGoodsNumber(sources = [], keys = []) {
+    const extractNumber = (value, seen = new Set()) => {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      if (!value || typeof value !== 'object' || seen.has(value)) return 0;
+      seen.add(value);
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const matched = extractNumber(item, seen);
+          if (matched > 0) return matched;
+        }
+        return 0;
+      }
+      for (const item of Object.values(value)) {
+        const matched = extractNumber(item, seen);
+        if (matched > 0) return matched;
+      }
+      return 0;
+    };
     for (const source of sources) {
       if (!source || typeof source !== 'object') continue;
       for (const key of keys) {
-        const value = source[key];
-        const numeric = Number(value);
-        if (Number.isFinite(numeric) && numeric > 0) return numeric;
+        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+        const matched = extractNumber(source[key]);
+        if (matched > 0) return matched;
       }
     }
     return 0;
@@ -2859,24 +3004,42 @@
     };
   }
 
+  function isMeaningfulApiGoodsCard(card = {}) {
+    const title = String(card?.title || '').trim();
+    return !!(
+      String(card?.imageUrl || '').trim()
+      || String(card?.priceText || '').trim()
+      || (title && title !== '拼多多商品')
+    );
+  }
+
+  function describeApiGoodsCardResult(card = {}) {
+    const title = String(card?.title || '').trim() || '空标题';
+    const imageState = card?.imageUrl ? '有图' : '无图';
+    const priceState = card?.priceText ? `价格:${card.priceText}` : '无价';
+    return `${title}，${imageState}，${priceState}`;
+  }
+
   function buildApiGoodsCardFallback(linkInfo, message = {}, session = {}) {
     const sources = [
       message?.extra,
       message?.raw?.extra,
+      message?.raw?.info,
+      message?.raw?.biz_context,
       message?.raw,
       session?.goodsInfo,
       session?.raw?.goods_info,
       session?.raw?.goods,
     ].filter(Boolean);
     const priceText = pickApiGoodsText(sources, ['priceText', 'price_text', 'price'])
-      || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['group_price', 'min_group_price', 'price', 'min_price']));
+      || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['promotionPrice', 'promotion_price', 'couponPromoPrice', 'coupon_promo_price', 'group_price', 'min_group_price', 'price', 'min_price', 'goodsPrice']));
     const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
-    const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'group_member_count', 'group_count']);
+    const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'customerNumber', 'group_member_count', 'group_count']);
     return normalizeApiGoodsCard({
-      goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'id']),
+      goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'id']),
       url: linkInfo?.url || '',
-      title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'name']) || '拼多多商品',
-      imageUrl: pickApiGoodsText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'pic_url']),
+      title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'goodsTitle', 'name']) || '拼多多商品',
+      imageUrl: pickApiGoodsText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'goodsThumbUrl', 'pic_url']),
       priceText,
       groupText: groupRawText || (groupCount > 0 ? `${groupCount}人团` : '2人团'),
       specText: '查看商品规格',
@@ -2961,19 +3124,42 @@
     const state = getState();
     const cache = state.apiGoodsCardCache;
     const pending = state.apiGoodsCardPending;
-    if (!linkInfo?.url || !cache || !pending || cache.has(linkInfo.cacheKey) || pending.has(linkInfo.cacheKey)) return;
+    if (!linkInfo?.url || !cache || !pending || pending.has(linkInfo.cacheKey)) return;
+    if (fallbackCard && isMeaningfulApiGoodsCard(fallbackCard)) {
+      cache.set(linkInfo.cacheKey, normalizeApiGoodsCard(fallbackCard, fallbackCard));
+      return;
+    }
+    const cachedCard = cache.get(linkInfo.cacheKey);
+    if (cachedCard && isMeaningfulApiGoodsCard(cachedCard)) return;
+    if (cachedCard) {
+      cache.delete(linkInfo.cacheKey);
+    }
     if (!window.pddApi?.apiGetGoodsCard) return;
     pending.add(linkInfo.cacheKey);
     try {
+      recordApiSyncState('商品卡片请求', `goodsId:${linkInfo.goodsId || '-'}，url:${linkInfo.url ? '有' : '无'}`);
       const result = await window.pddApi.apiGetGoodsCard({
         shopId: state.apiActiveSessionShopId,
         url: linkInfo.url,
         goodsId: linkInfo.goodsId,
         fallback: fallbackCard,
       });
-      cache.set(linkInfo.cacheKey, normalizeApiGoodsCard(result, fallbackCard));
-    } catch {
-      cache.set(linkInfo.cacheKey, normalizeApiGoodsCard({}, fallbackCard));
+      if (result?.error) {
+        recordApiSyncState('商品卡片失败', result.error);
+        cache.delete(linkInfo.cacheKey);
+        return;
+      }
+      const normalized = normalizeApiGoodsCard(result, fallbackCard);
+      if (isMeaningfulApiGoodsCard(normalized)) {
+        cache.set(linkInfo.cacheKey, normalized);
+        recordApiSyncState('商品卡片成功', describeApiGoodsCardResult(normalized));
+      } else {
+        cache.delete(linkInfo.cacheKey);
+        recordApiSyncState('商品卡片占位', describeApiGoodsCardResult(normalized));
+      }
+    } catch (error) {
+      cache.delete(linkInfo.cacheKey);
+      recordApiSyncState('商品卡片失败', error?.message || '未知异常');
     } finally {
       pending.delete(linkInfo.cacheKey);
       if (getState().apiHasUserSelectedSession) renderApiMessages();
@@ -3499,6 +3685,10 @@
         const unread = Number(session.unreadCount || 0);
         const pendingReply = hasApiPendingReply(session);
         const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
+        const groupNumber = getApiSessionGroupNumber(session);
+        const orderTagHtml = groupNumber >= 1
+          ? `<span class="api-session-order-tag">订单：（${esc(String(groupNumber))}）</span>`
+          : '';
         const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
         return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
           <div class="api-session-avatar">${avatarHtml}</div>
@@ -3507,6 +3697,7 @@
               <div class="api-session-item-info-row">
                 <div class="api-session-item-name">
                   <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
+                  ${orderTagHtml}
                   ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
                 </div>
                 <div class="api-session-shop">
@@ -3661,17 +3852,33 @@
     setApiHint('已模拟执行会话处理动作，当前先复用已读链路。');
   }
 
-  async function handleApiRisk() {
+  function handleApiRisk(event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+    }
+  }
+
+  function handleApiRiskMenuAction(action) {
     const state = getState();
     if (!state.apiActiveSessionId) {
       setApiHint('请先选择一个接口会话');
       return;
     }
-    try {
-      await navigator.clipboard.writeText(state.apiActiveSessionId);
-      setApiHint(`已复制会话ID：${state.apiActiveSessionId}`);
-    } catch {
-      setApiHint(`会话ID：${state.apiActiveSessionId}`);
+    if (action === 'report') {
+      setApiHint('举报功能开发中');
+      return;
+    }
+    if (action === 'blacklist') {
+      setApiHint('拉黑功能开发中');
+      return;
+    }
+    if (action === 'manage') {
+      setApiHint('黑名单管理功能开发中');
     }
   }
 
@@ -3857,6 +4064,9 @@
     document.getElementById('btnApiSendImage')?.addEventListener('click', handleApiSendImage);
     document.getElementById('btnApiTransfer')?.addEventListener('click', handleApiTransfer);
     document.getElementById('btnApiRisk')?.addEventListener('click', handleApiRisk);
+    document.getElementById('btnApiRiskReport')?.addEventListener('click', () => handleApiRiskMenuAction('report'));
+    document.getElementById('btnApiRiskBlacklist')?.addEventListener('click', () => handleApiRiskMenuAction('blacklist'));
+    document.getElementById('btnApiRiskManage')?.addEventListener('click', () => handleApiRiskMenuAction('manage'));
     document.getElementById('btnApiStar')?.addEventListener('click', handleApiStar);
     document.getElementById('btnApiRefund')?.addEventListener('click', openApiRefundOrderSelector);
     document.getElementById('apiRefundOrderList')?.addEventListener('click', handleApiRefundOrderSelection);

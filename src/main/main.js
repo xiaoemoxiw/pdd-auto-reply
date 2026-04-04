@@ -1501,10 +1501,15 @@ function getApiShopList(shopId, options = {}) {
 
 function decorateApiSession(shopId, session) {
   const shop = getStoredShops().find(item => item.id === shopId);
+  const mallName = session?.mallName || session?.raw?.mallName || session?.raw?.mall_name || '';
+  const shopName = ['未命名店铺', '未知店铺'].includes(String(session?.shopName || '').trim())
+    ? ''
+    : session?.shopName;
   return {
     ...session,
     shopId,
-    shopName: session?.shopName || shop?.name || '未知店铺',
+    mallName,
+    shopName: shopName || mallName || shop?.name || '未知店铺',
     shopStatus: shop?.status || '',
   };
 }

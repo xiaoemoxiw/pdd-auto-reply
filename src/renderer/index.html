@@ -1885,12 +1885,15 @@
       flex-direction: column;
       justify-content: center;
       position: relative;
-      padding-right: 50px;
+      padding-right: 0;
     }
 
     .api-session-item-title {
+      width: 100%;
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       min-width: 0;
       position: relative;
     }
@@ -1898,14 +1901,14 @@
     .api-session-item-info-row {
       display: flex;
       align-items: center;
+      justify-content: flex-start;
       gap: 8px;
       min-width: 0;
       flex: 1;
-      /* padding-right: 12px; */
     }
 
     .api-session-item-name {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       color: #333;
       display: flex;
@@ -1924,7 +1927,8 @@
     }
 
     .api-session-item-time {
-      display: block;
+      display: flex;
+      align-items: center;
       font-size: 11px;
       color: #999;
       white-space: nowrap;
@@ -1948,6 +1952,7 @@
     }
 
     .api-session-item.reply-pending .api-session-main {
+      padding-right: 72px;
       padding-bottom: 14px;
     }
 
@@ -1960,32 +1965,28 @@
     }
 
     .api-session-time-group {
-      position: absolute;
-      top: 50%;
-      right: -53px;
-      /* display: flex;
-      align-items: flex-start;
-      justify-content: flex-start; */
-      width: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: max-content;
       flex-shrink: 0;
-      transform: translateY(-50%);
     }
 
     .api-session-shop-tag,
     .api-session-order-tag {
       display: inline-flex;
       align-items: center;
-      height: 22px;
-      padding: 0 8px;
-      border-radius: 11px;
-      font-size: 11px;
-      line-height: 22px;
+      height: 16px;
+      padding: 0 5px;
+      border-radius: 5px;
+      font-size: 8px;
+      line-height: 16px;
     }
 
     .api-session-shop-tag {
       background: #eef3ff;
       color: #4d66a5;
-      font-size: 10px;
+      font-size: 9px;
       max-width: 92px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1993,8 +1994,8 @@
     }
 
     .api-session-order-tag {
-      background: #fff4e8;
-      color: #b96812;
+      background: #b91212;
+      color: #ffffff;
     }
 
     .api-session-star {
@@ -2156,6 +2157,95 @@
     .api-conversation-action.is-active {
       border-color: #ffd7d3;
       background: #fff1f0;
+      color: #e02e24;
+    }
+
+    .api-conversation-risk {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .api-conversation-risk::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      height: 12px;
+    }
+
+    .api-conversation-action-icon {
+      width: 34px;
+      min-width: 34px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .api-conversation-action-icon svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .api-conversation-risk:hover .api-risk-menu,
+    .api-conversation-risk:focus-within .api-risk-menu {
+      opacity: 1;
+      transform: translate(-50%, 0);
+      pointer-events: auto;
+    }
+
+    .api-risk-menu {
+      position: absolute;
+      top: calc(100% + 10px);
+      left: 50%;
+      transform: translate(-50%, 6px);
+      min-width: 108px;
+      padding: 10px 0;
+      border: 1px solid #ebeef5;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 12px 24px rgba(31, 45, 61, 0.12);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 30;
+    }
+
+    .api-risk-menu::before {
+      content: '';
+      position: absolute;
+      top: -8px;
+      left: 50%;
+      width: 14px;
+      height: 14px;
+      background: #fff;
+      border-top: 1px solid #ebeef5;
+      border-left: 1px solid #ebeef5;
+      transform: translateX(-50%) rotate(45deg);
+    }
+
+    .api-risk-menu-item {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: #333;
+      font-size: 14px;
+      line-height: 22px;
+      text-align: center;
+      padding: 12px 18px;
+      cursor: pointer;
+      transition: background 0.18s ease, color 0.18s ease;
+    }
+
+    .api-risk-menu-item:hover {
+      background: #fff6f5;
       color: #e02e24;
     }
 
@@ -5361,8 +5451,26 @@
                   </div>
                 </div>
                 <div class="api-conversation-actions">
+                  <div class="api-conversation-risk">
+                    <button
+                      class="api-conversation-action api-conversation-action-icon"
+                      id="btnApiRisk"
+                      type="button"
+                      aria-label="风险操作"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 3.8 21 19.4a1.2 1.2 0 0 1-1.05 1.8H4.05A1.2 1.2 0 0 1 3 19.4L12 3.8Z"></path>
+                        <path d="M12 8.8v5.1"></path>
+                        <circle cx="12" cy="17.3" r="1"></circle>
+                      </svg>
+                    </button>
+                    <div class="api-risk-menu" role="menu" aria-label="风险操作菜单">
+                      <button class="api-risk-menu-item" id="btnApiRiskReport" type="button" role="menuitem">举报</button>
+                      <button class="api-risk-menu-item" id="btnApiRiskBlacklist" type="button" role="menuitem">拉黑</button>
+                      <button class="api-risk-menu-item" id="btnApiRiskManage" type="button" role="menuitem">管理黑名单</button>
+                    </div>
+                  </div>
                   <button class="api-conversation-action" id="btnApiStar">收藏</button>
-                  <button class="api-conversation-action" id="btnApiRisk">拉黑</button>
                 </div>
               </div>
               <div class="api-message-list" id="apiMessageList"></div>
@@ -7342,12 +7450,39 @@
         message?.raw?.content,
         message?.raw?.msg_content,
       ].filter(Boolean).join('\n');
+      const structuredSources = [
+        message?.extra,
+        message?.raw?.extra,
+        message?.raw?.info,
+        message?.raw?.biz_context,
+        message?.raw,
+        message,
+      ].filter(Boolean);
       const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
         || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
-      if (!match?.[0]) return null;
-      const url = match[0].replace(/&amp;/gi, '&');
-      const goodsIdMatch = url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i);
-      const goodsId = goodsIdMatch?.[1] || '';
+      let url = match?.[0]
+        ? match[0].replace(/&amp;/gi, '&')
+        : pickApiGoodsText(structuredSources, ['url', 'share_url', 'shareUrl', 'goods_url', 'goodsUrl', 'jump_url', 'jumpUrl', 'link_url', 'linkUrl']);
+      if (url && !/^https?:\/\//i.test(url) && /(?:^|[?&])goods_id=\d+/i.test(url)) {
+        url = `https://mobile.yangkeduo.com/${String(url).replace(/^\/+/, '')}`;
+      }
+      if (url && /^\/(?:goods2?|goods)\.html\?/i.test(url)) {
+        url = `https://mobile.yangkeduo.com${url}`;
+      }
+      const isHttpGoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
+      const isH5GoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
+      if (url && !isHttpGoodsUrl && !isH5GoodsUrl) {
+        url = '';
+      }
+      const goodsIdMatch = url
+        ? (url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i))
+        : null;
+      const goodsId = goodsIdMatch?.[1]
+        || pickApiGoodsText(structuredSources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']);
+      if (goodsId) {
+        url = `https://mobile.yangkeduo.com/goods.html?goods_id=${goodsId}`;
+      }
+      if (!url && !goodsId) return null;
       return {
         url,
         goodsId,
@@ -7449,21 +7584,39 @@
       };
     }
 
+    function isMeaningfulApiGoodsCard(card = {}) {
+      const title = String(card?.title || '').trim();
+      return !!(
+        String(card?.imageUrl || '').trim()
+        || String(card?.priceText || '').trim()
+        || (title && title !== '拼多多商品')
+      );
+    }
+
+    function describeApiGoodsCardResult(card = {}) {
+      const title = String(card?.title || '').trim() || '空标题';
+      const imageState = card?.imageUrl ? '有图' : '无图';
+      const priceState = card?.priceText ? `价格:${card.priceText}` : '无价';
+      return `${title}，${imageState}，${priceState}`;
+    }
+
     function buildApiGoodsCardFallback(linkInfo, message = {}, session = {}) {
       const sources = [
         message?.extra,
         message?.raw?.extra,
+        message?.raw?.info,
+        message?.raw?.biz_context,
         message?.raw,
         session?.goodsInfo,
         session?.raw?.goods_info,
         session?.raw?.goods,
       ].filter(Boolean);
       const priceText = pickApiGoodsText(sources, ['priceText', 'price_text', 'price'])
-        || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['group_price', 'min_group_price', 'price', 'min_price']));
+        || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['promotionPrice', 'promotion_price', 'couponPromoPrice', 'coupon_promo_price', 'group_price', 'min_group_price', 'price', 'min_price', 'goodsPrice']));
       const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
-      const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'group_member_count', 'group_count']);
+      const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'customerNumber', 'group_member_count', 'group_count']);
       return normalizeApiGoodsCard({
-        goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'id']),
+        goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'id']),
         url: linkInfo?.url || '',
         title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'share_title', 'name']) || '拼多多商品',
         imageUrl: pickApiGoodsText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url', 'top_gallery', 'gallery', 'images', 'imageList']),
@@ -7693,19 +7846,42 @@
     }
 
     async function ensureApiGoodsCardLoaded(linkInfo, fallbackCard) {
-      if (!linkInfo?.url || apiGoodsCardCache.has(linkInfo.cacheKey) || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
+      if (!linkInfo?.url || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
+      if (fallbackCard && isMeaningfulApiGoodsCard(fallbackCard)) {
+        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard(fallbackCard, fallbackCard));
+        return;
+      }
+      const cachedCard = apiGoodsCardCache.get(linkInfo.cacheKey);
+      if (cachedCard && isMeaningfulApiGoodsCard(cachedCard)) return;
+      if (cachedCard) {
+        apiGoodsCardCache.delete(linkInfo.cacheKey);
+      }
       if (!window.pddApi?.apiGetGoodsCard) return;
       apiGoodsCardPending.add(linkInfo.cacheKey);
       try {
+        recordApiSyncState('商品卡片请求', `goodsId:${linkInfo.goodsId || '-'}，url:${linkInfo.url ? '有' : '无'}`);
         const result = await window.pddApi.apiGetGoodsCard({
           shopId: apiActiveSessionShopId,
           url: linkInfo.url,
           goodsId: linkInfo.goodsId,
           fallback: fallbackCard,
         });
-        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard(result, fallbackCard));
-      } catch {
-        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard({}, fallbackCard));
+        if (result?.error) {
+          recordApiSyncState('商品卡片失败', result.error);
+          apiGoodsCardCache.delete(linkInfo.cacheKey);
+          return;
+        }
+        const normalized = normalizeApiGoodsCard(result, fallbackCard);
+        if (isMeaningfulApiGoodsCard(normalized)) {
+          apiGoodsCardCache.set(linkInfo.cacheKey, normalized);
+          recordApiSyncState('商品卡片成功', describeApiGoodsCardResult(normalized));
+        } else {
+          apiGoodsCardCache.delete(linkInfo.cacheKey);
+          recordApiSyncState('商品卡片占位', describeApiGoodsCardResult(normalized));
+        }
+      } catch (error) {
+        apiGoodsCardCache.delete(linkInfo.cacheKey);
+        recordApiSyncState('商品卡片失败', error?.message || '未知异常');
       } finally {
         apiGoodsCardPending.delete(linkInfo.cacheKey);
         if (apiHasUserSelectedSession) renderApiMessages();
@@ -8386,8 +8562,11 @@
           highlighted: true,
         };
       }
+      const isShopMember = typeof session.isShopMember === 'boolean'
+        ? session.isShopMember
+        : (typeof session.is_shop_member === 'boolean' ? session.is_shop_member : null);
       return {
-        text: '已关注本店',
+        text: isShopMember === false ? '未关注本店' : '已关注本店',
         highlighted: false,
       };
     }
@@ -8779,14 +8958,35 @@
       const shop = shops.find(item => item.id === session.shopId) || null;
       const shopId = session.shopId || shop?.id || apiActiveSessionShopId || activeShopId || '';
       const lastMessageActor = getApiSessionLastMessageActor(session);
+      const mallName = session.mallName || session.raw?.mallName || session.raw?.mall_name || '';
+      const preferredShopName = ['未命名店铺', '未知店铺'].includes(String(session.shopName || '').trim())
+        ? ''
+        : session.shopName;
       return {
         ...session,
         shopId,
-        shopName: session.shopName || shop?.name || '未命名店铺',
+        mallName,
+        isShopMember: typeof session.isShopMember === 'boolean'
+          ? session.isShopMember
+          : (typeof session.is_shop_member === 'boolean'
+            ? session.is_shop_member
+            : (typeof session.raw?.is_shop_member === 'boolean'
+              ? session.raw.is_shop_member
+              : null)),
+        shopName: preferredShopName || mallName || shop?.name || '未命名店铺',
         sessionKey: session.sessionKey || getApiSessionKey(shopId, session.sessionId),
         lastMessageActor,
         lastMessageIsFromBuyer: session.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer',
       };
+    }
+
+    function getApiSessionGroupNumber(session = {}) {
+      const rawValue = session.groupNumber
+        ?? session.group_number
+        ?? session.raw?.groupNumber
+        ?? session.raw?.group_number;
+      const numericValue = Number(rawValue);
+      return Number.isFinite(numericValue) ? numericValue : 0;
     }
 
     function setApiActiveSessionSnapshot(session = null) {
@@ -8878,7 +9078,7 @@
           result.push(buildApiSession({
             sessionId,
             shopId,
-            shopName: entry.shopName || shops.find(shop => shop.id === shopId)?.name || '未命名店铺',
+            shopName: entry.shopName || shops.find(shop => shop.id === shopId)?.name || '',
             customerId: String(item.customer_id || item.buyer_id || item?.from?.uid || item?.to?.uid || item?.user_info?.uid || ''),
             customerName: item.nick || item.nickname || item.buyer_name || item.customer_name || item.name || item?.user_info?.nickname || '未知客户',
             customerAvatar: item.avatar || item.head_img || item.buyer_avatar || item?.user_info?.avatar || '',
@@ -9198,6 +9398,10 @@
           const unread = Number(session.unreadCount || 0);
           const pendingReply = hasApiPendingReply(session);
           const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
+          const groupNumber = getApiSessionGroupNumber(session);
+          const orderTagHtml = groupNumber >= 1
+            ? `<span class="api-session-order-tag">订单 ${esc(String(groupNumber))}</span>`
+            : '';
           const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
           return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
             <div class="api-session-avatar">${avatarHtml}</div>
@@ -9206,14 +9410,15 @@
                 <div class="api-session-item-info-row">
                   <div class="api-session-item-name">
                     <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
+                    ${orderTagHtml}
                     ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
                   </div>
                   <div class="api-session-shop">
                     <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
                   </div>
-                </div>
-                <div class="api-session-time-group">
-                  <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
+                  <div class="api-session-time-group">
+                    <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
+                  </div>
                 </div>
               </div>
               <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
@@ -10295,17 +10500,33 @@
         setApiHint('已模拟执行会话处理动作，当前先复用已读链路。');
       });
 
-      document.getElementById('btnApiRisk').addEventListener('click', async () => {
+      document.getElementById('btnApiRisk').addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+        }
+      });
+      document.getElementById('btnApiRiskReport').addEventListener('click', () => {
         if (!apiActiveSessionId) {
           setApiHint('请先选择一个接口会话');
           return;
         }
-        try {
-          await navigator.clipboard.writeText(apiActiveSessionId);
-          setApiHint(`已复制会话ID：${apiActiveSessionId}`);
-        } catch {
-          setApiHint(`会话ID：${apiActiveSessionId}`);
+        setApiHint('举报功能开发中');
+      });
+      document.getElementById('btnApiRiskBlacklist').addEventListener('click', () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
         }
+        setApiHint('拉黑功能开发中');
+      });
+      document.getElementById('btnApiRiskManage').addEventListener('click', () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        setApiHint('黑名单管理功能开发中');
       });
       document.getElementById('btnApiStar').addEventListener('click', async () => {
         if (!apiActiveSessionId) {

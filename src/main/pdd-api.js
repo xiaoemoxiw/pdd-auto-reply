@@ -1451,10 +1451,16 @@ class PddApiClient extends EventEmitter {
       unreadCount: item.unread_count || item.unread || item.unread_num || item?.context?.unread || 0,
       isTimeout: item.is_timeout || item.timeout || false,
       waitTime: item.wait_time || item.waiting_time || item.last_unreply_time || 0,
+      groupNumber: item.groupNumber ?? item.group_number ?? item?.user_info?.group_number ?? item?.user_info?.groupNumber ?? 0,
+      group_number: item.group_number ?? item.groupNumber ?? item?.user_info?.group_number ?? item?.user_info?.groupNumber ?? 0,
       orderId: item.order_id || item.order_sn || '',
       goodsInfo: item.goods_info || item.goods || null,
       csUid: item?.from?.cs_uid || '',
       mallId: item?.from?.mall_id || '',
+      mallName: item.mallName || item.mall_name || item?.mall_info?.mall_name || item?.mall_info?.mallName || '',
+      isShopMember: typeof item.is_shop_member === 'boolean'
+        ? item.is_shop_member
+        : (typeof item.isShopMember === 'boolean' ? item.isShopMember : null),
       raw: item,
     }});
   }
@@ -1995,6 +2001,61 @@ class PddApiClient extends EventEmitter {
     };
   }
 
+  _isGoodsLoginPageHtml(html = '') {
+    const source = String(html || '');
+    if (!source) return false;
+    return /手机号码/.test(source)
+      && /验证码/.test(source)
+      && /服务协议/.test(source)
+      && /隐私政策/.test(source);
+  }
+
+  _hasMeaningfulGoodsCardData(card = {}, fallback = {}) {
+    const title = String(card?.title || '').trim();
+    const fallbackTitle = String(fallback?.title || '').trim();
+    return !!(
+      String(card?.imageUrl || '').trim()
+      || String(card?.priceText || '').trim()
+      || (title && title !== '拼多多商品' && (!fallbackTitle || title !== fallbackTitle))
+    );
+  }
+
+  async _loadGoodsHtmlInWindow(url) {
+    const shop = this._getShopInfo();
+    const win = new BrowserWindow({
+      width: 1200,
+      height: 900,
+      show: false,
+      webPreferences: {
+        partition: this.partition,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    if (shop?.userAgent) {
+      win.webContents.setUserAgent(shop.userAgent);
+    }
+    try {
+      await win.loadURL(url);
+      for (let i = 0; i < 6; i += 1) {
+        await this._sleep(800);
+        const currentUrl = win.webContents.getURL();
+        if (currentUrl.includes('/login')) break;
+        if (currentUrl.includes('goods.html') || currentUrl.includes('goods2.html') || currentUrl.includes('goods_id=')) {
+          await this._sleep(1200);
+          break;
+        }
+      }
+      return await win.webContents.executeJavaScript(`(() => ({
+        url: location.href,
+        title: document.title || '',
+        html: document.documentElement ? document.documentElement.outerHTML : ''
+      }))()`);
+    } finally {
+      if (!win.isDestroyed()) win.destroy();
+    }
+  }
+
   _findMessageArray(payload) {
     const directCandidates = [
       payload?.data?.msg_list,
@@ -2288,7 +2349,97 @@ class PddApiClient extends EventEmitter {
     return (Array.isArray(orders) ? orders : []).filter(order => this._isRefundOrderEligible(order));
   }
 
+  _normalizeRefundShippingBenefitStatus(value, { legacyGifted = false } = {}) {
+    if (value === undefined || value === null || value === '') return '';
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      if (value === 0) return '未赠送';
+      if (value === 1) return legacyGifted ? '已赠送' : '商家承担';
+      if (value === 2) return '包运费';
+      return String(value);
+    }
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const normalized = text.toLowerCase();
+    if (['0', 'false', 'no', 'n', 'unshipped', 'not_gifted', 'none', '未赠送'].includes(normalized)) {
+      return '未赠送';
+    }
+    if (legacyGifted && ['1', 'true', 'yes', 'y', 'shipped', 'gifted', 'presented', '已赠送'].includes(normalized)) {
+      return '已赠送';
+    }
+    if (['1', '商家承担'].includes(normalized)) {
+      return '商家承担';
+    }
+    if (['2', '包运费'].includes(normalized)) {
+      return '包运费';
+    }
+    if (['已赠送'].includes(normalized)) {
+      return legacyGifted ? '已赠送' : text;
+    }
+    return text;
+  }
+
   _resolveRefundShippingBenefitText(sources = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const compensateCandidates = [
+        source.compensate,
+        source.compensateInfo,
+        source.pendingCompensate,
+      ];
+      for (const candidate of compensateCandidates) {
+        if (!candidate || typeof candidate !== 'object') continue;
+        const hasStatusKey = ['status', 'compensateStatus', 'compensate_status']
+          .some(key => Object.prototype.hasOwnProperty.call(candidate, key));
+        if (hasStatusKey && candidate.status === null) {
+          return '未赠送';
+        }
+        if (hasStatusKey && candidate.compensateStatus === null) {
+          return '未赠送';
+        }
+        if (hasStatusKey && candidate.compensate_status === null) {
+          return '未赠送';
+        }
+        const statusText = this._normalizeRefundShippingBenefitStatus(
+          candidate.status ?? candidate.compensateStatus ?? candidate.compensate_status,
+        );
+        if (statusText) return statusText;
+        const directText = this._normalizeRefundShippingBenefitStatus(
+          candidate.text ?? candidate.desc ?? candidate.note,
+        );
+        if (directText) return directText;
+      }
+      const tagLists = [
+        source.workbenchOrderTagNew,
+        source.workbench_order_tag_new,
+        source.workbenchOrderTag,
+        source.workbench_order_tag,
+      ];
+      for (const tagList of tagLists) {
+        if (!Array.isArray(tagList) || !tagList.length) continue;
+        for (const tag of tagList) {
+          if (!tag || typeof tag !== 'object') continue;
+          const labelText = String(tag.text ?? tag.label ?? tag.name ?? tag.desc ?? '').trim();
+          const matched = /退货包运费|包运费/.test(labelText) || Number(tag.type) === 2;
+          if (!matched) continue;
+          const statusText = this._normalizeRefundShippingBenefitStatus(
+            tag.status ?? tag.statusText ?? tag.status_text ?? tag.value,
+          );
+          if (statusText) return statusText;
+        }
+      }
+    }
+    const freightResponsibilityText = this._pickRefundText(sources, [
+      'freightResponsibilityText',
+      'freight_responsibility_text',
+      'freightResponsibilityDesc',
+      'freight_responsibility_desc',
+      'freightResponsibility',
+      'freight_responsibility',
+    ]);
+    const normalizedFreightResponsibilityText = this._normalizeRefundShippingBenefitStatus(freightResponsibilityText);
+    if (normalizedFreightResponsibilityText) {
+      return normalizedFreightResponsibilityText;
+    }
     const rawText = this._pickRefundText(sources, [
       'refundShippingText',
       'refund_shipping_text',
@@ -2319,15 +2470,8 @@ class PddApiClient extends EventEmitter {
       'refundShippingInsurance',
       'refund_shipping_insurance',
     ]);
-    const text = String(rawText || '').trim();
+    const text = this._normalizeRefundShippingBenefitStatus(rawText, { legacyGifted: true });
     if (text) {
-      const normalized = text.toLowerCase();
-      if (['0', 'false', 'no', 'n', 'unshipped', 'not_gifted', 'none'].includes(normalized) || text === '未赠送') {
-        return '未赠送';
-      }
-      if (['1', 'true', 'yes', 'y', 'shipped', 'gifted', 'presented'].includes(normalized) || text === '已赠送') {
-        return '已赠送';
-      }
       return text;
     }
     const giftedFlag = this._pickRefundBoolean(sources, [
@@ -2351,19 +2495,19 @@ class PddApiClient extends EventEmitter {
       for (const [key, value] of Object.entries(source)) {
         if (!key || value === undefined || value === null) continue;
         const keyText = String(key).toLowerCase();
+        const freightResponsibilityMatched = /freight.*responsibility|responsibility.*freight|freight_responsibility/i.test(keyText);
+        if (freightResponsibilityMatched) {
+          const normalizedValue = this._normalizeRefundShippingBenefitStatus(value);
+          if (normalizedValue) return normalizedValue;
+        }
         const keyMatched = /(refund.*ship|ship.*refund|refund_shipping|shipping_refund)/i.test(keyText)
           && /(benefit|insurance|state|status|desc|text)/i.test(keyText);
         if (!keyMatched) continue;
-        if (typeof value === 'string') {
-          const candidate = value.trim();
-          if (!candidate) continue;
-          if (/(已赠送|未赠送)/.test(candidate)) return candidate;
-        } else if (typeof value === 'boolean') {
+        if (typeof value === 'boolean') {
           return value ? '已赠送' : '未赠送';
-        } else if (typeof value === 'number' && Number.isFinite(value)) {
-          if (value === 0) return '未赠送';
-          if (value === 1) return '已赠送';
         }
+        const normalizedValue = this._normalizeRefundShippingBenefitStatus(value, { legacyGifted: true });
+        if (normalizedValue) return normalizedValue;
       }
     }
     return '';
@@ -2555,37 +2699,199 @@ class PddApiClient extends EventEmitter {
     return text || '';
   }
 
-  async _fetchAfterSalesStatusMap(orderSns = []) {
+  _extractAfterSalesDetail(value) {
+    if (!value) return null;
+    if (Array.isArray(value)) {
+      const candidates = value
+        .map(item => this._extractAfterSalesDetail(item))
+        .filter(Boolean)
+        .sort((left, right) => {
+          const timeDiff = Number(right?._afterSalesSortTime || 0) - Number(left?._afterSalesSortTime || 0);
+          if (timeDiff) return timeDiff;
+          return Number(right?._afterSalesScore || 0) - Number(left?._afterSalesScore || 0);
+        });
+      if (!candidates.length) return null;
+      return candidates[0];
+    }
+    if (typeof value !== 'object') return null;
+    const nestedLists = [
+      value.list,
+      value.afterSalesList,
+      value.after_sales_list,
+      value.records,
+      value.items,
+    ];
+    for (const nested of nestedLists) {
+      if (!Array.isArray(nested) || !nested.length) continue;
+      const nestedDetail = this._extractAfterSalesDetail(nested);
+      if (nestedDetail) return nestedDetail;
+    }
+    const detail = this._cloneJson(value);
+    const statusText = this._pickDisplayAfterSalesStatus([detail]) || this._extractAfterSalesStatusText(detail);
+    const afterSalesId = this._pickRefundText([detail], [
+      'afterSalesSn',
+      'after_sales_sn',
+      'refundSn',
+      'refund_sn',
+      'refundId',
+      'refund_id',
+      'aftersaleId',
+      'aftersale_id',
+      'id',
+    ]);
+    const sortTime = this._pickRefundNumber([detail], [
+      'updatedAt',
+      'updated_at',
+      'updateTime',
+      'update_time',
+      'modifiedAt',
+      'modified_at',
+      'createdAt',
+      'created_at',
+      'createTime',
+      'create_time',
+      'applyTime',
+      'apply_time',
+    ]);
+    const score = (statusText ? 20 : 0) + (afterSalesId ? 10 : 0) + (sortTime ? 5 : 0);
+    if (!score) return null;
+    return {
+      ...detail,
+      afterSalesStatus: detail.afterSalesStatus || detail.after_sales_status_desc || detail.afterSalesStatusDesc || statusText || '',
+      _afterSalesSortTime: sortTime,
+      _afterSalesScore: score,
+    };
+  }
+
+  _mapAfterSalesStatusCodeToText(value) {
+    const code = String(value || '').trim();
+    if (!code || !/^\d+$/.test(code)) return '';
+    const map = {
+      '0': '无售后',
+      '2': '买家申请退款，待商家处理',
+      '3': '退货退款，待商家处理',
+      '4': '商家同意退款，退款中',
+      '5': '未发货，退款成功',
+      '6': '驳回退款，待用户处理',
+      '7': '已同意退货退款,待用户发货',
+      '8': '平台处理中',
+      '9': '平台拒绝退款，退款关闭',
+      '10': '已发货，退款成功',
+      '11': '买家撤销',
+      '12': '买家逾期未处理，退款失败',
+      '13': '部分退款成功',
+      '14': '商家拒绝退款，退款关闭',
+      '15': '退货完成，待退款',
+      '16': '换货补寄成功',
+      '17': '换货补寄失败',
+      '18': '换货补寄待用户确认完成',
+      '21': '待商家同意维修',
+      '22': '待用户确认发货',
+      '24': '维修关闭',
+      '25': '维修成功',
+      '27': '待用户确认收货',
+      '31': '已同意拒收退款，待用户拒收',
+      '32': '补寄待商家发货',
+    };
+    return map[code] || '';
+  }
+
+  _pickDisplayAfterSalesStatus(sources = []) {
+    const descKeys = [
+      'afterSalesStatusDesc',
+      'after_sales_status_desc',
+      'aftersaleStatusDesc',
+      'aftersale_status_desc',
+    ];
+    const statusKeys = [
+      'afterSalesStatus',
+      'after_sales_status',
+    ];
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const descText = this._pickRefundText([source], descKeys);
+      if (descText) return descText;
+      const hasAfterSalesContext = descKeys.some(key => source[key] !== undefined && source[key] !== null && source[key] !== '')
+        || statusKeys.some(key => source[key] !== undefined && source[key] !== null && source[key] !== '');
+      if (!hasAfterSalesContext) continue;
+      const scopedText = this._pickRefundText([source], ['statusDesc', 'status_desc', 'label', 'desc']);
+      if (scopedText && !/^\d+$/.test(scopedText)) return scopedText;
+    }
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const statusText = this._pickRefundText([source], statusKeys);
+      if (statusText && !/^\d+$/.test(statusText)) return statusText;
+    }
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      const statusCode = this._pickRefundText([source], statusKeys);
+      const mappedText = this._mapAfterSalesStatusCodeToText(statusCode);
+      if (mappedText) return mappedText;
+    }
+    return '';
+  }
+
+  _mergeSideOrderStatusTexts(primary = '', secondary = '') {
+    const primaryText = typeof primary === 'string' ? primary.trim() : '';
+    const secondaryText = typeof secondary === 'string' ? secondary.trim() : '';
+    if (!primaryText) return secondaryText;
+    if (!secondaryText) return primaryText;
+    const normalize = text => String(text || '').replace(/[，,、/\s]+/g, '');
+    if (normalize(primaryText) === normalize(secondaryText)) {
+      return primaryText;
+    }
+    return [primaryText, secondaryText].join('，');
+  }
+
+  _extractAfterSalesDetailMapFromPayload(payload = {}) {
+    const map = payload?.result?.orderSn2AfterSalesListMap;
+    if (!map || typeof map !== 'object') return {};
+    const detailMap = {};
+    Object.entries(map).forEach(([orderSn, list]) => {
+      const detail = this._extractAfterSalesDetail(list);
+      if (detail) {
+        const { _afterSalesSortTime, _afterSalesScore, ...normalizedDetail } = detail;
+        detailMap[String(orderSn)] = normalizedDetail;
+        return;
+      }
+      const text = this._extractAfterSalesStatusText(list);
+      if (text) {
+        detailMap[String(orderSn)] = {
+          afterSalesStatus: text,
+        };
+      }
+    });
+    return detailMap;
+  }
+
+  async _fetchAfterSalesDetailMap(orderSns = []) {
     const validOrderSns = [...new Set((Array.isArray(orderSns) ? orderSns : []).map(item => String(item || '').trim()).filter(Boolean))];
     if (!validOrderSns.length) return {};
     const antiContent = this._getLatestAntiContent();
     const payload = await this._requestRefundOrderPageApi('/mercury/chat/afterSales/queryList', antiContent
       ? { orderSns: validOrderSns, anti_content: antiContent }
       : { orderSns: validOrderSns });
-    const map = payload?.result?.orderSn2AfterSalesListMap;
-    if (!map || typeof map !== 'object') return {};
-    const statusMap = {};
-    Object.entries(map).forEach(([orderSn, list]) => {
-      const text = this._extractAfterSalesStatusText(list);
-      if (text) statusMap[String(orderSn)] = text;
-    });
-    return statusMap;
+    return this._extractAfterSalesDetailMapFromPayload(payload);
   }
 
   async _attachAfterSalesStatus(orders = []) {
     const orderSns = orders.map(item => String(item?.orderId || item?.orderSn || '').trim()).filter(Boolean);
     if (!orderSns.length) return orders;
-    let statusMap = {};
+    let detailMap = {};
     try {
-      statusMap = await this._fetchAfterSalesStatusMap(orderSns);
+      detailMap = await this._fetchAfterSalesDetailMap(orderSns);
     } catch (error) {
       this._log('[API] 售后状态查询失败', { message: error.message });
     }
     return orders.map(order => {
       const orderSn = String(order?.orderId || order?.orderSn || '').trim();
+      const detail = detailMap[orderSn] && typeof detailMap[orderSn] === 'object'
+        ? detailMap[orderSn]
+        : {};
       return {
         ...order,
-        afterSalesStatus: statusMap[orderSn] || '',
+        ...detail,
+        afterSalesStatus: detail.afterSalesStatus || order?.afterSalesStatus || '',
       };
     });
   }
@@ -2978,7 +3284,8 @@ class PddApiClient extends EventEmitter {
     };
   }
 
-  async _extractRefundOrdersFromPageApis(sessionMeta = {}) {
+  async _extractRefundOrdersFromPageApis(sessionMeta = {}, options = {}) {
+    const eligibleOnly = options?.eligibleOnly !== false;
     const uid = this._getRefundOrderUid(sessionMeta);
     if (!uid) return null;
     const quantityPayload = await this._requestRefundOrderPageApi('/latitude/order/userOrderQuantity', { uid });
@@ -2994,9 +3301,10 @@ class PddApiClient extends EventEmitter {
       uid,
     });
     const orders = Array.isArray(orderPayload?.result?.orders) ? orderPayload.result.orders : [];
-    const normalized = this._filterEligibleRefundOrders(
-      await this._attachAfterSalesStatus(this._dedupeRefundOrders(orders, sessionMeta))
-    );
+    const normalizedOrders = await this._attachAfterSalesStatus(this._dedupeRefundOrders(orders, sessionMeta));
+    const normalized = eligibleOnly
+      ? this._filterEligibleRefundOrders(normalizedOrders)
+      : normalizedOrders;
     if (normalized.length) {
       return normalized;
     }
@@ -3008,17 +3316,31 @@ class PddApiClient extends EventEmitter {
         uid,
       });
       const unshippedOrders = Array.isArray(unshippedPayload?.result?.orders) ? unshippedPayload.result.orders : [];
-      return this._filterEligibleRefundOrders(
-        await this._attachAfterSalesStatus(this._dedupeRefundOrders(
+      const normalizedUnshippedOrders = await this._attachAfterSalesStatus(this._dedupeRefundOrders(
           unshippedOrders.map(item => ({
             ...(item || {}),
             refund_shipping_state: 'unshipped',
           })),
           sessionMeta
-        ))
-      );
+        ));
+      return eligibleOnly
+        ? this._filterEligibleRefundOrders(normalizedUnshippedOrders)
+        : normalizedUnshippedOrders;
     }
     return [];
+  }
+
+  async _extractAftersaleOrdersFromPageApis(sessionMeta = {}) {
+    const uid = this._getRefundOrderUid(sessionMeta);
+    if (!uid) return null;
+    const orderPayload = await this._requestRefundOrderPageApi('/latitude/order/userRefundOrder', {
+      pageNo: 1,
+      pageSize: 50,
+      uid,
+    });
+    const orders = Array.isArray(orderPayload?.result?.orders) ? orderPayload.result.orders : [];
+    if (!orders.length) return [];
+    return this._dedupeRefundOrders(orders, sessionMeta);
   }
 
   async _extractRefundOrdersFromDom(sessionMeta = {}) {
@@ -3545,7 +3867,7 @@ class PddApiClient extends EventEmitter {
   }
 
   _resolveSideOrderHeadline(tab = 'personal', sources = []) {
-    const afterSalesStatus = this._pickRefundText(sources, ['afterSalesStatus', 'after_sales_status', 'afterSalesStatusDesc', 'after_sales_status_desc']);
+    const afterSalesStatus = this._pickDisplayAfterSalesStatus(sources);
     const orderStatusText = this._pickRefundText(sources, [
       'orderStatusStr',
       'order_status_str',
@@ -3568,18 +3890,18 @@ class PddApiClient extends EventEmitter {
       'desc',
     ]);
     if (tab === 'aftersale') {
-      return [orderStatusText, afterSalesStatus].filter(Boolean).join('，') || afterSalesStatus || orderStatusText || '售后处理中';
+      return this._mergeSideOrderStatusTexts(orderStatusText, afterSalesStatus) || afterSalesStatus || orderStatusText || '售后处理中';
     }
     if (tab === 'pending') {
       return [orderStatusText, compensateText].filter(Boolean).join('，') || orderStatusText || '店铺待支付';
     }
-    return [orderStatusText, afterSalesStatus].filter(Boolean).join('，') || orderStatusText || '订单状态待确认';
+    return this._mergeSideOrderStatusTexts(orderStatusText, afterSalesStatus) || orderStatusText || '订单状态待确认';
   }
 
   _buildSideOrderMetaRows(tab = 'personal', sources = []) {
     const rows = [];
     const orderTimeText = this._formatSideOrderDateTime(this._pickRefundNumber(sources, ['orderTime', 'order_time', 'createdAt', 'created_at']));
-    const afterSalesStatus = this._pickRefundText(sources, ['afterSalesStatus', 'after_sales_status', 'afterSalesStatusDesc', 'after_sales_status_desc']);
+    const afterSalesStatus = this._pickDisplayAfterSalesStatus(sources);
     const compensateText = this._pickRefundText(sources, [
       'pendingCompensateText',
       'pending_compensate_text',
@@ -3589,15 +3911,19 @@ class PddApiClient extends EventEmitter {
     ]);
     const refundShippingBenefitText = this._resolveRefundShippingBenefitText(sources);
     const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
+    const showRefundShippingAfterOrderTime = tab === 'personal' && refundShippingBenefitText;
     if (orderTimeText) {
       rows.push({ label: '下单时间', value: orderTimeText });
+    }
+    if (showRefundShippingAfterOrderTime) {
+      rows.push({ label: '退货包运费', value: refundShippingBenefitText });
     }
     if (afterSalesStatus) {
       rows.push({ label: '售后状态', value: afterSalesStatus });
     }
     if (tab === 'pending' && compensateText) {
       rows.push({ label: '待支付说明', value: compensateText });
-    } else if (refundShippingBenefitText) {
+    } else if (!showRefundShippingAfterOrderTime && refundShippingBenefitText) {
       rows.push({ label: '退货包运费', value: refundShippingBenefitText });
     }
     if (shippingInfo.shippingStatusText) {
@@ -3820,12 +4146,9 @@ class PddApiClient extends EventEmitter {
     await Promise.all(validOrderSns.map(async orderSn => {
       try {
         const payload = await this._requestRefundOrderPageApi('/latitude/order/orderCompensate', { orderSn });
-        const result = payload?.result || {};
-        const text = this._pickRefundText([result], ['detail', 'text', 'desc']);
-        if (text) {
-          compensateMap[orderSn] = {
-            pendingCompensateText: text,
-          };
+        const compensatePatch = this._buildSideOrderCompensatePatch(payload?.result || {});
+        if (Object.keys(compensatePatch).length) {
+          compensateMap[orderSn] = compensatePatch;
         }
       } catch (error) {
         this._log('[API] 店铺待支付补充查询失败', { orderSn, message: error.message });
@@ -3852,37 +4175,140 @@ class PddApiClient extends EventEmitter {
       });
   }
 
+  _buildSideOrderCompensatePatch(result = {}) {
+    if (!result || typeof result !== 'object') return {};
+    const text = this._pickRefundText([result], ['detail', 'text', 'desc']);
+    const statusKeys = ['status', 'compensateStatus', 'compensate_status'];
+    const hasStatusKey = statusKeys.some(key => Object.prototype.hasOwnProperty.call(result, key));
+    const status = result.status ?? result.compensateStatus ?? result.compensate_status;
+    const compensate = {};
+    if (hasStatusKey) {
+      compensate.status = status ?? null;
+    } else if (status !== undefined && status !== null && status !== '') {
+      compensate.status = status;
+    }
+    if (text) {
+      compensate.text = text;
+    }
+    if (!Object.keys(compensate).length) return {};
+    return {
+      pendingCompensateText: text || '',
+      pendingCompensate: { ...compensate },
+      compensate,
+    };
+  }
+
+  _mergeSideOrderCompensatePatch(order = {}, patch = {}) {
+    if (!patch || typeof patch !== 'object' || !Object.keys(patch).length) {
+      return order;
+    }
+    const existingCompensate = order?.compensate && typeof order.compensate === 'object'
+      ? order.compensate
+      : null;
+    const existingPendingCompensate = order?.pendingCompensate && typeof order.pendingCompensate === 'object'
+      ? order.pendingCompensate
+      : null;
+    const mergedCompensate = (patch.compensate && typeof patch.compensate === 'object') || existingCompensate
+      ? {
+          ...(patch.compensate && typeof patch.compensate === 'object' ? patch.compensate : {}),
+          ...(existingCompensate || {}),
+        }
+      : undefined;
+    const mergedPendingCompensate = (patch.pendingCompensate && typeof patch.pendingCompensate === 'object') || existingPendingCompensate
+      ? {
+          ...(patch.pendingCompensate && typeof patch.pendingCompensate === 'object' ? patch.pendingCompensate : {}),
+          ...(existingPendingCompensate || {}),
+        }
+      : undefined;
+    return {
+      ...(order || {}),
+      ...(patch || {}),
+      pendingCompensateText: order?.pendingCompensateText || patch.pendingCompensateText || '',
+      ...(mergedPendingCompensate ? { pendingCompensate: mergedPendingCompensate } : {}),
+      ...(mergedCompensate ? { compensate: mergedCompensate } : {}),
+    };
+  }
+
+  _extractOrderCompensateMapFromTraffic(sessionMeta = {}) {
+    const compensateEntries = this._getOrderTrafficEntries('/latitude/order/orderCompensate', sessionMeta);
+    const compensateMap = {};
+    for (let i = compensateEntries.length - 1; i >= 0; i -= 1) {
+      const requestBody = typeof compensateEntries[i]?.requestBody === 'string'
+        ? this._safeParseJson(compensateEntries[i].requestBody)
+        : compensateEntries[i]?.requestBody;
+      const responseBody = compensateEntries[i]?.responseBody && typeof compensateEntries[i].responseBody === 'object'
+        ? compensateEntries[i].responseBody
+        : this._safeParseJson(compensateEntries[i]?.responseBody);
+      const orderSn = String(requestBody?.orderSn || '').trim();
+      const compensatePatch = this._buildSideOrderCompensatePatch(responseBody?.result || {});
+      if (orderSn && Object.keys(compensatePatch).length && !compensateMap[orderSn]) {
+        compensateMap[orderSn] = compensatePatch;
+      }
+    }
+    return compensateMap;
+  }
+
+  _attachOrderCompensateFromTraffic(orders = [], sessionMeta = {}) {
+    const list = Array.isArray(orders) ? orders : [];
+    if (!list.length) return list;
+    const compensateMap = this._extractOrderCompensateMapFromTraffic(sessionMeta);
+    if (!Object.keys(compensateMap).length) return list;
+    return list.map(order => {
+      const orderSn = String(order?.orderId || order?.orderSn || order?.order_sn || '').trim();
+      if (!orderSn || !compensateMap[orderSn]) return order;
+      return this._mergeSideOrderCompensatePatch(order, compensateMap[orderSn]);
+    });
+  }
+
+  _hasAfterSalesContext(sources = []) {
+    if (this._pickDisplayAfterSalesStatus(sources)) return true;
+    const afterSalesId = this._pickRefundText(sources, [
+      'afterSalesSn',
+      'after_sales_sn',
+      'refundSn',
+      'refund_sn',
+      'refundId',
+      'refund_id',
+      'aftersaleId',
+      'aftersale_id',
+      'id',
+    ]);
+    return !!afterSalesId;
+  }
+
   _extractAfterSalesStatusMapFromTraffic(orderSns = [], sessionMeta = {}) {
     const validOrderSns = [...new Set((Array.isArray(orderSns) ? orderSns : []).map(item => String(item || '').trim()).filter(Boolean))];
     if (!validOrderSns.length) return {};
     const targetSet = new Set(validOrderSns);
-    const statusMap = {};
+    const detailMap = {};
     const entries = this._getOrderTrafficEntries('/mercury/chat/afterSales/queryList', sessionMeta);
     for (let i = entries.length - 1; i >= 0; i -= 1) {
       const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
         ? entries[i].responseBody
         : this._safeParseJson(entries[i]?.responseBody);
-      const map = responseBody?.result?.orderSn2AfterSalesListMap;
-      if (!map || typeof map !== 'object') continue;
-      Object.entries(map).forEach(([orderSn, list]) => {
-        if (!targetSet.has(String(orderSn)) || statusMap[String(orderSn)]) return;
-        const text = this._extractAfterSalesStatusText(list);
-        if (text) statusMap[String(orderSn)] = text;
+      const currentMap = this._extractAfterSalesDetailMapFromPayload(responseBody);
+      Object.entries(currentMap).forEach(([orderSn, detail]) => {
+        if (!targetSet.has(String(orderSn)) || detailMap[String(orderSn)]) return;
+        detailMap[String(orderSn)] = detail;
       });
-      if (validOrderSns.every(orderSn => statusMap[orderSn])) break;
+      if (validOrderSns.every(orderSn => detailMap[orderSn])) break;
     }
-    return statusMap;
+    return detailMap;
   }
 
   _attachAfterSalesStatusFromTraffic(orders = [], sessionMeta = {}) {
     const orderSns = orders.map(item => String(item?.orderId || item?.orderSn || '').trim()).filter(Boolean);
     if (!orderSns.length) return orders;
-    const statusMap = this._extractAfterSalesStatusMapFromTraffic(orderSns, sessionMeta);
+    const detailMap = this._extractAfterSalesStatusMapFromTraffic(orderSns, sessionMeta);
     return orders.map(order => {
       const orderSn = String(order?.orderId || order?.orderSn || '').trim();
+      const detail = detailMap[orderSn] && typeof detailMap[orderSn] === 'object'
+        ? detailMap[orderSn]
+        : {};
       return {
         ...order,
-        afterSalesStatus: order?.afterSalesStatus || statusMap[orderSn] || '',
+        ...detail,
+        afterSalesStatus: order?.afterSalesStatus || detail.afterSalesStatus || '',
       };
     });
   }
@@ -3895,7 +4321,23 @@ class PddApiClient extends EventEmitter {
         : this._safeParseJson(entries[i]?.responseBody);
       const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
       if (!orders.length) continue;
-      return this._attachAfterSalesStatusFromTraffic(this._dedupeRefundOrders(orders, sessionMeta), sessionMeta);
+      return this._attachOrderCompensateFromTraffic(
+        this._attachAfterSalesStatusFromTraffic(this._dedupeRefundOrders(orders, sessionMeta), sessionMeta),
+        sessionMeta,
+      );
+    }
+    return [];
+  }
+
+  _extractAftersaleOrdersFromTraffic(sessionMeta = {}) {
+    const entries = this._getOrderTrafficEntries('/latitude/order/userRefundOrder', sessionMeta);
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
+        ? entries[i].responseBody
+        : this._safeParseJson(entries[i]?.responseBody);
+      const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
+      if (!orders.length) continue;
+      return this._attachOrderCompensateFromTraffic(this._dedupeRefundOrders(orders, sessionMeta), sessionMeta);
     }
     return [];
   }
@@ -3913,30 +4355,7 @@ class PddApiClient extends EventEmitter {
       break;
     }
     if (!pendingOrders.length) return [];
-    const compensateEntries = this._getOrderTrafficEntries('/latitude/order/orderCompensate', sessionMeta);
-    const compensateMap = {};
-    for (let i = compensateEntries.length - 1; i >= 0; i -= 1) {
-      const requestBody = typeof compensateEntries[i]?.requestBody === 'string'
-        ? this._safeParseJson(compensateEntries[i].requestBody)
-        : compensateEntries[i]?.requestBody;
-      const responseBody = compensateEntries[i]?.responseBody && typeof compensateEntries[i].responseBody === 'object'
-        ? compensateEntries[i].responseBody
-        : this._safeParseJson(compensateEntries[i]?.responseBody);
-      const orderSn = String(requestBody?.orderSn || '').trim();
-      const text = this._pickRefundText([responseBody?.result || {}], ['detail', 'text', 'desc']);
-      if (orderSn && text && !compensateMap[orderSn]) {
-        compensateMap[orderSn] = {
-          pendingCompensateText: text,
-        };
-      }
-    }
-    return this._dedupeRefundOrders(pendingOrders.map(item => {
-      const orderSn = String(item?.orderSn || item?.orderId || '').trim();
-      return {
-        ...(item || {}),
-        ...(compensateMap[orderSn] || {}),
-      };
-    }), sessionMeta);
+    return this._attachOrderCompensateFromTraffic(this._dedupeRefundOrders(pendingOrders, sessionMeta), sessionMeta);
   }
 
   async getSideOrders(sessionRef, tab = 'personal') {
@@ -3958,11 +4377,44 @@ class PddApiClient extends EventEmitter {
         pendingOrders = this._extractPendingOrdersFromTraffic(sessionMeta);
       }
       if (!Array.isArray(pendingOrders) || !pendingOrders.length) return [];
-      return pendingOrders.map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
+      return this._attachOrderCompensateFromTraffic(pendingOrders, sessionMeta)
+        .map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
+    }
+    if (normalizedTab === 'aftersale') {
+      let aftersaleOrders = [];
+      try {
+        const pageOrders = await this._extractAftersaleOrdersFromPageApis(sessionMeta);
+        if (Array.isArray(pageOrders)) {
+          aftersaleOrders = pageOrders;
+        }
+      } catch (error) {
+        this._log('[API] 侧栏售后订单接口查询失败', { message: error.message });
+      }
+      if (!aftersaleOrders.length) {
+        aftersaleOrders = this._extractAftersaleOrdersFromTraffic(sessionMeta);
+      }
+      if (!aftersaleOrders.length) {
+        try {
+          const fallbackOrders = await this._extractRefundOrdersFromPageApis(sessionMeta, {
+            eligibleOnly: false,
+          });
+          if (Array.isArray(fallbackOrders)) {
+            aftersaleOrders = fallbackOrders;
+          }
+        } catch (error) {
+          this._log('[API] 侧栏售后订单回退失败', { message: error.message });
+        }
+      }
+      aftersaleOrders = this._attachOrderCompensateFromTraffic(aftersaleOrders, sessionMeta);
+      return aftersaleOrders
+        .filter(item => this._hasAfterSalesContext(this._buildSideOrderSources(item, sessionMeta)))
+        .map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
     }
     let orders = [];
     try {
-      const pageOrders = await this._extractRefundOrdersFromPageApis(sessionMeta);
+      const pageOrders = await this._extractRefundOrdersFromPageApis(sessionMeta, {
+        eligibleOnly: false,
+      });
       if (Array.isArray(pageOrders)) {
         orders = pageOrders;
       }
@@ -3979,8 +4431,9 @@ class PddApiClient extends EventEmitter {
         this._log('[API] 侧栏订单回退失败', { tab: normalizedTab, message: error.message });
       }
     }
+    orders = this._attachOrderCompensateFromTraffic(orders, sessionMeta);
     const filtered = normalizedTab === 'aftersale'
-      ? orders.filter(item => String(item?.afterSalesStatus || '').trim())
+      ? orders.filter(item => this._hasAfterSalesContext(this._buildSideOrderSources(item, sessionMeta)))
       : orders;
     return filtered.map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
   }
@@ -4530,7 +4983,12 @@ class PddApiClient extends EventEmitter {
   }
 
   async getGoodsCard(params = {}) {
-    const url = String(params.url || '').trim();
+    const inputUrl = String(params.url || '').trim();
+    const explicitGoodsId = String(params.goodsId || params?.fallback?.goodsId || '').trim();
+    const normalizedGoodsId = explicitGoodsId || this._extractGoodsIdFromUrl(inputUrl);
+    const url = normalizedGoodsId
+      ? `https://mobile.yangkeduo.com/goods.html?goods_id=${normalizedGoodsId}`
+      : inputUrl;
     if (!url) {
       throw new Error('缺少商品链接');
     }
@@ -4556,17 +5014,29 @@ class PddApiClient extends EventEmitter {
       headers,
       redirect: 'follow',
     });
-    const html = await response.text();
-    const parsed = this._extractGoodsCardFromHtml(html, {
+    const fallbackForParse = {
       ...fallback,
-      goodsId: fallback.goodsId || this._extractGoodsIdFromUrl(url),
+      goodsId: fallback.goodsId || normalizedGoodsId || this._extractGoodsIdFromUrl(url),
       specText: fallback.specText || '查看商品规格',
-    });
+    };
+    let html = await response.text();
+    let parsed = this._extractGoodsCardFromHtml(html, fallbackForParse);
+    if (!this._hasMeaningfulGoodsCardData(parsed, fallbackForParse) || this._isGoodsLoginPageHtml(html)) {
+      try {
+        const pageResult = await this._loadGoodsHtmlInWindow(url);
+        if (pageResult?.html) {
+          html = String(pageResult.html || '');
+          parsed = this._extractGoodsCardFromHtml(html, fallbackForParse);
+        }
+      } catch (error) {
+        this._log('[API] 商品卡片窗口兜底失败', { url, message: error.message });
+      }
+    }
     if (!response.ok && !parsed.title && !parsed.imageUrl) {
       throw new Error(`HTTP ${response.status}`);
     }
     return {
-      goodsId: parsed.goodsId || fallback.goodsId || this._extractGoodsIdFromUrl(url),
+      goodsId: parsed.goodsId || fallback.goodsId || normalizedGoodsId || this._extractGoodsIdFromUrl(url),
       url,
       title: parsed.title || fallback.title || '拼多多商品',
       imageUrl: parsed.imageUrl || fallback.imageUrl || '',

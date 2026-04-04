@@ -341,6 +341,64 @@ async function testRefundShippingBenefitSupportsInsuranceTextFields() {
   );
 }
 
+async function testAftersaleSideOrdersSupportStatusCodeOnlyQueryList() {
+  const client = new PddApiClient('shop_1', {
+    getShopInfo: () => ({ name: '店铺A' }),
+  });
+  client._getLatestAntiContent = () => '';
+  client._requestRefundOrderPageApi = async (url) => {
+    if (url === '/latitude/order/userRefundOrder') {
+      return {
+        result: {
+          orders: [
+            {
+              orderSn: 'ORDER-13',
+              goodsName: '商品A',
+              orderAmount: 1990,
+              orderStatusStr: '未发货，退款成功',
+              afterSalesInfo: {
+                afterSalesId: 'AS-13',
+                afterSalesStatus: 5,
+                afterSalesType: 1,
+              },
+              compensate: {
+                text: '未赠送',
+              },
+              workbenchOrderTagNew: [
+                {
+                  status: '未赠送',
+                  text: '退货包运费',
+                  type: 2,
+                },
+              ],
+            },
+            {
+              orderSn: 'ORDER-14',
+              goodsName: '商品B',
+              orderAmount: 2990,
+            },
+          ],
+        },
+      };
+    }
+    throw new Error(`unexpected url: ${url}`);
+  };
+
+  const cards = await client.getSideOrders({ userUid: '10001' }, 'aftersale');
+
+  assert.strictEqual(cards.length, 1);
+  assert.strictEqual(cards[0].orderId, 'ORDER-13');
+  assert.strictEqual(cards[0].headline, '未发货，退款成功');
+  assert.deepStrictEqual(
+    cards[0].metaRows.find(item => item.label === '售后状态'),
+    { label: '售后状态', value: '未发货，退款成功' }
+  );
+  assert.deepStrictEqual(
+    cards[0].metaRows.find(item => item.label === '退货包运费'),
+    { label: '退货包运费', value: '未赠送' }
+  );
+}
+
 async function run() {
   await testTaggedRemarkUsesSingleWrite();
   await testIntervalRetryDoesNotFallThrough();
@@ -353,6 +411,7 @@ async function run() {
   await testSaveOrderRemarkUsesSuccessPayloadShape();
   await testRefundShippingBenefitSupportsBooleanFields();
   await testRefundShippingBenefitSupportsInsuranceTextFields();
+  await testAftersaleSideOrdersSupportStatusCodeOnlyQueryList();
 }
 
 app.whenReady().then(async () => {

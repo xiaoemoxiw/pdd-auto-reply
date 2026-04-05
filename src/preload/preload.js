@@ -97,6 +97,11 @@ contextBridge.exposeInMainWorld('pddApi', {
   mailGetDetail: (params) => ipcRenderer.invoke('mail-get-detail', params),
   invoiceGetOverview: (params) => ipcRenderer.invoke('invoice-get-overview', params),
   invoiceGetList: (params) => ipcRenderer.invoke('invoice-get-list', params),
+  invoiceGetDetail: (params) => ipcRenderer.invoke('invoice-get-detail', params),
+  ticketGetList: (params) => ipcRenderer.invoke('ticket-get-list', params),
+  ticketGetDetail: (params) => ipcRenderer.invoke('ticket-get-detail', params),
+  violationGetList: (params) => ipcRenderer.invoke('violation-get-list', params),
+  violationGetDetail: (params) => ipcRenderer.invoke('violation-get-detail', params),
   getApiStarredSessions: () => ipcRenderer.invoke('get-api-starred-sessions'),
   getLastApiSessionSelection: () => ipcRenderer.invoke('get-last-api-session-selection'),
   setLastApiSessionSelection: (selection) => ipcRenderer.invoke('set-last-api-session-selection', selection),
@@ -142,7 +147,9 @@ contextBridge.exposeInMainWorld('pddApi', {
   onAiDownloadProgress: (cb) => ipcRenderer.on('ai-download-progress', (_, d) => cb(d)),
 
   // 事件监听
+  onPddPageLoading: (cb) => ipcRenderer.on('pdd-page-loading', (_, d) => cb(d)),
   onPddPageLoaded: (cb) => ipcRenderer.on('pdd-page-loaded', (_, d) => cb(d)),
+  onPddPageFailed: (cb) => ipcRenderer.on('pdd-page-failed', (_, d) => cb(d)),
   onPddNavigated: (cb) => ipcRenderer.on('pdd-navigated', (_, d) => cb(d)),
   onAutoReplySent: (cb) => ipcRenderer.on('auto-reply-sent', (_, d) => cb(d)),
   onUnmatchedMessage: (cb) => ipcRenderer.on('unmatched-message', (_, d) => cb(d)),

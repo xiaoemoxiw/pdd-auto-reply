@@ -7,13 +7,20 @@ const { NetworkMonitor } = require('./network-monitor');
 const { PddApiClient } = require('./pdd-api');
 const { MailApiClient } = require('./mail-api');
 const { InvoiceApiClient } = require('./invoice-api');
+const { TicketApiClient } = require('./ticket-api');
+const { ViolationApiClient } = require('./violation-api');
 const { createSettingsWindow } = require('./settings-window');
 const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
 const { TokenFileStore } = require('./token-file-store');
 const { SYSTEM_PHRASES, DEFAULT_SCENES, PHRASE_CATEGORIES, DEFAULT_AI_INTENTS } = require('./system-phrases');
 const { AIIntentEngine } = require('./ai-intent');
-const { getApiTrafficLogPath } = require('./api-traffic-path');
+const {
+  appendApiTrafficLog,
+  ensureApiTrafficLogReady,
+  getPersistedApiTraffic,
+  normalizeTrafficEntry,
+} = require('./api-traffic-recorder');
 const { registerAiIpc, autoLoadAiIntentEngine } = require('./register-ai-ipc');
 const { registerShopIpc } = require('./register-shop-ipc');
 const { registerApiIpc } = require('./register-api-ipc');
@@ -79,6 +86,7 @@ const pendingFallbacks = new Map();
 const fallbackCooldowns = new Map();
 // 跨通道消息去重：防止 DOM 监听和网络监控同时处理同一条消息
 const messageDedup = new Map(); // "customer|message" -> timestamp
+const embeddedPageActions = new Map(); // shopId -> last action
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
 const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=441077635572';
@@ -209,6 +217,8 @@ let networkMonitors = new Map();  // shopId -> NetworkMonitor
 let apiClients = new Map();
 let mailApiClients = new Map();
 let invoiceApiClients = new Map();
+let ticketApiClients = new Map();
+let violationApiClients = new Map();
 let apiTrafficStore = new Map();
 let apiSessionStore = new Map();
 let rendererWatcher = null;
@@ -224,10 +234,28 @@ function isDevelopmentMode() {
   return process.env.NODE_ENV === 'development';
 }
 
+function isVerboseChromiumLoggingEnabled() {
+  return process.env.PDD_CHROMIUM_LOG === '1';
+}
+
+function isVerboseRuntimeLoggingEnabled() {
+  return isDevelopmentMode() || process.env.PDD_VERBOSE_LOG === '1';
+}
+
+function shouldConsoleLogApiMessage(message = '') {
+  if (isVerboseRuntimeLoggingEnabled()) return true;
+  return /失败|失效|异常|错误|未完成|超时|回退|auth|expired|error|fail/i.test(String(message || ''));
+}
+
+function shouldConsoleLogApiTraffic(entry = {}) {
+  if (isVerboseRuntimeLoggingEnabled()) return true;
+  return Number(entry?.status || 0) >= 400;
+}
+
 function configureChromiumLogging() {
-  if (isDevelopmentMode()) {
+  if (isVerboseChromiumLoggingEnabled()) {
     app.commandLine.appendSwitch('enable-logging');
-    app.commandLine.appendSwitch('log-level', '0');
+    app.commandLine.appendSwitch('log-level', isDevelopmentMode() ? '0' : '1');
     return;
   }
 
@@ -333,7 +361,11 @@ function isInvoicePageUrl(url) {
 
 function isViolationPageUrl(url) {
   const text = String(url || '');
-  return text.includes('/pg/violation_list/') || text.includes('/violation_list/');
+  return text.includes('/pg/violation_list/')
+    || text.includes('/violation_list/')
+    || text.includes('/pg/violation_info')
+    || text.includes('/mall/violation_complain')
+    || text.includes('/mall/complain_result');
 }
 
 function isTicketPageUrl(url) {
@@ -501,7 +533,9 @@ function pushApiSessionsFromTraffic(shopId, entry) {
     updateShopStatus(shopId, 'online');
     mainWindow?.webContents.send('api-session-updated', { shopId, sessions });
     sendToDebug('api-session-updated', { shopId, count: sessions.length, source: 'traffic' });
-    console.log(`[PDD接口:${shopId}] 已从页面抓包同步会话: ${sessions.length}`);
+    if (isVerboseRuntimeLoggingEnabled()) {
+      console.log(`[PDD接口:${shopId}] 已从页面抓包同步会话: ${sessions.length}`);
+    }
   } catch (error) {
     console.log(`[PDD接口:${shopId}] 页面抓包解析会话失败: ${error.message}`);
   }
@@ -745,17 +779,19 @@ function pushApiMessagesFromTraffic(shopId, entry) {
     const refundCardStateDebug = buildRefundCardStateDebugPayload(message);
     if (refundCardStateDebug) {
       sendToDebug('api-refund-card-state', refundCardStateDebug);
-      console.log(
-        `[PDD接口:${shopId}] 快捷退款卡片状态`,
-        JSON.stringify({
-          sessionId: refundCardStateDebug.sessionId,
-          messageId: refundCardStateDebug.messageId,
-          stateStatus: refundCardStateDebug.stateStatus,
-          stateExpireText: refundCardStateDebug.stateExpireText,
-          stateText: refundCardStateDebug.stateText,
-          buttonTexts: refundCardStateDebug.buttonTexts,
-        })
-      );
+      if (isVerboseRuntimeLoggingEnabled()) {
+        console.log(
+          `[PDD接口:${shopId}] 快捷退款卡片状态`,
+          JSON.stringify({
+            sessionId: refundCardStateDebug.sessionId,
+            messageId: refundCardStateDebug.messageId,
+            stateStatus: refundCardStateDebug.stateStatus,
+            stateExpireText: refundCardStateDebug.stateExpireText,
+            stateText: refundCardStateDebug.stateText,
+            buttonTexts: refundCardStateDebug.buttonTexts,
+          })
+        );
+      }
     }
     const payload = {
       shopId,
@@ -778,30 +814,33 @@ function startNetworkMonitor(view, shopId) {
   const monitor = new NetworkMonitor(view.webContents, {
     onLog(entry) {
       sendToDebug('network-log', entry);
-      if (entry.type === 'important' || entry.type === 'info') {
+      if (isVerboseRuntimeLoggingEnabled() && (entry.type === 'important' || entry.type === 'info')) {
         console.log(`[网络监控:${shopId}] ${entry.text}`);
       }
     },
     onMessage(logEntry) {
       sendToDebug('network-message-detected', logEntry);
     },
+    getLatestAction(requestTimestamp) {
+      return getLatestEmbeddedPageAction(shopId, requestTimestamp);
+    },
     onApiTraffic(entry) {
+      const normalizedEntry = appendApiTrafficLog(shopId, entry);
       const list = apiTrafficStore.get(shopId) || [];
-      list.push(entry);
+      list.push(normalizedEntry);
       if (list.length > 200) {
         list.splice(0, list.length - 200);
       }
       apiTrafficStore.set(shopId, list);
-      appendApiTrafficLog(shopId, entry);
-      if (String(entry?.url || '').includes('/latitude/order/price/update')) {
-        const requestBody = typeof entry?.requestBody === 'string' ? entry.requestBody : '';
+      if (String(normalizedEntry?.url || '').includes('/latitude/order/price/update')) {
+        const requestBody = typeof normalizedEntry?.requestBody === 'string' ? normalizedEntry.requestBody : '';
         if (requestBody) {
           try {
             const parsedBody = JSON.parse(requestBody);
             if (parsedBody && typeof parsedBody === 'object' && (parsedBody.crawlerInfo || parsedBody.crawler_info)) {
               store.set(`apiOrderPriceUpdateTemplate.${shopId}`, {
-                url: entry.url,
-                method: entry.method || 'POST',
+                url: normalizedEntry.url,
+                method: normalizedEntry.method || 'POST',
                 requestBody: JSON.stringify(parsedBody),
                 updatedAt: Date.now(),
               });
@@ -809,10 +848,12 @@ function startNetworkMonitor(view, shopId) {
           } catch {}
         }
       }
-      console.log(`[接口抓取:${shopId}] [${entry.method}] ${entry.url} -> ${entry.status}`);
-      sendToDebug('api-traffic', { shopId, entry });
-      pushApiSessionsFromTraffic(shopId, entry);
-      pushApiMessagesFromTraffic(shopId, entry);
+      if (shouldConsoleLogApiTraffic(normalizedEntry)) {
+        console.log(`[接口抓取:${shopId}] [${normalizedEntry.method}] ${normalizedEntry.url} -> ${normalizedEntry.status}`);
+      }
+      sendToDebug('api-traffic', { shopId, entry: normalizedEntry });
+      pushApiSessionsFromTraffic(shopId, normalizedEntry);
+      pushApiMessagesFromTraffic(shopId, normalizedEntry);
     },
     onCustomerMessage(msg) {
       if (!store.get('autoReplyEnabled')) return;
@@ -827,7 +868,9 @@ function startNetworkMonitor(view, shopId) {
           if (now - t > 30000) networkMsgDedup.delete(k);
         }
       }
-      console.log(`[PDD助手] 网络监控提取到客户消息: ${msg.text.slice(0, 50)}`);
+      if (isVerboseRuntimeLoggingEnabled()) {
+        console.log(`[PDD助手] 网络监控提取到客户消息: ${msg.text.slice(0, 50)}`);
+      }
       // 复用与 DOM 监听相同的处理管线
       handleNewCustomerMessage({
         message: msg.text,
@@ -842,6 +885,47 @@ function startNetworkMonitor(view, shopId) {
   networkMonitors.set(shopId, monitor);
 }
 
+function resolveShopIdByWebContents(webContents) {
+  if (!webContents || !shopManager?.views) return '';
+  for (const [shopId, view] of shopManager.views.entries()) {
+    if (view?.webContents?.id === webContents.id) return shopId;
+  }
+  return '';
+}
+
+function rememberEmbeddedPageAction(shopId, action = {}) {
+  if (!shopId) return null;
+  const normalizedAction = {
+    timestamp: Number(action.timestamp || Date.now()),
+    pageUrl: action.pageUrl || '',
+    actionType: action.actionType || 'click',
+    targetText: action.targetText || '',
+    targetTag: action.targetTag || '',
+    targetRole: action.targetRole || '',
+    targetHref: action.targetHref || '',
+    targetSelector: action.targetSelector || '',
+    x: Number.isFinite(action.x) ? action.x : undefined,
+    y: Number.isFinite(action.y) ? action.y : undefined,
+    messagePreview: action.messagePreview || '',
+    source: action.source || 'embedded-page',
+    currentView,
+  };
+  embeddedPageActions.set(shopId, normalizedAction);
+  return normalizedAction;
+}
+
+function getLatestEmbeddedPageAction(shopId, requestTimestamp = Date.now()) {
+  if (!shopId) return null;
+  const action = embeddedPageActions.get(shopId);
+  if (!action?.timestamp) return null;
+  const delta = Number(requestTimestamp || Date.now()) - Number(action.timestamp || 0);
+  if (!Number.isFinite(delta) || delta < 0 || delta > 15000) return null;
+  return {
+    ...action,
+    requestDelayMs: delta,
+  };
+}
+
 function getApiClient(shopId) {
   if (!shopId) return null;
   if (apiClients.has(shopId)) return apiClients.get(shopId);
@@ -849,6 +933,9 @@ function getApiClient(shopId) {
   const client = new PddApiClient(shopId, {
     onLog(message, extra) {
       sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      if (!shouldConsoleLogApiMessage(message)) {
+        return;
+      }
       if (extra && typeof extra === 'object' && Object.keys(extra).length) {
         console.log(`[PDD接口:${shopId}] ${message}`, extra);
       } else {
@@ -1313,10 +1400,6 @@ async function ensurePddPageViewReady(shopId) {
   if (justLoadedChatPage) {
     await waitForMs(1200);
   }
-  await view.webContents.executeJavaScript(
-    `window.__PDD_HELPER__?.dismissBlockingPopups?.() || 0`
-  ).catch(() => {});
-  await waitForMs(300);
   return view;
 }
 
@@ -1438,8 +1521,64 @@ function destroyInvoiceApiClient(shopId) {
   invoiceApiClients.delete(shopId);
 }
 
+function getTicketApiClient(shopId) {
+  if (!shopId) return null;
+  if (ticketApiClients.has(shopId)) return ticketApiClients.get(shopId);
+  const client = new TicketApiClient(shopId, {
+    onLog(message, extra) {
+      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      console.log(`[PDD工单管理:${shopId}] ${message}`);
+    },
+    getShopInfo() {
+      const shops = store.get('shops') || [];
+      return shops.find(item => item.id === shopId) || null;
+    },
+    getApiTraffic() {
+      return getApiTraffic(shopId);
+    },
+    getTicketUrl() {
+      return getPddTicketUrl();
+    }
+  });
+  ticketApiClients.set(shopId, client);
+  return client;
+}
+
+function destroyTicketApiClient(shopId) {
+  if (!ticketApiClients.has(shopId)) return;
+  ticketApiClients.delete(shopId);
+}
+
+function getViolationApiClient(shopId) {
+  if (!shopId) return null;
+  if (violationApiClients.has(shopId)) return violationApiClients.get(shopId);
+  const client = new ViolationApiClient(shopId, {
+    onLog(message, extra) {
+      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      console.log(`[PDD违规管理:${shopId}] ${message}`);
+    },
+    getShopInfo() {
+      const shops = store.get('shops') || [];
+      return shops.find(item => item.id === shopId) || null;
+    },
+    getApiTraffic() {
+      return getApiTraffic(shopId);
+    },
+    getViolationUrl() {
+      return getPddViolationUrl();
+    }
+  });
+  violationApiClients.set(shopId, client);
+  return client;
+}
+
+function destroyViolationApiClient(shopId) {
+  if (!violationApiClients.has(shopId)) return;
+  violationApiClients.delete(shopId);
+}
+
 function getApiTraffic(shopId) {
-  const runtimeList = apiTrafficStore.get(shopId) || [];
+  const runtimeList = (apiTrafficStore.get(shopId) || []).map(normalizeTrafficEntry);
   if (runtimeList.length >= 20) return runtimeList;
   const persistedList = getPersistedApiTraffic(shopId);
   if (!persistedList.length) return runtimeList;
@@ -1594,43 +1733,6 @@ function getApiTrafficByScope(shopId) {
     .sort((a, b) => Number(b.timestamp || b.recordedAt || 0) - Number(a.timestamp || a.recordedAt || 0));
 }
 
-function appendApiTrafficLog(shopId, entry) {
-  try {
-    const apiTrafficLogPath = getApiTrafficLogPath();
-    const record = JSON.stringify({
-      shopId,
-      recordedAt: Date.now(),
-      entry,
-    });
-    fs.mkdirSync(path.dirname(apiTrafficLogPath), { recursive: true });
-    fs.appendFileSync(apiTrafficLogPath, `${record}\n`, 'utf-8');
-  } catch (error) {
-    console.error('[PDD助手] 写入接口抓取日志失败:', error.message);
-  }
-}
-
-function getPersistedApiTraffic(shopId, limit = 200) {
-  try {
-    const apiTrafficLogPath = getApiTrafficLogPath();
-    if (!fs.existsSync(apiTrafficLogPath)) return [];
-    const lines = fs.readFileSync(apiTrafficLogPath, 'utf-8')
-      .split('\n')
-      .filter(Boolean);
-    const result = [];
-    for (let i = lines.length - 1; i >= 0 && result.length < limit; i--) {
-      try {
-        const parsed = JSON.parse(lines[i]);
-        if (parsed?.shopId !== shopId || !parsed?.entry) continue;
-        result.push(parsed.entry);
-      } catch {}
-    }
-    return result.reverse();
-  } catch (error) {
-    console.error('[PDD助手] 读取接口抓包日志失败:', error.message);
-    return [];
-  }
-}
-
 // ---- 窗口创建 ----
 
 function createMainWindow() {
@@ -1743,9 +1845,13 @@ registerShopIpc({
   ipcMain,
   store,
   getShopManager: () => shopManager,
+  getCurrentView: () => currentView,
+  isEmbeddedPddView,
   destroyApiClient,
   destroyMailApiClient,
-  destroyInvoiceApiClient
+  destroyInvoiceApiClient,
+  destroyTicketApiClient,
+  destroyViolationApiClient
 });
 
 registerApiIpc({
@@ -1763,6 +1869,8 @@ registerApiIpc({
   getApiTrafficByScope,
   getMailApiClient,
   getInvoiceApiClient,
+  getTicketApiClient,
+  getViolationApiClient,
   setApiTrafficEntries: (shopId, entries) => {
     apiTrafficStore.set(shopId, entries);
   }
@@ -1797,6 +1905,7 @@ registerDebugIpc({
 registerEmbeddedViewIpc({
   ipcMain,
   store,
+  getMainWindow: () => mainWindow,
   getCurrentView: () => currentView,
   setCurrentView: view => {
     currentView = view;
@@ -1975,12 +2084,34 @@ ipcMain.handle('test-auto-reply', async () => {
 });
 
 // 注入脚本请求点击发送按钮（通过 Chromium 底层输入 API）
-ipcMain.on('click-send-button', async (event, { x, y }) => {
-  const view = shopManager?.getActiveView();
-  if (!view) return;
-  view.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+ipcMain.on('click-send-button', async (event, payload = {}) => {
+  const { x, y } = payload;
+  const sender = event.sender;
+  if (!sender || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  const shopId = resolveShopIdByWebContents(sender);
+  rememberEmbeddedPageAction(shopId, {
+    ...payload,
+    actionType: payload.actionType || 'auto-send-click',
+    pageUrl: payload.pageUrl || sender.getURL(),
+  });
+  sender.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
   await new Promise(r => setTimeout(r, 80));
-  view.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+  sender.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+});
+
+ipcMain.on('embedded-page-user-action', (event, payload = {}) => {
+  const sender = event.sender;
+  if (!sender) return;
+  const shopId = resolveShopIdByWebContents(sender);
+  const action = rememberEmbeddedPageAction(shopId, {
+    ...payload,
+    pageUrl: payload.pageUrl || sender.getURL(),
+  });
+  if (!action) return;
+  sendToDebug('embedded-page-user-action', {
+    shopId,
+    action,
+  });
 });
 
 /**
@@ -2079,12 +2210,6 @@ async function selectConversationInView(view) {
   // 等待会话加载
   await new Promise(r => setTimeout(r, 2000));
 
-  // 关闭可能弹出的弹窗
-  await view.webContents.executeJavaScript(
-    `window.__PDD_HELPER__?.dismissBlockingPopups?.() || 0`
-  ).catch(() => {});
-  await new Promise(r => setTimeout(r, 500));
-
   return true;
 }
 
@@ -2159,15 +2284,19 @@ async function handleNewCustomerMessage(data) {
 
     view.webContents.send('send-reply', {
       conversationId: data.conversationId,
-      message: result.reply
+      message: result.reply,
+      source: data.source || 'unknown',
     });
     const replyData = {
+      shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      conversationId: data.conversationId,
       customer: data.customer,
       question: data.message,
       answer: result.reply,
       matched: result.matched,
       ruleName: result.ruleName,
-      score: result.score
+      score: result.score,
+      source: data.source || 'unknown',
     };
     mainWindow?.webContents.send('auto-reply-sent', replyData);
     sendToDebug('auto-reply-sent', replyData);
@@ -2236,7 +2365,11 @@ async function handleNewCustomerMessage(data) {
 
 // 从注入脚本接收到新消息（DOM 监听通道）
 ipcMain.on('new-customer-message', (event, data) => {
-  handleNewCustomerMessage(data);
+  handleNewCustomerMessage({
+    ...data,
+    source: data?.source || 'embedded-dom',
+    shopId: data?.shopId || resolveShopIdByWebContents(event.sender) || shopManager?.getActiveShopId() || '',
+  });
 });
 
 function cancelPendingFallback(customer) {
@@ -2319,13 +2452,7 @@ function setupAppMenu() {
 }
 
 app.whenReady().then(async () => {
-  try {
-    const apiTrafficLogPath = getApiTrafficLogPath();
-    fs.mkdirSync(path.dirname(apiTrafficLogPath), { recursive: true });
-    fs.writeFileSync(apiTrafficLogPath, '', 'utf-8');
-  } catch (error) {
-    console.error('[PDD助手] 初始化接口抓取日志失败:', error.message);
-  }
+  ensureApiTrafficLogReady();
   app.setName(APP_NAME);
 
   if (process.platform === 'darwin') {
@@ -2356,21 +2483,22 @@ app.whenReady().then(async () => {
 
   await migrateOldData();
   createMainWindow();
+  shopManager.restoreAllTokenInfo();
 
   await shopManager.syncShopsFromTokenFiles({ broadcast: false, forceApplyTokens: true });
 
   normalizeStoredPddUrls();
 
   // 启动后状态检查 + 页面结构诊断
-  setTimeout(() => {
-    const enabled = store.get('autoReplyEnabled');
-    console.log(`[PDD助手] 自动回复状态: ${enabled ? '已开启' : '未开启'}`);
+  if (isVerboseRuntimeLoggingEnabled()) {
+    setTimeout(() => {
+      const enabled = store.get('autoReplyEnabled');
+      console.log(`[PDD助手] 自动回复状态: ${enabled ? '已开启' : '未开启'}`);
 
-    const view = shopManager?.getActiveView();
-    if (!view) return;
+      const view = shopManager?.getActiveView();
+      if (!view) return;
 
-    // 深度页面结构诊断
-    view.webContents.executeJavaScript(`(function(){
+      view.webContents.executeJavaScript(`(function(){
       var report = {};
 
       // 基本注入状态
@@ -2507,10 +2635,11 @@ app.whenReady().then(async () => {
         console.log('[引导localStorage]', JSON.stringify(r.guideStatus.guideLocalStorage));
       }
       console.log('====== 诊断结束 ======\\n');
-    }).catch(err => {
-      console.error('[PDD助手] 页面诊断失败:', err.message);
-    });
-  }, 15000);
+      }).catch(err => {
+        console.error('[PDD助手] 页面诊断失败:', err.message);
+      });
+    }, 15000);
+  }
 
   const activeId = store.get('activeShopId');
   const shops = store.get('shops') || [];
@@ -2536,6 +2665,12 @@ app.on('before-quit', () => {
   }
   for (const shopId of invoiceApiClients.keys()) {
     destroyInvoiceApiClient(shopId);
+  }
+  for (const shopId of ticketApiClients.keys()) {
+    destroyTicketApiClient(shopId);
+  }
+  for (const shopId of violationApiClients.keys()) {
+    destroyViolationApiClient(shopId);
   }
 });
 

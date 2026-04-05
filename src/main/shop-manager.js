@@ -251,6 +251,10 @@ class ShopManager {
     return !(shop.loginMethod === 'token' && shop.status === 'expired');
   }
 
+  isUserSelectableShop(shop) {
+    return this.isSelectableShop(shop) && shop?.status === 'online';
+  }
+
   getPreferredActiveShopId(shops = this.getShopList(), preferredShopId = '') {
     const list = Array.isArray(shops) ? shops.filter(shop => shop?.id) : [];
     const candidateIds = [preferredShopId, this.activeShopId, this.store.get('activeShopId')].filter(Boolean);
@@ -300,22 +304,31 @@ class ShopManager {
     const previousById = new Map(previousShops.map(shop => [shop.id, shop]));
     const previousByMallId = new Map(previousShops.filter(shop => shop.mallId).map(shop => [String(shop.mallId), shop]));
     const previousFiles = this.store.get('shopTokenFiles') || {};
+    const managedShopIds = new Set(Object.keys(previousFiles));
+    const preservedShopIds = new Set(
+      previousShops
+        .filter(shop => !managedShopIds.has(shop.id))
+        .map(shop => shop.id)
+    );
     const records = this.tokenFileStore.listTokenRecords();
     const nextFiles = {};
-    const nextShops = [];
+    const managedShops = [];
     const cookieCountByShopId = {};
     const createdShopIds = [];
     const refreshedShopIds = [];
-    const removedShopIds = new Set([
-      ...Object.keys(previousFiles),
-      ...previousShops.map(shop => shop.id)
-    ]);
+    const removedShopIds = new Set(Object.keys(previousFiles));
 
     for (const record of records) {
       removedShopIds.delete(record.shopId);
       const previousShop = previousById.get(record.shopId) || previousByMallId.get(record.tokenInfo.mallId) || {};
+      if (previousShop?.id && preservedShopIds.has(previousShop.id) && previousShop.loginMethod === 'token') {
+        preservedShopIds.delete(previousShop.id);
+        if (previousShop.id !== record.shopId) {
+          removedShopIds.add(previousShop.id);
+        }
+      }
       const nextShop = this._buildShopFromTokenRecord(record, previousShop);
-      nextShops.push(nextShop);
+      managedShops.push(nextShop);
       nextFiles[record.shopId] = {
         fileName: record.fileName,
         filePath: record.filePath,
@@ -343,6 +356,11 @@ class ShopManager {
         else createdShopIds.push(record.shopId);
       }
     }
+
+    const preservedShops = previousShops.filter(shop => preservedShopIds.has(shop.id));
+    const nextShops = managedShops.length || Object.keys(previousFiles).length
+      ? [...preservedShops, ...managedShops]
+      : previousShops;
 
     for (const shopId of removedShopIds) {
       this._disposeView(shopId);
@@ -450,11 +468,6 @@ class ShopManager {
       return { action: 'deny' };
     });
 
-    // dom-ready 比 did-finish-load 更早，在子资源加载前就注入引导抑制
-    view.webContents.on('dom-ready', () => {
-      ShopManager._suppressGuides(view);
-    });
-
     view.webContents.on('did-finish-load', () => {
       const url = view.webContents.getURL();
 
@@ -467,11 +480,29 @@ class ShopManager {
       }
 
       this.onInjectScript(view);
-      ShopManager._suppressGuides(view);
       if (this.activeShopId === shopId) {
         this.mainWindow.webContents.send('pdd-page-loaded', { url });
       }
       setTimeout(() => this.onDetectChat(view, shopId), 2000);
+    });
+
+    view.webContents.on('did-start-loading', () => {
+      if (this.activeShopId === shopId) {
+        this.mainWindow.webContents.send('pdd-page-loading', {
+          url: view.webContents.getURL()
+        });
+      }
+    });
+
+    view.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (errorCode === -3 || isMainFrame === false) return;
+      if (this.activeShopId === shopId) {
+        this.mainWindow.webContents.send('pdd-page-failed', {
+          url: validatedURL || view.webContents.getURL(),
+          errorCode,
+          errorDescription: errorDescription || '页面加载失败'
+        });
+      }
     });
 
     view.webContents.on('did-navigate-in-page', (event, url) => {
@@ -479,7 +510,6 @@ class ShopManager {
         this.mainWindow.webContents.send('pdd-navigated', { url });
       }
       this.onInjectScript(view);
-      ShopManager._suppressGuides(view);
       setTimeout(() => this.onDetectChat(view, shopId), 2000);
     });
 
@@ -491,6 +521,16 @@ class ShopManager {
       // 扫码登录检测：从登录页跳转到非登录页，说明登录成功
       if (this._pendingQRShopId === shopId && !url.includes('/login')) {
         this._onQRLoginSuccess(shopId, url);
+      }
+    });
+
+    view.webContents.on('render-process-gone', (event, details = {}) => {
+      if (this.activeShopId === shopId) {
+        this.mainWindow.webContents.send('pdd-page-failed', {
+          url: view.webContents.getURL(),
+          reason: 'render-process-gone',
+          errorDescription: details.reason || '嵌入页进程已退出'
+        });
       }
     });
 
@@ -1039,24 +1079,77 @@ class ShopManager {
     this._shopInfoTimer = null;
   }
 
+  _clearShopSession(shopId) {
+    const ses = session.fromPartition(this._getPartition(shopId));
+    ses.clearStorageData().catch(() => {});
+    ses.clearCache().catch(() => {});
+  }
+
   // ---- 店铺管理 ----
+
+  _removeShopWithPersistedData(shopId) {
+    if (!shopId) return false;
+
+    const shops = this.store.get('shops') || [];
+    const hasShop = shops.some(shop => shop.id === shopId);
+    const shopTokenFiles = { ...(this.store.get('shopTokenFiles') || {}) };
+    const managedTokenFile = shopTokenFiles[shopId] || null;
+    const hasTokenInfo = !!this.store.get(this._getTokenStoreKey(shopId));
+    const hasCookies = !!this.store.get(`shopCookies.${shopId}`);
+    const hasView = this.views.has(shopId);
+
+    if (!hasShop && !managedTokenFile && !hasTokenInfo && !hasCookies && !hasView) {
+      return false;
+    }
+
+    if (managedTokenFile?.filePath) {
+      try {
+        if (fs.existsSync(managedTokenFile.filePath)) {
+          fs.unlinkSync(managedTokenFile.filePath);
+        }
+      } catch (error) {
+        this.onLog(`[PDD助手] 删除 Token 文件失败(${shopId}): ${error.message}`);
+        return false;
+      }
+      delete shopTokenFiles[shopId];
+      this.store.set('shopTokenFiles', shopTokenFiles);
+    }
+
+    this._disposeView(shopId);
+    this._clearShopSession(shopId);
+    this.clearTokenInfo(shopId);
+    this.store.delete(`shopCookies.${shopId}`);
+
+    const nextShops = shops.filter(shop => shop.id !== shopId);
+    this.store.set('shops', nextShops);
+
+    if (this.activeShopId === shopId) {
+      this.activeShopId = null;
+      this.syncActiveShopSelection({
+        shops: nextShops,
+        showView: nextShops.length > 0
+      });
+    }
+
+    if (this.mainWindow) {
+      this.mainWindow.webContents.send('shop-list-updated', { shops: nextShops });
+    }
+
+    this.onTokenUpdated(shopId);
+    return true;
+  }
 
   removeShop(shopId) {
     if (this.tokenFileStore) {
-      const removed = this.tokenFileStore.removeTokenFile(shopId);
-      if (!removed) return false;
-      this._disposeView(shopId);
-      this.clearTokenInfo(shopId);
-      this.store.delete(`shopCookies.${shopId}`);
-      this.onTokenUpdated(shopId);
-      this.syncShopsFromTokenFiles({ broadcast: true }).catch(err => {
-        this.onLog(`[PDD助手] 同步 Token 店铺失败: ${err.message}`);
-      });
-      return true;
+      return this._removeShopWithPersistedData(shopId);
     }
 
-    // 不能删除当前活跃且唯一的店铺...或者可以
+    if (!shopId) return false;
     const view = this.views.get(shopId);
+    if (!view && !(this.store.get('shops') || []).some(shop => shop.id === shopId)) {
+      return false;
+    }
+
     if (view) {
       if (this.activeShopId === shopId) {
         try { this.mainWindow.removeBrowserView(view); } catch {}
@@ -1065,15 +1158,12 @@ class ShopManager {
       this.views.delete(shopId);
     }
 
-    // 清除 partition 数据
-    const ses = session.fromPartition(this._getPartition(shopId));
-    ses.clearStorageData().catch(() => {});
+    this._clearShopSession(shopId);
 
     let shops = this.store.get('shops') || [];
     shops = shops.filter(s => s.id !== shopId);
     this.store.set('shops', shops);
 
-    // 如果删除的是当前活跃店铺，切换到下一个
     if (this.activeShopId === shopId) {
       this.activeShopId = null;
       this.syncActiveShopSelection({
@@ -1085,6 +1175,7 @@ class ShopManager {
     this.mainWindow.webContents.send('shop-list-updated', { shops });
     this.onTokenUpdated(shopId);
     this.clearTokenInfo(shopId);
+    this.store.delete(`shopCookies.${shopId}`);
     return true;
   }
 
@@ -1136,120 +1227,6 @@ class ShopManager {
     for (const shopId of this.views.keys()) {
       await this.saveCookies(shopId);
     }
-  }
-
-  // ---- 弹窗自动关闭（主进程驱动，结果可见） ----
-
-  static _suppressGuides(view) {
-    if (!view || view.webContents.isDestroyed()) return;
-    if (view._guideScanTimer) clearInterval(view._guideScanTimer);
-    if (view._guideScanTimeouts) view._guideScanTimeouts.forEach(t => clearTimeout(t));
-
-    const wc = view.webContents;
-
-    // 不再用 CSS 隐藏 .layer —— 改为扫描脚本主动点击关闭按钮
-
-    // localStorage 预写（一次性）
-    wc.executeJavaScript(`(function(){
-      if (window.__PDD_LS_SEEDED__) return;
-      window.__PDD_LS_SEEDED__ = true;
-      ['guide_finished','guideFinished','guide_showed','guide_closed',
-       'has_shown_guide','hasShownGuide','chat_guide_done','chatGuideDone',
-       'newbie_guide_done','newbieGuideDone','feature_guide_done',
-       'onboarding_complete','onboardingComplete','guide_step_done',
-       'im_guide_done','imGuideDone','merchant_guide_done',
-       'chat_guide_closed','chatGuideClosed','function_guide_done'
-      ].forEach(function(k){ try{localStorage.setItem(k,'1');sessionStorage.setItem(k,'1');}catch(e){} });
-    })()`).catch(() => {});
-
-    const SCAN_JS = `(function(){
-      var DISMISS = ['我知道了','知道了','我知道啦','不再提示','关闭引导','跳过','下次再说','暂不设置'];
-      var r = { clicked: 0, actions: [] };
-
-      // 策略1: 点击关闭图标（close-icon / close-btn 等）
-      var closeSelectors = '.close-icon, .close-btn, .dialog-close, .modal-close, [class*="close-icon"], [class*="closeIcon"]';
-      document.querySelectorAll(closeSelectors).forEach(function(el) {
-        var rect = el.getBoundingClientRect();
-        if (rect.width < 3 || rect.height < 3) return;
-        el.click();
-        r.clicked++;
-        r.actions.push('close-icon:' + (el.className||'').toString().slice(0,30) + ' ' + Math.round(rect.width) + 'x' + Math.round(rect.height));
-      });
-
-      // 策略2: 移除高 z-index 的全屏遮罩层和弹窗内容
-      document.querySelectorAll('.layer').forEach(function(el) {
-        if (el.offsetWidth > 0 && el.offsetHeight > 0) {
-          el.remove();
-          r.clicked++;
-          r.actions.push('remove:.layer');
-        }
-      });
-
-      // 策略3: 移除 position:fixed 的高 z-index 弹窗内容（排除 React Portal 根容器）
-      document.querySelectorAll('*').forEach(function(el) {
-        var cs = getComputedStyle(el);
-        var zi = parseInt(cs.zIndex) || 0;
-        if (cs.position !== 'fixed' || zi < 3000 || el.offsetWidth < 10) return;
-        if (el === document.body || el === document.documentElement) return;
-        // 排除 React Portal 根容器（body 直接子元素，无 class，随机数字 ID）
-        if (el.parentElement === document.body && !el.className && /^0\\.\\d+$/.test(el.id)) return;
-        el.remove();
-        r.clicked++;
-        r.actions.push('remove:fixed-z' + zi + ':' + el.tagName + '.' + (el.className||'').toString().slice(0,25));
-      });
-
-      // 策略4: 文本匹配兜底（针对传统弹窗按钮）
-      if (r.clicked === 0) {
-        var all = document.querySelectorAll('button, [role="button"], div, span, a');
-        for (var i = 0; i < all.length; i++) {
-          var el = all[i];
-          var t = (el.innerText || el.textContent || '').replace(/[\\s\\u00a0]+/g, '').trim();
-          if (t.length === 0 || t.length > 10) continue;
-          var hit = false;
-          for (var j = 0; j < DISMISS.length; j++) {
-            if (t === DISMISS[j]) { hit = true; break; }
-          }
-          if (!hit) continue;
-          var rect = el.getBoundingClientRect();
-          if (rect.width < 5 || rect.height < 5) continue;
-          el.click();
-          r.clicked++;
-          r.actions.push('text-click:' + t + '<' + el.tagName + '>');
-          break;
-        }
-      }
-
-      return r;
-    })()`;
-
-    let scanCount = 0;
-    const doScan = async () => {
-      if (wc.isDestroyed()) { clearInterval(view._guideScanTimer); return; }
-      scanCount++;
-      try {
-        const r = await wc.executeJavaScript(SCAN_JS);
-        if (r.clicked > 0) {
-          console.log(`[PDD助手] 自动关闭弹窗(${r.clicked}项): [${r.actions.join(', ')}] (第${scanCount}次扫描)`);
-        } else if (scanCount <= 5) {
-          console.log(`[PDD助手] 弹窗扫描#${scanCount}: 页面干净`);
-        }
-      } catch (err) {
-        console.error(`[PDD助手] 弹窗扫描失败:`, err.message);
-      }
-    };
-
-    view._guideScanTimeouts = [
-      setTimeout(doScan, 500),
-      setTimeout(doScan, 1500),
-      setTimeout(doScan, 3000),
-      setTimeout(doScan, 5000)
-    ];
-
-    // 持续扫描（每 2 秒，最多 60 秒）
-    view._guideScanTimer = setInterval(() => {
-      if (scanCount >= 30) { clearInterval(view._guideScanTimer); return; }
-      doScan();
-    }, 2000);
   }
 
   // ---- 内部辅助 ----

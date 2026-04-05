@@ -38,6 +38,10 @@ alwaysApply: false
 - 渲染层不要直接操作 store；变更配置时由主进程负责读写和兜底。
 - 修改 `rules`、`defaultReply`、`shops`、`shopGroups`、`quickPhrases`、`phraseLibrary`、`unmatchedLog`、`aiIntent` 等结构时，要兼容已有数据。
 - 不要把新的敏感信息直接持久化到普通 store；如必须保存敏感字段，应先评估安全边界。
+- 接口抓包相关持久化例外统一收口到 `api-traffic-recorder`：脱敏后的抓包明细统一写入 `artifacts/api-traffic/api-traffic-log.jsonl`，去重索引统一维护在 `artifacts/api-traffic/api-traffic-index.json`，不要在业务模块里再各写一份抓包文件。
+- 新增业务页若需要记录接口样本、触发来源或调试索引，必须沿用现有统一字段如 `pageType`、`endpointPath`、`command`、`summary`、`triggerContext`，避免每个业务域使用不同命名和结构。
+- 若索引损坏或需要重建，应以原始 jsonl 日志回放重建索引；不要把索引文件当作唯一事实来源。
+- 若需要把抓包产物留在仓库内或提交 GitHub，统一通过 `tools` 生成或更新 `artifacts/api-traffic` 下的脱敏快照、脱敏样本或分析结果；不要把未脱敏原始日志直接入库。
 
 ## 运行时状态
 - 延迟发送、冷却时间、消息去重、轮询缓存等运行时状态优先保持在主进程内存结构中，不随意下放到页面层。

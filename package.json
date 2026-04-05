@@ -8,7 +8,10 @@
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
     "smoke:api": "electron test/run-pdd-api-smoke.js",
-    "export:api-sample": "electron test/export-api-traffic-sample.js"
+    "snapshot:api-traffic": "electron tools/snapshot-api-traffic.js",
+    "rebuild:api-traffic-index": "electron tools/rebuild-api-traffic-index.js",
+    "export:api-sample": "electron tools/export-api-traffic-sample.js",
+    "analyze:api-traffic": "electron tools/analyze-api-traffic.js"
   },
   "author": "",
   "license": "MIT",

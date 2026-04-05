@@ -323,14 +323,23 @@
       alert('请先选择店铺');
       return;
     }
-    if (!confirm(`确定解绑 ${selectedShopIds.size} 个店铺？`)) return;
+    if (!confirm(`确定移除 ${selectedShopIds.size} 个店铺，并清除对应 Token 吗？`)) return;
     const shopIds = Array.from(selectedShopIds);
+    let removedCount = 0;
     for (const shopId of shopIds) {
-      await window.pddApi.removeShop(shopId);
+      const removed = await window.pddApi.removeShop(shopId);
+      if (removed) {
+        removedCount += 1;
+      }
     }
     setSelectedShopIds(new Set());
     await loadShops();
-    addLog(`已删除 ${shopIds.length} 个 Token 店铺`, 'info');
+    if (removedCount < shopIds.length) {
+      addLog(`已移除 ${removedCount} 个店铺，${shopIds.length - removedCount} 个移除失败`, 'error');
+      alert(`已移除 ${removedCount} 个店铺，${shopIds.length - removedCount} 个移除失败`);
+      return;
+    }
+    addLog(`已移除 ${removedCount} 个店铺，并清除对应 Token`, 'info');
   }
 
   function openBindModal() {

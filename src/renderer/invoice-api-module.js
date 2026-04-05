@@ -14,9 +14,274 @@
   let invoiceApiActiveSerialNo = '';
   let invoiceApiActiveDetail = null;
   const invoiceApiSelectedSerialNos = new Set();
+  let invoiceApiEntryDialogState = createInvoiceApiEntryDialogState();
 
   function getEl(id) {
     return document.getElementById(id);
+  }
+
+  function createInvoiceApiEntryDialogState() {
+    return {
+      serialNo: '',
+      orderSn: '',
+      orderStatus: '',
+      afterSalesStatus: '',
+      applyTime: 0,
+      promiseInvoiceTime: 0,
+      invoiceAmount: 0,
+      invoiceMode: '',
+      invoiceType: '',
+      invoiceKind: '',
+      letterheadType: '',
+      letterhead: '',
+      goodsName: '',
+      goodsSpec: '',
+      receiveName: '',
+      receiveMobile: '',
+      shippingAddress: '',
+      shippingName: '',
+      trackingNumber: '',
+      invoiceApplyStatus: '',
+      taxNo: '',
+      canSubmit: null,
+      fileName: '',
+      invoiceNumber: '',
+      invoiceCode: '',
+      loading: false,
+      statusType: '',
+      statusText: ''
+    };
+  }
+
+  function showInvoiceApiEntryStatus(type, text) {
+    invoiceApiEntryDialogState.statusType = text ? type : '';
+    invoiceApiEntryDialogState.statusText = text || '';
+    renderInvoiceApiEntryDialog();
+  }
+
+  function resetInvoiceApiEntryDialogState() {
+    invoiceApiEntryDialogState = createInvoiceApiEntryDialogState();
+    const fileInput = getEl('invoiceApiEntryFile');
+    if (fileInput) fileInput.value = '';
+    const numberInput = getEl('invoiceApiEntryNumber');
+    if (numberInput) numberInput.value = '';
+    const codeInput = getEl('invoiceApiEntryCode');
+    if (codeInput) codeInput.value = '';
+  }
+
+  function getInvoiceApiEntrySubmitHint() {
+    if (!invoiceApiEntryDialogState.orderSn) return '请先选择一条待开票记录';
+    if (invoiceApiEntryDialogState.loading) return '正在拉取录入发票所需信息';
+    if (invoiceApiEntryDialogState.canSubmit === false) return '当前店铺接口校验未开放录入发票提交能力';
+    if (!invoiceApiEntryDialogState.fileName) return '请先上传发票文件';
+    if (!invoiceApiEntryDialogState.invoiceNumber.trim()) return '请填写发票号码';
+    return '当前版本先完成弹窗与表单录入，提交接口待补充';
+  }
+
+  function formatInvoiceApiPromiseTime(value) {
+    const num = Number(value);
+    if (!num) return '-';
+    const targetMs = num < 1e12 ? num * 1000 : num;
+    const diffMs = targetMs - Date.now();
+    if (diffMs <= 0) return formatApiDateTime(targetMs);
+    const totalHours = Math.floor(diffMs / (60 * 60 * 1000));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    if (days > 0) return `剩余${days}天${hours}小时`;
+    if (hours > 0) return `剩余${hours}小时`;
+    const minutes = Math.max(1, Math.floor(diffMs / (60 * 1000)));
+    return `剩余${minutes}分钟`;
+  }
+
+  function renderInvoiceApiEntryDialog() {
+    const status = getEl('invoiceApiEntryStatus');
+    if (status) {
+      status.className = `invoice-api-entry-status${invoiceApiEntryDialogState.statusText ? ` visible ${invoiceApiEntryDialogState.statusType || 'info'}` : ''}`;
+      status.textContent = invoiceApiEntryDialogState.statusText;
+    }
+    const fileName = getEl('invoiceApiEntryFileName');
+    if (fileName) {
+      fileName.textContent = invoiceApiEntryDialogState.fileName || '上传文件';
+    }
+    const numberInput = getEl('invoiceApiEntryNumber');
+    if (numberInput && numberInput.value !== invoiceApiEntryDialogState.invoiceNumber) {
+      numberInput.value = invoiceApiEntryDialogState.invoiceNumber;
+    }
+    const codeInput = getEl('invoiceApiEntryCode');
+    if (codeInput && codeInput.value !== invoiceApiEntryDialogState.invoiceCode) {
+      codeInput.value = invoiceApiEntryDialogState.invoiceCode;
+    }
+    const card = getEl('invoiceApiEntryCard');
+    if (card) {
+      if (!invoiceApiEntryDialogState.orderSn) {
+        card.innerHTML = '<div class="invoice-api-entry-card-empty">请选择一条待开票记录后再录入发票。</div>';
+      } else {
+        const detailItems = [
+          ['抬头类型', invoiceApiEntryDialogState.letterheadType || '-'],
+          ['发票抬头', invoiceApiEntryDialogState.letterhead || '-'],
+          ['企业税号', invoiceApiEntryDialogState.taxNo || '-'],
+          ['开票方式', invoiceApiEntryDialogState.invoiceMode || '-'],
+          ['发票类型', invoiceApiEntryDialogState.invoiceKind || '-']
+        ];
+        const subtitleParts = [
+          invoiceApiEntryDialogState.goodsName || invoiceApiEntryDialogState.orderStatus || '',
+          invoiceApiEntryDialogState.goodsSpec || '',
+          invoiceApiEntryDialogState.invoiceApplyStatus || ''
+        ].filter(Boolean);
+        card.innerHTML = `
+          <div class="invoice-api-entry-card-head">
+            <div>
+              <div class="invoice-api-entry-card-title">${esc(invoiceApiEntryDialogState.orderSn)}</div>
+              <div class="invoice-api-entry-card-subtitle">${esc(subtitleParts.join(' · ') || '待录入发票记录')}</div>
+            </div>
+            <div class="invoice-api-entry-card-amount">${esc(formatApiAmount(invoiceApiEntryDialogState.invoiceAmount || 0))}</div>
+          </div>
+          <div class="invoice-api-entry-card-grid">
+            ${detailItems.map(([label, value]) => `
+              <div class="invoice-api-entry-card-item">
+                <div class="invoice-api-entry-card-label">${esc(label)}</div>
+                <div class="invoice-api-entry-card-value">${esc(value)}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+    }
+    const detailGrid = getEl('invoiceApiEntryDetailGrid');
+    if (detailGrid) {
+      const detailItems = [
+        ['流水号', invoiceApiEntryDialogState.serialNo || '-'],
+        ['申请时间', formatApiDateTime(invoiceApiEntryDialogState.applyTime)],
+        ['订单状态', invoiceApiEntryDialogState.orderStatus || '-'],
+        ['售后状态', invoiceApiEntryDialogState.afterSalesStatus || '-'],
+        ['收件人', invoiceApiEntryDialogState.receiveName || '-'],
+        ['联系电话', invoiceApiEntryDialogState.receiveMobile || '-'],
+        ['配送方式', invoiceApiEntryDialogState.shippingName || '-'],
+        ['运单号', invoiceApiEntryDialogState.trackingNumber || '-'],
+        ['收货地址', invoiceApiEntryDialogState.shippingAddress || '-'],
+        ['发票种类', invoiceApiEntryDialogState.invoiceType || '-'],
+        ['发票类型', invoiceApiEntryDialogState.invoiceKind || '-']
+      ];
+      detailGrid.innerHTML = detailItems.map(([label, value]) => `
+        <div class="invoice-api-entry-detail-item">
+          <div class="invoice-api-entry-detail-label">${esc(label)}</div>
+          <div class="invoice-api-entry-detail-value">${esc(value)}</div>
+        </div>
+      `).join('');
+    }
+    const footerMeta = getEl('invoiceApiEntryFooterMeta');
+    if (footerMeta) {
+      footerMeta.textContent = getInvoiceApiEntrySubmitHint();
+    }
+    const submitButton = getEl('btnInvoiceApiEntrySubmit');
+    if (submitButton) {
+      submitButton.disabled = !!invoiceApiEntryDialogState.loading || invoiceApiEntryDialogState.canSubmit === false;
+    }
+  }
+
+  async function openInvoiceApiEntryDialog(serialNo) {
+    const item = invoiceApiList.find(entry => String(entry.serialNo) === String(serialNo));
+    if (!item) return;
+    await openInvoiceApiDetail(serialNo, { skipTraffic: true });
+    resetInvoiceApiEntryDialogState();
+    invoiceApiEntryDialogState = {
+      ...invoiceApiEntryDialogState,
+      serialNo: String(item.serialNo || ''),
+      orderSn: String(item.orderSn || ''),
+      orderStatus: String(item.orderStatus || ''),
+      afterSalesStatus: String(item.afterSalesStatus || ''),
+      applyTime: Number(item.applyTime || 0),
+      promiseInvoiceTime: Number(item.promiseInvoiceTime || 0),
+      invoiceAmount: Number(item.invoiceAmount || 0),
+      invoiceMode: String(item.invoiceMode || ''),
+      invoiceType: String(item.invoiceType || ''),
+      invoiceKind: String(item.invoiceKind || ''),
+      letterheadType: String(item.letterheadType || ''),
+      letterhead: String(item.letterhead || ''),
+      loading: true
+    };
+    renderInvoiceApiEntryDialog();
+    if (typeof showModal === 'function') {
+      showModal('modalInvoiceApiEntry');
+    }
+    if (!activeShopId || !item.orderSn) {
+      invoiceApiEntryDialogState.loading = false;
+      showInvoiceApiEntryStatus('warn', '当前记录缺少订单号，暂时无法补充录入发票详情。');
+      return;
+    }
+    const result = await window.pddApi.invoiceGetDetail({
+      shopId: activeShopId,
+      serialNo: item.serialNo,
+      orderSn: item.orderSn
+    });
+    invoiceApiEntryDialogState.loading = false;
+    if (!result || result.error) {
+      showInvoiceApiEntryStatus('error', result?.error || '加载录入发票详情失败');
+      return;
+    }
+    const detail = result.detail || {};
+    invoiceApiEntryDialogState = {
+      ...invoiceApiEntryDialogState,
+      orderStatus: detail.orderStatus || invoiceApiEntryDialogState.orderStatus,
+      goodsName: detail.goodsName || '',
+      goodsSpec: detail.goodsSpec || '',
+      receiveName: detail.receiveName || '',
+      receiveMobile: detail.receiveMobile || '',
+      shippingAddress: detail.shippingAddress || '',
+      shippingName: detail.shippingName || '',
+      trackingNumber: detail.trackingNumber || '',
+      invoiceApplyStatus: detail.invoiceApplyStatus || '',
+      taxNo: detail.taxNo || '',
+      canSubmit: typeof result.canSubmit === 'boolean' ? result.canSubmit : null
+    };
+    if (result.canSubmit === false) {
+      showInvoiceApiEntryStatus('warn', '当前店铺接口校验未开放提交能力，先支持弹窗查看与表单录入。');
+      return;
+    }
+    renderInvoiceApiEntryDialog();
+  }
+
+  function handleInvoiceApiEntryFileChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      invoiceApiEntryDialogState.fileName = '';
+      renderInvoiceApiEntryDialog();
+      return;
+    }
+    const validSuffix = /\.(pdf|ofd)$/i.test(file.name);
+    if (!validSuffix) {
+      event.target.value = '';
+      invoiceApiEntryDialogState.fileName = '';
+      showInvoiceApiEntryStatus('error', '仅支持上传 PDF 或 OFD 文件。');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      event.target.value = '';
+      invoiceApiEntryDialogState.fileName = '';
+      showInvoiceApiEntryStatus('error', '发票文件不能超过 5M。');
+      return;
+    }
+    invoiceApiEntryDialogState.fileName = file.name;
+    if (invoiceApiEntryDialogState.statusType === 'error') {
+      invoiceApiEntryDialogState.statusType = '';
+      invoiceApiEntryDialogState.statusText = '';
+    }
+    renderInvoiceApiEntryDialog();
+  }
+
+  function submitInvoiceApiEntryDraft() {
+    invoiceApiEntryDialogState.invoiceNumber = getEl('invoiceApiEntryNumber')?.value || '';
+    invoiceApiEntryDialogState.invoiceCode = getEl('invoiceApiEntryCode')?.value || '';
+    if (!invoiceApiEntryDialogState.fileName) {
+      showInvoiceApiEntryStatus('error', '请先上传发票文件。');
+      return;
+    }
+    if (!invoiceApiEntryDialogState.invoiceNumber.trim()) {
+      showInvoiceApiEntryStatus('error', '请填写发票号码。');
+      return;
+    }
+    showInvoiceApiEntryStatus('info', '已收集录入发票表单，当前版本先完成弹窗交互，提交接口待补充。');
+    addLog(`已打开录入发票弹窗：${invoiceApiEntryDialogState.orderSn || invoiceApiEntryDialogState.serialNo}`, 'info');
   }
 
   function getInvoiceTrafficType(entry) {
@@ -231,13 +496,13 @@
           <td title="${esc(item.orderStatus || '-')}">${esc(item.orderStatus || '-')}</td>
           <td title="${esc(item.afterSalesStatus || '-')}">${esc(item.afterSalesStatus || '-')}</td>
           <td>${esc(formatApiDateTime(item.applyTime))}</td>
-          <td class="invoice-api-cell-muted">-</td>
+          <td title="${esc(formatInvoiceApiPromiseTime(item.promiseInvoiceTime))}">${esc(formatInvoiceApiPromiseTime(item.promiseInvoiceTime))}</td>
           <td class="invoice-api-amount">${esc(formatApiAmount(item.invoiceAmount))}</td>
           <td title="${esc(item.invoiceMode || '-')}">${esc(item.invoiceMode || '-')}</td>
           <td title="${esc(item.invoiceType || '-')}">${esc(item.invoiceType || '-')}</td>
+          <td title="${esc(item.invoiceKind || '-')}">${esc(item.invoiceKind || '-')}</td>
           <td title="${esc(item.letterheadType || '-')}">${esc(item.letterheadType || '-')}</td>
-          <td title="${esc(item.letterhead || '-')}">${esc(item.letterhead || '-')}</td>
-          <td><button class="btn btn-secondary btn-sm invoice-api-op-btn" data-invoice-detail="${esc(serialNo)}">查看</button></td>
+          <td><button class="btn btn-secondary btn-sm invoice-api-op-btn" data-invoice-entry="${esc(serialNo)}">录入发票</button></td>
         </tr>
       `;
     }).join('');
@@ -247,10 +512,10 @@
         await openInvoiceApiDetail(row.dataset.invoiceSerialNo, { skipTraffic: true });
       });
     });
-    container.querySelectorAll('[data-invoice-detail]').forEach(button => {
+    container.querySelectorAll('[data-invoice-entry]').forEach(button => {
       button.addEventListener('click', async event => {
         event.stopPropagation();
-        await openInvoiceApiDetail(button.dataset.invoiceDetail, { skipTraffic: true });
+        await openInvoiceApiEntryDialog(button.dataset.invoiceEntry);
       });
     });
     container.querySelectorAll('[data-invoice-check]').forEach(input => {
@@ -280,7 +545,7 @@
         <div class="mail-api-detail-meta"><span>订单号：-</span><span>申请时间：-</span></div>
       `;
       panel.innerHTML = '<div class="invoice-api-detail-empty">请选择一条待开票记录查看详情</div>';
-      getEl('invoiceApiDetailMeta').textContent = '点击表格中的“查看”打开详情';
+      getEl('invoiceApiDetailMeta').textContent = '点击行查看详情，点击“录入发票”弹出对话框';
       return;
     }
     head.innerHTML = `
@@ -295,9 +560,11 @@
       ['流水号', invoiceApiActiveDetail.serialNo || '-'],
       ['订单状态', invoiceApiActiveDetail.orderStatus || '-'],
       ['售后状态', invoiceApiActiveDetail.afterSalesStatus || '-'],
+      ['承诺开票时间', formatInvoiceApiPromiseTime(invoiceApiActiveDetail.promiseInvoiceTime)],
       ['开票金额', formatApiAmount(invoiceApiActiveDetail.invoiceAmount)],
       ['开票方式', invoiceApiActiveDetail.invoiceMode || '-'],
       ['发票种类', invoiceApiActiveDetail.invoiceType || '-'],
+      ['发票类型', invoiceApiActiveDetail.invoiceKind || '-'],
       ['抬头类型', invoiceApiActiveDetail.letterheadType || '-'],
       ['发票抬头', invoiceApiActiveDetail.letterhead || '-']
     ];
@@ -447,6 +714,16 @@
       await loadInvoiceApiTraffic();
       addLog('已清空当前范围的待开票抓包记录', 'info');
     });
+    getEl('invoiceApiEntryFile')?.addEventListener('change', handleInvoiceApiEntryFileChange);
+    getEl('invoiceApiEntryNumber')?.addEventListener('input', event => {
+      invoiceApiEntryDialogState.invoiceNumber = event.target.value || '';
+      renderInvoiceApiEntryDialog();
+    });
+    getEl('invoiceApiEntryCode')?.addEventListener('input', event => {
+      invoiceApiEntryDialogState.invoiceCode = event.target.value || '';
+      renderInvoiceApiEntryDialog();
+    });
+    getEl('btnInvoiceApiEntrySubmit')?.addEventListener('click', submitInvoiceApiEntryDraft);
     getEl('btnInvoiceApiBackToInvoice')?.addEventListener('click', () => switchView('invoice'));
     getEl('btnInvoiceApiApplyFilters')?.addEventListener('click', async () => {
       invoiceApiKeyword = getEl('invoiceApiKeyword').value || '';

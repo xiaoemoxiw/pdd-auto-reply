@@ -1,6 +1,7 @@
 function registerEmbeddedViewIpc({
   ipcMain,
   store,
+  getMainWindow,
   getCurrentView,
   setCurrentView,
   getShopManager,
@@ -17,10 +18,44 @@ function registerEmbeddedViewIpc({
   getPddChatUrl,
   getEmbeddedViewUrl
 }) {
+  function sendPageFailure(payload = {}) {
+    const mainWindow = getMainWindow?.();
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('pdd-page-failed', payload);
+  }
+
+  function ensureActiveView(targetView = getCurrentView()) {
+    const shopManager = getShopManager();
+    if (!shopManager) {
+      sendPageFailure({
+        view: targetView,
+        reason: 'shop-manager-unavailable',
+        errorDescription: '店铺管理器未初始化'
+      });
+      return { shopManager: null, activeView: null };
+    }
+    let activeView = shopManager.getActiveView();
+    if (!activeView && isEmbeddedPddView(targetView)) {
+      shopManager.syncActiveShopSelection({ showView: true });
+      activeView = shopManager.getActiveView();
+    }
+    if (!activeView && isEmbeddedPddView(targetView)) {
+      sendPageFailure({
+        view: targetView,
+        reason: shopManager.getActiveShopId?.() ? 'missing-view' : 'no-active-shop',
+        errorDescription: shopManager.getActiveShopId?.()
+          ? '当前店铺嵌入页未初始化，请刷新或重新切换店铺'
+          : '当前没有可用店铺，请先选择在线店铺'
+      });
+    }
+    return { shopManager, activeView };
+  }
+
   ipcMain.handle('reload-pdd', () => {
-    const view = getShopManager()?.getActiveView();
-    if (!view) return;
-    view.webContents.loadURL(getEmbeddedViewUrl(getCurrentView()));
+    const { activeView } = ensureActiveView(getCurrentView());
+    if (!activeView) return false;
+    activeView.webContents.loadURL(getEmbeddedViewUrl(getCurrentView()));
+    return true;
   });
 
   ipcMain.handle('get-chat-url', () => store.get('chatUrl'));
@@ -59,15 +94,16 @@ function registerEmbeddedViewIpc({
   });
 
   ipcMain.handle('navigate-pdd', (event, url) => {
-    const view = getShopManager()?.getActiveView();
-    if (view) view.webContents.loadURL(url);
+    const { activeView } = ensureActiveView(getCurrentView());
+    if (!activeView) return false;
+    activeView.webContents.loadURL(url);
+    return true;
   });
 
   ipcMain.handle('switch-view', (event, view) => {
     setCurrentView(view);
-    const shopManager = getShopManager();
     if (isEmbeddedPddView(view)) {
-      const activeView = shopManager?.getActiveView();
+      const { shopManager, activeView } = ensureActiveView(view);
       if (shopManager) shopManager.showActiveView();
       if (activeView) {
         const currentUrl = activeView.webContents.getURL();
@@ -86,8 +122,12 @@ function registerEmbeddedViewIpc({
         if (view === 'chat' && !isChatPageUrl(currentUrl)) {
           activeView.webContents.loadURL(getPddChatUrl());
         }
+        return true;
       }
-    } else if (shopManager) {
+      return false;
+    }
+    const { shopManager } = ensureActiveView(view);
+    if (shopManager) {
       shopManager.hideActiveView();
     }
     return true;

@@ -11,6 +11,92 @@ function pickValue(source, keys, fallback = '') {
   return fallback;
 }
 
+function normalizeInvoiceAmount(value) {
+  const raw = value ?? 0;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount)) return 0;
+  if (typeof raw === 'string' && raw.includes('.')) return amount;
+  return Number.isInteger(amount) ? amount / 100 : amount;
+}
+
+function normalizeMappedText(value, map) {
+  if (value === undefined || value === null || value === '') return '';
+  return map[String(value)] || String(value);
+}
+
+function resolveOrderStatusText(item = {}) {
+  const text = pickValue(item, ['order_status_desc', 'order_status_text', 'order_status_name', 'order_status_str'], '');
+  if (text) return String(text);
+  return normalizeMappedText(pickValue(item, ['order_status'], ''), {
+    2: '已收货',
+  });
+}
+
+function resolveAfterSalesStatusText(item = {}) {
+  const text = pickValue(item, ['after_sales_status_desc', 'after_sales_status_text', 'refund_status_desc'], '');
+  if (text) return String(text);
+  return normalizeMappedText(pickValue(item, ['after_sales_status'], ''), {
+    0: '正常',
+  });
+}
+
+function resolveInvoiceModeText(item = {}) {
+  const text = pickValue(item, ['invoice_mode_desc', 'invoice_mode_name', 'invoice_mode_text'], '');
+  if (text) return String(text);
+  return normalizeMappedText(pickValue(item, ['invoice_mode'], ''), {
+    0: '自动',
+    1: '自动',
+    2: '手动',
+    3: '手动',
+  });
+}
+
+function resolveInvoiceTypeText(item = {}) {
+  const text = pickValue(item, [
+    'invoice_way_desc',
+    'invoice_way_name',
+    'invoice_way_text',
+    'invoice_type_desc',
+    'invoice_type_name',
+    'invoice_type_text',
+  ], '');
+  if (text) return String(text);
+  const invoiceWay = pickValue(item, ['invoice_way'], '');
+  if (invoiceWay !== '') {
+    return normalizeMappedText(invoiceWay, {
+      0: '电票',
+      1: '纸票',
+    });
+  }
+  return normalizeMappedText(pickValue(item, ['invoice_type'], ''), {
+    0: '电票',
+    1: '纸票',
+  });
+}
+
+function resolveInvoiceKindText(item = {}) {
+  const text = pickValue(item, ['invoice_kind_desc', 'invoice_kind_name', 'invoice_kind_text'], '');
+  if (text) return String(text);
+  return normalizeMappedText(pickValue(item, ['invoice_kind'], ''), {
+    0: '蓝票',
+    1: '红票',
+  });
+}
+
+function resolveLetterheadTypeText(item = {}) {
+  const text = pickValue(item, ['letterhead_type_desc', 'letterhead_type_name', 'title_type_desc'], '');
+  if (text) return String(text);
+  const normalized = normalizeMappedText(pickValue(item, ['letterhead_type'], ''), {
+    0: '个人',
+    1: '企业',
+  });
+  if (normalized) return normalized;
+  if (pickValue(item, ['payer_register_no', 'tax_no', 'taxNo', 'taxpayer_no', 'taxpayerNo'], '')) {
+    return '企业';
+  }
+  return pickValue(item, ['letterhead', 'invoice_title', 'title_name'], '') ? '个人' : '';
+}
+
 class InvoiceApiClient {
   constructor(shopId, options = {}) {
     this.shopId = shopId;
@@ -159,7 +245,7 @@ class InvoiceApiClient {
       pendingNum: Number(stats.pending_num || 0),
       invoicedNum: Number(stats.invoiced_num || 0),
       applyingNum: Number(stats.applying_num || 0),
-      invoiceAmount: Number(stats.invoice_amount || 0),
+      invoiceAmount: normalizeInvoiceAmount(stats.invoice_amount || 0),
       quickPendingTotal: Number(quickFilter.total || 0),
       qualityPendingTotal: Number(quickFilter.quality_total || 0),
       normalPendingTotal: Number(quickFilter.normal_total || 0),
@@ -172,27 +258,42 @@ class InvoiceApiClient {
   }
 
   _normalizeListItem(item = {}) {
-    const orderStatus = pickValue(item, ['order_status_desc', 'order_status_text', 'order_status_name', 'order_status'], '');
-    const afterSalesStatus = pickValue(item, ['after_sales_status_desc', 'after_sales_status_text', 'refund_status_desc', 'after_sales_status'], '');
-    const invoiceMode = pickValue(item, ['invoice_mode_desc', 'invoice_mode_name', 'invoice_mode_text', 'invoice_mode'], '');
-    const invoiceType = pickValue(item, ['invoice_type_desc', 'invoice_type_name', 'invoice_type_text', 'invoice_type'], '');
-    const letterheadType = pickValue(item, ['letterhead_type_desc', 'letterhead_type_name', 'title_type_desc', 'letterhead_type'], '');
     const serialNo = pickValue(item, ['serial_no', 'serialNo', 'id'], '');
     const orderSn = pickValue(item, ['order_sn', 'orderSn', 'order_no', 'orderNo'], '');
     return {
       serialNo: String(serialNo || ''),
       orderSn: String(orderSn || ''),
       shopName: String(pickValue(item, ['mall_name', 'shop_name', 'store_name'], '')),
-      orderStatus: String(orderStatus || ''),
-      afterSalesStatus: String(afterSalesStatus || ''),
+      orderStatus: resolveOrderStatusText(item),
+      afterSalesStatus: resolveAfterSalesStatusText(item),
       applyTime: Number(pickValue(item, ['apply_time', 'applyTime', 'created_at', 'create_time'], 0) || 0),
-      invoiceAmount: Number(pickValue(item, ['invoice_amount', 'amount', 'sum_amount'], 0) || 0),
-      invoiceMode: String(invoiceMode || ''),
-      invoiceType: String(invoiceType || ''),
-      letterheadType: String(letterheadType || ''),
+      promiseInvoiceTime: Number(pickValue(item, ['promise_invoicing_time', 'promise_invoice_time'], 0) || 0),
+      invoiceAmount: normalizeInvoiceAmount(pickValue(item, ['invoice_amount', 'amount', 'sum_amount'], 0) || 0),
+      invoiceMode: resolveInvoiceModeText(item),
+      invoiceType: resolveInvoiceTypeText(item),
+      invoiceKind: resolveInvoiceKindText(item),
+      letterheadType: resolveLetterheadTypeText(item),
       letterhead: String(pickValue(item, ['letterhead', 'invoice_title', 'title_name'], '')),
       invoiceDisplayStatus: Number(pickValue(item, ['invoice_display_status', 'display_status', 'status'], 0) || 0),
       raw: item,
+    };
+  }
+
+  _normalizeDetail(detail = {}) {
+    return {
+      orderSn: String(pickValue(detail, ['order_sn', 'orderSn'], '')),
+      orderStatus: String(pickValue(detail, ['order_status_str', 'order_status_desc', 'order_status_text', 'order_status'], '')),
+      invoiceApplyStatus: String(pickValue(detail, ['invoice_apply_status_str', 'invoice_apply_status_desc'], '')),
+      goodsName: String(pickValue(detail, ['goods_name', 'goodsName', 'goods_title', 'goodsTitle'], '')),
+      goodsSpec: String(pickValue(detail, ['spec', 'goods_spec', 'goodsSpec', 'sku_spec_desc'], '')),
+      goodsThumb: String(pickValue(detail, ['goods_thumbnail_url', 'goods_thumb_url', 'goods_img_url', 'goods_image_url', 'goods_image'], '')),
+      receiveName: String(pickValue(detail, ['receive_name', 'receiver_name', 'consignee', 'receiver'], '')),
+      receiveMobile: String(pickValue(detail, ['receive_mobile', 'receiver_mobile', 'mobile'], '')),
+      shippingAddress: String(pickValue(detail, ['shipping_address', 'receive_address', 'address'], '')),
+      shippingName: String(pickValue(detail, ['shipping_name', 'express_company_name', 'express_name'], '')),
+      trackingNumber: String(pickValue(detail, ['tracking_number', 'waybill_no', 'trackingNo'], '')),
+      taxNo: String(pickValue(detail, ['tax_no', 'taxNo', 'taxpayer_no', 'taxpayerNo', 'duty_paragraph'], '')),
+      raw: detail
     };
   }
 
@@ -246,6 +347,27 @@ class InvoiceApiClient {
       pageSize,
       total: Number(result.total || 0),
       list,
+    };
+  }
+
+  async getDetail(params = {}) {
+    const orderSn = String(params.orderSn || params.order_sn || '').trim();
+    if (!orderSn) {
+      throw new Error('缺少订单号');
+    }
+    const orderDetailPayload = await this._request('POST', '/mangkhut/mms/orderDetail', {
+      orderSn,
+      source: 'MMS'
+    });
+    const [submitCheckPayload] = await Promise.allSettled([
+      this._request('POST', '/cambridge/api/duoDuoRuleSecret/checkAvailableToSubmitInvoiceRecord', {})
+    ]);
+    return {
+      orderSn,
+      canSubmit: submitCheckPayload.status === 'fulfilled'
+        ? !!submitCheckPayload.value?.result
+        : null,
+      detail: this._normalizeDetail(orderDetailPayload?.result || {})
     };
   }
 }

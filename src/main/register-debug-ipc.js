@@ -8,6 +8,8 @@ function registerDebugIpc({
   createSettingsWindow,
   createDebugWindow
 }) {
+  const verboseLogging = process.env.NODE_ENV === 'development' || process.env.PDD_VERBOSE_LOG === '1';
+
   ipcMain.handle('open-settings', () => {
     createSettingsWindow(getMainWindow(), store);
   });
@@ -104,6 +106,7 @@ function registerDebugIpc({
   });
 
   ipcMain.on('renderer-debug-log', (event, payload = {}) => {
+    if (!verboseLogging) return;
     const scope = payload?.scope || 'renderer';
     const message = payload?.message || '';
     const extra = payload?.extra ? ` ${JSON.stringify(payload.extra)}` : '';

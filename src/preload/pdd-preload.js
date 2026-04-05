@@ -21,14 +21,34 @@ window.addEventListener('message', (event) => {
     ipcRenderer.send('new-customer-message', {
       message: event.data.message,
       customer: event.data.customer,
-      conversationId: event.data.conversationId
+      conversationId: event.data.conversationId,
+      source: event.data.source || 'embedded-dom'
     });
   }
 
   if (event.data?.type === 'PDD_CLICK_SEND') {
     ipcRenderer.send('click-send-button', {
       x: event.data.x,
-      y: event.data.y
+      y: event.data.y,
+      conversationId: event.data.conversationId || '',
+      messagePreview: event.data.messagePreview || '',
+      source: event.data.source || 'embedded-dom-auto-reply'
+    });
+  }
+
+  if (event.data?.type === 'PDD_USER_ACTION') {
+    ipcRenderer.send('embedded-page-user-action', {
+      actionType: event.data.actionType || 'click',
+      pageUrl: event.data.pageUrl || window.location.href,
+      targetText: event.data.targetText || '',
+      targetTag: event.data.targetTag || '',
+      targetRole: event.data.targetRole || '',
+      targetHref: event.data.targetHref || '',
+      targetSelector: event.data.targetSelector || '',
+      x: event.data.x,
+      y: event.data.y,
+      messagePreview: event.data.messagePreview || '',
+      source: event.data.source || 'embedded-page'
     });
   }
 });

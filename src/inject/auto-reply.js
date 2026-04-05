@@ -20,8 +20,6 @@
     ],
     sendButtonScope: '.middle-panel',
     sendButtonText: '发送',
-    confirmButtonText: '继续发送',
-    confirmButtonSelector: 'button.el-button.el-button--default.el-button--mini',
     buyerClassHints: ['buyer', 'customer', 'left', 'other', 'receive', 'recv'],
     sellerClassHints: ['seller', 'service', 'right', 'self', 'send', 'mine', 'own'],
     leftPanel: [
@@ -44,6 +42,8 @@
   let sessionObserver = null;
   let sessionCheckTimer = null;
   let lastSessionSelectTime = 0;
+  let lastUserActionSignature = '';
+  let lastUserActionTime = 0;
 
   // ---- DOM 查找 ----
 
@@ -77,6 +77,74 @@
       }
     }
     return null;
+  }
+
+  function buildNodeSelector(node) {
+    if (!node || node.nodeType !== 1) return '';
+    const parts = [];
+    let current = node;
+    for (let depth = 0; depth < 4 && current && current.nodeType === 1; depth++) {
+      let part = current.tagName.toLowerCase();
+      if (current.id) {
+        part += `#${current.id}`;
+        parts.unshift(part);
+        break;
+      }
+      const classNames = String(current.className || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2);
+      if (classNames.length) {
+        part += `.${classNames.join('.')}`;
+      }
+      parts.unshift(part);
+      current = current.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  function buildActionPayload(node, extra = {}) {
+    if (!node || node.nodeType !== 1) return null;
+    const text = (node.innerText || node.textContent || node.value || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const ariaLabel = node.getAttribute?.('aria-label') || '';
+    const title = node.getAttribute?.('title') || '';
+    const href = node.getAttribute?.('href') || '';
+    const payload = {
+      actionType: extra.actionType || 'click',
+      timestamp: Date.now(),
+      pageUrl: location.href,
+      targetText: text || ariaLabel || title || '',
+      targetTag: node.tagName?.toLowerCase() || '',
+      targetRole: node.getAttribute?.('role') || '',
+      targetHref: href || '',
+      targetSelector: buildNodeSelector(node),
+      x: Number.isFinite(extra.x) ? extra.x : undefined,
+      y: Number.isFinite(extra.y) ? extra.y : undefined,
+      messagePreview: extra.messagePreview || '',
+      source: extra.source || 'embedded-page',
+    };
+    return payload;
+  }
+
+  function reportUserAction(node, extra = {}) {
+    const payload = buildActionPayload(node, extra);
+    if (!payload) return;
+    const signature = [
+      payload.actionType,
+      payload.targetText,
+      payload.targetTag,
+      payload.targetSelector,
+      payload.pageUrl,
+    ].join('|');
+    const now = Date.now();
+    if (signature === lastUserActionSignature && now - lastUserActionTime < 800) return;
+    lastUserActionSignature = signature;
+    lastUserActionTime = now;
+    window.postMessage({
+      type: 'PDD_USER_ACTION',
+      ...payload,
+    }, '*');
   }
 
   // ---- 会话列表操作 ----
@@ -164,47 +232,6 @@
     return null;
   }
 
-  function dismissBlockingPopups() {
-    var dismissed = 0;
-    var DISMISS_TEXTS = ['取消', '关闭', '我知道了', '知道了', '下次再说', '暂不设置', '跳过', '不再提示'];
-
-    // 策略1: 点击关闭图标
-    var closeSels = '.close-icon, .close-btn, .dialog-close, .modal-close, [class*="close-icon"], [class*="closeIcon"]';
-    document.querySelectorAll(closeSels).forEach(function(el) {
-      var rect = el.getBoundingClientRect();
-      if (rect.width < 3 || rect.height < 3) return;
-      el.click();
-      dismissed++;
-    });
-
-    // 策略2: 点击取消/关闭类文本按钮
-    if (dismissed === 0) {
-      var candidates = document.querySelectorAll('button, [role="button"], a');
-      for (var i = 0; i < candidates.length; i++) {
-        var el = candidates[i];
-        var t = (el.textContent || '').trim();
-        if (t.length > 6 || !DISMISS_TEXTS.includes(t)) continue;
-        var rect = el.getBoundingClientRect();
-        if (rect.width < 5 || rect.height < 5) continue;
-        if (el.offsetParent === null) continue;
-        el.click();
-        dismissed++;
-        break;
-      }
-    }
-
-    // 策略3: 移除遮罩层
-    document.querySelectorAll('.layer').forEach(function(el) {
-      if (el.offsetWidth > 0 && el.offsetHeight > 0) {
-        el.remove();
-        dismissed++;
-      }
-    });
-
-    if (dismissed > 0) console.log('[PDD助手] 自动关闭弹窗: ' + dismissed + ' 项');
-    return dismissed;
-  }
-
   function doSelectSession() {
     const panel = findLeftPanel();
     if (!panel) {
@@ -220,9 +247,6 @@
     item.click();
     lastSessionSelectTime = Date.now();
     setTimeout(startObserving, 1500);
-    // 选择会话后尝试关闭可能弹出的引导/推广弹窗
-    setTimeout(dismissBlockingPopups, 800);
-    setTimeout(dismissBlockingPopups, 2000);
     return true;
   }
 
@@ -283,58 +307,11 @@
           type: 'PDD_NEW_MESSAGE',
           message: text,
           customer: '客户',
-          conversationId: Date.now().toString()
+          conversationId: Date.now().toString(),
+          source: 'embedded-dom'
         }, '*');
       }
     }
-  }
-
-  // ---- 确认弹窗处理（"服务态度提醒"等） ----
-
-  function findConfirmButton() {
-    const candidates = document.querySelectorAll(SELECTORS.confirmButtonSelector);
-    for (const btn of candidates) {
-      if (btn.textContent.trim() === SELECTORS.confirmButtonText && btn.offsetParent !== null) {
-        return btn;
-      }
-    }
-    // 兜底：遍历所有 button 按文本匹配
-    for (const btn of document.querySelectorAll('button')) {
-      if (btn.textContent.trim() === SELECTORS.confirmButtonText && btn.offsetParent !== null) {
-        return btn;
-      }
-    }
-    return null;
-  }
-
-  function clickConfirmButton() {
-    const btn = findConfirmButton();
-    if (!btn) return false;
-    const rect = btn.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return false;
-    console.log('[PDD助手] 检测到确认弹窗，自动点击"继续发送"');
-    window.postMessage({
-      type: 'PDD_CLICK_SEND',
-      x: Math.round(rect.left + rect.width / 2),
-      y: Math.round(rect.top + rect.height / 2)
-    }, '*');
-    return true;
-  }
-
-  // 全局监听：检测确认弹窗出现并自动点击
-  function startConfirmDialogWatcher() {
-    const bodyObserver = new MutationObserver(() => {
-      if (!autoReplyEnabled) return;
-      clickConfirmButton();
-    });
-    bodyObserver.observe(document.body, { childList: true, subtree: true });
-  }
-
-  // 页面加载后启动弹窗监听
-  if (document.body) {
-    startConfirmDialogWatcher();
-  } else {
-    document.addEventListener('DOMContentLoaded', startConfirmDialogWatcher);
   }
 
   // ---- 消息发送 ----
@@ -357,7 +334,12 @@
     }
   }
 
-  function sendReply(message, retryCount) {
+  function sendReply(message, meta, retryCount) {
+    if (typeof meta === 'number') {
+      retryCount = meta;
+      meta = {};
+    }
+    meta = meta || {};
     retryCount = retryCount || 0;
     const input = findInputBox();
     if (!input) {
@@ -367,7 +349,7 @@
       }
       console.log('[PDD助手] 未找到输入框，尝试选择会话... (重试 ' + (retryCount + 1) + '/3)');
       doSelectSession();
-      setTimeout(function() { sendReply(message, retryCount + 1); }, 1500);
+      setTimeout(function() { sendReply(message, meta, retryCount + 1); }, 1500);
       return true;
     }
 
@@ -388,13 +370,19 @@
       window.postMessage({
         type: 'PDD_CLICK_SEND',
         x: Math.round(rect.left + rect.width / 2),
-        y: Math.round(rect.top + rect.height / 2)
+        y: Math.round(rect.top + rect.height / 2),
+        messagePreview: String(message || '').slice(0, 80),
+        conversationId: meta.conversationId || '',
+        source: meta.source || 'embedded-dom-auto-reply'
       }, '*');
+      reportUserAction(btn, {
+        actionType: 'auto-send-click',
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + rect.height / 2),
+        messagePreview: String(message || '').slice(0, 80),
+        source: meta.source || 'embedded-dom-auto-reply',
+      });
       console.log(`[PDD助手] 已填入回复并请求点击发送`);
-
-      // 发送后延迟检查确认弹窗（如"服务态度提醒"）
-      setTimeout(() => clickConfirmButton(), 500);
-      setTimeout(() => clickConfirmButton(), 1500);
     }, 200);
 
     return true;
@@ -408,9 +396,19 @@
       console.log(`[PDD助手] 自动回复: ${autoReplyEnabled ? '开启' : '关闭'}`);
     }
     if (event.data?.type === 'PDD_SEND_REPLY' && event.data.message) {
-      sendReply(event.data.message);
+      sendReply(event.data.message, event.data);
     }
   });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target?.closest?.('button, a, [role="button"], input, label, [data-testid], [data-track], [class*="button"], [class*="tab"], [class*="menu"]');
+    if (!target) return;
+    reportUserAction(target, {
+      actionType: 'click',
+      x: Number.isFinite(event.clientX) ? Math.round(event.clientX) : undefined,
+      y: Number.isFinite(event.clientY) ? Math.round(event.clientY) : undefined,
+    });
+  }, true);
 
   // ---- 启动 MutationObserver ----
 
@@ -468,13 +466,10 @@
     getContainer: findMessageArea,
     findSendButton,
     findInputBox,
-    findConfirmButton,
-    clickConfirmButton,
     sendReply,
     findLeftPanel,
     hasActiveConversation,
     doSelectSession,
-    dismissBlockingPopups,
     checkInputBoxHasContent() {
       const input = findInputBox();
       if (!input) return false;

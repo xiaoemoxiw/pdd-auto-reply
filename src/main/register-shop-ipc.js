@@ -2,9 +2,13 @@ function registerShopIpc({
   ipcMain,
   store,
   getShopManager,
+  getCurrentView,
+  isEmbeddedPddView,
   destroyApiClient,
   destroyMailApiClient,
-  destroyInvoiceApiClient
+  destroyInvoiceApiClient,
+  destroyTicketApiClient,
+  destroyViolationApiClient
 }) {
   ipcMain.handle('get-active-shop', () => {
     const shopManager = getShopManager();
@@ -16,7 +20,13 @@ function registerShopIpc({
   ipcMain.handle('switch-shop', (event, shopId) => {
     const shopManager = getShopManager();
     if (!shopManager) return false;
-    return shopManager.switchTo(shopId);
+    const shop = shopManager.getShopList().find(item => item.id === shopId);
+    if (!shopManager.isUserSelectableShop(shop)) return false;
+    const switched = shopManager.switchTo(shopId);
+    if (switched && !isEmbeddedPddView?.(getCurrentView?.())) {
+      shopManager.hideActiveView();
+    }
+    return switched;
   });
 
   ipcMain.handle('add-shop-by-token', async () => {
@@ -58,6 +68,8 @@ function registerShopIpc({
     destroyApiClient(shopId);
     destroyMailApiClient(shopId);
     destroyInvoiceApiClient(shopId);
+    destroyTicketApiClient(shopId);
+    destroyViolationApiClient(shopId);
     return shopManager.removeShop(shopId);
   });
 

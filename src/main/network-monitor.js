@@ -15,6 +15,7 @@ class NetworkMonitor {
     this.onMessage = options.onMessage || (() => {});
     this.onCustomerMessage = options.onCustomerMessage || null;
     this.onApiTraffic = options.onApiTraffic || (() => {});
+    this.getLatestAction = options.getLatestAction || (() => null);
     // 启动后的宽限期：前 N 秒内提取的消息视为历史消息，不触发回复
     this._startTime = Date.now();
     this._warmupMs = options.warmupMs || 10000;
@@ -97,7 +98,13 @@ class NetworkMonitor {
         this._handleRequest(params);
       }
       if (method === 'Network.responseReceived') {
-        this._handleResponse(params);
+        this._handleResponseHeaders(params);
+      }
+      if (method === 'Network.loadingFinished') {
+        this._handleLoadingFinished(params);
+      }
+      if (method === 'Network.loadingFailed') {
+        this._handleLoadingFailed(params);
       }
       if (method === 'Network.webSocketCreated') {
         this._handleWebSocketCreated(params);
@@ -129,10 +136,14 @@ class NetworkMonitor {
   _isMerchantHost(url) {
     try {
       const hostname = new URL(url).hostname;
-      return hostname.endsWith('.pinduoduo.com');
+      return hostname.endsWith('.pinduoduo.com') || hostname.endsWith('.pdd.net') || hostname.endsWith('.pddugc.com');
     } catch {
       return false;
     }
+  }
+
+  _isHttpLikeUrl(url) {
+    return /^https?:\/\//i.test(String(url || ''));
   }
 
   _hasExcludedPattern(text) {
@@ -142,16 +153,31 @@ class NetworkMonitor {
   _shouldCaptureRequest(url, resourceType = '', mimeType = '') {
     const rawUrl = String(url || '');
     if (!rawUrl) return false;
+    if (!this._isHttpLikeUrl(rawUrl)) return false;
     if (this._hasExcludedPattern(rawUrl)) return false;
     if (this.capturePatterns.some(pattern => rawUrl.includes(pattern))) return true;
-    if (!this._isMerchantHost(rawUrl)) return false;
 
     const type = String(resourceType || '').toLowerCase();
     const mime = String(mimeType || '').toLowerCase();
     const isDataRequest = ['xhr', 'fetch', 'preflight'].includes(type);
+    const isOtherRequest = ['other', 'ping'].includes(type);
     const isHtmlDocument = type === 'document' && (!mime || mime.includes('text/html'));
-    const isTextPayload = mime.includes('json') || mime.includes('text/plain') || mime.includes('javascript');
-    return isDataRequest || isHtmlDocument || isTextPayload;
+    const isTextPayload = mime.includes('json') || mime.includes('text/plain') || mime.includes('javascript') || mime.includes('xml');
+    if (isDataRequest || isHtmlDocument || isTextPayload) return true;
+    if (this._isMerchantHost(rawUrl) && isOtherRequest) return true;
+    return false;
+  }
+
+  _summarizeInitiator(initiator) {
+    if (!initiator || typeof initiator !== 'object') return {};
+    const topFrame = initiator?.stack?.callFrames?.[0] || null;
+    return {
+      type: initiator.type || '',
+      url: initiator.url || topFrame?.url || '',
+      lineNumber: Number.isFinite(topFrame?.lineNumber) ? topFrame.lineNumber : null,
+      columnNumber: Number.isFinite(topFrame?.columnNumber) ? topFrame.columnNumber : null,
+      functionName: topFrame?.functionName || '',
+    };
   }
 
   _summarizeHeaders(headers) {
@@ -316,7 +342,7 @@ class NetworkMonitor {
   }
 
   _handleRequest(params) {
-    const { requestId, request, initiator, type } = params;
+    const { requestId, request, initiator, type, documentURL } = params;
     const { url, method, headers, postData } = request || {};
     if (!url || !this._shouldCaptureRequest(url, type)) return;
 
@@ -337,7 +363,9 @@ class NetworkMonitor {
       requestHeaders: this._summarizeHeaders(headers),
       requestBody: this._sanitizePostData(postData),
       initiator: initiator?.type || '',
+      initiatorDetails: this._summarizeInitiator(initiator),
       resourceType: type || '',
+      documentURL: documentURL || '',
     });
   }
 
@@ -400,21 +428,66 @@ class NetworkMonitor {
     });
   }
 
-  async _handleResponse(params) {
+  _handleResponseHeaders(params) {
     const { requestId, response, type } = params;
     const { url, status, mimeType } = response;
     const requestEntry = this._requestMap.get(requestId) || null;
 
     if (!this._shouldCaptureRequest(url, requestEntry?.resourceType || type, mimeType)) return;
 
-    // 提取 URL 中的路径名用于简洁显示
-    let shortUrl;
-    try {
-      const parsed = new URL(url);
-      shortUrl = parsed.pathname + parsed.search;
-    } catch {
-      shortUrl = url;
-    }
+    const nextEntry = {
+      ...(requestEntry || {
+        requestId,
+        timestamp: Date.now(),
+        url,
+        fullUrl: url,
+        method: 'GET',
+        requestHeaders: {},
+        requestBody: '',
+        initiator: '',
+        initiatorDetails: {},
+        resourceType: type || '',
+        documentURL: '',
+      }),
+      status,
+      mimeType,
+      responseHeaders: this._summarizeHeaders(response.headers),
+    };
+    this._requestMap.set(requestId, nextEntry);
+  }
+
+  async _handleLoadingFinished(params) {
+    const { requestId } = params || {};
+    if (!requestId) return;
+    const requestEntry = this._requestMap.get(requestId);
+    if (!requestEntry) return;
+    await this._finalizeRequest(requestId, requestEntry);
+  }
+
+  _handleLoadingFailed(params) {
+    const { requestId, errorText, canceled } = params || {};
+    if (!requestId) return;
+    const requestEntry = this._requestMap.get(requestId);
+    if (!requestEntry) return;
+    this._requestMap.delete(requestId);
+    const apiTraffic = {
+      ...requestEntry,
+      status: requestEntry.status || 0,
+      mimeType: requestEntry.mimeType || '',
+      responseHeaders: requestEntry.responseHeaders || {},
+      responseBody: '',
+      isJson: false,
+      loadingFailed: true,
+      errorText: errorText || '',
+      canceled: !!canceled,
+      triggerContext: this.getLatestAction(requestEntry.timestamp) || null,
+    };
+    this._log('network', `[FAILED] ${requestEntry.url} (${errorText || 'unknown'})`, apiTraffic);
+    this.onApiTraffic(apiTraffic);
+  }
+
+  async _finalizeRequest(requestId, requestEntry) {
+    const shortUrl = requestEntry.url;
 
     try {
       const result = await this.debugger.sendCommand('Network.getResponseBody', { requestId });
@@ -432,40 +505,42 @@ class NetworkMonitor {
       const logEntry = {
         timestamp: Date.now(),
         url: shortUrl,
-        fullUrl: url,
-        status,
-        mimeType,
+        fullUrl: requestEntry.fullUrl || shortUrl,
+        status: requestEntry.status,
+        mimeType: requestEntry.mimeType,
         bodySize: body.length,
         body: parsed || body.slice(0, 2000),
         isJson: !!parsed,
       };
       const apiTraffic = {
-        ...(requestEntry || {
-          requestId,
-          timestamp: Date.now(),
-          url: shortUrl,
-          fullUrl: url,
-          method: 'GET',
-          requestHeaders: {},
-          requestBody: '',
-          initiator: '',
-          resourceType: '',
-        }),
-        status,
-        mimeType,
-        responseHeaders: this._summarizeHeaders(response.headers),
+        ...requestEntry,
+        status: requestEntry.status,
+        mimeType: requestEntry.mimeType,
+        responseHeaders: requestEntry.responseHeaders || {},
         responseBody: parsed || body.slice(0, 4000),
         isJson: !!parsed,
+        triggerContext: this.getLatestAction(requestEntry.timestamp) || null,
       };
 
-      this._log('network', `[${status}] ${shortUrl} (${body.length}B)`, apiTraffic);
+      this._log('network', `[${requestEntry.status}] ${shortUrl} (${body.length}B)`, apiTraffic);
       this.onApiTraffic(apiTraffic);
 
       if (parsed) {
         this._analyzeForMessages(parsed, logEntry);
       }
     } catch {
-      // 响应体可能已被清理，忽略
+      const apiTraffic = {
+        ...requestEntry,
+        status: requestEntry.status || 0,
+        mimeType: requestEntry.mimeType || '',
+        responseHeaders: requestEntry.responseHeaders || {},
+        responseBody: '',
+        isJson: false,
+        responseBodyUnavailable: true,
+        triggerContext: this.getLatestAction(requestEntry.timestamp) || null,
+      };
+      this._log('network', `[${apiTraffic.status}] ${shortUrl} (body unavailable)`, apiTraffic);
+      this.onApiTraffic(apiTraffic);
     } finally {
       this._requestMap.delete(requestId);
     }

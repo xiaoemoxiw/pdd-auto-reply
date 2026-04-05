@@ -22,6 +22,7 @@ alwaysApply: true
 - 当前主流程是 API 模式与自建聊天界面，不再把 BrowserView 注入脚本当作默认实现前提。
 - 与拼多多交互时，优先复用 `ShopManager`、`PddApiClient`、`NetworkMonitor`、`ReplyEngine` 等现有模块。
 - 历史注入脚本与 BrowserView 相关描述只能视为旧背景，新增功能时应以当前 `src/main`、`src/preload`、`src/renderer` 的真实结构为准。
+- 接口抓取存储统一采用“双层模型”：仓库内统一把脱敏后的抓包明细写入 `artifacts/api-traffic/api-traffic-log.jsonl`，去重索引写入 `artifacts/api-traffic/api-traffic-index.json`；需要留档或提交时，继续在同目录生成脱敏快照、样本或分析产物。
 
 ## 编码规范
 - 保持实现直接、清晰，优先复用已有函数、数据结构和模块边界。
@@ -29,6 +30,8 @@ alwaysApply: true
 - 不要用硬编码绕过真实逻辑问题，优先修正真实数据流或复用现有配置来源。
 - 只有在确实提升可读性时才添加注释；如果需要注释，使用中文。
 - 文件名优先保持现有 kebab-case 风格，变量和函数使用 camelCase，类名使用 PascalCase。
+- 新增页面或业务域的抓包能力时，统一复用 `api-traffic-recorder` 与 `network-monitor`，不要各模块私自落独立日志文件或自定义抓包格式。
+- 需要提交到 GitHub 的抓包资料，统一通过仓库内 `tools` 生成或维护 `artifacts/api-traffic` 下的脱敏产物，不要把未脱敏原始日志写入仓库。
 
 ## 协作与结构演进
 - 多人协作时优先按文件边界划分工作，不只按功能名称口头分工。

@@ -13,8 +13,12 @@ function registerApiIpc({
   getApiTrafficByScope,
   getMailApiClient,
   getInvoiceApiClient,
+  getTicketApiClient,
+  getViolationApiClient,
   setApiTrafficEntries
 }) {
+  const verboseLogging = process.env.NODE_ENV === 'development' || process.env.PDD_VERBOSE_LOG === '1';
+
   function getActiveShopId() {
     return getShopManager()?.getActiveShopId();
   }
@@ -58,6 +62,26 @@ function registerApiIpc({
     if (payloadMessage) return payloadMessage;
     if (payloadCode && fallbackMessage === 'API 请求失败') return `${fallbackMessage}（${payloadCode}）`;
     return fallbackMessage;
+  }
+
+  function shouldRetryViolationList(error) {
+    const message = String(buildApiErrorMessage(error) || '').toLowerCase();
+    return message.includes('会话已过期')
+      || message.includes('登录已失效')
+      || message.includes('auth')
+      || message.includes('login');
+  }
+
+  async function invokePageApiWithRetry(shopId, request) {
+    try {
+      return await request();
+    } catch (error) {
+      if (!shouldRetryViolationList(error)) {
+        throw error;
+      }
+      await getApiClient(shopId).initSession(true);
+      return request();
+    }
   }
 
   function getLastApiSessionSelection() {
@@ -104,7 +128,9 @@ function registerApiIpc({
     if (!shopId) return { error: '没有可用店铺' };
     try {
       const sessions = await getApiSessionsByScope(shopId, params.page || 1, params.pageSize || 20);
-      console.log(`[PDD接口:${shopId}] api-get-sessions 返回 ${Array.isArray(sessions) ? sessions.length : 0} 条`);
+      if (verboseLogging) {
+        console.log(`[PDD接口:${shopId}] api-get-sessions 返回 ${Array.isArray(sessions) ? sessions.length : 0} 条`);
+      }
       return sessions;
     } catch (error) {
       console.log(`[PDD接口:${shopId}] api-get-sessions 失败: ${error.message}`);
@@ -321,9 +347,9 @@ function registerApiIpc({
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
     try {
-      return await getMailApiClient(shopId).getOverview();
+      return await invokePageApiWithRetry(shopId, () => getMailApiClient(shopId).getOverview());
     } catch (error) {
-      return { error: error.message };
+      return { error: buildApiErrorMessage(error) };
     }
   });
 
@@ -331,9 +357,9 @@ function registerApiIpc({
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
     try {
-      return await getMailApiClient(shopId).getList(params);
+      return await invokePageApiWithRetry(shopId, () => getMailApiClient(shopId).getList(params));
     } catch (error) {
-      return { error: error.message };
+      return { error: buildApiErrorMessage(error) };
     }
   });
 
@@ -342,9 +368,9 @@ function registerApiIpc({
     if (!shopId) return { error: '没有可用店铺' };
     if (!params.messageId) return { error: '缺少 messageId' };
     try {
-      return await getMailApiClient(shopId).getDetail(params.messageId);
+      return await invokePageApiWithRetry(shopId, () => getMailApiClient(shopId).getDetail(params.messageId));
     } catch (error) {
-      return { error: error.message };
+      return { error: buildApiErrorMessage(error) };
     }
   });
 
@@ -352,9 +378,9 @@ function registerApiIpc({
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
     try {
-      return await getInvoiceApiClient(shopId).getOverview();
+      return await invokePageApiWithRetry(shopId, () => getInvoiceApiClient(shopId).getOverview());
     } catch (error) {
-      return { error: error.message };
+      return { error: buildApiErrorMessage(error) };
     }
   });
 
@@ -362,9 +388,66 @@ function registerApiIpc({
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
     try {
-      return await getInvoiceApiClient(shopId).getList(params);
+      return await invokePageApiWithRetry(shopId, () => getInvoiceApiClient(shopId).getList(params));
     } catch (error) {
-      return { error: error.message };
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('invoice-get-detail', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn && !params.order_sn) return { error: '缺少订单号' };
+    try {
+      return await invokePageApiWithRetry(shopId, () => getInvoiceApiClient(shopId).getDetail(params));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('ticket-get-list', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    try {
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getList(params));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('ticket-get-detail', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.instanceId && !params.instance_id && !params.ticketNo && !params.ticket_no && !params.todoId && !params.todo_id && !params.id) {
+      return { error: '缺少工单实例 ID' };
+    }
+    try {
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getDetail(params));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('violation-get-list', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    try {
+      return await invokePageApiWithRetry(shopId, () => getViolationApiClient(shopId).getList(params));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('violation-get-detail', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.violationAppealSn && !params.violation_appeal_sn && !params.violationNo && !params.noticeSn && !params.notice_sn) {
+      return { error: '缺少违规单号' };
+    }
+    try {
+      return await invokePageApiWithRetry(shopId, () => getViolationApiClient(shopId).getDetail(params));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
     }
   });
 

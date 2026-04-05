@@ -5060,9 +5060,9 @@
           <button class="btn btn-secondary" id="btnMailApiRefreshList">刷新列表</button>
           <button class="btn btn-secondary" id="btnMailApiRefreshDetail">刷新详情</button>
           <button class="btn btn-secondary" id="btnMailApiRefreshPage">刷新站内信页</button>
-          <button class="btn btn-secondary" id="btnMailApiReloadTraffic">刷新抓包</button>
+          <button class="btn btn-secondary" id="btnMailApiReloadTraffic" style="display:none;">刷新抓包</button>
           <button class="btn btn-secondary" id="btnMailApiOpenDebug">调试窗口</button>
-          <button class="btn btn-secondary" id="btnMailApiClearTraffic">清空记录</button>
+          <button class="btn btn-secondary" id="btnMailApiClearTraffic" style="display:none;">清空记录</button>
         </div>
         <div class="mail-api-layout">
           <div class="mail-api-pane mail-api-sidebar">
@@ -5108,7 +5108,7 @@
                 <button class="btn btn-secondary" id="btnMailApiNext">下一条</button>
                 <button class="btn btn-secondary" id="btnMailApiBackToMail">切回站内信页</button>
               </div>
-              <div class="mail-api-traffic-box">
+              <div class="mail-api-traffic-box" style="display:none;">
                 <div class="mail-api-traffic-summary" id="mailApiTrafficSummary">0 条抓包记录</div>
                 <div class="mail-api-traffic-list" id="mailApiTrafficList">
                   <span class="mail-api-traffic-chip">暂无抓包</span>
@@ -5138,9 +5138,9 @@
               <div class="invoice-api-toolbar">
                 <button class="btn btn-secondary" id="btnInvoiceApiRefreshList">刷新列表</button>
                 <button class="btn btn-secondary" id="btnInvoiceApiRefreshPage">刷新待开票页</button>
-                <button class="btn btn-secondary" id="btnInvoiceApiReloadTraffic">刷新抓包</button>
+                <button class="btn btn-secondary" id="btnInvoiceApiReloadTraffic" style="display:none;">刷新抓包</button>
                 <button class="btn btn-secondary" id="btnInvoiceApiOpenDebug">调试窗口</button>
-                <button class="btn btn-secondary" id="btnInvoiceApiClearTraffic">清空记录</button>
+                <button class="btn btn-secondary" id="btnInvoiceApiClearTraffic" style="display:none;">清空记录</button>
               </div>
             </div>
             <div class="invoice-api-metrics">
@@ -5276,9 +5276,9 @@
                     <th>发票金额</th>
                     <th>开票方式</th>
                     <th>发票种类</th>
+                    <th>发票类型</th>
                     <th>抬头类型</th>
-                    <th>抬头</th>
-                    <th style="width:88px">操作</th>
+                    <th style="width:132px">操作</th>
                   </tr>
                 </thead>
                 <tbody id="invoiceApiList"></tbody>
@@ -5302,7 +5302,7 @@
                 <div class="invoice-api-detail-header">
                   <div class="invoice-api-section-heading">
                     <div class="invoice-api-section-title">记录详情</div>
-                    <div class="invoice-api-section-meta" id="invoiceApiDetailMeta">点击表格中的“查看”打开详情</div>
+                    <div class="invoice-api-section-meta" id="invoiceApiDetailMeta">点击行查看详情，点击“录入发票”弹出对话框</div>
                   </div>
                   <button class="btn btn-secondary" id="btnInvoiceApiBackToInvoice">切回待开票页</button>
                 </div>
@@ -5317,7 +5317,7 @@
                   <div class="invoice-api-detail-empty">请选择一条待开票记录查看详情</div>
                 </div>
               </div>
-              <div class="invoice-api-detail-side">
+              <div class="invoice-api-detail-side" style="display:none;">
                 <div class="invoice-api-detail-header">
                   <div class="invoice-api-section-heading">
                     <div class="invoice-api-section-title">接口抓包</div>
@@ -5331,6 +5331,43 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-overlay" id="modalInvoiceApiEntry">
+        <div class="modal wide invoice-api-entry-modal">
+          <div class="modal-header">
+            <h3>录入发票</h3>
+            <button class="modal-close" onclick="hideModal('modalInvoiceApiEntry')">&times;</button>
+          </div>
+          <div class="modal-body invoice-api-entry-body">
+            <div class="invoice-api-entry-status" id="invoiceApiEntryStatus"></div>
+            <div class="invoice-api-entry-card" id="invoiceApiEntryCard"></div>
+            <div class="invoice-api-entry-form">
+              <div class="invoice-api-entry-field">
+                <label class="invoice-api-entry-label">发票文件</label>
+                <label class="invoice-api-entry-upload" for="invoiceApiEntryFile">
+                  <input id="invoiceApiEntryFile" type="file" accept=".pdf,.ofd,application/pdf,application/octet-stream">
+                  <span class="invoice-api-entry-upload-title" id="invoiceApiEntryFileName">上传文件</span>
+                  <span class="invoice-api-entry-upload-hint">支持上传 PDF 和 OFD 文件，大小不超过 5M</span>
+                </label>
+              </div>
+              <div class="invoice-api-entry-field">
+                <label class="invoice-api-entry-label" for="invoiceApiEntryNumber">发票号码</label>
+                <input class="form-input" id="invoiceApiEntryNumber" placeholder="请输入">
+              </div>
+              <div class="invoice-api-entry-field">
+                <label class="invoice-api-entry-label" for="invoiceApiEntryCode">发票代码</label>
+                <input class="form-input" id="invoiceApiEntryCode" placeholder="如果开具的发票无“发票代码”，可不填写">
+              </div>
+            </div>
+            <div class="invoice-api-entry-detail-grid" id="invoiceApiEntryDetailGrid"></div>
+          </div>
+          <div class="modal-footer">
+            <span class="invoice-api-entry-footer-meta" id="invoiceApiEntryFooterMeta">请先选择一条待开票记录</span>
+            <span class="spacer"></span>
+            <button class="btn btn-secondary" onclick="hideModal('modalInvoiceApiEntry')">取消</button>
+            <button class="btn btn-primary" id="btnInvoiceApiEntrySubmit">确认</button>
           </div>
         </div>
       </div>
@@ -5349,91 +5386,95 @@
           <div class="violation-api-section">
             <div class="violation-api-banner">
               <span class="violation-api-banner-icon">!</span>
-              <span id="violationApiBannerText">请先进入违规管理后台列表页，再切到接口对接页查看同步结果。</span>
+              <span id="violationApiBannerText">进入页面后会直接请求违规列表，并整理详情与申诉信息。</span>
             </div>
           </div>
 
-          <div class="violation-api-section">
-            <div class="violation-api-filter-bar">
-              <div class="violation-api-filter-group">
-                <span class="violation-api-filter-label">快速筛选:</span>
-                <button class="violation-api-quick-tab active" data-violation-quick="all">待申诉 <span
-                    id="violationApiQuickPendingCount">0</span></button>
-                <button class="violation-api-quick-tab" data-violation-quick="appealing">待完善资料 <span
-                    id="violationApiQuickAppealingCount">0</span></button>
-                <button class="violation-api-quick-tab" data-violation-quick="processing">平台处理中 <span
-                    id="violationApiQuickProcessingCount">0</span></button>
+          <div class="violation-api-page-state" id="violationApiListShell">
+            <div class="violation-api-section">
+              <div class="violation-api-filter-bar">
+                <div class="violation-api-filter-group">
+                  <span class="violation-api-filter-label">快速筛选:</span>
+                  <button class="violation-api-quick-tab active" data-violation-quick="all">待申诉 <span
+                      id="violationApiQuickPendingCount">0</span></button>
+                  <button class="violation-api-quick-tab" data-violation-quick="appealing">待完善资料 <span
+                      id="violationApiQuickAppealingCount">0</span></button>
+                  <button class="violation-api-quick-tab" data-violation-quick="processing">平台处理中 <span
+                      id="violationApiQuickProcessingCount">0</span></button>
+                </div>
+              </div>
+              <div class="violation-api-filter-panel">
+                <div class="violation-api-filter-grid">
+                  <div class="violation-api-filter-item">
+                    <label class="violation-api-filter-label" for="violationApiStatusFilter">处理进度</label>
+                    <select class="form-select" id="violationApiStatusFilter">
+                      <option value="">全部</option>
+                    </select>
+                  </div>
+                  <div class="violation-api-filter-item">
+                    <label class="violation-api-filter-label" for="violationApiTypeFilter">违规类型</label>
+                    <select class="form-select" id="violationApiTypeFilter">
+                      <option value="">全部</option>
+                    </select>
+                  </div>
+                  <div class="violation-api-filter-item">
+                    <label class="violation-api-filter-label" for="violationApiKeyword">违规单号</label>
+                    <input class="form-input" id="violationApiKeyword" placeholder="请输入违规单号">
+                  </div>
+                </div>
+                <div class="violation-api-filter-actions">
+                  <button class="btn btn-primary" id="btnViolationApiApplyFilters">搜索</button>
+                  <button class="btn btn-secondary" id="btnViolationApiResetFilters">重置</button>
+                  <span class="spacer"></span>
+                  <button class="btn btn-secondary" id="btnViolationApiRefreshList">刷新列表</button>
+                  <button class="btn btn-secondary" id="btnViolationApiRefreshPage">刷新违规页</button>
+                  <button class="btn btn-secondary" id="btnViolationApiReloadTraffic" style="display:none;">刷新抓包</button>
+                  <button class="btn btn-secondary" id="btnViolationApiOpenDebug">调试窗口</button>
+                  <button class="btn btn-secondary" id="btnViolationApiClearTraffic" style="display:none;">清空记录</button>
+                </div>
               </div>
             </div>
-            <div class="violation-api-filter-panel">
-              <div class="violation-api-filter-grid">
-                <div class="violation-api-filter-item">
-                  <label class="violation-api-filter-label" for="violationApiStatusFilter">处理进度</label>
-                  <select class="form-select" id="violationApiStatusFilter">
-                    <option value="">全部</option>
-                  </select>
-                </div>
-                <div class="violation-api-filter-item">
-                  <label class="violation-api-filter-label" for="violationApiTypeFilter">违规类型</label>
-                  <select class="form-select" id="violationApiTypeFilter">
-                    <option value="">全部</option>
-                  </select>
-                </div>
-                <div class="violation-api-filter-item">
-                  <label class="violation-api-filter-label" for="violationApiKeyword">违规单号</label>
-                  <input class="form-input" id="violationApiKeyword" placeholder="请输入违规单号">
-                </div>
-              </div>
-              <div class="violation-api-filter-actions">
-                <button class="btn btn-primary" id="btnViolationApiApplyFilters">搜索</button>
-                <button class="btn btn-secondary" id="btnViolationApiResetFilters">重置</button>
-                <span class="spacer"></span>
-                <button class="btn btn-secondary" id="btnViolationApiRefreshList">刷新列表</button>
-                <button class="btn btn-secondary" id="btnViolationApiRefreshPage">刷新违规页</button>
-                <button class="btn btn-secondary" id="btnViolationApiReloadTraffic">刷新抓包</button>
-                <button class="btn btn-secondary" id="btnViolationApiOpenDebug">调试窗口</button>
-                <button class="btn btn-secondary" id="btnViolationApiClearTraffic">清空记录</button>
-              </div>
-            </div>
-          </div>
 
-          <div class="violation-api-section">
-            <div class="violation-api-table-header">
-              <div class="violation-api-table-title">
-                <span>违规列表</span>
-                <span class="violation-api-table-meta" id="violationApiListMeta">0 条记录</span>
-              </div>
-              <div class="violation-api-table-status" id="violationApiListStatus">当前仅展示违规管理相关抓包与接口提取结果</div>
-            </div>
-            <div class="violation-api-table-wrap">
-              <table class="data-table violation-api-table">
-                <thead>
-                  <tr>
-                    <th>违规编号</th>
-                    <th>违规类型</th>
-                    <th>违规通知时间</th>
-                    <th>申诉时间</th>
-                    <th>平台处理时间</th>
-                    <th>当前进度</th>
-                    <th style="width:88px">操作</th>
-                  </tr>
-                </thead>
-                <tbody id="violationApiList"></tbody>
-              </table>
-            </div>
-            <div class="violation-api-table-footer">
-              <span class="violation-api-table-meta" id="violationApiFooterTotal">共 0 条</span>
-            </div>
-          </div>
-
-          <div class="violation-api-detail-shell">
-            <div class="violation-api-detail-main violation-api-section">
+            <div class="violation-api-section">
               <div class="violation-api-table-header">
                 <div class="violation-api-table-title">
-                  <span>违规详情</span>
-                  <span class="violation-api-table-meta" id="violationApiDetailMeta">点击表格中的“查看详情”打开详情</span>
+                  <span>违规列表</span>
+                  <span class="violation-api-table-meta" id="violationApiListMeta">0 条记录</span>
                 </div>
-                <button class="btn btn-secondary" id="btnViolationApiBackToViolation">切回违规页</button>
+                <div class="violation-api-table-status" id="violationApiListStatus">当前展示违规管理接口返回结果</div>
+              </div>
+              <div class="violation-api-table-wrap">
+                <table class="data-table violation-api-table">
+                  <thead>
+                    <tr>
+                      <th>违规编号</th>
+                      <th>违规类型</th>
+                      <th>违规通知时间</th>
+                      <th>申诉时间</th>
+                      <th>平台处理时间</th>
+                      <th>当前进度</th>
+                      <th style="width:88px">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="violationApiList"></tbody>
+                </table>
+              </div>
+              <div class="violation-api-table-footer">
+                <span class="violation-api-table-meta" id="violationApiFooterTotal">共 0 条</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="violation-api-detail-shell violation-api-page-state is-hidden" id="violationApiDetailShell">
+            <div class="violation-api-detail-main violation-api-section">
+              <div class="violation-api-detail-toolbar">
+                <div class="violation-api-detail-breadcrumb" id="violationApiDetailBreadcrumb">店铺违规管理</div>
+                <div class="violation-api-detail-actions">
+                  <button class="btn btn-secondary" id="btnViolationApiOpenPlatformDetail">打开平台详情</button>
+                  <button class="btn btn-primary" id="btnViolationApiOpenAppeal">去申诉</button>
+                  <button class="btn btn-secondary" id="btnViolationApiBackToList">返回列表</button>
+                  <button class="btn btn-secondary" id="btnViolationApiBackToViolation">切回违规页</button>
+                </div>
               </div>
               <div class="violation-api-detail-head" id="violationApiDetailHead">
                 <div class="mail-api-detail-title">请选择一条违规记录</div>
@@ -5446,7 +5487,7 @@
                 <div class="invoice-api-detail-empty">请选择一条违规记录查看详情</div>
               </div>
             </div>
-            <div class="violation-api-detail-side violation-api-section">
+            <div class="violation-api-detail-side violation-api-section" style="display:none;">
               <div class="violation-api-table-header">
                 <div class="violation-api-table-title">
                   <span>接口抓包</span>
@@ -5463,7 +5504,7 @@
         </div>
       </div>
       <div class="view-page" id="viewTicketApi">
-        <div class="ticket-api-page">
+        <div class="ticket-api-page" id="ticketApiPageRoot">
           <div class="ticket-api-header-bar">
             <div class="ticket-api-header-main">
               <span class="ticket-api-header-title">工单数据</span>
@@ -5471,14 +5512,14 @@
             </div>
           </div>
 
-          <div class="ticket-api-section">
+          <div class="ticket-api-section" id="ticketApiBannerSection">
             <div class="ticket-api-banner">
               <span class="ticket-api-banner-icon">!</span>
-              <span id="ticketApiBannerText">请先进入工单管理后台列表页，再切到接口对接页查看同步结果。</span>
+              <span id="ticketApiBannerText">进入页面后会直接请求工单列表，并整理工单详情。</span>
             </div>
           </div>
 
-          <div class="ticket-api-section">
+          <div class="ticket-api-section" id="ticketApiMetricsSection">
             <div class="ticket-api-metrics" id="ticketApiMetrics">
               <div class="ticket-api-metric-card">
                 <div class="ticket-api-metric-label">工单量</div>
@@ -5508,7 +5549,7 @@
             </div>
           </div>
 
-          <div class="ticket-api-section">
+          <div class="ticket-api-section" id="ticketApiFilterSection">
             <div class="ticket-api-query-title">工单查询</div>
             <div class="ticket-api-filter-row">
               <div class="ticket-api-filter-inline-label">工单筛选</div>
@@ -5559,20 +5600,20 @@
                 <span class="spacer"></span>
                 <button class="btn btn-secondary" id="btnTicketApiRefreshList">刷新列表</button>
                 <button class="btn btn-secondary" id="btnTicketApiRefreshPage">刷新工单页</button>
-                <button class="btn btn-secondary" id="btnTicketApiReloadTraffic">刷新抓包</button>
+                <button class="btn btn-secondary" id="btnTicketApiReloadTraffic" style="display:none;">刷新抓包</button>
                 <button class="btn btn-secondary" id="btnTicketApiOpenDebug">调试窗口</button>
-                <button class="btn btn-secondary" id="btnTicketApiClearTraffic">清空记录</button>
+                <button class="btn btn-secondary" id="btnTicketApiClearTraffic" style="display:none;">清空记录</button>
               </div>
             </div>
           </div>
 
-          <div class="ticket-api-section">
+          <div class="ticket-api-section" id="ticketApiListSection">
             <div class="ticket-api-table-header">
               <div class="ticket-api-table-title">
                 <span>查询结果</span>
                 <span class="ticket-api-table-meta">共查询到 <span id="ticketApiResultCount">0</span> 个工单</span>
               </div>
-              <div class="ticket-api-table-status" id="ticketApiListStatus">当前仅展示工单管理相关抓包与接口提取结果</div>
+              <div class="ticket-api-table-status" id="ticketApiListStatus">当前展示工单管理接口返回结果</div>
             </div>
             <div class="ticket-api-list-head">
               <div>订单信息</div>
@@ -5587,14 +5628,17 @@
             </div>
           </div>
 
-          <div class="ticket-api-detail-shell">
+          <div class="ticket-api-detail-shell" id="ticketApiDetailShell">
             <div class="ticket-api-detail-main ticket-api-section">
               <div class="ticket-api-table-header">
                 <div class="ticket-api-table-title">
                   <span>工单详情</span>
-                  <span class="ticket-api-table-meta" id="ticketApiDetailMeta">点击表格中的“查看详情”打开详情</span>
+                  <span class="ticket-api-table-meta" id="ticketApiDetailMeta">点击表格中的“立即查看”打开详情页</span>
                 </div>
-                <button class="btn btn-secondary" id="btnTicketApiBackToTicket">切回工单页</button>
+                <div>
+                  <button class="btn btn-secondary" id="btnTicketApiBackToList">返回列表</button>
+                  <button class="btn btn-secondary" id="btnTicketApiBackToTicket">切回工单页</button>
+                </div>
               </div>
               <div class="ticket-api-detail-head" id="ticketApiDetailHead">
                 <div class="mail-api-detail-title">请选择一条工单记录</div>
@@ -5607,7 +5651,7 @@
                 <div class="invoice-api-detail-empty">请选择一条工单记录查看详情</div>
               </div>
             </div>
-            <div class="ticket-api-detail-side ticket-api-section">
+            <div class="ticket-api-detail-side ticket-api-section" style="display:none;">
               <div class="ticket-api-table-header">
                 <div class="ticket-api-table-title">
                   <span>接口抓包</span>
@@ -5640,7 +5684,7 @@
           <button class="btn btn-secondary" id="btnSetGroup">设置分组</button>
           <button class="btn btn-secondary" id="btnSyncShops">同步Token</button>
           <button class="btn btn-secondary" id="btnRefreshShops">刷新</button>
-          <button class="btn btn-danger btn-sm" id="btnUnbindShops">解绑选中</button>
+          <button class="btn btn-danger btn-sm" id="btnUnbindShops">移除选中</button>
         </div>
         <div class="page-content">
           <table class="data-table" id="shopTable">
@@ -6795,8 +6839,12 @@
       }
     });
 
+    function isHeaderSelectableShop(shop) {
+      return !!shop?.id && shop.status === 'online';
+    }
+
     function renderShopDropdown() {
-      const visibleShops = shops.filter(shop => !(shop.loginMethod === 'token' && shop.status === 'expired'));
+      const visibleShops = shops.filter(isHeaderSelectableShop);
       if (visibleShops.length === 0) {
         shopDropdownList.innerHTML = '<div class="shop-no-items">暂无可切换店铺，请导入新 Token 或重新登录</div>';
         return;
@@ -6818,7 +6866,11 @@
             shopSwitcherBtn.classList.remove('open');
             return;
           }
-          await window.pddApi.switchShop(shopId);
+          const switched = await window.pddApi.switchShop(shopId);
+          if (!switched) {
+            showToast('只能切换到登录成功的店铺');
+            return;
+          }
           shopDropdown.classList.remove('visible');
           shopSwitcherBtn.classList.remove('open');
         });
@@ -7716,6 +7768,78 @@
 
     function isEmbeddedPddView(view) {
       return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket';
+    }
+
+    function getEmbeddedViewPageId(view) {
+      if (view === 'chat') return 'viewChat';
+      if (view === 'mail') return 'viewMail';
+      if (view === 'invoice') return 'viewInvoice';
+      if (view === 'violation') return 'viewViolation';
+      if (view === 'ticket') return 'viewTicket';
+      return '';
+    }
+
+    function getEmbeddedPlaceholderCopy(view) {
+      if (view === 'chat') {
+        return {
+          title: '拼多多客服聊天页面加载中...',
+          detail: ''
+        };
+      }
+      if (view === 'mail') {
+        return {
+          title: '拼多多站内信页面加载中...',
+          detail: '进入列表后可切换未读、打开详情、翻页并观察抓包。'
+        };
+      }
+      if (view === 'invoice') {
+        return {
+          title: '拼多多待开票页面加载中...',
+          detail: '进入列表后可切换筛选、点击立即开票并观察抓包。'
+        };
+      }
+      if (view === 'violation') {
+        return {
+          title: '拼多多违规管理页面加载中...',
+          detail: '进入列表后可切换违规分类、打开详情并观察抓包。'
+        };
+      }
+      if (view === 'ticket') {
+        return {
+          title: '拼多多工单管理页面加载中...',
+          detail: '进入列表后可筛选工单、查看详情并观察抓包。'
+        };
+      }
+      return {
+        title: '页面加载中...',
+        detail: ''
+      };
+    }
+
+    function updateEmbeddedPlaceholder(view, options = {}) {
+      const pageId = getEmbeddedViewPageId(view);
+      if (!pageId) return;
+      const placeholder = document.querySelector(`#${pageId} .chat-placeholder`);
+      if (!placeholder) return;
+      const texts = getEmbeddedPlaceholderCopy(view);
+      const titleEl = placeholder.querySelector('p');
+      const detailEl = placeholder.querySelector('p:nth-of-type(2)');
+      const title = typeof options.title === 'string' ? options.title : texts.title;
+      const detail = typeof options.detail === 'string' ? options.detail : texts.detail;
+      if (titleEl) {
+        titleEl.textContent = title;
+      }
+      if (detailEl) {
+        detailEl.textContent = detail;
+        detailEl.style.display = detail ? '' : 'none';
+      }
+      placeholder.style.display = options.visible === false ? 'none' : 'flex';
+    }
+
+    function hideAllEmbeddedPlaceholders() {
+      ['chat', 'mail', 'invoice', 'violation', 'ticket'].forEach(view => {
+        updateEmbeddedPlaceholder(view, { visible: false });
+      });
     }
 
     function isMailPageUrl(url) {
@@ -10125,16 +10249,37 @@
     });
 
     // PDD 页面事件
+    window.pddApi.onPddPageLoading((data) => {
+      if (isEmbeddedPddView(currentView)) {
+        updateEmbeddedPlaceholder(currentView, { visible: true });
+      }
+      document.getElementById('statusDot').className = 'status-dot loading';
+      document.getElementById('statusText').textContent =
+        data.url.replace('https://mms.pinduoduo.com', '') || '页面加载中...';
+    });
+
     window.pddApi.onPddPageLoaded((data) => {
+      hideAllEmbeddedPlaceholders();
       document.getElementById('statusDot').className = 'status-dot online';
       document.getElementById('statusText').textContent =
         data.url.replace('https://mms.pinduoduo.com', '') || '/';
-      const placeholder = document.querySelector('.chat-placeholder');
-      if (placeholder) placeholder.style.display = 'none';
+    });
+
+    window.pddApi.onPddPageFailed((data) => {
+      if (isEmbeddedPddView(currentView)) {
+        updateEmbeddedPlaceholder(currentView, {
+          visible: true,
+          title: '嵌入网页加载失败',
+          detail: data.errorDescription || '请刷新页面或重新切换店铺后重试。'
+        });
+      }
+      document.getElementById('statusDot').className = 'status-dot offline';
+      document.getElementById('statusText').textContent =
+        data.errorDescription || '嵌入网页加载失败';
+      addLog(`嵌入网页加载失败: ${data.errorDescription || data.url || '未知错误'}`, 'error');
     });
 
     window.pddApi.onPddNavigated((data) => {
-      document.getElementById('statusDot').className = 'status-dot loading';
       document.getElementById('statusText').textContent =
         data.url.replace('https://mms.pinduoduo.com', '') || '/';
       if (data.fromPopup) addLog(`拦截弹窗并加载: ${data.url}`, 'info');

@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const { app, session, BrowserWindow } = require('electron');
 const { PddApiClient } = require('../src/main/pdd-api');
-const { getApiTrafficLogPath, getLegacyApiTrafficLogPath } = require('../src/main/api-traffic-path');
+const { getApiTrafficLogPath } = require('../src/main/api-traffic-path');
 
 const TOKEN_PATH = path.join(__dirname, 'tokens', 'sample-token.json');
 const SHOP_ID = 'shop_smoke_test';
@@ -47,12 +47,8 @@ function loadApiTrafficFile(filePath) {
 }
 
 function loadApiTraffic() {
-  const candidates = [
-    getApiTrafficLogPath(),
-    getLegacyApiTrafficLogPath(),
-  ];
-  for (const filePath of candidates) {
-    if (!fs.existsSync(filePath)) continue;
+  const filePath = getApiTrafficLogPath();
+  if (fs.existsSync(filePath)) {
     return {
       entries: loadApiTrafficFile(filePath),
       sourcePath: filePath,

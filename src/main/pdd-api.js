@@ -4375,6 +4375,59 @@ class PddApiClient extends EventEmitter {
             }
             return true;
           };
+          const probeOrderCardBody = async (orderCard) => {
+            if (!isVisible(orderCard)) return false;
+            const rect = orderCard.getBoundingClientRect();
+            const clickableNodes = Array.from(orderCard.querySelectorAll('img, [class*="thumb"], [class*="title"], [class*="content"], [class*="main"], div, span'))
+              .filter(isVisible)
+              .map(el => {
+                const nodeRect = el.getBoundingClientRect();
+                const text = getText(el);
+                let score = 0;
+                if (nodeRect.width < 24 || nodeRect.height < 18) return null;
+                if (nodeRect.width > rect.width * 0.92 || nodeRect.height > rect.height * 0.92) score -= 8;
+                if (nodeRect.left <= rect.left + rect.width * 0.82) score += 6;
+                if (nodeRect.top <= rect.top + rect.height * 0.82) score += 4;
+                if (/thumb|title|content|main|goods|item/.test(String(el.className || '').toLowerCase())) score += 8;
+                if (String(el.tagName || '').toLowerCase() === 'img') score += 10;
+                if (text && text.length >= 2 && text.length <= 80) score += 2;
+                if (/订单号|下单时间|待支付说明|备注|复制/.test(text)) score -= 10;
+                return score > 0 ? { el, score } : null;
+              })
+              .filter(Boolean)
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 4);
+            const fallbackPoints = [
+              { x: rect.left + rect.width * 0.3, y: rect.top + rect.height * 0.35 },
+              { x: rect.left + rect.width * 0.5, y: rect.top + rect.height * 0.45 },
+            ];
+            for (const candidate of clickableNodes) {
+              pushLog('probe-card-body');
+              await clickElement(candidate.el);
+              await sleep(320);
+              if (isPriceEditorVisible(findRightPanel()) || findDiscountInput(findRightPanel()) || findDiscountInput(document.body)) {
+                return true;
+              }
+            }
+            for (const point of fallbackPoints) {
+              ['mousedown', 'mouseup', 'click'].forEach(type => {
+                try {
+                  orderCard.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    clientX: Math.round(point.x),
+                    clientY: Math.round(point.y),
+                  }));
+                } catch {}
+              });
+              await sleep(320);
+              if (isPriceEditorVisible(findRightPanel()) || findDiscountInput(findRightPanel()) || findDiscountInput(document.body)) {
+                return true;
+              }
+            }
+            return false;
+          };
           const findCardActionFallback = (orderCard) => {
             const candidates = getCardActionCandidates(orderCard);
             return candidates?.[0]?.el || null;
@@ -4750,6 +4803,8 @@ class PddApiClient extends EventEmitter {
             });
             await hoverOrderCard(orderCard);
             await sleep(180);
+            await probeOrderCardBody(orderCard);
+            panel = findRightPanel() || panel;
             const editTrigger = findEditTrigger(orderCard, panel);
             if (editTrigger) {
               pushLog('click-edit-trigger');

@@ -43,6 +43,8 @@ class PddApiClient extends EventEmitter {
     this._requestInPddPage = options.requestInPddPage || null;
     this._executeInPddPage = options.executeInPddPage || null;
     this._getOrderPriceUpdateTemplate = options.getOrderPriceUpdateTemplate || (() => null);
+    this._setOrderPriceUpdateTemplate = options.setOrderPriceUpdateTemplate || null;
+    this._getSmallPaymentSubmitTemplate = options.getSmallPaymentSubmitTemplate || (() => null);
   }
 
   _log(message, extra) {
@@ -91,10 +93,41 @@ class PddApiClient extends EventEmitter {
 
   _safeParseJson(text) {
     if (!text || typeof text !== 'string') return null;
+    const source = String(text).trim();
+    if (!source) return null;
     try {
-      return JSON.parse(text);
+      return JSON.parse(source);
     } catch {
-      return null;
+      if (!source.includes('=') || source.startsWith('<')) {
+        return null;
+      }
+      try {
+        const params = new URLSearchParams(source);
+        const result = {};
+        let hasEntry = false;
+        for (const [key, rawValue] of params.entries()) {
+          hasEntry = true;
+          const value = String(rawValue || '').trim();
+          let parsedValue = value;
+          if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
+            try {
+              parsedValue = JSON.parse(value);
+            } catch {}
+          }
+          if (Object.prototype.hasOwnProperty.call(result, key)) {
+            if (Array.isArray(result[key])) {
+              result[key].push(parsedValue);
+            } else {
+              result[key] = [result[key], parsedValue];
+            }
+          } else {
+            result[key] = parsedValue;
+          }
+        }
+        return hasEntry ? result : null;
+      } catch {
+        return null;
+      }
     }
   }
 
@@ -149,6 +182,135 @@ class PddApiClient extends EventEmitter {
 
   _getLatestRequestBody(urlPart) {
     return this._safeParseJson(this._findLatestTraffic(urlPart)?.requestBody);
+  }
+
+  _collectObjectKeyPaths(value, prefix = '', depth = 0) {
+    if (!value || typeof value !== 'object' || depth > 3) return [];
+    const result = [];
+    for (const [key, child] of Object.entries(value)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      result.push(path);
+      if (child && typeof child === 'object' && !Array.isArray(child)) {
+        result.push(...this._collectObjectKeyPaths(child, path, depth + 1));
+      }
+    }
+    return result;
+  }
+
+  _readObjectPath(value, path) {
+    if (!value || typeof value !== 'object' || !path) return undefined;
+    const segments = String(path).split('.').filter(Boolean);
+    let current = value;
+    for (const segment of segments) {
+      if (!current || typeof current !== 'object' || !(segment in current)) {
+        return undefined;
+      }
+      current = current[segment];
+    }
+    return current;
+  }
+
+  _findObjectPathByCandidates(value, candidates = []) {
+    const keyPaths = this._collectObjectKeyPaths(value);
+    for (const candidate of candidates) {
+      const exact = keyPaths.find(path => path === candidate);
+      if (exact) return exact;
+    }
+    for (const candidate of candidates) {
+      const suffix = `.${candidate}`;
+      const matched = keyPaths.find(path => path.endsWith(suffix));
+      if (matched) return matched;
+    }
+    return '';
+  }
+
+  _analyzeSmallPaymentSubmitTemplate(templateEntry) {
+    const templateBody = this._safeParseJson(templateEntry?.requestBody);
+    if (!templateBody || typeof templateBody !== 'object') {
+      return {
+        ready: false,
+        url: templateEntry?.url || '',
+        keys: [],
+        recognizedCount: 0,
+      };
+    }
+    const orderField = this._findObjectPathByCandidates(templateBody, ['orderSn', 'order_sn']);
+    const amountField = this._findObjectPathByCandidates(templateBody, ['playMoneyAmount', 'play_money_amount', 'amount', 'transferAmount', 'transfer_amount']);
+    const typeField = this._findObjectPathByCandidates(templateBody, ['refundType', 'refund_type', 'payType', 'pay_type', 'transferType', 'transfer_type']);
+    const noteField = this._findObjectPathByCandidates(templateBody, ['remarks', 'remark', 'leaveMessage', 'leave_message', 'message']);
+    const mobileField = this._findObjectPathByCandidates(templateBody, ['mobile', 'userinfo.mobile', 'currentUserInfo.mobile']);
+    const recognizedFields = {
+      orderField,
+      amountField,
+      typeField,
+      noteField,
+      mobileField,
+    };
+    const recognizedCount = Object.values(recognizedFields).filter(Boolean).length;
+    return {
+      ready: true,
+      url: templateEntry?.url || '',
+      keys: this._collectObjectKeyPaths(templateBody).slice(0, 60),
+      recognizedCount,
+      recognizedFields,
+      snapshot: this._cloneJson({
+        orderSn: orderField ? this._readObjectPath(templateBody, orderField) : undefined,
+        amount: amountField ? this._readObjectPath(templateBody, amountField) : undefined,
+        type: typeField ? this._readObjectPath(templateBody, typeField) : undefined,
+        note: noteField ? this._readObjectPath(templateBody, noteField) : undefined,
+      }),
+    };
+  }
+
+  _isSmallPaymentSubmitBody(body = {}, normalizedOrderSn = '') {
+    if (!body || typeof body !== 'object') return false;
+    const targetOrderSn = String(body?.orderSn || body?.order_sn || '').trim();
+    if (!targetOrderSn) return false;
+    if (normalizedOrderSn && targetOrderSn !== normalizedOrderSn) return false;
+    return [
+      body?.playMoneyAmount,
+      body?.play_money_amount,
+      body?.refundType,
+      body?.refund_type,
+      body?.remarks,
+      body?.remark,
+      body?.leaveMessage,
+      body?.leave_message,
+    ].some(value => value !== undefined && value !== null && value !== '');
+  }
+
+  _getLatestSmallPaymentSubmitTemplate(orderSn = '') {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    const latestTrafficTemplate = this._findLatestTrafficEntry((entry) => {
+      if (String(entry?.method || 'GET').toUpperCase() !== 'POST') return false;
+      const url = String(entry?.url || '');
+      if (!url.includes('/mercury/')) return false;
+      if ([
+        '/mercury/micro_transfer/detail',
+        '/mercury/micro_transfer/queryTips',
+        '/mercury/play_money/check',
+      ].some(part => url.includes(part))) {
+        return false;
+      }
+      const body = this._safeParseJson(entry?.requestBody);
+      return this._isSmallPaymentSubmitBody(body, normalizedOrderSn);
+    });
+    if (latestTrafficTemplate) {
+      return latestTrafficTemplate;
+    }
+    const persistedTemplate = this._getSmallPaymentSubmitTemplate();
+    if (!persistedTemplate || typeof persistedTemplate !== 'object') {
+      return null;
+    }
+    const persistedBody = this._safeParseJson(persistedTemplate?.requestBody);
+    if (!this._isSmallPaymentSubmitBody(persistedBody, normalizedOrderSn)) {
+      return null;
+    }
+    return {
+      url: persistedTemplate.url || `${PDD_BASE}/mercury/unknown_small_payment_submit`,
+      method: persistedTemplate.method || 'POST',
+      requestBody: JSON.stringify(persistedBody),
+    };
   }
 
   _getLatestConversationTrafficEntry() {
@@ -1407,6 +1569,95 @@ class PddApiClient extends EventEmitter {
     };
   }
 
+  _pickDisplayText(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const value = source[key];
+        if (typeof value === 'string' && value.trim()) {
+          return value.trim();
+        }
+      }
+    }
+    return '';
+  }
+
+  _resolveBuyerParticipant(item = {}) {
+    const fromObj = item?.from && typeof item.from === 'object' ? item.from : null;
+    const toObj = item?.to && typeof item.to === 'object' ? item.to : null;
+    const buyerUid = String(this._extractBuyerUid(item) || '');
+    if (!buyerUid) return fromObj || toObj || null;
+    if (String(fromObj?.uid || '') === buyerUid) return fromObj;
+    if (String(toObj?.uid || '') === buyerUid) return toObj;
+    return fromObj || toObj || null;
+  }
+
+  _extractSessionCustomerName(item = {}) {
+    const userInfo = item?.user_info && typeof item.user_info === 'object' ? item.user_info : null;
+    const buyerInfo = item?.buyer && typeof item.buyer === 'object' ? item.buyer : null;
+    const customerInfo = item?.customer && typeof item.customer === 'object' ? item.customer : null;
+    const participant = this._resolveBuyerParticipant(item);
+    const fromObj = item?.from && typeof item.from === 'object' ? item.from : null;
+    const toObj = item?.to && typeof item.to === 'object' ? item.to : null;
+    return this._pickDisplayText(
+      [item, userInfo, buyerInfo, customerInfo, participant, fromObj, toObj],
+      [
+        'nick',
+        'nickname',
+        'nick_name',
+        'buyer_name',
+        'buyer_nickname',
+        'buyer_nick_name',
+        'customer_name',
+        'customer_nickname',
+        'customer_nick_name',
+        'display_name',
+        'displayName',
+        'name',
+      ],
+    );
+  }
+
+  _extractSessionCustomerAvatar(item = {}) {
+    const userInfo = item?.user_info && typeof item.user_info === 'object' ? item.user_info : null;
+    const buyerInfo = item?.buyer && typeof item.buyer === 'object' ? item.buyer : null;
+    const customerInfo = item?.customer && typeof item.customer === 'object' ? item.customer : null;
+    const participant = this._resolveBuyerParticipant(item);
+    const fromObj = item?.from && typeof item.from === 'object' ? item.from : null;
+    const toObj = item?.to && typeof item.to === 'object' ? item.to : null;
+    return this._pickDisplayText(
+      [item, userInfo, buyerInfo, customerInfo, participant, fromObj, toObj],
+      [
+        'avatar',
+        'head_img',
+        'buyer_avatar',
+        'avatar_url',
+        'avatarUrl',
+      ],
+    );
+  }
+
+  _extractMessageSenderName(item = {}) {
+    const fromObj = item?.from && typeof item.from === 'object' ? item.from : null;
+    const toObj = item?.to && typeof item.to === 'object' ? item.to : null;
+    const userInfo = item?.user_info && typeof item.user_info === 'object' ? item.user_info : null;
+    const participant = this._isBuyerMessage(item) ? this._resolveBuyerParticipant(item) : fromObj;
+    return this._pickDisplayText(
+      [item, participant, fromObj, userInfo, toObj],
+      [
+        'nick',
+        'nickname',
+        'nick_name',
+        'sender_name',
+        'from_name',
+        'display_name',
+        'displayName',
+        'name',
+        'csid',
+      ],
+    );
+  }
+
   _parseSessionList(payload) {
     const list = payload?.data?.list ||
       payload?.data?.conv_list ||
@@ -1433,36 +1684,39 @@ class PddApiClient extends EventEmitter {
     return list.map(item => {
       const identity = this._parseSessionIdentity(item);
       const lastMessageActor = this._extractSessionLastMessageActor(item);
+      const customerName = this._extractSessionCustomerName(item);
+      const customerAvatar = this._extractSessionCustomerAvatar(item);
       return {
-      sessionId: identity.sessionId,
-      explicitSessionId: identity.explicitSessionId,
-      conversationId: identity.conversationId,
-      chatId: identity.chatId,
-      rawId: identity.rawId,
-      customerId: identity.customerId,
-      userUid: identity.userUid,
-      customerName: item.nick || item.nickname || item.buyer_name || item.customer_name || item.name || item?.user_info?.nickname || '未知客户',
-      customerAvatar: item.avatar || item.head_img || item.buyer_avatar || item?.user_info?.avatar || '',
-      lastMessage: this._extractSessionPreviewText(item),
-      lastMessageTime: this._extractSessionPreviewTime(item),
-      lastMessageActor,
-      lastMessageIsFromBuyer: lastMessageActor === 'buyer',
-      createdAt: this._extractSessionCreatedTime(item),
-      unreadCount: item.unread_count || item.unread || item.unread_num || item?.context?.unread || 0,
-      isTimeout: item.is_timeout || item.timeout || false,
-      waitTime: item.wait_time || item.waiting_time || item.last_unreply_time || 0,
-      groupNumber: item.groupNumber ?? item.group_number ?? item?.user_info?.group_number ?? item?.user_info?.groupNumber ?? 0,
-      group_number: item.group_number ?? item.groupNumber ?? item?.user_info?.group_number ?? item?.user_info?.groupNumber ?? 0,
-      orderId: item.order_id || item.order_sn || '',
-      goodsInfo: item.goods_info || item.goods || null,
-      csUid: item?.from?.cs_uid || '',
-      mallId: item?.from?.mall_id || '',
-      mallName: item.mallName || item.mall_name || item?.mall_info?.mall_name || item?.mall_info?.mallName || '',
-      isShopMember: typeof item.is_shop_member === 'boolean'
-        ? item.is_shop_member
-        : (typeof item.isShopMember === 'boolean' ? item.isShopMember : null),
-      raw: item,
-    }});
+        sessionId: identity.sessionId,
+        explicitSessionId: identity.explicitSessionId,
+        conversationId: identity.conversationId,
+        chatId: identity.chatId,
+        rawId: identity.rawId,
+        customerId: identity.customerId,
+        userUid: identity.userUid,
+        customerName: customerName || '未知客户',
+        customerAvatar,
+        lastMessage: this._extractSessionPreviewText(item),
+        lastMessageTime: this._extractSessionPreviewTime(item),
+        lastMessageActor,
+        lastMessageIsFromBuyer: lastMessageActor === 'buyer',
+        createdAt: this._extractSessionCreatedTime(item),
+        unreadCount: item.unread_count || item.unread || item.unread_num || item?.context?.unread || 0,
+        isTimeout: item.is_timeout || item.timeout || false,
+        waitTime: item.wait_time || item.waiting_time || item.last_unreply_time || 0,
+        groupNumber: item.groupNumber ?? item.group_number ?? item?.user_info?.group_number ?? item?.user_info?.groupNumber ?? 0,
+        group_number: item.group_number ?? item.groupNumber ?? item?.user_info?.group_number ?? item?.user_info?.groupNumber ?? 0,
+        orderId: item.order_id || item.order_sn || '',
+        goodsInfo: item.goods_info || item.goods || null,
+        csUid: item?.from?.cs_uid || '',
+        mallId: item?.from?.mall_id || '',
+        mallName: item.mallName || item.mall_name || item?.mall_info?.mall_name || item?.mall_info?.mallName || '',
+        isShopMember: typeof item.is_shop_member === 'boolean'
+          ? item.is_shop_member
+          : (typeof item.isShopMember === 'boolean' ? item.isShopMember : null),
+        raw: item,
+      };
+    });
   }
 
   _describeSessionListPayload(payload) {
@@ -2454,7 +2708,7 @@ class PddApiClient extends EventEmitter {
       msgType: item.msg_type || item.message_type || item.content_type || 1,
       isFromBuyer: this._isBuyerMessage(item),
       isSystem: this._getMessageActor(item) === 'system',
-      senderName: item.nick || item.nickname || item.sender_name || item.from_name || item?.from?.csid || '',
+      senderName: this._extractMessageSenderName(item),
       senderId: item.from_uid || item.sender_id || item.from_id || item?.from?.uid || '',
       timestamp: item.send_time || item.time || item.ts || item.timestamp || item.created_at || 0,
       readState: this._extractMessageReadState(item),
@@ -3573,6 +3827,188 @@ class PddApiClient extends EventEmitter {
     };
   }
 
+  async getSmallPaymentInfo(params = {}) {
+    const normalizedOrderSn = String(params?.orderSn || params?.order_sn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const mallId = Number(params?.mallId || params?.mall_id || this._getMallId() || 0);
+    const tipsBody = { orderSn: normalizedOrderSn };
+    if (Number.isFinite(mallId) && mallId > 0) {
+      tipsBody.mallId = mallId;
+    }
+    const [detailPayload, checkPayload, tipsPayload] = await Promise.all([
+      this._requestRefundOrderPageApi('/mercury/micro_transfer/detail', { orderSn: normalizedOrderSn }),
+      this._requestRefundOrderPageApi('/mercury/play_money/check', { orderSn: normalizedOrderSn }),
+      this._requestRefundOrderPageApi('/mercury/micro_transfer/queryTips', tipsBody),
+    ]);
+    const businessError = this._normalizeBusinessError(detailPayload)
+      || this._normalizeBusinessError(checkPayload)
+      || this._normalizeBusinessError(tipsPayload);
+    if (businessError) {
+      throw new Error(businessError.message || '获取小额打款信息失败');
+    }
+    const detailList = Array.isArray(detailPayload?.result) ? detailPayload.result : [];
+    const checkResult = checkPayload?.result && typeof checkPayload.result === 'object' ? checkPayload.result : {};
+    const tipsResult = tipsPayload?.result && typeof tipsPayload.result === 'object' ? tipsPayload.result : {};
+    const freight = tipsResult?.freightDTO && typeof tipsResult.freightDTO === 'object' ? tipsResult.freightDTO : {};
+    const successNum = Math.max(0, Number(freight?.successNum || 0) || 0);
+    const processingNum = Math.max(0, Number(freight?.processingNum || 0) || 0);
+    const waitHandleNum = Math.max(0, Number(freight?.waitHandleNum || 0) || 0);
+    const usedTimes = Math.max(detailList.length, successNum + processingNum + waitHandleNum);
+    const maxTimes = 3;
+    const remainingTimes = Math.max(0, maxTimes - usedTimes);
+    const limitAmountFen = Math.max(0, Number(checkResult?.limitAmount || 0) || 0);
+    const transferCode = String(checkResult?.transferCode || '').trim();
+    const transferDesc = String(checkResult?.transferDesc || '').trim();
+    const submitTemplate = this._getLatestSmallPaymentSubmitTemplate(normalizedOrderSn);
+    const submitTemplateMeta = this._analyzeSmallPaymentSubmitTemplate(submitTemplate);
+    const tipList = Array.isArray(tipsResult?.tipVOList) ? tipsResult.tipVOList : [];
+    const confirmTipList = Array.isArray(tipsResult?.confirmTipVOList) ? tipsResult.confirmTipVOList : [];
+    const standardTipList = Array.isArray(tipsResult?.standardTipVOList) ? tipsResult.standardTipVOList : [];
+    const collectedTips = [...tipList, ...confirmTipList, ...standardTipList]
+      .map(item => (item && typeof item === 'object')
+        ? String(item.content || item.desc || item.tip || item.text || '').trim()
+        : String(item || '').trim())
+      .filter(Boolean);
+    return {
+      success: true,
+      orderSn: normalizedOrderSn,
+      mallId: Number.isFinite(mallId) && mallId > 0 ? mallId : null,
+      limitAmountFen,
+      limitAmount: limitAmountFen > 0 ? this._formatSideOrderAmount(limitAmountFen).replace(/^¥/, '') : '',
+      transferType: Number.isFinite(Number(checkResult?.transferType)) ? Number(checkResult.transferType) : null,
+      playMoneyPattern: Number.isFinite(Number(checkResult?.playMoneyPattern)) ? Number(checkResult.playMoneyPattern) : null,
+      channel: Number.isFinite(Number(checkResult?.channel)) ? Number(checkResult.channel) : null,
+      needChargePlayMoney: Boolean(checkResult?.needChargePlayMoney),
+      transferCode: transferCode || null,
+      transferDesc: transferDesc || null,
+      canSubmit: limitAmountFen > 0 && remainingTimes > 0 && (!transferCode || Boolean(checkResult?.needChargePlayMoney)),
+      submitTemplateReady: !!submitTemplate,
+      submitTemplateUrl: submitTemplate?.url || '',
+      submitTemplateMeta: submitTemplateMeta.ready ? submitTemplateMeta : null,
+      maxTimes,
+      usedTimes,
+      remainingTimes,
+      history: {
+        successNum,
+        processingNum,
+        waitHandleNum,
+        successAmountFen: Math.max(0, Number(freight?.successTotalAmount || 0) || 0),
+        processingAmountFen: Math.max(0, Number(freight?.processingTotalAmount || 0) || 0),
+        waitHandleAmountFen: Math.max(0, Number(freight?.waitHandleTotalAmount || 0) || 0),
+      },
+      showNotSignedTips: Boolean(tipsResult?.showNotSignedTips),
+      tips: collectedTips,
+      detailList: this._cloneJson(detailList),
+      raw: {
+        check: this._cloneJson(checkResult),
+        tips: this._cloneJson(tipsResult),
+      },
+    };
+  }
+
+  _normalizeSmallPaymentRefundType(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.max(0, Math.round(value));
+    }
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+      throw new Error('缺少打款类型');
+    }
+    if (['other', '其他', '2'].includes(normalized)) {
+      return 2;
+    }
+    if (['difference', '补差价'].includes(normalized)) {
+      throw new Error('当前尚未确认“补差价”的真实 refundType 映射，请先继续抓取一次该类型请求');
+    }
+    if (['shipping', '补运费'].includes(normalized)) {
+      throw new Error('当前尚未确认“补运费”的真实 refundType 映射，请先继续抓取一次该类型请求');
+    }
+    if (['0', '1'].includes(normalized)) {
+      return Number(normalized);
+    }
+    throw new Error(`暂不支持的打款类型：${value}`);
+  }
+
+  async submitSmallPayment(params = {}) {
+    const normalizedOrderSn = String(params?.orderSn || params?.order_sn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单编号');
+    }
+    const refundType = this._normalizeSmallPaymentRefundType(
+      params?.refundType ?? params?.refund_type ?? params?.type
+    );
+    const playMoneyAmount = Number.isFinite(Number(params?.playMoneyAmountFen))
+      ? Math.max(0, Math.round(Number(params.playMoneyAmountFen)))
+      : this._parseOrderPriceYuanToFen(params?.playMoneyAmount || params?.amount);
+    if (!playMoneyAmount) {
+      throw new Error('缺少打款金额');
+    }
+    const remarks = String(params?.remarks ?? params?.remark ?? params?.message ?? '').trim();
+    if (!remarks) {
+      throw new Error('缺少留言内容');
+    }
+    const info = await this.getSmallPaymentInfo({
+      orderSn: normalizedOrderSn,
+      mallId: params?.mallId || params?.mall_id,
+    });
+    if (Number(info?.limitAmountFen || 0) > 0 && playMoneyAmount > Number(info.limitAmountFen || 0)) {
+      throw new Error('打款金额不能超过单次上限');
+    }
+    const submitTemplate = this._getLatestSmallPaymentSubmitTemplate(normalizedOrderSn);
+    if (!submitTemplate) {
+      throw new Error('当前店铺尚未捕获小额打款真实提交模板');
+    }
+    const templateBody = this._safeParseJson(submitTemplate?.requestBody);
+    const chargeType = Number.isFinite(Number(params?.chargeType))
+      ? Math.max(0, Math.round(Number(params.chargeType)))
+      : Math.max(0, Number(
+        templateBody?.chargeType
+        ?? templateBody?.charge_type
+        ?? info?.channel
+        ?? 4
+      ) || 0);
+    const requestBody = {
+      orderSn: normalizedOrderSn,
+      playMoneyAmount,
+      refundType,
+      remarks,
+      chargeType,
+    };
+    this._log('[API] 提交小额打款', {
+      orderSn: normalizedOrderSn,
+      playMoneyAmount,
+      refundType,
+      chargeType,
+      hasRemarks: !!remarks,
+    });
+    const payload = await this._requestRefundOrderPageApi('/mercury/play_money/create', requestBody);
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      const error = new Error(businessError.message || '提交小额打款失败');
+      error.errorCode = businessError.code;
+      error.payload = payload;
+      throw error;
+    }
+    const result = payload?.result && typeof payload.result === 'object' ? payload.result : {};
+    const cashierShortUrl = String(result?.link || '').trim();
+    return {
+      success: true,
+      orderSn: normalizedOrderSn,
+      playMoneyAmount,
+      refundType,
+      chargeType,
+      requestBody: this._cloneJson(requestBody),
+      response: this._cloneJson(payload),
+      chargeSn: String(result?.chargeSn || '').trim(),
+      chargeStatus: Number.isFinite(Number(result?.status)) ? Number(result.status) : null,
+      transferCode: result?.transferCode ?? null,
+      cashierShortUrl,
+      cashierUrl: cashierShortUrl ? `https://mms.pinduoduo.com/cashier/?orderSn=${cashierShortUrl}` : '',
+    };
+  }
+
   _parseOrderPriceYuanToFen(value) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric) || numeric < 0) return 0;
@@ -3603,6 +4039,871 @@ class PddApiClient extends EventEmitter {
       url: persistedTemplate.url || `${PDD_BASE}/latitude/order/price/update`,
       method: persistedTemplate.method || 'POST',
       requestBody: JSON.stringify(persistedBody),
+    };
+  }
+
+  _rememberOrderPriceUpdateTemplate(entry = {}, options = {}) {
+    if (!entry || typeof entry !== 'object') return null;
+    const parsedBody = typeof entry.requestBody === 'string'
+      ? this._safeParseJson(entry.requestBody)
+      : entry.requestBody;
+    if (!parsedBody || typeof parsedBody !== 'object') return null;
+    const crawlerInfo = String(parsedBody?.crawlerInfo || parsedBody?.crawler_info || '').trim();
+    if (!crawlerInfo) return null;
+    const normalized = {
+      url: entry.url || `${PDD_BASE}/latitude/order/price/update`,
+      method: String(entry.method || 'POST').toUpperCase(),
+      requestBody: JSON.stringify(parsedBody),
+    };
+    this._appendBootstrapTraffic({
+      ...normalized,
+      timestamp: Date.now(),
+    });
+    if (options.persist !== false && typeof this._setOrderPriceUpdateTemplate === 'function') {
+      try {
+        this._setOrderPriceUpdateTemplate({
+          ...normalized,
+          updatedAt: Date.now(),
+        });
+      } catch (error) {
+        this._log('[API] 持久化改价模板失败', { message: error?.message || String(error || '') });
+      }
+    }
+    return normalized;
+  }
+
+  _summarizeBootstrapDebug(debug = {}) {
+    if (!debug || typeof debug !== 'object') return '';
+    const buttonText = (Array.isArray(debug.buttons) ? debug.buttons : [])
+      .map(item => String(item?.text || '').trim())
+      .filter(Boolean)
+      .slice(0, 5)
+      .join('/');
+    const cardActionText = (Array.isArray(debug.cardActions) ? debug.cardActions : [])
+      .map(item => {
+        const text = String(item?.text || '').trim();
+        const score = Number(item?.score || 0) || 0;
+        const tag = String(item?.tag || '').trim();
+        const cls = String(item?.cls || '').trim().replace(/\s+/g, '.');
+        const left = Number(item?.left || 0) || 0;
+        const top = Number(item?.top || 0) || 0;
+        const suffix = [tag, cls ? cls.slice(0, 24) : '', left && top ? `${left},${top}` : '']
+          .filter(Boolean)
+          .join('@');
+        return text ? `${text}:${score}${suffix ? `:${suffix}` : ''}` : '';
+      })
+      .filter(Boolean)
+      .slice(0, 5)
+      .join('/');
+    const inputText = (Array.isArray(debug.inputs) ? debug.inputs : [])
+      .map(item => {
+        const placeholder = String(item?.placeholder || '').trim();
+        const value = String(item?.value || '').trim();
+        return placeholder || value;
+      })
+      .filter(Boolean)
+      .slice(0, 3)
+      .join('/');
+    const panelText = String(debug?.panelText || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    return [
+      cardActionText ? `cardActions=${cardActionText}` : '',
+      buttonText ? `buttons=${buttonText}` : '',
+      inputText ? `inputs=${inputText}` : '',
+      panelText ? `panel=${panelText}` : '',
+    ].filter(Boolean).join('; ');
+  }
+
+  async _bootstrapOrderPriceTemplate(params = {}, sessionMeta = {}) {
+    if (typeof this._executeInPddPage !== 'function') {
+      return { success: false, error: '当前环境不支持页面侧自动初始化改价模板' };
+    }
+    const target = {
+      orderSn: String(params?.orderSn || params?.order_sn || '').trim(),
+      customerName: String(sessionMeta?.customerName || sessionMeta?.raw?.nick || sessionMeta?.raw?.nickname || '').trim(),
+      customerId: String(sessionMeta?.customerId || sessionMeta?.raw?.customer_id || sessionMeta?.raw?.buyer_id || '').trim(),
+      discount: String(params?.discount ?? '').trim(),
+      timeoutMs: 6000,
+    };
+    if (!target.orderSn) {
+      return { success: false, error: '缺少订单编号' };
+    }
+    let result = null;
+    try {
+      result = await this._executeInPddPage(`
+        (async () => {
+          const target = ${JSON.stringify(target)};
+          const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+          const logs = [];
+          const pushLog = (message) => logs.push(String(message || ''));
+          const normalizeText = value => String(value || '').replace(/\\s+/g, ' ').trim();
+          const isVisible = el => {
+            if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+            const rect = el.getBoundingClientRect();
+            return rect.width > 8 && rect.height > 8 && el.offsetParent !== null;
+          };
+          const getText = el => normalizeText(el?.innerText || el?.textContent || '');
+          const clickElement = async (el) => {
+            if (!isVisible(el)) return false;
+            try {
+              el.scrollIntoView({ block: 'center', inline: 'center' });
+            } catch {}
+            ['mousedown', 'mouseup', 'click'].forEach(type => {
+              try {
+                el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+              } catch {}
+            });
+            try { el.click(); } catch {}
+            await sleep(280);
+            return true;
+          };
+          const fillInputValue = (input, value) => {
+            if (!input) return false;
+            const nextValue = String(value || '');
+            try { input.focus(); } catch {}
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+            if (setter) setter.call(input, nextValue);
+            else input.value = nextValue;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: '0' }));
+            return true;
+          };
+          const findClickableByTexts = (root, texts = []) => {
+            const candidates = Array.from((root || document).querySelectorAll('button, [role="button"], a, span, div'));
+            return candidates.find(el => {
+              if (!isVisible(el)) return false;
+              const text = getText(el);
+              if (!text || text.length > 80) return false;
+              return texts.some(label => text === label || text.includes(label));
+            }) || null;
+          };
+          const findBestActionByTexts = (root, texts = [], options = {}) => {
+            const candidates = Array.from((root || document).querySelectorAll('button, [role="button"], a, span, div'))
+              .filter(isVisible)
+              .map(el => {
+                const rect = el.getBoundingClientRect();
+                const text = getText(el);
+                const classText = String(el.className || '').toLowerCase();
+                let score = 0;
+                if (!text || text.length > 80) return null;
+                for (const label of texts) {
+                  if (!label) continue;
+                  if (text === label) score += 20;
+                  else if (text.includes(label)) score += 10;
+                }
+                if (options.preferShortText && text.length <= 8) score += 5;
+                if (options.rejectLongText && text.length > 16) score -= 12;
+                if (options.preferRight && rect.left >= window.innerWidth * 0.55) score += 4;
+                if (rect.width >= 24 && rect.width <= 260) score += 4;
+                if (rect.height >= 18 && rect.height <= 72) score += 4;
+                if (rect.width > 320 || rect.height > 120) score -= 12;
+                if (classText.includes('active') || classText.includes('selected')) score += 2;
+                if (classText.includes('disabled')) score -= 20;
+                if (options.preferTop && rect.top <= window.innerHeight * 0.45) score += 3;
+                if (options.preferBottom && rect.top >= window.innerHeight * 0.45) score += 3;
+                return score > 0 ? { el, score } : null;
+              })
+              .filter(Boolean)
+              .sort((a, b) => b.score - a.score);
+            return candidates[0]?.el || null;
+          };
+          const isPriceEditorVisible = (root) => {
+            const scope = root || document.body || document.documentElement;
+            const text = getText(scope);
+            const hitCount = [
+              /手工改价/.test(text),
+              /配送费用/.test(text),
+              /仅可对订单进行一次改价操作/.test(text),
+              /优惠折扣/.test(text),
+              /保存/.test(text) && /取消/.test(text),
+            ].filter(Boolean).length;
+            return hitCount >= 2;
+          };
+          const findPendingTabTrigger = (panel) => (
+            findBestActionByTexts(panel, ['待支付', '待付款', '店铺待支付', '店铺待支付订单'], {
+              preferRight: true,
+              preferTop: true,
+              preferShortText: true,
+              rejectLongText: true,
+            }) || findClickableByTexts(panel, ['待支付', '待付款', '店铺待支付', '店铺待支付订单'])
+          );
+          const getCardActionCandidates = (orderCard) => {
+            if (!orderCard) return null;
+            const cardRect = orderCard.getBoundingClientRect();
+            const rawCandidates = Array.from(orderCard.querySelectorAll('button, [role="button"], a, span, div'))
+              .filter(isVisible)
+              .map(el => {
+                const rect = el.getBoundingClientRect();
+                const text = getText(el);
+                const classText = String(el.className || '').toLowerCase();
+                const roleText = String(el.getAttribute?.('role') || '').toLowerCase();
+                const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+                const isNativeInteractive = ['button', 'a'].includes(String(el.tagName || '').toLowerCase()) || roleText === 'button';
+                const looksInteractive = isNativeInteractive
+                  || typeof el.onclick === 'function'
+                  || Number(el.tabIndex) >= 0
+                  || /button|btn|action|operate|click/.test(classText)
+                  || style?.cursor === 'pointer';
+                let score = 0;
+                if (!looksInteractive) return null;
+                if (rect.width < 18 || rect.height < 18) return null;
+                if (rect.width > 120 || rect.height > 60) score -= 10;
+                if (!text) score -= 2;
+                if (/order-btn-item/.test(classText)) score += 12;
+                if (/el-tooltip/.test(classText)) score += 4;
+                if (rect.left >= cardRect.left + cardRect.width * 0.6) score += 8;
+                if (rect.top >= cardRect.top + cardRect.height * 0.55) score += 8;
+                if (text && text.length <= 8) score += 4;
+                if (/改价|修改价格|手工改价/.test(text)) score += 20;
+                if (/备注|物流|地址|复制|查看/.test(text)) score -= 10;
+                if (/待支付|待付款|未支付/.test(text)) score -= 14;
+                if (/订单号|下单时间|待支付说明|商家未启用服务或不满足服务规则/.test(text)) score -= 20;
+                if (/配送费|优惠|折|实收|待支付金额/.test(text)) score -= 18;
+                if (/^¥?\d+(?:\.\d+)?$/.test(text)) score -= 25;
+                if (/^\d{2}:\d{2}:\d{2}$/.test(text)) score -= 20;
+                return score > 0 ? {
+                  el,
+                  score,
+                  text,
+                  tag: String(el.tagName || '').toLowerCase(),
+                  cls: classText,
+                  left: Math.round(rect.left || 0),
+                  top: Math.round(rect.top || 0),
+                } : null;
+              }).filter(Boolean);
+            const groupedCandidates = [];
+            for (const item of rawCandidates) {
+              if (!/order-btn-item/.test(String(item?.cls || ''))) continue;
+              const parent = item.el?.parentElement;
+              if (!parent) continue;
+              const siblings = Array.from(parent.children)
+                .filter(el => el !== item.el && isVisible(el))
+                .filter(el => /order-btn-item/.test(String(el.className || '').toLowerCase()))
+                .map(el => {
+                  const rect = el.getBoundingClientRect();
+                  const text = getText(el);
+                  const classText = String(el.className || '').toLowerCase();
+                  let score = 10;
+                  if (/改价|修改价格|手工改价/.test(text)) score += 20;
+                  if (/待支付|待付款|未支付/.test(text)) score -= 14;
+                  if (/备注|物流|地址|复制|查看/.test(text)) score -= 8;
+                  if (!text) score -= 4;
+                  return score > 0 ? {
+                    el,
+                    score,
+                    text,
+                    tag: String(el.tagName || '').toLowerCase(),
+                    cls: classText,
+                    left: Math.round(rect.left || 0),
+                    top: Math.round(rect.top || 0),
+                  } : null;
+                })
+                .filter(Boolean);
+              groupedCandidates.push(...siblings);
+              const parentRect = parent.getBoundingClientRect();
+              const rowNeighbors = Array.from((parent.parentElement || orderCard).querySelectorAll('button, [role="button"], a, span, div'))
+                .filter(el => el !== item.el && el !== parent && isVisible(el))
+                .map(el => {
+                  const rect = el.getBoundingClientRect();
+                  const text = getText(el);
+                  const classText = String(el.className || '').toLowerCase();
+                  const roleText = String(el.getAttribute?.('role') || '').toLowerCase();
+                  const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+                  const looksInteractive = ['button', 'a'].includes(String(el.tagName || '').toLowerCase())
+                    || roleText === 'button'
+                    || typeof el.onclick === 'function'
+                    || Number(el.tabIndex) >= 0
+                    || /button|btn|action|operate|click|icon/.test(classText)
+                    || style?.cursor === 'pointer';
+                  let score = 0;
+                  if (!looksInteractive) return null;
+                  if (Math.abs(rect.top - parentRect.top) > 24) return null;
+                  if (rect.left < cardRect.left + cardRect.width * 0.45) return null;
+                  if (rect.width < 14 || rect.height < 14) return null;
+                  if (rect.width > 80 || rect.height > 48) return null;
+                  score += 10;
+                  if (!text) score += 6;
+                  if (text && text.length <= 6) score += 4;
+                  if (/icon|svg|tooltip|btn/.test(classText)) score += 6;
+                  if (/改价|修改价格|手工改价/.test(text)) score += 20;
+                  if (/待支付|待付款|未支付/.test(text)) score -= 18;
+                  if (/备注|物流|地址|复制|查看/.test(text)) score -= 10;
+                  return score > 0 ? {
+                    el,
+                    score,
+                    text,
+                    tag: String(el.tagName || '').toLowerCase(),
+                    cls: classText,
+                    left: Math.round(rect.left || 0),
+                    top: Math.round(rect.top || 0),
+                  } : null;
+                })
+                .filter(Boolean);
+              groupedCandidates.push(...rowNeighbors);
+            }
+            const deduped = [];
+            const seen = new Set();
+            for (const item of [...groupedCandidates, ...rawCandidates]) {
+              const key = String(item.left) + ':' + String(item.top) + ':' + String(item.text) + ':' + String(item.cls);
+              if (seen.has(key)) continue;
+              seen.add(key);
+              deduped.push(item);
+            }
+            const candidates = deduped.sort((a, b) => b.score - a.score);
+            return candidates;
+          };
+          const hoverOrderCard = async (orderCard) => {
+            if (!isVisible(orderCard)) return false;
+            const rect = orderCard.getBoundingClientRect();
+            const points = [
+              { x: rect.left + rect.width * 0.85, y: rect.top + rect.height * 0.78 },
+              { x: rect.left + rect.width * 0.72, y: rect.top + rect.height * 0.78 },
+            ];
+            for (const point of points) {
+              ['mouseenter', 'mouseover', 'mousemove'].forEach(type => {
+                try {
+                  orderCard.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    clientX: Math.round(point.x),
+                    clientY: Math.round(point.y),
+                  }));
+                } catch {}
+              });
+              await sleep(120);
+            }
+            return true;
+          };
+          const probeOrderCardBody = async (orderCard) => {
+            if (!isVisible(orderCard)) return false;
+            const rect = orderCard.getBoundingClientRect();
+            const clickableNodes = Array.from(orderCard.querySelectorAll('img, [class*="thumb"], [class*="title"], [class*="content"], [class*="main"], div, span'))
+              .filter(isVisible)
+              .map(el => {
+                const nodeRect = el.getBoundingClientRect();
+                const text = getText(el);
+                let score = 0;
+                if (nodeRect.width < 24 || nodeRect.height < 18) return null;
+                if (nodeRect.width > rect.width * 0.92 || nodeRect.height > rect.height * 0.92) score -= 8;
+                if (nodeRect.left <= rect.left + rect.width * 0.82) score += 6;
+                if (nodeRect.top <= rect.top + rect.height * 0.82) score += 4;
+                if (/thumb|title|content|main|goods|item/.test(String(el.className || '').toLowerCase())) score += 8;
+                if (String(el.tagName || '').toLowerCase() === 'img') score += 10;
+                if (text && text.length >= 2 && text.length <= 80) score += 2;
+                if (/订单号|下单时间|待支付说明|备注|复制/.test(text)) score -= 10;
+                return score > 0 ? { el, score } : null;
+              })
+              .filter(Boolean)
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 4);
+            const fallbackPoints = [
+              { x: rect.left + rect.width * 0.3, y: rect.top + rect.height * 0.35 },
+              { x: rect.left + rect.width * 0.5, y: rect.top + rect.height * 0.45 },
+            ];
+            for (const candidate of clickableNodes) {
+              pushLog('probe-card-body');
+              await clickElement(candidate.el);
+              await sleep(320);
+              if (isPriceEditorVisible(findRightPanel()) || findDiscountInput(findRightPanel()) || findDiscountInput(document.body)) {
+                return true;
+              }
+            }
+            for (const point of fallbackPoints) {
+              ['mousedown', 'mouseup', 'click'].forEach(type => {
+                try {
+                  orderCard.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    clientX: Math.round(point.x),
+                    clientY: Math.round(point.y),
+                  }));
+                } catch {}
+              });
+              await sleep(320);
+              if (isPriceEditorVisible(findRightPanel()) || findDiscountInput(findRightPanel()) || findDiscountInput(document.body)) {
+                return true;
+              }
+            }
+            return false;
+          };
+          const findCardActionFallback = (orderCard) => {
+            const candidates = getCardActionCandidates(orderCard);
+            return candidates?.[0]?.el || null;
+          };
+          const findEditTrigger = (orderCard, panel) => (
+            findBestActionByTexts(orderCard, ['改价', '修改价格', '手工改价'], {
+              preferRight: true,
+              preferBottom: true,
+              preferShortText: true,
+              rejectLongText: true,
+            })
+            || findBestActionByTexts(panel, ['改价', '修改价格', '手工改价'], {
+              preferRight: true,
+              preferBottom: true,
+              preferShortText: true,
+              rejectLongText: true,
+            })
+            || findClickableByTexts(orderCard, ['改价', '修改价格', '手工改价'])
+            || findClickableByTexts(panel, ['改价', '修改价格', '手工改价'])
+            || findCardActionFallback(orderCard)
+          );
+          const findRightSideClickableByTexts = (texts = []) => {
+            const candidates = Array.from(document.querySelectorAll('button, [role="button"], a, span, div'))
+              .filter(isVisible)
+              .map(el => {
+                const rect = el.getBoundingClientRect();
+                return {
+                  el,
+                  rect,
+                  text: getText(el),
+                };
+              })
+              .filter(item => item.text && item.text.length <= 80)
+              .filter(item => texts.some(label => item.text === label || item.text.includes(label)))
+              .filter(item => item.rect.left >= window.innerWidth * 0.58 && item.rect.width >= 24 && item.rect.height >= 20)
+              .sort((a, b) => {
+                const scoreA = a.rect.left + Math.min(a.rect.width, 240) - Math.abs(a.rect.top - window.innerHeight * 0.78);
+                const scoreB = b.rect.left + Math.min(b.rect.width, 240) - Math.abs(b.rect.top - window.innerHeight * 0.78);
+                return scoreB - scoreA;
+              });
+            return candidates[0]?.el || null;
+          };
+          const maybeClickConversation = async () => {
+            const keywords = [target.orderSn, target.customerName, target.customerId].filter(Boolean);
+            if (!keywords.length) return false;
+            const nodes = Array.from(document.querySelectorAll('div, li, section, article, a, button'));
+            const candidate = nodes.find(el => {
+              if (!isVisible(el)) return false;
+              const rect = el.getBoundingClientRect();
+              if (rect.left > window.innerWidth * 0.42 || rect.width < 120 || rect.height < 28) return false;
+              const text = getText(el);
+              if (!text || text.length > 320) return false;
+              return keywords.some(keyword => keyword && text.includes(keyword));
+            });
+            if (!candidate) return false;
+            pushLog('click-conversation');
+            await clickElement(candidate);
+            await sleep(600);
+            return true;
+          };
+          const findRightPanel = () => {
+            const containers = Array.from(document.querySelectorAll(
+              '.right-panel, .order-panel, .customer-info, [class*="right-panel"], [class*="orderInfo"], [class*="goodsInfo"], [class*="order-panel"], [class*="customer-info"], [class*="sidebar"]'
+            )).filter(isVisible);
+            return containers.sort((a, b) => {
+              const rectA = a.getBoundingClientRect();
+              const rectB = b.getBoundingClientRect();
+              return (rectB.left + rectB.width) - (rectA.left + rectA.width);
+            })[0] || null;
+          };
+          const findOrderCard = (root) => {
+            const base = root || document;
+            const baseRect = root?.getBoundingClientRect?.() || {
+              left: 0,
+              top: 0,
+              width: window.innerWidth,
+              height: window.innerHeight,
+            };
+            const nodes = Array.from(base.querySelectorAll('div, li, section, article')).filter(isVisible);
+            const candidates = nodes.map(el => {
+              const text = getText(el);
+              if (!text || text.length < 20 || text.length > 900) return null;
+              if (!text.includes(target.orderSn)) return null;
+              const rect = el.getBoundingClientRect();
+              if (rect.width < 180 || rect.height < 60) return null;
+              if (rect.width > Math.max(520, baseRect.width * 0.96)) return null;
+              if (rect.height > Math.max(420, baseRect.height * 0.92)) return null;
+              let score = 0;
+              score += 20;
+              if (rect.left >= window.innerWidth * 0.58) score += 8;
+              if (rect.width >= 220 && rect.width <= 420) score += 8;
+              if (rect.height >= 90 && rect.height <= 280) score += 8;
+              if (/订单编号|下单时间|待支付|商家未启用服务或不满足服务规则/.test(text)) score += 6;
+              if (/¥\d+(\.\d+)?/.test(text)) score += 4;
+              if (/备注|改价|配送费|手工改价/.test(text)) score += 4;
+              const area = rect.width * rect.height;
+              score -= Math.round(area / 40000);
+              return score > 0 ? { el, score, area, rect, text } : null;
+            }).filter(Boolean);
+            const narrowed = candidates.filter(candidate => !candidates.some(other => {
+              if (!other || other === candidate) return false;
+              if (other.area >= candidate.area) return false;
+              if (!candidate.el.contains(other.el)) return false;
+              if (!String(other.text || '').includes(target.orderSn)) return false;
+              return other.area <= candidate.area * 0.88;
+            })).sort((a, b) => {
+              if (a.area !== b.area) return a.area - b.area;
+              return b.score - a.score;
+            });
+            const ranked = (narrowed.length ? narrowed : candidates).sort((a, b) => {
+              if (b.score !== a.score) return b.score - a.score;
+              return a.area - b.area;
+            });
+            return ranked[0]?.el || null;
+          };
+          const findDiscountInput = (root) => {
+            const inputs = Array.from((root || document).querySelectorAll('input')).filter(el => isVisible(el) && !el.disabled && !el.readOnly);
+            const scored = inputs.map(input => {
+              const wrapperText = getText(input.parentElement) + ' ' + getText(input.closest('div, section, form, article'));
+              const placeholderText = String(input.placeholder || '').trim();
+              const valueText = String(input.value || '').trim();
+              let score = 0;
+              if (/查找|搜索|用户名|订单号|客户名|买家名|筛选/i.test(placeholderText + ' ' + wrapperText)) score -= 20;
+              if (/折|折扣|discount/i.test(wrapperText)) score += 5;
+              if (/实收|配送费用|手工改价|优惠|减价|改价/i.test(wrapperText)) score += 4;
+              if (placeholderText.includes('折')) score += 4;
+              if (/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(valueText)) score += 1;
+              return { input, score };
+            })
+              .filter(item => item.score >= 4)
+              .sort((a, b) => b.score - a.score);
+            return scored[0]?.input || null;
+          };
+          const findSaveButtonNearInput = (input) => {
+            let scope = input;
+            for (let depth = 0; depth < 6 && scope; depth += 1) {
+              const found = findClickableByTexts(scope, ['保存', '确认', '确定']);
+              if (found) return found;
+              scope = scope.parentElement;
+            }
+            return null;
+          };
+          const isCancelLikeButton = (el) => {
+            const text = getText(el);
+            if (/取消|关闭|返回|收起/.test(text)) return true;
+            const classText = String(el?.className || '').toLowerCase();
+            return /default|secondary|ghost/.test(classText);
+          };
+          const findPrimaryActionButton = (root, input) => {
+            const inputRect = input?.getBoundingClientRect?.() || null;
+            const candidates = Array.from((root || document).querySelectorAll('button, [role="button"], a'))
+              .filter(isVisible)
+              .map(el => {
+                const rect = el.getBoundingClientRect();
+                const text = getText(el);
+                const classText = String(el.className || '').toLowerCase();
+                let score = 0;
+                if (/保存|确认|确定/.test(text)) score += 12;
+                if (/primary|submit|confirm/.test(classText)) score += 8;
+                if (/disabled/.test(classText) || el.disabled) score -= 20;
+                if (isCancelLikeButton(el)) score -= 12;
+                if (rect.left >= window.innerWidth * 0.58) score += 4;
+                if (inputRect) {
+                  const horizontalGap = Math.abs(rect.left - inputRect.left);
+                  const verticalGap = Math.abs(rect.top - inputRect.bottom);
+                  if (horizontalGap < 220) score += 5;
+                  if (verticalGap < 220) score += 5;
+                  if (rect.top >= inputRect.top - 40) score += 2;
+                }
+                return { el, rect, text, score };
+              })
+              .filter(item => item.score > 0)
+              .sort((a, b) => b.score - a.score);
+            return candidates[0]?.el || null;
+          };
+          const summarizeElement = (el) => {
+            if (!el) return null;
+            const rect = typeof el.getBoundingClientRect === 'function'
+              ? el.getBoundingClientRect()
+              : { left: 0, top: 0, width: 0, height: 0 };
+            return {
+              tag: String(el.tagName || '').toLowerCase(),
+              text: getText(el).slice(0, 80),
+              cls: String(el.className || '').slice(0, 120),
+              left: Math.round(rect.left || 0),
+              top: Math.round(rect.top || 0),
+              width: Math.round(rect.width || 0),
+              height: Math.round(rect.height || 0),
+            };
+          };
+          const collectDebugSnapshot = (panel, input) => {
+            const root = panel || document.body || document.documentElement;
+            const panelText = getText(root).slice(0, 300);
+            const visibleButtons = Array.from((root || document).querySelectorAll('button, [role="button"], a, span, div'))
+              .filter(isVisible)
+              .filter(el => {
+                const text = getText(el);
+                const rect = el.getBoundingClientRect();
+                return text && text.length <= 40 && rect.width <= 260 && rect.height <= 80;
+              })
+              .map(el => summarizeElement(el))
+              .filter(Boolean)
+              .slice(0, 12);
+            const card = findOrderCard(root);
+            const cardActions = (getCardActionCandidates(card) || [])
+              .slice(0, 6)
+              .map(item => ({
+                text: String(item?.text || '').slice(0, 40),
+                score: item?.score || 0,
+                tag: String(item?.tag || ''),
+                cls: String(item?.cls || '').slice(0, 40),
+                left: item?.left || 0,
+                top: item?.top || 0,
+              }));
+            const allInputs = Array.from(document.querySelectorAll('input'))
+              .filter(isVisible)
+              .map(el => {
+                const summary = summarizeElement(el) || {};
+                return {
+                  ...summary,
+                  value: String(el.value || '').slice(0, 40),
+                  placeholder: String(el.placeholder || '').slice(0, 40),
+                };
+              })
+              .slice(0, 8);
+            return {
+              panelText,
+              activeElement: summarizeElement(document.activeElement),
+              input: summarizeElement(input),
+              buttons: visibleButtons,
+              cardActions,
+              inputs: allInputs,
+            };
+          };
+          const tryProbeCardActions = async (orderCard, panel) => {
+            const candidates = (getCardActionCandidates(orderCard) || []).slice(0, 4);
+            for (const candidate of candidates) {
+              if (!candidate?.el) continue;
+              pushLog('probe-card-action:' + String(candidate.text || ''));
+              await clickElement(candidate.el);
+              await sleep(450);
+              const latestPanel = findRightPanel() || panel;
+              if (isPriceEditorVisible(latestPanel) || findDiscountInput(latestPanel) || findDiscountInput(document.body)) {
+                return true;
+              }
+            }
+            return false;
+          };
+          const createInterceptor = () => {
+            let settled = false;
+            let timer = 0;
+            let resolvePromise = () => {};
+            const cleanupTasks = [];
+            const finalize = (payload) => {
+              if (settled) return payload;
+              settled = true;
+              if (timer) clearTimeout(timer);
+              cleanupTasks.reverse().forEach(task => {
+                try { task(); } catch {}
+              });
+              resolvePromise(payload);
+              return payload;
+            };
+            const promise = new Promise(resolve => {
+              resolvePromise = resolve;
+            });
+            if (typeof window.fetch === 'function') {
+              const originalFetch = window.fetch.bind(window);
+              window.fetch = async function patchedFetch(input, init) {
+                const requestUrl = typeof input === 'string' ? input : (input?.url || '');
+                if (String(requestUrl || '').includes('/latitude/order/price/update')) {
+                  const requestBody = typeof init?.body === 'string' ? init.body : '';
+                  pushLog('capture-fetch');
+                  finalize({
+                    ok: true,
+                    channel: 'fetch',
+                    url: requestUrl,
+                    method: String(init?.method || 'POST').toUpperCase(),
+                    requestBody,
+                    logs,
+                  });
+                  return new Response(JSON.stringify({ success: true, result: {} }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                  });
+                }
+                return originalFetch(input, init);
+              };
+              cleanupTasks.push(() => { window.fetch = originalFetch; });
+            }
+            if (window.XMLHttpRequest && window.XMLHttpRequest.prototype) {
+              const proto = window.XMLHttpRequest.prototype;
+              const originalOpen = proto.open;
+              const originalSend = proto.send;
+              proto.open = function patchedOpen(method, url) {
+                this.__pddHelperUrl = url;
+                this.__pddHelperMethod = method;
+                return originalOpen.apply(this, arguments);
+              };
+              proto.send = function patchedSend(body) {
+                if (String(this.__pddHelperUrl || '').includes('/latitude/order/price/update')) {
+                  const requestBody = typeof body === 'string' ? body : '';
+                  pushLog('capture-xhr');
+                  try {
+                    Object.defineProperty(this, 'readyState', { configurable: true, value: 4 });
+                    Object.defineProperty(this, 'status', { configurable: true, value: 200 });
+                    Object.defineProperty(this, 'statusText', { configurable: true, value: 'OK' });
+                    Object.defineProperty(this, 'responseText', { configurable: true, value: '{"success":true,"result":{}}' });
+                    Object.defineProperty(this, 'response', { configurable: true, value: '{"success":true,"result":{}}' });
+                  } catch {}
+                  setTimeout(() => {
+                    try { this.onreadystatechange && this.onreadystatechange(new Event('readystatechange')); } catch {}
+                    try { this.onload && this.onload(new Event('load')); } catch {}
+                    try { this.dispatchEvent(new Event('readystatechange')); } catch {}
+                    try { this.dispatchEvent(new Event('load')); } catch {}
+                    try { this.dispatchEvent(new Event('loadend')); } catch {}
+                  }, 0);
+                  return finalize({
+                    ok: true,
+                    channel: 'xhr',
+                    url: this.__pddHelperUrl,
+                    method: String(this.__pddHelperMethod || 'POST').toUpperCase(),
+                    requestBody,
+                    logs,
+                  });
+                }
+                return originalSend.apply(this, arguments);
+              };
+              cleanupTasks.push(() => {
+                proto.open = originalOpen;
+                proto.send = originalSend;
+              });
+            }
+            timer = window.setTimeout(() => finalize({
+              ok: false,
+              error: 'capture-timeout',
+              logs,
+            }), Number(target.timeoutMs || 6000));
+            return {
+              promise,
+              abort(error, extra = {}) {
+                return finalize({
+                  ok: false,
+                  error,
+                  logs,
+                  ...extra,
+                });
+              },
+            };
+          };
+
+          const interceptor = createInterceptor();
+          try {
+            await maybeClickConversation();
+            let panel = findRightPanel();
+            if (!panel) {
+              await sleep(500);
+              panel = findRightPanel();
+            }
+            if (!panel) return interceptor.abort('panel-not-found', {
+              debug: collectDebugSnapshot(null, null),
+            });
+            const pendingTab = findPendingTabTrigger(panel);
+            if (pendingTab) {
+              pushLog('click-pending-tab');
+              await clickElement(pendingTab);
+              await sleep(700);
+              panel = findRightPanel() || panel;
+            }
+            const orderCard = findOrderCard(panel) || findOrderCard(document.body);
+            if (!orderCard) return interceptor.abort('order-card-not-found', {
+              debug: collectDebugSnapshot(panel, null),
+            });
+            await hoverOrderCard(orderCard);
+            await sleep(180);
+            await probeOrderCardBody(orderCard);
+            panel = findRightPanel() || panel;
+            const editTrigger = findEditTrigger(orderCard, panel);
+            if (editTrigger) {
+              pushLog('click-edit-trigger');
+              await clickElement(editTrigger);
+              await sleep(700);
+              panel = findRightPanel() || panel;
+            }
+            const editorVisible = isPriceEditorVisible(panel) || isPriceEditorVisible(document.body);
+            if (!editorVisible && !findDiscountInput(panel) && !findDiscountInput(document.body)) {
+              const probed = await tryProbeCardActions(orderCard, panel);
+              if (probed) {
+                panel = findRightPanel() || panel;
+              }
+            }
+            if (!isPriceEditorVisible(panel) && !isPriceEditorVisible(document.body) && !findDiscountInput(panel) && !findDiscountInput(document.body)) {
+              return interceptor.abort(editTrigger ? 'edit-mode-not-entered' : 'edit-trigger-not-found', {
+                debug: collectDebugSnapshot(panel, null),
+              });
+            }
+            if (!editTrigger && !findDiscountInput(panel) && !findDiscountInput(document.body)) {
+              return interceptor.abort('edit-trigger-not-found', {
+                debug: collectDebugSnapshot(panel, null),
+              });
+            }
+            const discountInput = findDiscountInput(panel) || findDiscountInput(document.body);
+            if (!discountInput) return interceptor.abort('discount-input-not-found', {
+              debug: collectDebugSnapshot(panel, null),
+            });
+            fillInputValue(discountInput, target.discount || '9.9');
+            await sleep(250);
+            panel = findRightPanel() || panel;
+            let saveButton = findSaveButtonNearInput(discountInput);
+            if (!saveButton) {
+              saveButton = findClickableByTexts(panel, ['保存', '确认', '确定'])
+                || findPrimaryActionButton(panel, discountInput)
+                || findRightSideClickableByTexts(['保存', '确认', '确定'])
+                || findPrimaryActionButton(document.body, discountInput)
+                || findClickableByTexts(document.body, ['保存', '确认', '确定']);
+            }
+            if (!saveButton) {
+              await sleep(500);
+              panel = findRightPanel() || panel;
+              const refreshedDiscountInput = findDiscountInput(panel) || discountInput;
+              saveButton = findSaveButtonNearInput(refreshedDiscountInput)
+                || findClickableByTexts(panel, ['保存', '确认', '确定'])
+                || findPrimaryActionButton(panel, refreshedDiscountInput)
+                || findRightSideClickableByTexts(['保存', '确认', '确定'])
+                || findPrimaryActionButton(document.body, refreshedDiscountInput)
+                || findClickableByTexts(document.body, ['保存', '确认', '确定']);
+            }
+            if (!saveButton) return interceptor.abort('save-button-not-found', {
+              debug: collectDebugSnapshot(panel, discountInput),
+            });
+            pushLog('click-save-button');
+            await clickElement(saveButton);
+            return await interceptor.promise;
+          } catch (error) {
+            return interceptor.abort(error?.message || String(error || 'bootstrap-failed'));
+          }
+        })()
+      `);
+    } catch (error) {
+      return {
+        success: false,
+        error: error?.message || String(error || '页面改价模板自动初始化失败'),
+      };
+    }
+    const parsedBody = this._safeParseJson(result?.requestBody);
+    const crawlerInfo = String(parsedBody?.crawlerInfo || parsedBody?.crawler_info || '').trim();
+    if (!crawlerInfo) {
+      const debugSummary = this._summarizeBootstrapDebug(result?.debug);
+      this._log('[API] 页面侧自动初始化改价模板失败', {
+        orderSn: target.orderSn,
+        error: result?.error || 'missing-crawler-info',
+        logs: Array.isArray(result?.logs) ? result.logs.slice(-8) : [],
+        debug: result?.debug || null,
+      });
+      return {
+        success: false,
+        error: [
+          result?.error || '未捕获到改价校验参数',
+          debugSummary,
+        ].filter(Boolean).join(' | '),
+      };
+    }
+    const remembered = this._rememberOrderPriceUpdateTemplate({
+      url: result?.url || `${PDD_BASE}/latitude/order/price/update`,
+      method: result?.method || 'POST',
+      requestBody: JSON.stringify(parsedBody),
+    });
+    this._log('[API] 页面侧自动初始化改价模板成功', {
+      orderSn: target.orderSn,
+      channel: result?.channel || '',
+      persisted: !!remembered,
+    });
+    return {
+      success: true,
+      crawlerInfo,
+      requestBody: parsedBody,
     };
   }
 
@@ -3644,7 +4945,25 @@ class PddApiClient extends EventEmitter {
       crawlerInfo: String(params?.crawlerInfo || templateBody?.crawlerInfo || templateBody?.crawler_info || '').trim(),
     };
     if (!requestBody.crawlerInfo) {
-      throw new Error('缺少改价校验参数。请先在当前店铺初始化一次改价模板后再试；初始化完成后即可长期在接口页直接改价');
+      const bootstrapResult = await this._bootstrapOrderPriceTemplate({
+        ...params,
+        orderSn: normalizedOrderSn,
+      }, sessionMeta);
+      const bootstrappedCrawlerInfo = String(
+        bootstrapResult?.crawlerInfo
+        || bootstrapResult?.requestBody?.crawlerInfo
+        || bootstrapResult?.requestBody?.crawler_info
+        || ''
+      ).trim();
+      if (bootstrappedCrawlerInfo) {
+        requestBody.crawlerInfo = bootstrappedCrawlerInfo;
+      } else {
+        throw new Error(
+          bootstrapResult?.error
+            ? `缺少改价校验参数，且自动初始化失败：${bootstrapResult.error}`
+            : '缺少改价校验参数，且自动初始化失败'
+        );
+      }
     }
     const payload = await this._requestRefundOrderPageApi('/latitude/order/price/update', requestBody);
     const businessError = this._normalizeBusinessError(payload);
@@ -4440,6 +5759,29 @@ class PddApiClient extends EventEmitter {
     return this._mergeSideOrderStatusTexts(orderStatusText, afterSalesStatus) || orderStatusText || '订单状态待确认';
   }
 
+  _isPendingLikeSideOrder(sources = []) {
+    const mergedStatusText = [
+      this._resolveSideOrderHeadline('personal', sources),
+      this._pickRefundText(sources, [
+        'orderStatusStr',
+        'order_status_str',
+        'order_status_desc',
+        'order_status_text',
+        'statusDesc',
+        'status_desc',
+        'statusText',
+        'status_text',
+        'shippingStatusText',
+        'shipping_status_text',
+        'payStatusDesc',
+        'pay_status_desc',
+        'payStatusText',
+        'pay_status_text',
+      ]),
+    ].filter(Boolean).join(' ').replace(/\s+/g, '');
+    return /(待支付|待付款|未支付|未付款|付款中|待成团|未成团)/.test(mergedStatusText);
+  }
+
   _buildSideOrderMetaRows(tab = 'personal', sources = []) {
     const rows = [];
     const orderTimeText = this._formatSideOrderDateTime(this._pickRefundNumber(sources, ['orderTime', 'order_time', 'createdAt', 'created_at']));
@@ -4584,15 +5926,97 @@ class PddApiClient extends EventEmitter {
     return rows.slice(0, 2);
   }
 
+  _shouldShowSideOrderAddressAction(tab = 'personal', sources = []) {
+    if (tab !== 'personal') return false;
+    const statusText = [
+      this._resolveSideOrderHeadline(tab, sources),
+      this._pickRefundText(sources, [
+        'orderStatusStr',
+        'order_status_str',
+        'order_status_desc',
+        'order_status_text',
+        'statusDesc',
+        'status_desc',
+        'statusText',
+        'status_text',
+      ]),
+    ].filter(Boolean).join(' ');
+    return /待发货|已发货/.test(statusText);
+  }
+
+  _resolveSideOrderAddressInfo(sources = []) {
+    const receiverName = this._pickRefundText(sources, [
+      'receiverName',
+      'receiver_name',
+      'consignee',
+      'consigneeName',
+      'consignee_name',
+      'userName',
+      'user_name',
+      'name',
+    ]);
+    const receiverPhone = this._pickRefundText(sources, [
+      'receiverMobile',
+      'receiver_mobile',
+      'receiverPhone',
+      'receiver_phone',
+      'mobile',
+      'phone',
+      'tel',
+      'telephone',
+    ]);
+    const areaParts = [
+      this._pickRefundText(sources, ['provinceName', 'province_name']),
+      this._pickRefundText(sources, ['cityName', 'city_name']),
+      this._pickRefundText(sources, ['districtName', 'district_name']),
+      this._pickRefundText(sources, ['townName', 'town_name']),
+      this._pickRefundText(sources, ['streetName', 'street_name']),
+    ].filter(Boolean);
+    const areaText = areaParts.filter((part, index) => areaParts.indexOf(part) === index).join('');
+    const detailText = this._pickRefundText(sources, [
+      'address',
+      'addressDetail',
+      'address_detail',
+      'detailAddress',
+      'detail_address',
+      'receiverAddress',
+      'receiver_address',
+    ]);
+    const addressText = [areaText, detailText].filter(Boolean).join('');
+    const fullText = [
+      receiverName ? `收货人：${receiverName}` : '',
+      receiverPhone ? `联系电话：${receiverPhone}` : '',
+      addressText ? `收货地址：${addressText}` : '',
+    ].filter(Boolean).join('\n');
+    return {
+      receiverName,
+      receiverPhone,
+      addressText,
+      fullText,
+    };
+  }
+
   _buildSideOrderActionTags(tab = 'personal', sources = []) {
-    const tags = ['备注'];
+    const tags = [];
+    if (tab === 'pending' || (tab === 'personal' && this._isPendingLikeSideOrder(sources))) {
+      const manualPriceInfo = this._resolveSideOrderManualPriceInfo(sources);
+      tags.push('备注');
+      if (!manualPriceInfo.applied) {
+        tags.push('改价');
+      }
+      return tags;
+    }
     const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
     const manualPriceInfo = this._resolveSideOrderManualPriceInfo(sources);
+    if (this._shouldShowSideOrderAddressAction(tab, sources)) {
+      tags.push('地址');
+    }
+    tags.push('备注');
+    if (tab === 'personal') {
+      tags.push('小额打款');
+    }
     if (shippingInfo.isShipped || shippingInfo.trackingNo) {
       tags.push('物流信息');
-    }
-    if (tab === 'pending') {
-      tags.push('小额打款');
     }
     if (this._pickRefundBoolean(sources, ['showGoodsInstructEntrance', 'show_goods_instruct_entrance'])) {
       tags.push('查看说明书');
@@ -4610,6 +6034,7 @@ class PddApiClient extends EventEmitter {
   _normalizeSideOrderCard(item = {}, fallback = {}, tab = 'personal', index = 0) {
     const sources = this._buildSideOrderSources(item, fallback);
     const manualPriceInfo = this._resolveSideOrderManualPriceInfo(sources);
+    const addressInfo = this._resolveSideOrderAddressInfo(sources);
     const goodsInfo = Array.isArray(item?.orderGoodsList)
       ? (item.orderGoodsList[0] || {})
       : (item?.orderGoodsList || item?.goodsInfo || item?.goods_info || item?.raw?.orderGoodsList || {});
@@ -4657,6 +6082,10 @@ class PddApiClient extends EventEmitter {
       detailText,
       amountText,
       headline: this._resolveSideOrderHeadline(tab, sources),
+      receiverName: addressInfo.receiverName,
+      receiverPhone: addressInfo.receiverPhone,
+      addressText: addressInfo.addressText,
+      addressFullText: addressInfo.fullText,
       countdownEndTime: pendingCountdown.countdownEndTime,
       countdownText: pendingCountdown.countdownText,
       metaRows: this._buildSideOrderMetaRows(tab, sources),
@@ -5302,26 +6731,32 @@ class PddApiClient extends EventEmitter {
     const sentAtMs = Date.now();
     const payload = await this._post('/plateau/chat/send_message', requestBody);
     const confirmResult = await this._confirmSentTextMessage(sessionMeta, text, { sentAtMs });
-    if (!confirmResult.confirmed) {
-      const error = new Error('发送接口未确认消息已入会话，请稍后刷新重试');
-      error.payload = payload;
-      throw error;
+    const confirmed = !!confirmResult.confirmed;
+    if (!confirmed) {
+      this._log('[API] 消息发送未确认，按接口成功返回', {
+        sessionId: String(sessionMeta.sessionId || ''),
+        targetUid: String(requestBody?.data?.message?.to?.uid || ''),
+        payloadKeys: Object.keys(payload?.result || payload?.data || payload || {}),
+      });
+    } else {
+      this._log('[API] 消息发送确认成功', {
+        sessionId: String(sessionMeta.sessionId || ''),
+        targetUid: String(requestBody?.data?.message?.to?.uid || ''),
+        payloadKeys: Object.keys(payload?.result || payload?.data || payload || {}),
+        messageId: confirmResult.messageId,
+      });
     }
-    this._log('[API] 消息发送确认成功', {
-      sessionId: String(sessionMeta.sessionId || ''),
-      targetUid: String(requestBody?.data?.message?.to?.uid || ''),
-      payloadKeys: Object.keys(payload?.result || payload?.data || payload || {}),
-      messageId: confirmResult.messageId,
-    });
 
     const result = {
       success: true,
+      confirmed,
       sessionId: String(sessionMeta.sessionId || ''),
       customerId: String(sessionMeta.customerId || ''),
       userUid: String(sessionMeta.userUid || ''),
       messageId: confirmResult.messageId,
       text,
-      response: payload
+      response: payload,
+      warning: confirmed ? '' : '发送接口已返回成功，但短时间内未在会话列表确认到新消息',
     };
     this.emit('messageSent', result);
     return result;

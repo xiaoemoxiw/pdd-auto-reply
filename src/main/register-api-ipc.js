@@ -197,6 +197,28 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-get-small-payment-info', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn && !params.order_sn) return { error: '缺少订单编号' };
+    try {
+      return await getApiClient(shopId).getSmallPaymentInfo(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-submit-small-payment', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.orderSn && !params.order_sn) return { error: '缺少订单编号' };
+    try {
+      return await getApiClient(shopId).submitSmallPayment(params);
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
   ipcMain.handle('api-get-order-remark', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

@@ -7,6 +7,17 @@
   let apiRefundSelectedOrder = null;
   let apiRefundAllowOrderReselect = true;
   let apiRefundCustomAmount = '';
+  let apiSmallPaymentState = {
+    visible: false,
+    loading: false,
+    submitting: false,
+    selectingOrder: false,
+    orderKey: '',
+    orderId: '',
+    type: 'shipping',
+    order: null,
+    info: null,
+  };
   let apiSideOrderSessionKey = '';
   let apiSideOrderCountdownTimer = null;
   let apiGoodsSpecModalState = {
@@ -24,6 +35,8 @@
   const API_REFUND_DEFAULT_NOTE = '亲亲，这边帮您申请退款，您看可以吗？若同意可以点击下方卡片按钮哦～';
   const API_RETURN_REFUND_DEFAULT_NOTE = '亲亲，这边帮您申请退货退款，您看可以吗？若同意可以点击下方卡片按钮哦～';
   const API_RESEND_DEFAULT_NOTE = '亲亲，这边帮您申请补寄，您看可以吗？若同意可以点击下方卡片按钮哦～';
+  const API_SMALL_PAYMENT_NOTE_MAX_LENGTH = 60;
+  const API_SMALL_PAYMENT_MAX_TIMES = 3;
   const API_ORDER_REMARK_MAX_LENGTH = 300;
   const API_ORDER_REMARK_TAG_ORDER = ['RED', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE'];
   const API_ORDER_REMARK_TAG_LABELS = {
@@ -169,6 +182,7 @@
   }
 
   function resetApiSideOrderStore() {
+    closeApiSmallPaymentModal({ silent: true });
     apiSideOrderRemarkState = {
       ...apiSideOrderRemarkState,
       visible: false,
@@ -625,6 +639,19 @@
     return (tagName || note).trim();
   }
 
+  function buildApiSideOrderAddressCopyText(order = {}) {
+    const fullText = String(order?.addressFullText || '').trim();
+    if (fullText) return fullText;
+    const receiverName = String(order?.receiverName || '').trim();
+    const receiverPhone = String(order?.receiverPhone || '').trim();
+    const addressText = String(order?.addressText || '').trim();
+    return [
+      receiverName ? `收货人：${receiverName}` : '',
+      receiverPhone ? `联系电话：${receiverPhone}` : '',
+      addressText ? `收货地址：${addressText}` : '',
+    ].filter(Boolean).join('\n');
+  }
+
   function renderApiSideOrderRemarkEditor(order = {}) {
     const state = apiSideOrderRemarkState;
     if (!state.visible || String(state.orderKey || '') !== String(order?.key || '')) return '';
@@ -720,19 +747,38 @@
     `;
   }
 
-  function renderApiSideOrderCard(order = {}) {
+  function isApiSideOrderPendingLike(order = {}) {
+    const mergedStatusText = [
+      order?.headline,
+      order?.orderStatusText,
+      order?.shippingStatusText,
+      order?.shippingState,
+    ].filter(Boolean).join(' ').replace(/\s+/g, '');
+    return /(待支付|待付款|未支付|未付款|付款中|待成团|未成团)/.test(mergedStatusText);
+  }
+
+  function renderApiSideOrderCard(order = {}, tab = 'personal') {
     const actionTags = Array.isArray(order?.actionTags) ? order.actionTags : [];
+    const visibleActionTags = (tab === 'pending' || (tab === 'personal' && isApiSideOrderPendingLike(order)))
+      ? actionTags.filter(tag => ['备注', '改价'].includes(String(tag || '').trim()))
+      : actionTags;
     const metaRowsHtml = buildApiSideOrderMetaRows(order?.metaRows || []);
     const summaryRowsHtml = renderApiSideOrderPriceSummary(order);
     const isPriceEditing = apiSideOrderPriceState.visible && String(apiSideOrderPriceState.orderKey || '') === String(order?.key || '');
     const countdownHtml = order?.countdownEndTime
       ? `<span class="api-side-order-card-countdown" data-api-side-countdown-end="${esc(order.countdownEndTime)}">${esc(order?.countdownText || '')}</span>`
       : '';
-    const actionTagsHtml = !isPriceEditing && actionTags.length
-      ? `<div class="api-side-order-card-actions">${actionTags.map(tag => {
+    const actionTagsHtml = !isPriceEditing && visibleActionTags.length
+      ? `<div class="api-side-order-card-actions">${visibleActionTags.map(tag => {
           const label = String(tag || '').trim();
+          if (label === '地址') {
+            return `<button type="button" class="api-side-order-card-action is-button" data-api-side-action="address" data-api-side-order-key="${esc(order?.key || '')}">${esc(label)}</button>`;
+          }
           if (label === '备注') {
             return `<button type="button" class="api-side-order-card-action is-button" data-api-side-action="remark" data-api-side-order-key="${esc(order?.key || '')}">${esc(label)}</button>`;
+          }
+          if (label === '小额打款') {
+            return `<button type="button" class="api-side-order-card-action is-button" data-api-side-action="small-payment" data-api-side-order-key="${esc(order?.key || '')}">${esc(label)}</button>`;
           }
           if (label === '改价' && !order?.manualPriceApplied) {
             return `<button type="button" class="api-side-order-card-action is-button" data-api-side-action="price" data-api-side-order-key="${esc(order?.key || '')}">${esc(label)}</button>`;
@@ -904,7 +950,7 @@
       showEmpty(getApiSideOrderEmptyText(tab));
       return;
     }
-    showList(entry.items.map(renderApiSideOrderCard).join(''));
+    showList(entry.items.map(item => renderApiSideOrderCard(item, tab)).join(''));
     syncApiSideOrderCountdowns();
   }
 
@@ -1274,9 +1320,34 @@
       }
       return;
     }
+    const addressTrigger = event.target.closest('[data-api-side-action="address"]');
+    if (addressTrigger) {
+      const order = getApiSideOrderItem(addressTrigger.dataset.apiSideOrderKey || '');
+      if (!order) {
+        showApiSideOrderToast('未找到对应订单');
+        return;
+      }
+      const text = buildApiSideOrderAddressCopyText(order);
+      if (!text) {
+        showApiSideOrderToast('暂无地址信息');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        showApiSideOrderToast('地址已复制');
+      } catch {
+        setApiHint(text);
+      }
+      return;
+    }
     const remarkTrigger = event.target.closest('[data-api-side-action="remark"]');
     if (remarkTrigger) {
       await openApiSideOrderRemark(remarkTrigger.dataset.apiSideOrderKey || '');
+      return;
+    }
+    const smallPaymentTrigger = event.target.closest('[data-api-side-action="small-payment"]');
+    if (smallPaymentTrigger) {
+      openApiSmallPaymentModal(smallPaymentTrigger.dataset.apiSideOrderKey || '');
       return;
     }
     const priceTrigger = event.target.closest('[data-api-side-action="price"]');
@@ -2532,6 +2603,495 @@
     const counter = document.getElementById('apiRefundNoteCount');
     if (!textarea || !counter) return;
     counter.textContent = `${textarea.value.length} / 200`;
+  }
+
+  function getApiSmallPaymentTypeMeta(type = 'shipping') {
+    if (type === 'difference') {
+      return {
+        label: '补差价',
+        refundType: null,
+        notePlaceholder: '已补差价给您，请查收',
+      };
+    }
+    if (type === 'other') {
+      return {
+        label: '其他',
+        refundType: 2,
+        notePlaceholder: '已补偿给您，请查收',
+      };
+    }
+    return {
+      label: '补运费',
+      refundType: null,
+      notePlaceholder: '已补运费给您，请查收',
+    };
+  }
+
+  function getCurrentApiSmallPaymentType() {
+    return document.querySelector('input[name="apiSmallPaymentType"]:checked')?.value || 'shipping';
+  }
+
+  function getSelectedApiSmallPaymentOrder() {
+    return apiSmallPaymentState.order || getApiSideOrderItem(apiSmallPaymentState.orderKey) || null;
+  }
+
+  function getApiSmallPaymentOrderQuantity(order = {}) {
+    const detailText = String(order?.detailText || '').trim();
+    const match = detailText.match(/(?:^|\s)x\s*(\d+)\s*$/i);
+    return match ? `x ${match[1]}` : '';
+  }
+
+  function getApiSmallPaymentMaxAmount(order = getSelectedApiSmallPaymentOrder()) {
+    const infoLimitAmount = Number(apiSmallPaymentState?.info?.limitAmount || 0);
+    if (Number.isFinite(infoLimitAmount) && infoLimitAmount > 0) {
+      return infoLimitAmount;
+    }
+    return Math.max(0, getApiSideOrderPriceBaseAmount(order));
+  }
+
+  function clampApiSmallPaymentAmountInputValue(value, options = {}) {
+    const normalized = options.formatted
+      ? formatApiRefundAmountInputValue(value)
+      : normalizeApiRefundAmountInputValue(value);
+    if (!normalized) return '';
+    const maxAmount = getApiSmallPaymentMaxAmount(options.order);
+    if (!maxAmount) return normalized;
+    const numeric = Number(normalized);
+    if (!Number.isFinite(numeric)) return '';
+    const bounded = Math.min(Math.max(numeric, 0), maxAmount);
+    return options.formatted
+      ? formatApiRefundAmountInputValue(bounded)
+      : normalizeApiRefundAmountInputValue(bounded);
+  }
+
+  function updateApiSmallPaymentNoteCount() {
+    const textarea = document.getElementById('apiSmallPaymentNote');
+    const counter = document.getElementById('apiSmallPaymentNoteCount');
+    if (!textarea || !counter) return;
+    counter.textContent = `${textarea.value.length}/${API_SMALL_PAYMENT_NOTE_MAX_LENGTH}`;
+  }
+
+  function formatApiSmallPaymentFen(fen) {
+    const numeric = Number(fen);
+    if (!Number.isFinite(numeric) || numeric < 0) return '0.00';
+    return formatApiSideOrderMoneyNumber(numeric / 100);
+  }
+
+  function getApiSmallPaymentCandidateOrders() {
+    const items = Array.isArray(apiSideOrderStore?.personal?.items) ? apiSideOrderStore.personal.items : [];
+    return items.filter(item => item && item.key && (item.orderId || item.orderSn));
+  }
+
+  function renderApiSmallPaymentOrderSelector() {
+    const container = document.getElementById('apiSmallPaymentOrderSelector');
+    if (!container) return;
+    const orders = getApiSmallPaymentCandidateOrders();
+    const currentKey = String(apiSmallPaymentState.orderKey || '');
+    if (!apiSmallPaymentState.selectingOrder || orders.length <= 1) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+    container.style.display = 'block';
+    container.innerHTML = orders.map(order => {
+      const orderKey = String(order?.key || '');
+      const quantityText = getApiSmallPaymentOrderQuantity(order);
+      const detailText = String(order?.detailText || '所拍规格待确认').trim();
+      const metaText = [detailText, quantityText].filter(Boolean).join(' · ');
+      const selected = orderKey === currentKey;
+      return `
+        <div class="api-small-payment-order-option">
+          <div class="api-small-payment-order-option-main">
+            <div class="api-small-payment-order-option-id">订单编号：${esc(order?.orderId || '-')}</div>
+            <div class="api-small-payment-order-option-title">${esc(order?.title || '未命名商品')}</div>
+            <div class="api-small-payment-order-option-meta">${esc(metaText || '所拍规格待确认')} · ¥${esc(formatApiSideOrderMoneyNumber(getApiSideOrderPriceBaseAmount(order) || 0))}</div>
+          </div>
+          <button class="api-small-payment-order-option-btn" type="button" data-api-small-payment-select-order="${esc(orderKey)}">${selected ? '当前订单' : '选择'}</button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderApiSmallPaymentStatus(order = getSelectedApiSmallPaymentOrder()) {
+    const card = document.getElementById('apiSmallPaymentStatusCard');
+    const row = document.getElementById('apiSmallPaymentStatusRow');
+    const tips = document.getElementById('apiSmallPaymentStatusTips');
+    if (!card || !row || !tips) return;
+    const info = apiSmallPaymentState?.info && typeof apiSmallPaymentState.info === 'object'
+      ? apiSmallPaymentState.info
+      : null;
+    if (!info) {
+      card.style.display = 'none';
+      row.innerHTML = '';
+      tips.innerHTML = '';
+      return;
+    }
+    const usedTimes = Number.isFinite(Number(info.usedTimes)) ? Number(info.usedTimes) : 0;
+    const remainingTimes = Number.isFinite(Number(info.remainingTimes)) ? Number(info.remainingTimes) : API_SMALL_PAYMENT_MAX_TIMES;
+    const successNum = Number.isFinite(Number(info?.history?.successNum)) ? Number(info.history.successNum) : 0;
+    const processingNum = Number.isFinite(Number(info?.history?.processingNum)) ? Number(info.history.processingNum) : 0;
+    const waitHandleNum = Number.isFinite(Number(info?.history?.waitHandleNum)) ? Number(info.history.waitHandleNum) : 0;
+    const chips = [
+      `最大金额 <strong>¥${esc(formatApiSideOrderMoneyNumber(getApiSmallPaymentMaxAmount(order) || 0))}</strong>`,
+      `剩余次数 <strong>${esc(String(remainingTimes))}</strong>`,
+      `已打款 <strong>${esc(String(usedTimes))}</strong>`,
+      `成功 <strong>${esc(String(successNum))}</strong>`,
+      `处理中 <strong>${esc(String(processingNum))}</strong>`,
+      `待处理 <strong>${esc(String(waitHandleNum))}</strong>`,
+      `模板 <strong>${info?.submitTemplateReady ? '已捕获' : '未捕获'}</strong>`,
+    ];
+    if (info?.submitTemplateReady) {
+      const recognizedCount = Number(info?.submitTemplateMeta?.recognizedCount || 0) || 0;
+      chips.push(`识别 <strong>${esc(String(recognizedCount))}</strong>`);
+    }
+    row.innerHTML = chips.map(text => `<span class="api-small-payment-status-chip">${text}</span>`).join('');
+    const tipItems = [];
+    if (info.transferDesc) tipItems.push(info.transferDesc);
+    if (info.needChargePlayMoney) tipItems.push('平台提示当前打款可能涉及收费');
+    if (info?.submitTemplateMeta?.recognizedFields) {
+      const fields = info.submitTemplateMeta.recognizedFields;
+      const labels = [
+        fields.orderField ? '订单号' : '',
+        fields.amountField ? '金额' : '',
+        fields.typeField ? '类型' : '',
+        fields.noteField ? '留言' : '',
+        fields.mobileField ? '手机号' : '',
+      ].filter(Boolean);
+      if (labels.length) {
+        tipItems.push(`模板已识别字段：${labels.join('、')}`);
+      }
+    }
+    if (Array.isArray(info.tips) && info.tips.length) {
+      tipItems.push(...info.tips.slice(0, 3));
+    }
+    if (!tipItems.length && Array.isArray(info.detailList) && info.detailList.length) {
+      const first = info.detailList[0] || {};
+      const amountText = Number.isFinite(Number(first?.amount)) ? `¥${formatApiSmallPaymentFen(first.amount)}` : '';
+      const statusText = String(first?.statusDesc || first?.status_desc || first?.statusText || '').trim();
+      if (amountText || statusText) {
+        tipItems.push(`最近一笔记录 ${[amountText, statusText].filter(Boolean).join(' · ')}`);
+      }
+    }
+    card.style.display = row.innerHTML || tipItems.length ? 'block' : 'none';
+    tips.innerHTML = tipItems.map(item => `<span>${esc(item)}</span>`).join('');
+  }
+
+  function syncApiSmallPaymentForm(order = getSelectedApiSmallPaymentOrder()) {
+    const type = getCurrentApiSmallPaymentType();
+    const meta = getApiSmallPaymentTypeMeta(type);
+    const amountInput = document.getElementById('apiSmallPaymentAmount');
+    const noteInput = document.getElementById('apiSmallPaymentNote');
+    const amountTip = document.getElementById('apiSmallPaymentAmountTip');
+    const permissionText = document.getElementById('apiSmallPaymentPermission');
+    const submitButton = document.getElementById('btnApiSmallPaymentSubmit');
+    const changeOrderButton = document.getElementById('btnApiSmallPaymentChangeOrder');
+    const info = apiSmallPaymentState?.info && typeof apiSmallPaymentState.info === 'object'
+      ? apiSmallPaymentState.info
+      : null;
+    const maxAmount = getApiSmallPaymentMaxAmount(order);
+    const maxAmountText = formatApiSideOrderMoneyNumber(maxAmount || 0);
+    apiSmallPaymentState = {
+      ...apiSmallPaymentState,
+      type,
+    };
+    if (amountInput) {
+      amountInput.placeholder = maxAmount > 0 ? `单次上限¥${maxAmountText}` : '请输入打款金额';
+    }
+    if (noteInput) {
+      noteInput.placeholder = meta.notePlaceholder;
+    }
+    if (amountTip) {
+      const remainingTimes = Number.isFinite(Number(info?.remainingTimes))
+        ? Number(info.remainingTimes)
+        : API_SMALL_PAYMENT_MAX_TIMES;
+      amountTip.textContent = `最多可打款${remainingTimes}次`;
+    }
+    if (permissionText) {
+      if (info?.transferDesc) {
+        permissionText.textContent = info.transferDesc;
+      } else if (info && info.submitTemplateReady === false) {
+        permissionText.textContent = '尚未捕获真实提交模板，可先在嵌入网页完成一次小额打款后再回到接口页继续对齐';
+      } else if (info?.submitTemplateReady) {
+        const recognizedCount = Number(info?.submitTemplateMeta?.recognizedCount || 0) || 0;
+        permissionText.textContent = recognizedCount > 0
+          ? `已捕获真实提交模板，已识别 ${recognizedCount} 个关键字段，当前仍待对齐后接通接口页确认提交`
+          : '已捕获真实提交模板，当前仍待对齐字段后接通接口页确认提交';
+      } else if (info?.needChargePlayMoney) {
+        permissionText.textContent = '当前打款能力涉及收费规则，请在确认前核对平台说明';
+      } else if (Array.isArray(info?.tips) && info.tips.length) {
+        permissionText.textContent = info.tips[0];
+      } else {
+        permissionText.textContent = '无管理员权限？点击提交打款申请给店铺管理员';
+      }
+    }
+    if (changeOrderButton) {
+      changeOrderButton.textContent = apiSmallPaymentState.selectingOrder ? '收起列表' : '修改订单';
+    }
+    if (submitButton) {
+      if (apiSmallPaymentState.loading) {
+        submitButton.disabled = true;
+        submitButton.textContent = '加载中...';
+      } else if (apiSmallPaymentState.submitting) {
+        submitButton.disabled = true;
+        submitButton.textContent = '提交中...';
+      } else if (info && info.canSubmit === false) {
+        submitButton.disabled = true;
+        submitButton.textContent = '暂不可打款';
+      } else {
+        submitButton.disabled = false;
+        submitButton.textContent = '确认';
+      }
+    }
+    renderApiSmallPaymentOrderSelector();
+    renderApiSmallPaymentStatus(order);
+    updateApiSmallPaymentNoteCount();
+  }
+
+  function fillApiSmallPaymentModal(order = {}) {
+    const context = order?.key ? order : getApiSideOrderItem(order?.orderKey || '');
+    if (!context) return;
+    apiSmallPaymentState = {
+      visible: true,
+      loading: false,
+      submitting: false,
+      selectingOrder: false,
+      orderKey: String(context.key || ''),
+      orderId: String(context.orderId || ''),
+      type: 'shipping',
+      order: context,
+      info: null,
+    };
+    const image = document.getElementById('apiSmallPaymentGoodsImage');
+    const placeholder = document.getElementById('apiSmallPaymentGoodsPlaceholder');
+    const orderIdEl = document.getElementById('apiSmallPaymentOrderId');
+    const titleEl = document.getElementById('apiSmallPaymentGoodsTitle');
+    const detailEl = document.getElementById('apiSmallPaymentGoodsDetail');
+    const priceEl = document.getElementById('apiSmallPaymentGoodsPrice');
+    const amountInput = document.getElementById('apiSmallPaymentAmount');
+    const noteInput = document.getElementById('apiSmallPaymentNote');
+    const shippingTypeInput = document.querySelector('input[name="apiSmallPaymentType"][value="shipping"]');
+    if (image) {
+      image.src = context.imageUrl || '';
+      image.style.display = context.imageUrl ? 'block' : 'none';
+    }
+    if (placeholder) {
+      placeholder.style.display = context.imageUrl ? 'none' : 'inline-flex';
+    }
+    if (orderIdEl) orderIdEl.textContent = `订单编号：${context.orderId || '-'}`;
+    if (titleEl) titleEl.textContent = context.title || '当前订单信息待加载';
+    if (detailEl) {
+      const quantityText = getApiSmallPaymentOrderQuantity(context);
+      const detailText = String(context.detailText || '所拍规格待确认').trim();
+      detailEl.textContent = [detailText, quantityText].filter(Boolean).join(' · ');
+    }
+    if (priceEl) {
+      priceEl.innerHTML = `¥ <strong>${esc(formatApiSideOrderMoneyNumber(getApiSmallPaymentMaxAmount(context) || 0))}</strong>`;
+    }
+    if (shippingTypeInput) shippingTypeInput.checked = true;
+    if (amountInput) amountInput.value = '';
+    if (noteInput) noteInput.value = '';
+    syncApiSmallPaymentForm(context);
+  }
+
+  async function selectApiSmallPaymentOrder(orderKey = '') {
+    const nextOrder = getApiSideOrderItem(orderKey);
+    if (!nextOrder) {
+      showApiSideOrderToast('未找到对应订单');
+      return;
+    }
+    fillApiSmallPaymentModal(nextOrder);
+    apiSmallPaymentState = {
+      ...apiSmallPaymentState,
+      selectingOrder: false,
+    };
+    syncApiSmallPaymentForm(nextOrder);
+    await loadApiSmallPaymentInfo(nextOrder);
+  }
+
+  async function loadApiSmallPaymentInfo(order = getSelectedApiSmallPaymentOrder()) {
+    const state = getState();
+    if (!order || !window.pddApi?.apiGetSmallPaymentInfo || !state.apiActiveSessionShopId) {
+      syncApiSmallPaymentForm(order);
+      return;
+    }
+    apiSmallPaymentState = {
+      ...apiSmallPaymentState,
+      loading: true,
+      info: null,
+    };
+    syncApiSmallPaymentForm(order);
+    try {
+      const result = await window.pddApi.apiGetSmallPaymentInfo({
+        shopId: state.apiActiveSessionShopId,
+        orderSn: order.orderId || order.orderSn,
+      });
+      if (!apiSmallPaymentState.visible || String(apiSmallPaymentState.orderKey || '') !== String(order.key || '')) {
+        return;
+      }
+      if (!result || result.error) {
+        throw new Error(result?.error || '获取小额打款信息失败');
+      }
+      apiSmallPaymentState = {
+        ...apiSmallPaymentState,
+        loading: false,
+        info: result,
+      };
+    } catch (error) {
+      apiSmallPaymentState = {
+        ...apiSmallPaymentState,
+        loading: false,
+        info: {
+          canSubmit: false,
+          transferDesc: error?.message || '获取小额打款信息失败',
+        },
+      };
+      setApiHint(error?.message || '获取小额打款信息失败');
+    }
+    syncApiSmallPaymentForm(order);
+  }
+
+  function openApiSmallPaymentModal(orderKey = '') {
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    const order = getApiSideOrderItem(orderKey);
+    if (!order) {
+      showApiSideOrderToast('未找到对应订单');
+      return;
+    }
+    closeApiSideOrderPriceEditor();
+    apiSideOrderRemarkState = {
+      ...apiSideOrderRemarkState,
+      visible: false,
+      loading: false,
+      saving: false,
+      error: '',
+    };
+    fillApiSmallPaymentModal(order);
+    window.showModal?.('modalApiSmallPayment');
+    loadApiSmallPaymentInfo(order);
+  }
+
+  function closeApiSmallPaymentModal(options = {}) {
+    apiSmallPaymentState = {
+      visible: false,
+      loading: false,
+      submitting: false,
+      selectingOrder: false,
+      orderKey: '',
+      orderId: '',
+      type: 'shipping',
+      order: null,
+      info: null,
+    };
+    if (options?.silent) {
+      window.hideModal?.('modalApiSmallPayment');
+      return;
+    }
+    window.hideModal?.('modalApiSmallPayment');
+  }
+
+  function handleApiSmallPaymentChangeOrder() {
+    const orders = getApiSmallPaymentCandidateOrders();
+    if (orders.length <= 1) {
+      showApiSideOrderToast('当前仅有一笔可选订单');
+      return;
+    }
+    apiSmallPaymentState = {
+      ...apiSmallPaymentState,
+      selectingOrder: !apiSmallPaymentState.selectingOrder,
+    };
+    syncApiSmallPaymentForm();
+  }
+
+  async function handleApiSmallPaymentSubmit() {
+    const order = getSelectedApiSmallPaymentOrder();
+    if (!order) {
+      showApiSideOrderToast('未找到对应订单');
+      return;
+    }
+    const amountInput = document.getElementById('apiSmallPaymentAmount');
+    const noteInput = document.getElementById('apiSmallPaymentNote');
+    if (apiSmallPaymentState.loading) {
+      setApiHint('正在加载小额打款信息，请稍后再试');
+      return;
+    }
+    if (apiSmallPaymentState.info && apiSmallPaymentState.info.canSubmit === false) {
+      setApiHint(apiSmallPaymentState.info.transferDesc || '当前订单暂不可打款');
+      return;
+    }
+    const amountText = clampApiSmallPaymentAmountInputValue(amountInput?.value, {
+      order,
+      formatted: true,
+    });
+    if (!amountText) {
+      setApiHint('请输入正确的打款金额');
+      return;
+    }
+    if (amountInput) amountInput.value = amountText;
+    const type = getCurrentApiSmallPaymentType();
+    const noteMeta = getApiSmallPaymentTypeMeta(type);
+    const noteText = String(noteInput?.value || '').trim() || noteMeta.notePlaceholder;
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = '提交中...';
+    }
+    apiSmallPaymentState = {
+      ...apiSmallPaymentState,
+      submitting: true,
+      type,
+    };
+    syncApiSmallPaymentForm(order);
+    try {
+      recordApiSyncState(
+        '小额打款弹窗',
+        `订单：${order.orderId || '-'}；类型：${noteMeta.label}；金额：¥${amountText}；留言：${noteText}`,
+      );
+      const reasonText = apiSmallPaymentState?.info?.transferDesc || '';
+      if (!reasonText && apiSmallPaymentState?.info?.submitTemplateReady === false) {
+        setApiHint('当前店铺尚未捕获小额打款真实提交模板，请先在嵌入网页完成一次小额打款');
+        showApiSideOrderToast('未捕获真实提交模板');
+      } else if (!window.pddApi?.apiSubmitSmallPayment) {
+        setApiHint('当前版本缺少小额打款提交能力');
+        showApiSideOrderToast('提交能力不可用');
+      } else {
+        const submitResult = await window.pddApi.apiSubmitSmallPayment({
+          shopId: getState().apiActiveSessionShopId,
+          orderSn: order.orderId || order.orderSn,
+          amount: amountText,
+          refundType: noteMeta.refundType ?? type,
+          remarks: noteText,
+          chargeType: apiSmallPaymentState?.info?.channel || undefined,
+        });
+        if (!submitResult || submitResult.error) {
+          throw new Error(submitResult?.error || '提交小额打款失败');
+        }
+        if (submitResult.cashierUrl) {
+          if (window.pddApi?.navigatePdd) {
+            await window.pddApi.navigatePdd(submitResult.cashierUrl);
+          }
+          closeApiSmallPaymentModal({ silent: true });
+          showApiSideOrderToast('已跳转到嵌入网页收银台');
+          setApiHint('已创建小额打款，请在嵌入网页收银台完成支付');
+          await callRuntime('switchView', 'chat');
+        } else {
+          setApiHint('小额打款已提交成功');
+          showApiSideOrderToast('小额打款已提交');
+          await loadApiSmallPaymentInfo(order);
+        }
+      }
+    } catch (error) {
+      setApiHint(error?.message || '提交小额打款失败');
+      showApiSideOrderToast(error?.message || '提交小额打款失败');
+    } finally {
+      apiSmallPaymentState = {
+        ...apiSmallPaymentState,
+        submitting: false,
+      };
+      syncApiSmallPaymentForm(order);
+    }
   }
 
   function showApiRefundOrderEmptyHint() {
@@ -4375,6 +4935,42 @@
     document.getElementById('btnApiRefundBack')?.addEventListener('click', handleApiRefundBack);
     document.getElementById('btnApiRefundSubmit')?.addEventListener('click', handleApiRefundSubmit);
     document.getElementById('apiRefundNote')?.addEventListener('input', updateApiRefundNoteCount);
+    document.getElementById('btnApiSmallPaymentChangeOrder')?.addEventListener('click', handleApiSmallPaymentChangeOrder);
+    document.getElementById('apiSmallPaymentOrderSelector')?.addEventListener('click', async event => {
+      const button = event.target.closest('[data-api-small-payment-select-order]');
+      if (!button) return;
+      const orderKey = button.dataset.apiSmallPaymentSelectOrder || '';
+      if (!orderKey || orderKey === apiSmallPaymentState.orderKey) {
+        apiSmallPaymentState = {
+          ...apiSmallPaymentState,
+          selectingOrder: false,
+        };
+        syncApiSmallPaymentForm();
+        return;
+      }
+      await selectApiSmallPaymentOrder(orderKey);
+    });
+    document.getElementById('btnApiSmallPaymentSubmit')?.addEventListener('click', handleApiSmallPaymentSubmit);
+    document.getElementById('apiSmallPaymentNote')?.addEventListener('input', updateApiSmallPaymentNoteCount);
+    document.getElementById('apiSmallPaymentAmount')?.addEventListener('input', event => {
+      const order = getSelectedApiSmallPaymentOrder();
+      const nextValue = clampApiSmallPaymentAmountInputValue(event.target?.value, { order });
+      if (event.target && event.target.value !== nextValue) {
+        event.target.value = nextValue;
+      }
+    });
+    document.getElementById('apiSmallPaymentAmount')?.addEventListener('blur', event => {
+      const order = getSelectedApiSmallPaymentOrder();
+      const nextValue = clampApiSmallPaymentAmountInputValue(event.target?.value, { order, formatted: true });
+      if (event.target) {
+        event.target.value = nextValue;
+      }
+    });
+    document.querySelectorAll('input[name="apiSmallPaymentType"]').forEach(input => {
+      input.addEventListener('change', () => {
+        syncApiSmallPaymentForm();
+      });
+    });
     document.getElementById('apiRefundAmount')?.addEventListener('input', event => {
       const nextValue = clampApiRefundAmountInputValue(event.target?.value);
       apiRefundCustomAmount = nextValue;
@@ -4458,6 +5054,8 @@
   window.renderApiSideOrders = renderApiSideOrders;
   window.invalidateApiSideOrders = invalidateApiSideOrders;
   window.syncApiSelectionWithFilter = syncApiSelectionWithFilter;
+  window.openApiSmallPaymentModal = openApiSmallPaymentModal;
+  window.closeApiSmallPaymentModal = closeApiSmallPaymentModal;
   window.openApiGoodsSpecModal = openApiGoodsSpecModal;
   window.closeApiGoodsSpecModal = closeApiGoodsSpecModal;
 

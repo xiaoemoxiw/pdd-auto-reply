@@ -989,6 +989,384 @@
       resize: none;
     }
 
+    .api-small-payment-modal {
+      width: min(92vw, 700px);
+      max-width: 700px;
+    }
+
+    .api-small-payment-body {
+      padding: 24px 28px 20px;
+    }
+
+    .api-small-payment-intro {
+      padding: 14px 16px;
+      border: 1px solid #bad3ff;
+      border-radius: 6px;
+      background: #f5f9ff;
+      color: #3b4252;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .api-small-payment-intro strong {
+      display: block;
+      margin-bottom: 2px;
+      color: #1f2430;
+      font-size: 14px;
+    }
+
+    .api-small-payment-section {
+      margin-top: 24px;
+    }
+
+    .api-small-payment-form-row {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .api-small-payment-form-row+.api-small-payment-form-row {
+      margin-top: 18px;
+    }
+
+    .api-small-payment-form-label {
+      padding-top: 12px;
+      color: #5b6472;
+      font-size: 14px;
+      line-height: 1.4;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .api-small-payment-order-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 14px;
+      border: 1px solid #dfe4ec;
+      border-radius: 6px;
+      background: #fff;
+    }
+
+    .api-small-payment-order-media,
+    .api-small-payment-order-media img {
+      width: 82px;
+      height: 82px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .api-small-payment-order-media {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f3f5f9;
+      overflow: hidden;
+      color: #a6adbb;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .api-small-payment-order-media img {
+      display: block;
+      object-fit: cover;
+      background: #f3f5f9;
+    }
+
+    .api-small-payment-order-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .api-small-payment-order-id {
+      color: #333;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .api-small-payment-order-title {
+      margin-top: 4px;
+      color: #333;
+      font-size: 15px;
+      line-height: 1.45;
+      font-weight: 600;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow: hidden;
+    }
+
+    .api-small-payment-order-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .api-small-payment-order-detail {
+      min-width: 0;
+      flex: 1;
+      color: #7f8794;
+      font-size: 13px;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .api-small-payment-order-price {
+      color: #666;
+      font-size: 15px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .api-small-payment-order-price strong {
+      color: #444;
+      font-size: 28px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .api-small-payment-order-action {
+      flex-shrink: 0;
+    }
+
+    .api-small-payment-order-btn {
+      min-width: 94px;
+      height: 36px;
+      padding: 0 14px;
+      border: 1px solid #89a2f4;
+      border-radius: 6px;
+      background: #fff;
+      color: #4f73ef;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .api-small-payment-order-btn:hover {
+      background: #eef3ff;
+    }
+
+    .api-small-payment-order-selector {
+      margin-top: 10px;
+      border: 1px solid #dfe4ec;
+      border-radius: 6px;
+      background: #f8fafc;
+      max-height: 220px;
+      overflow: auto;
+    }
+
+    .api-small-payment-order-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid #e8edf5;
+    }
+
+    .api-small-payment-order-option:last-child {
+      border-bottom: none;
+    }
+
+    .api-small-payment-order-option-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .api-small-payment-order-option-id {
+      color: #333;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .api-small-payment-order-option-title {
+      margin-top: 4px;
+      color: #333;
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .api-small-payment-order-option-meta {
+      margin-top: 4px;
+      color: #7f8794;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .api-small-payment-order-option-btn {
+      flex-shrink: 0;
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid #89a2f4;
+      border-radius: 6px;
+      background: #fff;
+      color: #4f73ef;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .api-small-payment-order-option-btn:hover {
+      background: #eef3ff;
+    }
+
+    .api-small-payment-status-card {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border: 1px solid #e5e9f2;
+      border-radius: 6px;
+      background: #fafbfd;
+    }
+
+    .api-small-payment-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      align-items: center;
+    }
+
+    .api-small-payment-status-chip {
+      color: #5b6472;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .api-small-payment-status-chip strong {
+      color: #1f2430;
+      font-weight: 600;
+    }
+
+    .api-small-payment-status-tips {
+      margin-top: 10px;
+      color: #7f8794;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .api-small-payment-status-tips span+span::before {
+      content: " / ";
+      color: #c0c6d4;
+    }
+
+    .api-small-payment-type-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .api-small-payment-type-option {
+      position: relative;
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .api-small-payment-type-option input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .api-small-payment-type-option span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 40px;
+      border: 1px solid #d6dbe6;
+      border-radius: 6px;
+      background: #fff;
+      color: #555;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .api-small-payment-type-option input:checked+span {
+      border-color: #6f8ff4;
+      background: #f5f8ff;
+      color: #4f73ef;
+      box-shadow: inset 0 0 0 1px rgba(79, 115, 239, 0.15);
+    }
+
+    .api-small-payment-amount-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .api-small-payment-amount-input-wrap {
+      position: relative;
+      width: 216px;
+      max-width: 100%;
+    }
+
+    .api-small-payment-amount-prefix {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #555;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .api-small-payment-amount-input {
+      height: 42px;
+      padding-left: 30px;
+      font-size: 18px;
+    }
+
+    .api-small-payment-amount-tip {
+      color: #666;
+      font-size: 13px;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+
+    .api-small-payment-note-wrap {
+      position: relative;
+    }
+
+    .api-small-payment-note {
+      min-height: 114px;
+      padding-bottom: 28px;
+      resize: none;
+    }
+
+    .api-small-payment-note-count {
+      position: absolute;
+      right: 14px;
+      bottom: 10px;
+      color: #a0a7b4;
+      font-size: 12px;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .api-small-payment-permission {
+      margin-top: 26px;
+      text-align: center;
+      color: #4f73ef;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .api-small-payment-modal .modal-footer {
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 14px 24px;
+    }
+
     .api-refund-amount:disabled {
       background: #f5f5f5;
       color: #666;
@@ -3573,6 +3951,10 @@
       gap: 8px;
     }
 
+    .api-video-popover-actions-text{
+      font-size: 10px
+    }
+
     .api-video-popover-content {
       flex: 1;
       padding: 10px 12px;
@@ -5694,7 +6076,7 @@
                   </button>
                   <!-- <span>🎫</span> -->
                   <span>🔗</span>
-                  <span>🛡</span>
+                  <!-- <span>🛡</span> -->
                   <span id="btnApiRefund">退</span>
                   <span class="api-composer-action-link" style="margin-left:auto;">邀请关注</span>
                   <span class="api-composer-action-link">邀请下单</span>
@@ -7057,6 +7439,97 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modalApiSmallPayment">
+    <div class="modal api-small-payment-modal">
+      <div class="modal-header">
+        <h3>小额打款</h3>
+        <button class="modal-close" type="button"
+          onclick="window.closeApiSmallPaymentModal ? window.closeApiSmallPaymentModal() : hideModal('modalApiSmallPayment')">&times;</button>
+      </div>
+      <div class="modal-body api-small-payment-body">
+        <div class="api-small-payment-intro">
+          <strong>功能说明：</strong>
+          如您与消费者之间存在补运费、补差价等小额补偿需求，请使用小额打款功能，打款成功后消费者将收到您的补偿金。
+        </div>
+
+        <div class="api-small-payment-section">
+          <div class="api-small-payment-form-row">
+            <div class="api-small-payment-form-label">已选订单</div>
+            <div class="api-small-payment-order-card">
+              <div class="api-small-payment-order-media">
+                <img id="apiSmallPaymentGoodsImage" alt="商品主图" style="display:none;">
+                <span id="apiSmallPaymentGoodsPlaceholder">商品</span>
+              </div>
+              <div class="api-small-payment-order-main">
+                <div class="api-small-payment-order-id" id="apiSmallPaymentOrderId">订单编号：-</div>
+                <div class="api-small-payment-order-title" id="apiSmallPaymentGoodsTitle">当前订单信息待加载</div>
+                <div class="api-small-payment-order-meta">
+                  <div class="api-small-payment-order-detail" id="apiSmallPaymentGoodsDetail">所拍规格待确认</div>
+                  <div class="api-small-payment-order-price" id="apiSmallPaymentGoodsPrice"><strong>0</strong></div>
+                </div>
+              </div>
+              <div class="api-small-payment-order-action">
+                <button class="api-small-payment-order-btn" type="button" id="btnApiSmallPaymentChangeOrder">修改订单</button>
+              </div>
+            </div>
+            <div class="api-small-payment-order-selector" id="apiSmallPaymentOrderSelector" style="display:none;"></div>
+          </div>
+
+          <div class="api-small-payment-form-row">
+            <div class="api-small-payment-form-label">打款类型</div>
+            <div class="api-small-payment-type-group">
+              <label class="api-small-payment-type-option">
+                <input type="radio" name="apiSmallPaymentType" value="shipping" checked>
+                <span>补运费</span>
+              </label>
+              <label class="api-small-payment-type-option">
+                <input type="radio" name="apiSmallPaymentType" value="difference">
+                <span>补差价</span>
+              </label>
+              <label class="api-small-payment-type-option">
+                <input type="radio" name="apiSmallPaymentType" value="other">
+                <span>其他</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="api-small-payment-form-row">
+            <div class="api-small-payment-form-label">打款金额</div>
+            <div class="api-small-payment-amount-row">
+              <div class="api-small-payment-amount-input-wrap">
+                <span class="api-small-payment-amount-prefix">¥</span>
+                <input class="form-input api-small-payment-amount-input" id="apiSmallPaymentAmount" type="text"
+                  inputmode="decimal" placeholder="单次上限¥0.00">
+              </div>
+              <div class="api-small-payment-amount-tip" id="apiSmallPaymentAmountTip">最多可打款3次</div>
+            </div>
+          </div>
+
+          <div class="api-small-payment-form-row">
+            <div class="api-small-payment-form-label">给消费者留言</div>
+            <div class="api-small-payment-note-wrap">
+              <textarea class="form-textarea api-small-payment-note" id="apiSmallPaymentNote"
+                maxlength="60" placeholder="已补偿给您，请查收"></textarea>
+              <div class="api-small-payment-note-count" id="apiSmallPaymentNoteCount">0/60</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="api-small-payment-status-card" id="apiSmallPaymentStatusCard" style="display:none;">
+          <div class="api-small-payment-status-row" id="apiSmallPaymentStatusRow"></div>
+          <div class="api-small-payment-status-tips" id="apiSmallPaymentStatusTips"></div>
+        </div>
+
+        <div class="api-small-payment-permission" id="apiSmallPaymentPermission">无管理员权限？点击提交打款申请给店铺管理员</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button"
+          onclick="window.closeApiSmallPaymentModal ? window.closeApiSmallPaymentModal() : hideModal('modalApiSmallPayment')">取消</button>
+        <button class="btn btn-primary" type="button" id="btnApiSmallPaymentSubmit">确认</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalApiImagePreview">
     <div class="modal api-image-preview-modal">
       <div class="modal-header">
@@ -7106,7 +7579,7 @@
     <div class="api-video-popover-header">
       <div class="api-video-popover-title">请选择视频</div>
       <div class="api-video-popover-actions">
-        <button class="btn btn-secondary" id="btnApiVideoUpload">添加视频</button>
+        <span class="api-video-popover-actions-text">视频添加请先在后台添加</span>
         <button class="modal-close" type="button" onclick="hideApiVideoLibraryPopover()">&times;</button>
       </div>
     </div>
@@ -9349,6 +9822,61 @@
       apiSelectedShopId = defaultShopId || API_ALL_SHOPS;
     }
 
+    function isUnknownApiCustomerName(value = '') {
+      return ['未知客户', '未知', '客户', '未选择客户'].includes(String(value || '').trim());
+    }
+
+    function pickApiDisplayText(sources = [], keys = []) {
+      for (const source of sources) {
+        if (!source || typeof source !== 'object') continue;
+        for (const key of keys) {
+          const value = String(source[key] || '').trim();
+          if (!value) continue;
+          if (keys.includes('customerName') && isUnknownApiCustomerName(value)) continue;
+          return value;
+        }
+      }
+      return '';
+    }
+
+    function pickApiSessionCustomerName(session = {}) {
+      const raw = session.raw && typeof session.raw === 'object' ? session.raw : {};
+      const userInfo = raw.user_info && typeof raw.user_info === 'object' ? raw.user_info : {};
+      const buyerInfo = raw.buyer && typeof raw.buyer === 'object' ? raw.buyer : {};
+      const customerInfo = raw.customer && typeof raw.customer === 'object' ? raw.customer : {};
+      const fromObj = raw.from && typeof raw.from === 'object' ? raw.from : {};
+      const toObj = raw.to && typeof raw.to === 'object' ? raw.to : {};
+      const buyerUid = String(
+        session.customerId
+        || raw.customer_id
+        || raw.buyer_id
+        || userInfo.uid
+        || raw.uid
+        || ''
+      ).trim();
+      const participant = buyerUid && String(fromObj.uid || '').trim() === buyerUid
+        ? fromObj
+        : (buyerUid && String(toObj.uid || '').trim() === buyerUid ? toObj : (fromObj.uid ? fromObj : toObj));
+      return pickApiDisplayText(
+        [session, raw, userInfo, buyerInfo, customerInfo, participant, fromObj, toObj],
+        [
+          'customerName',
+          'displayName',
+          'nick',
+          'nickname',
+          'nick_name',
+          'buyer_name',
+          'buyer_nickname',
+          'buyer_nick_name',
+          'customer_name',
+          'customer_nickname',
+          'customer_nick_name',
+          'display_name',
+          'name',
+        ]
+      );
+    }
+
     function buildApiSession(session = {}) {
       const shop = shops.find(item => item.id === session.shopId) || null;
       const shopId = session.shopId || shop?.id || apiActiveSessionShopId || activeShopId || '';
@@ -9357,10 +9885,12 @@
       const preferredShopName = ['未命名店铺', '未知店铺'].includes(String(session.shopName || '').trim())
         ? ''
         : session.shopName;
+      const customerName = pickApiSessionCustomerName(session);
       return {
         ...session,
         shopId,
         mallName,
+        customerName,
         isShopMember: typeof session.isShopMember === 'boolean'
           ? session.isShopMember
           : (typeof session.is_shop_member === 'boolean'
@@ -9462,6 +9992,37 @@
       return apiActiveSessionSnapshot;
     }
 
+    function backfillApiSessionCustomerName(sessionKey, customerName) {
+      const nextCustomerName = String(customerName || '').trim();
+      if (!sessionKey || !nextCustomerName || isUnknownApiCustomerName(nextCustomerName)) {
+        return false;
+      }
+      let changed = false;
+      const patchSession = (session = {}) => {
+        if (getApiSessionKey(session) !== sessionKey) return session;
+        const currentName = String(session.customerName || '').trim();
+        if (currentName && !isUnknownApiCustomerName(currentName)) return session;
+        changed = true;
+        return buildApiSession({
+          ...session,
+          customerName: nextCustomerName,
+        });
+      };
+      apiSessions = apiSessions.map(patchSession);
+      apiStarredSessions = apiStarredSessions.map(patchSession);
+      if (getApiSessionKey(apiActiveSessionSnapshot || {}) === sessionKey) {
+        apiActiveSessionSnapshot = patchSession(apiActiveSessionSnapshot);
+      }
+      if (getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId) === sessionKey) {
+        const currentName = String(apiActiveSessionName || '').trim();
+        if (!currentName || isUnknownApiCustomerName(currentName)) {
+          apiActiveSessionName = nextCustomerName;
+          changed = true;
+        }
+      }
+      return changed;
+    }
+
     function getApiSessionSyncSignature(session = {}) {
       const normalized = buildApiSession(session);
       return [
@@ -9535,7 +10096,7 @@
             shopId,
             shopName: entry.shopName || shops.find(shop => shop.id === shopId)?.name || '',
             customerId: String(item.customer_id || item.buyer_id || item?.from?.uid || item?.to?.uid || item?.user_info?.uid || ''),
-            customerName: item.nick || item.nickname || item.buyer_name || item.customer_name || item.name || item?.user_info?.nickname || '未知客户',
+            customerName: pickApiSessionCustomerName({ raw: item }) || '未知客户',
             customerAvatar: item.avatar || item.head_img || item.buyer_avatar || item?.user_info?.avatar || '',
             lastMessage: item.last_msg || item.last_message || item.latest_msg || item.content || '',
             lastMessageTime: item.last_msg_time || item.update_time || item.last_time || item.ts || 0,
@@ -10419,7 +10980,19 @@
           return;
         }
         apiMessages = result;
+        const buyerMessage = apiMessages.find(item => item?.isFromBuyer && !isUnknownApiCustomerName(item?.senderName || ''));
+        const backfilled = backfillApiSessionCustomerName(targetSessionKey, buyerMessage?.senderName || '');
+        if (backfilled) {
+          setApiActiveSessionSnapshot({
+            ...(apiActiveSessionSnapshot || currentSession || {}),
+            customerName: apiActiveSessionName || buyerMessage?.senderName || '',
+          });
+        }
         renderApiMessages();
+        if (backfilled) {
+          renderApiSessions();
+          renderApiStatus();
+        }
         updateApiActiveSessionSyncSignature();
         if (!options.silentStatus) {
           recordApiSyncState(

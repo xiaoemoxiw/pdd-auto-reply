@@ -80,6 +80,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiGetRefundOrders: (params) => ipcRenderer.invoke('api-get-refund-orders', params),
   apiSubmitRefundApply: (params) => ipcRenderer.invoke('api-submit-refund-apply', params),
   apiGetSideOrders: (params) => ipcRenderer.invoke('api-get-side-orders', params),
+  apiGetSmallPaymentInfo: (params) => ipcRenderer.invoke('api-get-small-payment-info', params),
+  apiSubmitSmallPayment: (params) => ipcRenderer.invoke('api-submit-small-payment', params),
   apiGetOrderRemark: (params) => ipcRenderer.invoke('api-get-order-remark', params),
   apiGetOrderRemarkTags: (params) => ipcRenderer.invoke('api-get-order-remark-tags', params),
   apiSaveOrderRemark: (params) => ipcRenderer.invoke('api-save-order-remark', params),

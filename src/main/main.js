@@ -40,6 +40,46 @@ if (!hasSingleInstanceLock) {
 const UNMATCHED_LOG_MAX = 200;
 const API_ALL_SHOPS = '__all__';
 
+function safeParseCapturedBody(text) {
+  if (!text || typeof text !== 'string') return null;
+  const source = String(text).trim();
+  if (!source) return null;
+  try {
+    return JSON.parse(source);
+  } catch {
+    if (!source.includes('=') || source.startsWith('<')) {
+      return null;
+    }
+    try {
+      const params = new URLSearchParams(source);
+      const result = {};
+      let hasEntry = false;
+      for (const [key, rawValue] of params.entries()) {
+        hasEntry = true;
+        const value = String(rawValue || '').trim();
+        let parsedValue = value;
+        if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
+          try {
+            parsedValue = JSON.parse(value);
+          } catch {}
+        }
+        if (Object.prototype.hasOwnProperty.call(result, key)) {
+          if (Array.isArray(result[key])) {
+            result[key].push(parsedValue);
+          } else {
+            result[key] = [result[key], parsedValue];
+          }
+        } else {
+          result[key] = parsedValue;
+        }
+      }
+      return hasEntry ? result : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
 const store = new Store({
   defaults: {
     rules: [],
@@ -836,9 +876,41 @@ function startNetworkMonitor(view, shopId) {
         const requestBody = typeof normalizedEntry?.requestBody === 'string' ? normalizedEntry.requestBody : '';
         if (requestBody) {
           try {
-            const parsedBody = JSON.parse(requestBody);
+            const parsedBody = safeParseCapturedBody(requestBody);
             if (parsedBody && typeof parsedBody === 'object' && (parsedBody.crawlerInfo || parsedBody.crawler_info)) {
               store.set(`apiOrderPriceUpdateTemplate.${shopId}`, {
+                url: normalizedEntry.url,
+                method: normalizedEntry.method || 'POST',
+                requestBody: JSON.stringify(parsedBody),
+                updatedAt: Date.now(),
+              });
+            }
+          } catch {}
+        }
+      }
+      if (String(normalizedEntry?.method || 'GET').toUpperCase() === 'POST' && String(normalizedEntry?.url || '').includes('/mercury/')) {
+        const requestBody = typeof normalizedEntry?.requestBody === 'string' ? normalizedEntry.requestBody : '';
+        if (requestBody) {
+          try {
+            const parsedBody = safeParseCapturedBody(requestBody);
+            const orderSn = String(parsedBody?.orderSn || parsedBody?.order_sn || '').trim();
+            const hasSmallPaymentFields = [
+              parsedBody?.playMoneyAmount,
+              parsedBody?.play_money_amount,
+              parsedBody?.refundType,
+              parsedBody?.refund_type,
+              parsedBody?.remarks,
+              parsedBody?.remark,
+              parsedBody?.leaveMessage,
+              parsedBody?.leave_message,
+            ].some(value => value !== undefined && value !== null && value !== '');
+            const isKnownPrecheck = [
+              '/mercury/micro_transfer/detail',
+              '/mercury/micro_transfer/queryTips',
+              '/mercury/play_money/check',
+            ].some(part => String(normalizedEntry?.url || '').includes(part));
+            if (orderSn && hasSmallPaymentFields && !isKnownPrecheck) {
+              store.set(`apiSmallPaymentSubmitTemplate.${shopId}`, {
                 url: normalizedEntry.url,
                 method: normalizedEntry.method || 'POST',
                 requestBody: JSON.stringify(parsedBody),
@@ -951,6 +1023,13 @@ function getApiClient(shopId) {
     },
     getOrderPriceUpdateTemplate() {
       return store.get(`apiOrderPriceUpdateTemplate.${shopId}`) || null;
+    },
+    setOrderPriceUpdateTemplate(template) {
+      if (!template || typeof template !== 'object') return;
+      store.set(`apiOrderPriceUpdateTemplate.${shopId}`, template);
+    },
+    getSmallPaymentSubmitTemplate() {
+      return store.get(`apiSmallPaymentSubmitTemplate.${shopId}`) || null;
     },
     requestInPddPage(request) {
       return requestViaPddPage(shopId, request);

@@ -1885,12 +1885,15 @@
       flex-direction: column;
       justify-content: center;
       position: relative;
-      padding-right: 50px;
+      padding-right: 0;
     }
 
     .api-session-item-title {
+      width: 100%;
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       min-width: 0;
       position: relative;
     }
@@ -1898,14 +1901,14 @@
     .api-session-item-info-row {
       display: flex;
       align-items: center;
+      justify-content: flex-start;
       gap: 8px;
       min-width: 0;
       flex: 1;
-      /* padding-right: 12px; */
     }
 
     .api-session-item-name {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       color: #333;
       display: flex;
@@ -1924,7 +1927,8 @@
     }
 
     .api-session-item-time {
-      display: block;
+      display: flex;
+      align-items: center;
       font-size: 11px;
       color: #999;
       white-space: nowrap;
@@ -1948,6 +1952,7 @@
     }
 
     .api-session-item.reply-pending .api-session-main {
+      padding-right: 72px;
       padding-bottom: 14px;
     }
 
@@ -1960,32 +1965,28 @@
     }
 
     .api-session-time-group {
-      position: absolute;
-      top: 50%;
-      right: -53px;
-      /* display: flex;
-      align-items: flex-start;
-      justify-content: flex-start; */
-      width: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: max-content;
       flex-shrink: 0;
-      transform: translateY(-50%);
     }
 
     .api-session-shop-tag,
     .api-session-order-tag {
       display: inline-flex;
       align-items: center;
-      height: 22px;
-      padding: 0 8px;
-      border-radius: 11px;
-      font-size: 11px;
-      line-height: 22px;
+      height: 16px;
+      padding: 0 5px;
+      border-radius: 5px;
+      font-size: 8px;
+      line-height: 16px;
     }
 
     .api-session-shop-tag {
       background: #eef3ff;
       color: #4d66a5;
-      font-size: 10px;
+      font-size: 9px;
       max-width: 92px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1993,8 +1994,8 @@
     }
 
     .api-session-order-tag {
-      background: #fff4e8;
-      color: #b96812;
+      background: #b91212;
+      color: #ffffff;
     }
 
     .api-session-star {
@@ -2121,6 +2122,7 @@
       color: #333;
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 8px;
     }
 
@@ -2159,6 +2161,95 @@
       color: #e02e24;
     }
 
+    .api-conversation-risk {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .api-conversation-risk::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      height: 12px;
+    }
+
+    .api-conversation-action-icon {
+      width: 34px;
+      min-width: 34px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .api-conversation-action-icon svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .api-conversation-risk:hover .api-risk-menu,
+    .api-conversation-risk:focus-within .api-risk-menu {
+      opacity: 1;
+      transform: translate(-50%, 0);
+      pointer-events: auto;
+    }
+
+    .api-risk-menu {
+      position: absolute;
+      top: calc(100% + 10px);
+      left: 50%;
+      transform: translate(-50%, 6px);
+      min-width: 108px;
+      padding: 10px 0;
+      border: 1px solid #ebeef5;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 12px 24px rgba(31, 45, 61, 0.12);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 30;
+    }
+
+    .api-risk-menu::before {
+      content: '';
+      position: absolute;
+      top: -8px;
+      left: 50%;
+      width: 14px;
+      height: 14px;
+      background: #fff;
+      border-top: 1px solid #ebeef5;
+      border-left: 1px solid #ebeef5;
+      transform: translateX(-50%) rotate(45deg);
+    }
+
+    .api-risk-menu-item {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: #333;
+      font-size: 14px;
+      line-height: 22px;
+      text-align: center;
+      padding: 12px 18px;
+      cursor: pointer;
+      transition: background 0.18s ease, color 0.18s ease;
+    }
+
+    .api-risk-menu-item:hover {
+      background: #fff6f5;
+      color: #e02e24;
+    }
+
     .api-chat-follow-tag {
       background: #f2f7ff;
       color: #4f73ef;
@@ -2167,6 +2258,26 @@
     .api-chat-follow-tag.is-unread {
       background: #fff1f0;
       color: #e24c3d;
+    }
+
+    .api-chat-order-tag {
+      background: #fff4e8;
+      color: #c5771b;
+    }
+
+    .api-chat-gender-tag.is-female {
+      background: #ffffff;
+      color: #d54b8b;
+    }
+
+    .api-chat-gender-tag.is-male {
+      background: #ffffff;
+      color: #3e78d3;
+    }
+
+    .api-chat-gender-tag.is-unknown {
+      background: #f2f4f7;
+      color: #667085;
     }
 
     .api-banner {
@@ -2225,7 +2336,7 @@
       align-items: center;
       height: 22px;
       padding: 0 8px;
-      border-radius: 11px;
+      border-radius: 5px;
       background: #fff1f0;
       color: #e02e24;
       font-size: 11px;
@@ -2417,7 +2528,9 @@
     }
 
     .api-system-refund-card.pending .api-system-refund-card-goods {
-      gap: 10px;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
       padding: 10px 18px;
       border-bottom-color: #ececec;
     }
@@ -2432,8 +2545,8 @@
 
     .api-system-refund-card.pending .api-system-refund-card-media,
     .api-system-refund-card.pending .api-system-refund-card-media-placeholder {
-      width: 53px;
-      height: 53px;
+      width: 100px;
+      height: 100px;
     }
 
     .api-system-refund-card-media {
@@ -2462,6 +2575,44 @@
 
     .api-system-refund-card.pending .api-system-refund-card-main {
       gap: 4px;
+    }
+
+    .api-system-refund-card-media-block {
+      width: 100px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .api-system-refund-card-media-title {
+      color: #333;
+      font-size: 12px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .api-system-refund-card-side {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .api-system-refund-card-side-top {
+      width: 100%;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .api-system-refund-card-side-price {
+      color: #333;
+      font-size: 16px;
+      line-height: 1.2;
+      font-weight: 600;
+      white-space: nowrap;
     }
 
     .api-system-refund-card-title-row {
@@ -3050,6 +3201,165 @@
       box-sizing: border-box;
       white-space: nowrap;
       letter-spacing: 0;
+      cursor: pointer;
+    }
+
+    .api-goods-spec-modal {
+      width: min(90vw, 400px);
+      max-width: 400px;
+    }
+
+    .api-goods-spec-summary {
+      margin-bottom: 14px;
+      padding: 14px;
+      border: 1px solid #e8ebf2;
+      border-radius: 8px;
+      background: #f8f9fc;
+    }
+
+    .api-goods-spec-product {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .api-goods-spec-product-image {
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #eef2f7;
+    }
+
+    .api-goods-spec-product-image.placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #8c94a3;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .api-goods-spec-product-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .api-goods-spec-product-id-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .api-goods-spec-product-id {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #7f8794;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .api-goods-spec-product-title {
+      margin-top: 4px;
+      color: #1f2430;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .api-goods-spec-product-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .api-goods-spec-product-meta span {
+      padding: 2px 8px;
+      color: #474748;
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .api-goods-spec-loading,
+    .api-goods-spec-empty,
+    .api-goods-spec-error {
+      padding: 18px 12px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .api-goods-spec-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #5b6472;
+      background: #f8f9fc;
+    }
+
+    .api-goods-spec-empty {
+      color: #7f8794;
+      background: #f8f9fc;
+    }
+
+    .api-goods-spec-error {
+      color: #cf3d33;
+      background: #fff3f1;
+      border: 1px solid #ffd9d3;
+    }
+
+    .api-goods-spec-table-wrap {
+      overflow: auto;
+      border: 1px solid #e8ebf2;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .api-goods-spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      table-layout: fixed;
+    }
+
+    .api-goods-spec-table th,
+    .api-goods-spec-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #edf0f5;
+      text-align: left;
+      color: #303546;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    .api-goods-spec-cell {
+      display: block;
+      min-width: 0;
+    }
+
+    .api-goods-spec-cell.is-truncate {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      word-break: normal;
+      cursor: default;
+    }
+
+    .api-goods-spec-table th {
+      background: #f7f8fb;
+      color: #5b6472;
+      font-weight: 600;
+    }
+
+    .api-goods-spec-table tbody tr:last-child td {
+      border-bottom: 0;
     }
 
     .api-message-bubble {
@@ -3091,7 +3401,363 @@
       max-width: 180px;
       max-height: 180px;
       border-radius: 8px;
+      cursor: zoom-in;
+    }
+
+    .api-image-preview-modal {
+      width: min(90vw, 960px);
+      max-width: 960px;
+      background: #111827;
+    }
+
+    .api-image-preview-modal .modal-header {
+      border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .api-image-preview-modal .modal-header h3,
+    .api-image-preview-modal .modal-close {
+      color: #fff;
+    }
+
+    .api-image-preview-modal .modal-close:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .api-image-preview-body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: #111827;
+      max-height: 80vh;
+    }
+
+    .api-image-preview-content {
+      display: block;
+      max-width: 100%;
+      max-height: calc(80vh - 32px);
+      object-fit: contain;
+      border-radius: 8px;
+      background: #0f172a;
+    }
+
+    .api-message-video {
+      display: block;
+      position: relative;
+      width: 100px;
+      min-width: 100px;
+      max-width: 100px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #111827;
+      color: #fff;
+    }
+
+    .api-message-video-cover {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      display: block;
+      background: linear-gradient(135deg, #eef2ff, #c7d2fe);
+    }
+
+    .api-message-video-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 180px;
+      background: linear-gradient(135deg, #64748b, #0f172a);
+      font-size: 42px;
+    }
+
+    .api-message-video-mask {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.32));
+      pointer-events: none;
+    }
+
+    .api-message-video-play {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.62);
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
+      position: relative;
+    }
+
+    .api-message-video-play::before {
+      content: '';
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-left: 10px solid #fff;
+    }
+
+    .api-message-video-footer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 6px 8px;
+      background: linear-gradient(rgba(15, 23, 42, 0), rgba(15, 23, 42, 0.82));
+      font-size: 10px;
+      line-height: 1.3;
+    }
+
+    .api-message-video-duration,
+    .api-message-video-label {
+      color: #fff;
+    }
+
+    .api-video-popover-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.08);
+      backdrop-filter: blur(1px);
+      z-index: 2090;
+    }
+
+    .api-video-popover-backdrop.visible {
+      display: block;
+    }
+
+    .api-video-popover {
+      display: none;
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: min(420px, calc(100vw - 32px));
+      max-height: min(320px, calc(100vh - 32px));
+      background: #fff;
+      border: 1px solid #e6ebf5;
+      border-radius: 12px;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
+      overflow: hidden;
+      z-index: 2100;
+    }
+
+    .api-video-popover.visible {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .api-video-popover-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid #eef1f6;
+    }
+
+    .api-video-popover-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #202939;
+    }
+
+    .api-video-popover-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .api-video-popover-content {
+      flex: 1;
+      padding: 10px 12px;
+      min-height: 0;
+    }
+
+    .api-video-popover-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 8px 12px 10px;
+      border-top: 1px solid #eef1f6;
+      background: #fff;
+    }
+
+    .api-video-empty {
+      min-height: 132px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #2f3a4a;
+      font-size: 15px;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)),
+        repeating-linear-gradient(-25deg, rgba(229, 231, 235, 0.22) 0, rgba(229, 231, 235, 0.22) 12px, rgba(255, 255, 255, 0) 12px, rgba(255, 255, 255, 0) 120px);
+    }
+
+    .api-video-empty-action {
+      border: none;
+      background: none;
+      color: #5b7cff;
       cursor: pointer;
+      font-size: inherit;
+      padding: 0;
+    }
+
+    .api-video-grid {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      align-content: flex-start;
+      gap: 8px;
+      max-height: 188px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .api-video-card {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      width: 118px;
+      flex: 0 0 118px;
+      box-sizing: border-box;
+      border: 1px solid #e7eaf0;
+      border-radius: 10px;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+      text-align: left;
+      padding: 10px;
+    }
+
+    .api-video-card-media {
+      width: 100%;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+
+    .api-video-card:hover {
+      border-color: #c8d4ff;
+      box-shadow: 0 8px 20px rgba(91, 124, 255, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .api-video-card.is-selected {
+      border-color: #5b7cff;
+      box-shadow: 0 0 0 2px rgba(91, 124, 255, 0.12);
+    }
+
+    .api-video-card.is-selected .api-video-card-media {
+      border-color: #9bb6eb;
+    }
+
+    .api-video-card-cover-wrap {
+      position: relative;
+      width: 98px;
+      height: 98px;
+      background: linear-gradient(135deg, #dbeafe, #e9d5ff);
+      border: 1px solid #d8dfeb;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .api-video-card-cover {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .api-video-card-fallback {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: #fff;
+      background: linear-gradient(135deg, #94a3b8, #334155);
+    }
+
+    .api-video-card-duration {
+      position: absolute;
+      right: 3px;
+      bottom: 3px;
+      padding: 1px 4px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #fff;
+      font-size: 8px;
+      line-height: 1.4;
+    }
+
+    .api-video-card-send {
+      border: 0;
+      min-width: 50px;
+      height: 24px;
+      padding: 0 10px;
+      border-radius: 4px;
+      background: #c7d4e3;
+      color: #2f3d52;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 24px;
+      cursor: pointer;
+      box-shadow: none;
+      flex-shrink: 0;
+    }
+
+    .api-video-card-send:hover {
+      background: #bccbdd;
+    }
+
+    .api-video-card-body {
+      min-width: 0;
+      width: auto;
+      padding: 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+      max-width: 100%;
+    }
+
+    .api-video-card-name {
+      font-size: 12px;
+      line-height: 1.35;
+      color: #243041;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 46px;
+    }
+
+    .api-video-card-meta {
+      margin-top: 2px;
+      font-size: 10px;
+      color: #8a94a6;
+    }
+
+    .api-video-loading,
+    .api-video-error {
+      min-height: 132px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #7b8494;
+      font-size: 13px;
+      padding: 16px;
     }
 
     .api-inline-emoji {
@@ -4966,12 +5632,32 @@
                 <div>
                   <div class="api-conversation-title">
                     <span id="apiChatCustomerName">未选择客户</span>
-                    <span class="api-chat-tag api-chat-follow-tag" id="apiChatFollowStatus">已关注本店</span>
+                    <span class="api-chat-tag api-chat-follow-tag" id="apiChatFollowStatus" hidden>已关注本店</span>
+                    <span class="api-chat-tag api-chat-order-tag" id="apiChatOrderCount" hidden>订单数：</span>
+                    <span class="api-chat-tag api-chat-gender-tag" id="apiChatGender" hidden></span>
                   </div>
                 </div>
                 <div class="api-conversation-actions">
+                  <div class="api-conversation-risk">
+                    <button
+                      class="api-conversation-action api-conversation-action-icon"
+                      id="btnApiRisk"
+                      type="button"
+                      aria-label="风险操作"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 3.8 21 19.4a1.2 1.2 0 0 1-1.05 1.8H4.05A1.2 1.2 0 0 1 3 19.4L12 3.8Z"></path>
+                        <path d="M12 8.8v5.1"></path>
+                        <circle cx="12" cy="17.3" r="1"></circle>
+                      </svg>
+                    </button>
+                    <div class="api-risk-menu" role="menu" aria-label="风险操作菜单">
+                      <button class="api-risk-menu-item" id="btnApiRiskReport" type="button" role="menuitem">举报</button>
+                      <button class="api-risk-menu-item" id="btnApiRiskBlacklist" type="button" role="menuitem">拉黑</button>
+                      <button class="api-risk-menu-item" id="btnApiRiskManage" type="button" role="menuitem">管理黑名单</button>
+                    </div>
+                  </div>
                   <button class="api-conversation-action" id="btnApiStar">收藏</button>
-                  <button class="api-conversation-action" id="btnApiRisk">拉黑</button>
                 </div>
               </div>
               <div class="api-message-list" id="apiMessageList"></div>
@@ -4998,7 +5684,14 @@
                       <path d="M12.7 16l2.7-2.7a1 1 0 0 1 1.4 0l1.7 1.7"></path>
                     </svg>
                   </button>
-                  <span>视频</span>
+                  <button class="api-composer-tool is-muted" id="btnApiVideoModal" type="button" aria-label="选择视频发送"
+                    onclick="openApiVideoLibraryModal()">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="6" width="12" height="12" rx="2"></rect>
+                      <path d="M16 10.2l4-2.2v8l-4-2.2"></path>
+                      <circle cx="9" cy="12" r="1.3"></circle>
+                    </svg>
+                  </button>
                   <!-- <span>🎫</span> -->
                   <span>🔗</span>
                   <span>🛡</span>
@@ -6364,6 +7057,66 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modalApiImagePreview">
+    <div class="modal api-image-preview-modal">
+      <div class="modal-header">
+        <h3>查看图片</h3>
+        <button class="modal-close" type="button" onclick="hideApiImagePreview()">&times;</button>
+      </div>
+      <div class="modal-body api-image-preview-body">
+        <img class="api-image-preview-content" id="apiImagePreviewContent" alt="对话图片预览">
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalApiGoodsSpec">
+    <div class="modal api-goods-spec-modal">
+      <!-- <div class="modal-header">
+        <h3>商品规格</h3>
+        <button class="modal-close" type="button" onclick="window.closeApiGoodsSpecModal ? window.closeApiGoodsSpecModal() : hideModal('modalApiGoodsSpec')">&times;</button>
+      </div> -->
+      <div class="modal-body">
+        <div class="api-goods-spec-summary" id="apiGoodsSpecSummary"></div>
+        <div class="api-goods-spec-loading" id="apiGoodsSpecLoading" style="display:none;">正在加载商品规格...</div>
+        <div class="api-goods-spec-error" id="apiGoodsSpecError" style="display:none;"></div>
+        <div class="api-goods-spec-empty" id="apiGoodsSpecEmpty" style="display:none;">暂未解析到可展示的商品规格</div>
+        <div class="api-goods-spec-table-wrap" id="apiGoodsSpecTableWrap">
+          <table class="api-goods-spec-table">
+            <thead>
+              <tr>
+                <th>规格</th>
+                <th>款式</th>
+                <th>价格</th>
+                <th>库存</th>
+              </tr>
+            </thead>
+            <tbody id="apiGoodsSpecTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" type="button" onclick="window.closeApiGoodsSpecModal ? window.closeApiGoodsSpecModal() : hideModal('modalApiGoodsSpec')">我知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="api-video-popover-backdrop" id="apiVideoLibraryBackdrop" onclick="hideApiVideoLibraryPopover()"></div>
+
+  <div class="api-video-popover" id="apiVideoLibraryPanel">
+    <div class="api-video-popover-header">
+      <div class="api-video-popover-title">请选择视频</div>
+      <div class="api-video-popover-actions">
+        <button class="btn btn-secondary" id="btnApiVideoUpload">添加视频</button>
+        <button class="modal-close" type="button" onclick="hideApiVideoLibraryPopover()">&times;</button>
+      </div>
+    </div>
+    <div class="api-video-popover-content" id="apiVideoLibraryContent"></div>
+    <div class="api-video-popover-footer">
+      <button class="btn btn-secondary" type="button" onclick="hideApiVideoLibraryPopover()">取消</button>
+      <button class="btn btn-primary" id="btnApiVideoSend">发送</button>
+    </div>
+  </div>
+
   <!-- 日志已移至独立调试窗口 -->
 
   <div class="toast-msg" id="toastMsg"></div>
@@ -6522,6 +7275,10 @@
     const apiGoodsCardCache = new Map();
     const apiGoodsCardPending = new Set();
     let apiSyntheticRefundMessages = [];
+    let apiVideoLibrary = [];
+    let apiVideoLibraryLoading = false;
+    let apiVideoLibraryError = '';
+    let apiSelectedVideo = null;
     window.__chatApiModuleAccess = {
       getState() {
         return {
@@ -6546,6 +7303,8 @@
           apiGoodsCardCache,
           apiGoodsCardPending,
           apiSyntheticRefundMessages,
+          apiVideoLibrary,
+          apiSelectedVideo,
           API_ALL_SHOPS,
           API_EMOJI_MAP,
           API_EMOJIS,
@@ -6837,6 +7596,17 @@
         shopDropdown.classList.remove('visible');
         shopSwitcherBtn.classList.remove('open');
       }
+      const videoButton = document.getElementById('btnApiVideoModal');
+      const videoPanel = document.getElementById('apiVideoLibraryPanel');
+      if (
+        videoButton
+        && videoPanel
+        && videoPanel.classList.contains('visible')
+        && !videoButton.contains(e.target)
+        && !videoPanel.contains(e.target)
+      ) {
+        hideApiVideoLibraryPopover();
+      }
     });
 
     function isHeaderSelectableShop(shop) {
@@ -6950,12 +7720,39 @@
         message?.raw?.content,
         message?.raw?.msg_content,
       ].filter(Boolean).join('\n');
+      const structuredSources = [
+        message?.extra,
+        message?.raw?.extra,
+        message?.raw?.info,
+        message?.raw?.biz_context,
+        message?.raw,
+        message,
+      ].filter(Boolean);
       const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
         || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
-      if (!match?.[0]) return null;
-      const url = match[0].replace(/&amp;/gi, '&');
-      const goodsIdMatch = url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i);
-      const goodsId = goodsIdMatch?.[1] || '';
+      let url = match?.[0]
+        ? match[0].replace(/&amp;/gi, '&')
+        : pickApiGoodsText(structuredSources, ['url', 'share_url', 'shareUrl', 'goods_url', 'goodsUrl', 'jump_url', 'jumpUrl', 'link_url', 'linkUrl']);
+      if (url && !/^https?:\/\//i.test(url) && /(?:^|[?&])goods_id=\d+/i.test(url)) {
+        url = `https://mobile.yangkeduo.com/${String(url).replace(/^\/+/, '')}`;
+      }
+      if (url && /^\/(?:goods2?|goods)\.html\?/i.test(url)) {
+        url = `https://mobile.yangkeduo.com${url}`;
+      }
+      const isHttpGoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
+      const isH5GoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
+      if (url && !isHttpGoodsUrl && !isH5GoodsUrl) {
+        url = '';
+      }
+      const goodsIdMatch = url
+        ? (url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i))
+        : null;
+      const goodsId = goodsIdMatch?.[1]
+        || pickApiGoodsText(structuredSources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']);
+      if (goodsId) {
+        url = `https://mobile.yangkeduo.com/goods.html?goods_id=${goodsId}`;
+      }
+      if (!url && !goodsId) return null;
       return {
         url,
         goodsId,
@@ -7044,9 +7841,34 @@
       return `¥${amount.toFixed(2)}`;
     }
 
+    function normalizeApiGoodsSpecItems(items = []) {
+      return (Array.isArray(items) ? items : [])
+        .map(item => ({
+          specLabel: String(item?.specLabel || '').trim(),
+          styleLabel: String(item?.styleLabel || '').trim(),
+          priceText: String(item?.priceText || '').trim(),
+          stockText: String(item?.stockText || '').trim(),
+          salesText: String(item?.salesText || '').trim(),
+        }))
+        .filter(item => item.specLabel || item.styleLabel || item.priceText || item.stockText || item.salesText);
+    }
+
+    function buildApiGoodsSpecFallbackItems(card = {}) {
+      const specText = String(card?.specText || '').trim();
+      if (!specText || specText === '查看商品规格') return [];
+      return [{
+        specLabel: specText,
+        styleLabel: '',
+        priceText: String(card?.priceText || '').trim(),
+        stockText: '',
+        salesText: '',
+      }];
+    }
+
     function normalizeApiGoodsCard(card = {}, fallback = {}) {
       const goodsId = String(card.goodsId || fallback.goodsId || '');
       return {
+        cacheKey: String(card.cacheKey || fallback.cacheKey || ''),
         goodsId,
         url: String(card.url || fallback.url || ''),
         title: String(card.title || fallback.title || '拼多多商品'),
@@ -7054,24 +7876,47 @@
         priceText: String(card.priceText || fallback.priceText || ''),
         groupText: String(card.groupText || fallback.groupText || '2人团'),
         specText: String(card.specText || fallback.specText || '查看商品规格'),
+        specItems: normalizeApiGoodsSpecItems(card.specItems || fallback.specItems || []),
+        stockText: String(card.stockText || fallback.stockText || ''),
+        salesText: String(card.salesText || fallback.salesText || ''),
+        pendingGroupText: String(card.pendingGroupText || fallback.pendingGroupText || ''),
       };
+    }
+
+    function isMeaningfulApiGoodsCard(card = {}) {
+      const title = String(card?.title || '').trim();
+      return !!(
+        String(card?.imageUrl || '').trim()
+        || String(card?.priceText || '').trim()
+        || (title && title !== '拼多多商品')
+      );
+    }
+
+    function describeApiGoodsCardResult(card = {}) {
+      const title = String(card?.title || '').trim() || '空标题';
+      const imageState = card?.imageUrl ? '有图' : '无图';
+      const priceState = card?.priceText ? `价格:${card.priceText}` : '无价';
+      return `${title}，${imageState}，${priceState}`;
     }
 
     function buildApiGoodsCardFallback(linkInfo, message = {}, session = {}) {
       const sources = [
         message?.extra,
         message?.raw?.extra,
+        message?.raw?.info,
+        message?.raw?.biz_context,
         message?.raw,
         session?.goodsInfo,
         session?.raw?.goods_info,
         session?.raw?.goods,
       ].filter(Boolean);
       const priceText = pickApiGoodsText(sources, ['priceText', 'price_text', 'price'])
-        || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['group_price', 'min_group_price', 'price', 'min_price']));
+        || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['promotionPrice', 'promotion_price', 'couponPromoPrice', 'coupon_promo_price', 'group_price', 'min_group_price', 'price', 'min_price', 'goodsPrice']));
       const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
-      const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'group_member_count', 'group_count']);
+      const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'customerNumber', 'group_member_count', 'group_count']);
       return normalizeApiGoodsCard({
-        goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'id']),
+        cacheKey: String(linkInfo?.cacheKey || ''),
+        goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'id']),
         url: linkInfo?.url || '',
         title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'share_title', 'name']) || '拼多多商品',
         imageUrl: pickApiGoodsText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url', 'top_gallery', 'gallery', 'images', 'imageList']),
@@ -7089,6 +7934,7 @@
       const priceHtml = card.priceText
         ? `<div class="api-goods-card-price-row"><span class="api-goods-card-price">${esc(card.priceText)}</span><span class="api-goods-card-group">${esc(card.groupText ? `/${card.groupText}` : '')}</span></div>`
         : (card.groupText ? `<div class="api-goods-card-price-row"><span class="api-goods-card-group">${esc(card.groupText)}</span></div>` : '');
+      const specItems = card.specItems?.length ? card.specItems : buildApiGoodsSpecFallbackItems(card);
       return `<div class="api-message-bubble api-goods-card-bubble">
         <div class="api-goods-card-top">
           <span class="api-goods-card-id">${esc(goodsIdLabel)}</span>
@@ -7103,9 +7949,24 @@
             <div class="api-goods-card-main">
               <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
               ${priceHtml}
+              <button
+                class="api-goods-card-spec"
+                type="button"
+                data-goods-cache-key="${esc(card.cacheKey || '')}"
+                data-goods-id="${esc(card.goodsId || '')}"
+                data-goods-url="${esc(card.url || '')}"
+                data-goods-title="${esc(card.title || '')}"
+                data-goods-image-url="${esc(card.imageUrl || '')}"
+                data-goods-price-text="${esc(card.priceText || '')}"
+                data-goods-group-text="${esc(card.groupText || '')}"
+                data-goods-spec-text="${esc(card.specText || '查看商品规格')}"
+                data-goods-stock-text="${esc(card.stockText || '')}"
+                data-goods-sales-text="${esc(card.salesText || '')}"
+                data-goods-pending-group-text="${esc(card.pendingGroupText || '')}"
+                data-goods-spec-items="${esc(JSON.stringify(specItems || []))}"
+              >${esc(card.specText || '查看商品规格')}</button>
             </div>
           </div>
-          <span class="api-goods-card-spec">${esc(card.specText || '查看商品规格')}</span>
         </div>
       </div>`;
     }
@@ -7301,19 +8162,42 @@
     }
 
     async function ensureApiGoodsCardLoaded(linkInfo, fallbackCard) {
-      if (!linkInfo?.url || apiGoodsCardCache.has(linkInfo.cacheKey) || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
+      if (!linkInfo?.url || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
+      if (fallbackCard && isMeaningfulApiGoodsCard(fallbackCard)) {
+        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard(fallbackCard, fallbackCard));
+        return;
+      }
+      const cachedCard = apiGoodsCardCache.get(linkInfo.cacheKey);
+      if (cachedCard && isMeaningfulApiGoodsCard(cachedCard)) return;
+      if (cachedCard) {
+        apiGoodsCardCache.delete(linkInfo.cacheKey);
+      }
       if (!window.pddApi?.apiGetGoodsCard) return;
       apiGoodsCardPending.add(linkInfo.cacheKey);
       try {
+        recordApiSyncState('商品卡片请求', `goodsId:${linkInfo.goodsId || '-'}，url:${linkInfo.url ? '有' : '无'}`);
         const result = await window.pddApi.apiGetGoodsCard({
           shopId: apiActiveSessionShopId,
           url: linkInfo.url,
           goodsId: linkInfo.goodsId,
           fallback: fallbackCard,
         });
-        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard(result, fallbackCard));
-      } catch {
-        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard({}, fallbackCard));
+        if (result?.error) {
+          recordApiSyncState('商品卡片失败', result.error);
+          apiGoodsCardCache.delete(linkInfo.cacheKey);
+          return;
+        }
+        const normalized = normalizeApiGoodsCard(result, fallbackCard);
+        if (isMeaningfulApiGoodsCard(normalized)) {
+          apiGoodsCardCache.set(linkInfo.cacheKey, normalized);
+          recordApiSyncState('商品卡片成功', describeApiGoodsCardResult(normalized));
+        } else {
+          apiGoodsCardCache.delete(linkInfo.cacheKey);
+          recordApiSyncState('商品卡片占位', describeApiGoodsCardResult(normalized));
+        }
+      } catch (error) {
+        apiGoodsCardCache.delete(linkInfo.cacheKey);
+        recordApiSyncState('商品卡片失败', error?.message || '未知异常');
       } finally {
         apiGoodsCardPending.delete(linkInfo.cacheKey);
         if (apiHasUserSelectedSession) renderApiMessages();
@@ -7363,6 +8247,44 @@
       const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12);
       const left = Math.min(Math.max(12, rect.left - 8), maxLeft);
       const top = Math.max(12, rect.top - panel.offsetHeight - 14);
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+    }
+
+    function isApiVideoLibraryVisible() {
+      return document.getElementById('apiVideoLibraryPanel')?.classList.contains('visible') || false;
+    }
+
+    function showApiVideoLibraryPopover() {
+      const backdrop = document.getElementById('apiVideoLibraryBackdrop');
+      const panel = document.getElementById('apiVideoLibraryPanel');
+      const button = document.getElementById('btnApiVideoModal');
+      if (!backdrop || !panel || !button) return false;
+      backdrop.classList.add('visible');
+      panel.classList.add('visible');
+      button.classList.add('active');
+      requestAnimationFrame(syncApiVideoLibraryPopoverPosition);
+      return true;
+    }
+
+    function hideApiVideoLibraryPopover() {
+      const backdrop = document.getElementById('apiVideoLibraryBackdrop');
+      const panel = document.getElementById('apiVideoLibraryPanel');
+      const button = document.getElementById('btnApiVideoModal');
+      if (!backdrop || !panel || !button) return false;
+      backdrop.classList.remove('visible');
+      panel.classList.remove('visible');
+      button.classList.remove('active');
+      return true;
+    }
+
+    function syncApiVideoLibraryPopoverPosition() {
+      const panel = document.getElementById('apiVideoLibraryPanel');
+      if (!panel || !panel.classList.contains('visible')) return;
+      const panelWidth = panel.offsetWidth || 560;
+      const panelHeight = panel.offsetHeight || 360;
+      const left = Math.max(12, Math.round((window.innerWidth - panelWidth) / 2));
+      const top = Math.max(12, Math.round((window.innerHeight - panelHeight) / 2));
       panel.style.left = `${left}px`;
       panel.style.top = `${top}px`;
     }
@@ -7559,24 +8481,22 @@
         { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
         card.contactText ? { label: '联系方式', value: card.contactText } : null,
       ].filter(Boolean);
-      return `<div class="api-system-refund-card success">
+      return `<div class="api-system-refund-card pending">
         <div class="api-system-refund-card-header">${esc(displayText)}</div>
         <div class="api-system-refund-card-goods">
+          <div class="api-system-refund-card-media-block">
             ${imageHtml}
-            <div class="api-system-refund-card-main">
-                <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
-                <div class="api-system-refund-card-success-meta">
-                ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
-                  ${card.amountText ? `<div class="api-system-refund-card-price">${esc(card.amountText)}</div>` : ''}
-                </div>
-
+            <div class="api-system-refund-card-media-title">${esc(card.goodsTitle || '订单商品')}</div>
+          </div>
+          <div class="api-system-refund-card-side">
+            <div class="api-system-refund-card-side-top">
+              <span class="api-system-refund-card-action">去处理</span>
             </div>
+            ${card.amountText ? `<div class="api-system-refund-card-side-price">${esc(card.amountText)}</div>` : ''}
+          </div>
           </div>
           <div class="api-system-refund-card-rows">
             ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
-          </div>
-          <div class="api-system-refund-card-footer">
-            <span class="api-system-refund-card-action">去处理</span>
           </div>
         </div>
       </div>`;
@@ -8012,8 +8932,9 @@
     function getApiConversationFollowStatus(session = null) {
       if (!session) {
         return {
-          text: '未选择会话',
+          text: '',
           highlighted: false,
+          visible: false,
         };
       }
       const pendingReplyText = formatApiPendingReplyText(session);
@@ -8021,6 +8942,7 @@
         return {
           text: pendingReplyText,
           highlighted: true,
+          visible: true,
         };
       }
       const unreadCount = Number(session.unreadCount || 0);
@@ -8028,11 +8950,16 @@
         return {
           text: `未读 ${unreadCount}`,
           highlighted: true,
+          visible: true,
         };
       }
+      const isShopMember = typeof session.isShopMember === 'boolean'
+        ? session.isShopMember
+        : (typeof session.is_shop_member === 'boolean' ? session.is_shop_member : null);
       return {
-        text: '已关注本店',
+        text: isShopMember === true ? '已关注本店' : '',
         highlighted: false,
+        visible: isShopMember === true,
       };
     }
 
@@ -8040,7 +8967,10 @@
       const followStatusEl = document.getElementById('apiChatFollowStatus');
       if (!followStatusEl) return;
       const followStatus = getApiConversationFollowStatus(session);
-      followStatusEl.textContent = followStatus.text;
+      const isVisible = followStatus.visible !== false;
+      followStatusEl.hidden = !isVisible;
+      followStatusEl.style.display = isVisible ? '' : 'none';
+      followStatusEl.textContent = followStatus.text || '';
       followStatusEl.classList.toggle('is-unread', !!followStatus.highlighted);
     }
 
@@ -8052,7 +8982,7 @@
       const now = Date.now();
       const previewText = payload.text
         ? String(payload.text)
-        : (payload.imageUrl ? '[图片]' : '');
+        : (payload.imageUrl ? '[图片]' : (payload.videoUrl ? '[视频]' : ''));
       let changed = false;
       const patchSession = (session = {}) => {
         if (getApiSessionKey(session) !== sessionKey) return session;
@@ -8079,6 +9009,217 @@
       renderApiMessages();
     }
 
+    function formatApiVideoDuration(value) {
+      const totalSeconds = Math.max(0, Number(value || 0) || 0);
+      if (!totalSeconds) return '00:00';
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function normalizeApiVideoItem(item = {}) {
+      if (!item || typeof item !== 'object') return null;
+      const normalized = {
+        id: Number(item.id || item.fileId || 0) || 0,
+        name: String(item.name || item.fileName || '').trim(),
+        extension: String(item.extension || '').trim(),
+        url: String(item.url || item.videoUrl || '').trim(),
+        coverUrl: String(item.coverUrl || item.videoCoverUrl || item.video_cover_url || '').trim(),
+        duration: Number(item.duration || item.videoDuration || 0) || 0,
+        width: Number(item.width || 0) || 0,
+        height: Number(item.height || 0) || 0,
+        size: Number(item.size || 0) || 0,
+        checkStatus: Number(item.checkStatus || item.check_status || 0) || 0,
+      };
+      if (!normalized.url && !normalized.id) return null;
+      return normalized;
+    }
+
+    function renderApiVideoMessageHtml(message = {}) {
+      const videoUrl = getApiVideoMessageUrl(message);
+      const coverUrl = getApiVideoMessageCoverUrl(message);
+      const durationText = formatApiVideoDuration(getApiVideoMessageDuration(message));
+      return `<div class="api-message-bubble">
+        <a class="api-message-video" href="${esc(videoUrl || '#')}" target="_blank" rel="noopener noreferrer">
+          ${coverUrl
+          ? `<img class="api-message-video-cover" src="${esc(coverUrl)}" alt="视频封面">`
+          : `<div class="api-message-video-fallback">▶</div>`}
+          <div class="api-message-video-mask"><span class="api-message-video-play"></span></div>
+          <div class="api-message-video-footer">
+            <span class="api-message-video-label">视频</span>
+            <span class="api-message-video-duration">${esc(durationText)}</span>
+          </div>
+        </a>
+      </div>`;
+    }
+
+    function renderApiVideoLibraryModal() {
+      const container = document.getElementById('apiVideoLibraryContent');
+      if (!container) return;
+      const footer = document.querySelector('#apiVideoLibraryPanel .api-video-popover-footer');
+      if (footer) footer.style.display = 'flex';
+      const syncPopover = () => {
+        if (isApiVideoLibraryVisible()) {
+          requestAnimationFrame(syncApiVideoLibraryPopoverPosition);
+        }
+      };
+      if (!apiActiveSessionId) {
+        container.innerHTML = '<div class="api-video-empty">请先选择一个接口会话，再发送视频</div>';
+        syncPopover();
+        return;
+      }
+      if (apiVideoLibraryLoading) {
+        container.innerHTML = '<div class="api-video-loading">正在加载视频列表...</div>';
+        syncPopover();
+        return;
+      }
+      if (apiVideoLibraryError) {
+        container.innerHTML = `<div class="api-video-error">${esc(apiVideoLibraryError)}</div>`;
+        syncPopover();
+        return;
+      }
+      if (!apiVideoLibrary.length) {
+        if (footer) footer.style.display = 'flex';
+        container.innerHTML = `<div class="api-video-empty">暂无视频，去 <button class="api-video-empty-action" id="btnApiVideoEmptyUpload" type="button">添加</button> 吧~</div>`;
+        document.getElementById('btnApiVideoEmptyUpload')?.addEventListener('click', () => {
+          document.getElementById('btnApiVideoUpload')?.click();
+        });
+        syncPopover();
+        return;
+      }
+      if (footer) footer.style.display = 'none';
+      container.innerHTML = `<div class="api-video-grid">
+        ${apiVideoLibrary.map(item => {
+        const selected = apiSelectedVideo && Number(apiSelectedVideo.id || 0) === Number(item.id || 0);
+        return `<div class="api-video-card${selected ? ' is-selected' : ''}" role="button" tabindex="0" data-video-id="${esc(item.id)}">
+            <div class="api-video-card-media">
+              <div class="api-video-card-cover-wrap">
+                ${item.coverUrl
+            ? `<img class="api-video-card-cover" src="${esc(item.coverUrl)}" alt="视频封面">`
+            : `<div class="api-video-card-fallback">▶</div>`}
+                <span class="api-video-card-duration">${esc(formatApiVideoDuration(item.duration))}</span>
+              </div>
+            </div>
+            <div class="api-video-card-body">
+              <div class="api-video-card-name">${esc(item.name || '未命名视频')}</div>
+              <button class="api-video-card-send" type="button" data-video-send-id="${esc(item.id)}">发送</button>
+            </div>
+          </div>`;
+      }).join('')}
+      </div>`;
+      container.querySelectorAll('[data-video-id]').forEach(button => {
+        button.addEventListener('click', () => {
+          const matched = apiVideoLibrary.find(item => String(item.id) === String(button.dataset.videoId));
+          if (!matched) return;
+          apiSelectedVideo = matched;
+          renderApiVideoLibraryModal();
+        });
+        button.addEventListener('keydown', event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          button.click();
+        });
+      });
+      container.querySelectorAll('[data-video-send-id]').forEach(button => {
+        button.addEventListener('click', async event => {
+          event.stopPropagation();
+          const matched = apiVideoLibrary.find(item => String(item.id) === String(button.dataset.videoSendId));
+          if (!matched) return;
+          apiSelectedVideo = matched;
+          renderApiVideoLibraryModal();
+          await sendSelectedApiVideo(matched);
+        });
+      });
+      syncPopover();
+    }
+
+    async function loadApiVideoLibrary(options = {}) {
+      apiVideoLibraryLoading = true;
+      apiVideoLibraryError = '';
+      if (!options.keepSelection) {
+        apiSelectedVideo = null;
+      }
+      renderApiVideoLibraryModal();
+      const result = await window.pddApi.apiGetVideoLibrary({
+        shopId: apiActiveSessionShopId,
+        includePending: false,
+      });
+      apiVideoLibraryLoading = false;
+      if (result?.error) {
+        apiVideoLibrary = [];
+        apiVideoLibraryError = result.error;
+        renderApiVideoLibraryModal();
+        return false;
+      }
+      apiVideoLibrary = Array.isArray(result?.list)
+        ? result.list.map(normalizeApiVideoItem).filter(Boolean)
+        : [];
+      if (!options.keepSelection || !apiSelectedVideo) {
+        apiSelectedVideo = apiVideoLibrary[0] || null;
+      } else {
+        apiSelectedVideo = apiVideoLibrary.find(item => Number(item.id || 0) === Number(apiSelectedVideo?.id || 0)) || apiVideoLibrary[0] || null;
+      }
+      renderApiVideoLibraryModal();
+      return true;
+    }
+
+    async function openApiVideoLibraryModal() {
+      toggleApiEmojiPanel(false);
+      apiVideoLibrary = [];
+      apiVideoLibraryError = '';
+      apiSelectedVideo = null;
+      showApiVideoLibraryPopover();
+      renderApiVideoLibraryModal();
+      if (!apiActiveSessionId) {
+        setApiHint('请先选择一个接口会话');
+        return;
+      }
+      await loadApiVideoLibrary();
+    }
+
+    async function sendSelectedApiVideo(video = apiSelectedVideo) {
+      if (!apiActiveSessionId) {
+        setApiHint('请先选择一个接口会话');
+        return;
+      }
+      if (!video?.url) {
+        setApiHint('请先选择一个可发送的视频');
+        return;
+      }
+      apiSelectedVideo = video;
+      const currentVideo = video;
+      recordApiSyncState('视频发送', `${currentVideo.name || '未命名视频'} → ${apiActiveSessionName || apiActiveSessionId}`);
+      setApiHint('正在发送视频，请稍候...');
+      const result = await window.pddApi.apiSendVideo({
+        shopId: apiActiveSessionShopId,
+        sessionId: apiActiveSessionId,
+        session: getApiActiveSession() || undefined,
+        videoUrl: currentVideo.url,
+        coverUrl: currentVideo.coverUrl,
+        duration: currentVideo.duration,
+        videoName: currentVideo.name,
+        videoId: currentVideo.id,
+      });
+      if (result?.error) {
+        recordApiSyncState('视频失败', result.error || '视频发送失败');
+        setApiHint(`视频发送失败：${result.error || '未知错误'}`);
+        return;
+      }
+      const successPayload = {
+        shopId: apiActiveSessionShopId,
+        sessionId: apiActiveSessionId,
+        videoUrl: currentVideo.url,
+        videoCoverUrl: currentVideo.coverUrl,
+        videoDuration: currentVideo.duration,
+        videoName: currentVideo.name,
+        videoId: currentVideo.id,
+      };
+      clearApiPendingReplyState(successPayload);
+      appendApiLocalServiceMessage(successPayload);
+      hideApiVideoLibraryPopover();
+      setApiHint('视频已发送，正在同步最新消息');
+    }
+
     function buildApiSyntheticRefundMessageKey(payload = {}) {
       const refundCard = payload?.refundCard && typeof payload.refundCard === 'object' ? payload.refundCard : {};
       return [
@@ -8098,18 +9239,25 @@
       const refundCard = payload?.refundCard && typeof payload.refundCard === 'object'
         ? { ...payload.refundCard }
         : null;
-      if (!shopId || !sessionId || (!text && !refundCard)) return;
+      const videoMeta = normalizeApiVideoItem({
+        id: payload.videoId,
+        url: payload.videoUrl,
+        coverUrl: payload.videoCoverUrl,
+        duration: payload.videoDuration,
+        name: payload.videoName,
+      });
+      if (!shopId || !sessionId || (!text && !refundCard && !videoMeta)) return;
       const timestamp = Number(payload.timestamp || Date.now()) || Date.now();
       const localMessage = {
         sessionId,
         shopId,
-        content: text,
+        content: text || (videoMeta?.url || ''),
         timestamp,
         isFromBuyer: false,
         senderName: getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号',
         readState: '',
         refundCard,
-        extra: refundCard ? { refundCard } : null,
+        extra: refundCard ? { refundCard } : (videoMeta ? { video: videoMeta } : null),
         raw: {},
       };
       if (refundCard) {
@@ -8205,14 +9353,95 @@
       const shop = shops.find(item => item.id === session.shopId) || null;
       const shopId = session.shopId || shop?.id || apiActiveSessionShopId || activeShopId || '';
       const lastMessageActor = getApiSessionLastMessageActor(session);
+      const mallName = session.mallName || session.raw?.mallName || session.raw?.mall_name || '';
+      const preferredShopName = ['未命名店铺', '未知店铺'].includes(String(session.shopName || '').trim())
+        ? ''
+        : session.shopName;
       return {
         ...session,
         shopId,
-        shopName: session.shopName || shop?.name || '未命名店铺',
+        mallName,
+        isShopMember: typeof session.isShopMember === 'boolean'
+          ? session.isShopMember
+          : (typeof session.is_shop_member === 'boolean'
+            ? session.is_shop_member
+            : (typeof session.raw?.is_shop_member === 'boolean'
+              ? session.raw.is_shop_member
+              : null)),
+        shopName: preferredShopName || mallName || shop?.name || '未命名店铺',
         sessionKey: session.sessionKey || getApiSessionKey(shopId, session.sessionId),
         lastMessageActor,
         lastMessageIsFromBuyer: session.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer',
       };
+    }
+
+    function getApiSessionGroupNumber(session = {}) {
+      const rawValue = session.groupNumber
+        ?? session.group_number
+        ?? session.raw?.groupNumber
+        ?? session.raw?.group_number;
+      const numericValue = Number(rawValue);
+      return Number.isFinite(numericValue) ? numericValue : 0;
+    }
+
+    function getApiSessionGenderValue(session = {}) {
+      const candidates = [
+        session.gender,
+        session.raw?.gender,
+        session.sex,
+        session.raw?.sex,
+        session.raw?.buyer_gender,
+        session.raw?.buyerGender,
+        session.raw?.buyer_sex,
+        session.raw?.buyerSex,
+        session.raw?.user_info?.gender,
+        session.raw?.user_info?.sex,
+        session.raw?.user_info?.buyer_gender,
+        session.raw?.user_info?.buyerGender,
+        session.raw?.user_info?.buyer_sex,
+        session.raw?.user_info?.buyerSex,
+      ];
+      for (const candidate of candidates) {
+        if (candidate === null || candidate === undefined || candidate === '') continue;
+        const normalized = String(candidate).trim().toLowerCase();
+        if (normalized === '0' || normalized === 'female' || normalized === 'woman' || normalized === 'girl' || normalized === '女') {
+          return 'female';
+        }
+        if (normalized === '1' || normalized === 'male' || normalized === 'man' || normalized === 'boy' || normalized === '男') {
+          return 'male';
+        }
+      }
+      return 'unknown';
+    }
+
+    function applyApiConversationMeta(session = null) {
+      const orderCountEl = document.getElementById('apiChatOrderCount');
+      const genderEl = document.getElementById('apiChatGender');
+      if (orderCountEl) {
+        const orderCount = session ? Math.max(0, getApiSessionGroupNumber(session)) : 0;
+        if (orderCount >= 1) {
+          orderCountEl.textContent = `下单数 ${orderCount}`;
+          orderCountEl.hidden = false;
+        } else {
+          orderCountEl.hidden = true;
+        }
+      }
+      if (!genderEl) return;
+      const genderValue = session ? getApiSessionGenderValue(session) : 'unknown';
+      genderEl.classList.remove('is-female', 'is-male', 'is-unknown');
+      if (genderValue === 'female') {
+        genderEl.textContent = '女';
+        genderEl.classList.add('is-female');
+        genderEl.hidden = false;
+        return;
+      }
+      if (genderValue === 'male') {
+        genderEl.textContent = '男';
+        genderEl.classList.add('is-male');
+        genderEl.hidden = false;
+        return;
+      }
+      genderEl.hidden = true;
     }
 
     function setApiActiveSessionSnapshot(session = null) {
@@ -8304,7 +9533,7 @@
           result.push(buildApiSession({
             sessionId,
             shopId,
-            shopName: entry.shopName || shops.find(shop => shop.id === shopId)?.name || '未命名店铺',
+            shopName: entry.shopName || shops.find(shop => shop.id === shopId)?.name || '',
             customerId: String(item.customer_id || item.buyer_id || item?.from?.uid || item?.to?.uid || item?.user_info?.uid || ''),
             customerName: item.nick || item.nickname || item.buyer_name || item.customer_name || item.name || item?.user_info?.nickname || '未知客户',
             customerAvatar: item.avatar || item.head_img || item.buyer_avatar || item?.user_info?.avatar || '',
@@ -8535,11 +9764,16 @@
     }
 
     function clearApiActiveSession() {
+      hideApiVideoLibraryPopover();
       apiActiveSessionId = '';
       apiActiveSessionName = '';
       apiActiveSessionShopId = '';
       apiActiveSessionSnapshot = null;
       apiMessages = [];
+      apiVideoLibrary = [];
+      apiVideoLibraryLoading = false;
+      apiVideoLibraryError = '';
+      apiSelectedVideo = null;
       apiHasUserSelectedSession = false;
       apiActiveSessionSyncSignature = '';
       apiOpenSessionRequestId += 1;
@@ -8619,6 +9853,10 @@
           const unread = Number(session.unreadCount || 0);
           const pendingReply = hasApiPendingReply(session);
           const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
+          const groupNumber = getApiSessionGroupNumber(session);
+          const orderTagHtml = groupNumber >= 1
+            ? `<span class="api-session-order-tag">订单 ${esc(String(groupNumber))}</span>`
+            : '';
           const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
           return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
             <div class="api-session-avatar">${avatarHtml}</div>
@@ -8627,14 +9865,15 @@
                 <div class="api-session-item-info-row">
                   <div class="api-session-item-name">
                     <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
+                    ${orderTagHtml}
                     ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
                   </div>
                   <div class="api-session-shop">
                     <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
                   </div>
-                </div>
-                <div class="api-session-time-group">
-                  <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
+                  <div class="api-session-time-group">
+                    <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
+                  </div>
                 </div>
               </div>
               <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
@@ -8704,6 +9943,62 @@
       return jsonMatch?.[1] || '';
     }
 
+    function isApiVideoMessage(message = {}) {
+      const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
+      if (['video', 'short_video', 'small_video'].includes(msgType)) return true;
+      const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
+      if (/(video_cover_url|f20_url|f30_url|transcode_f30_url|library_file)/.test(rawContent)) return true;
+      if (/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i.test(rawContent)) return true;
+      return !!getApiVideoMessageUrl(message);
+    }
+
+    function getApiVideoMessageUrl(message = {}) {
+      const candidates = [
+        message?.extra?.video?.url,
+        message?.extra?.url,
+        message?.extra?.video_url,
+        message?.extra?.f30_url,
+        message?.extra?.f20_url,
+        message?.raw?.extra?.video?.url,
+        message?.raw?.extra?.url,
+        message?.raw?.extra?.video_url,
+        message?.raw?.extra?.f30_url,
+        message?.raw?.extra?.f20_url,
+        message?.raw?.ext?.url,
+        message?.raw?.ext?.video_url,
+        message?.raw?.ext?.f30_url,
+        message?.raw?.ext?.f20_url,
+      ].filter(Boolean);
+      if (candidates.length) return String(candidates[0] || '');
+      const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
+      const urlMatch = rawText.match(/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i);
+      return urlMatch?.[0] || '';
+    }
+
+    function getApiVideoMessageCoverUrl(message = {}) {
+      return String(
+        message?.extra?.video?.coverUrl
+        || message?.extra?.coverUrl
+        || message?.extra?.video_cover_url
+        || message?.raw?.extra?.video?.coverUrl
+        || message?.raw?.extra?.coverUrl
+        || message?.raw?.extra?.video_cover_url
+        || message?.raw?.ext?.video_cover_url
+        || ''
+      );
+    }
+
+    function getApiVideoMessageDuration(message = {}) {
+      return Number(
+        message?.extra?.video?.duration
+        || message?.extra?.duration
+        || message?.raw?.extra?.video?.duration
+        || message?.raw?.extra?.duration
+        || message?.raw?.ext?.duration
+        || 0
+      ) || 0;
+    }
+
     function renderApiMessages() {
       try {
         const container = document.getElementById('apiMessageList');
@@ -8718,6 +10013,7 @@
         document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
         document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
         applyApiChatFollowStatus(activeSession);
+        applyApiConversationMeta(activeSession);
         document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
         mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 
@@ -8766,28 +10062,34 @@
           const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
           const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
           const imageUrl = getApiImageMessageUrl(message);
+          const videoMessage = isApiVideoMessage(message);
           const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
           const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
           const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
-          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
+          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
+            goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
+            goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
+          ) : null;
           const refundCard = !isBuyer ? extractApiRefundCard(message) : null;
           const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, { cardIndex: index }) : null;
           if (goodsLinkInfo && fallbackGoodsCard) {
             void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
           }
-          const imageMessage = isApiImageMessage(message);
+          const imageMessage = !videoMessage && isApiImageMessage(message);
           const bubbleHtml = resolvedRefundCard
             ? renderApiRefundCardHtml(resolvedRefundCard)
             : goodsLinkInfo
               ? renderApiGoodsCardHtml(goodsCard)
-              : imageMessage
-                ? `<div class="api-message-bubble">
-                <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
+              : videoMessage
+                ? renderApiVideoMessageHtml(message)
+                : imageMessage
+                  ? `<div class="api-message-bubble">
+                <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息" data-preview-url="${esc(imageUrl)}">` : '[图片消息]'}</div>
               </div>`
-                : `<div class="api-message-bubble">
+                  : `<div class="api-message-bubble">
                 <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
               </div>`;
-          const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !imageMessage && String(message.content || '').trim()
+          const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !imageMessage && !videoMessage && String(message.content || '').trim()
             ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
             : '';
           const footerHtml = !isBuyer
@@ -8824,6 +10126,13 @@
             }
           });
         });
+        container.querySelectorAll('.api-message-image[data-preview-url]').forEach(image => {
+          image.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showApiImagePreview(image.dataset.previewUrl || image.getAttribute('src') || '');
+          });
+        });
         container.querySelectorAll('.api-message-system-action-button').forEach(button => {
           button.addEventListener('click', async (event) => {
             event.stopPropagation();
@@ -8838,10 +10147,35 @@
             if (!goodsId) return;
             try {
               await navigator.clipboard.writeText(goodsId);
-              setApiHint('已复制商品ID');
+              showToast('已复制到剪切板！');
             } catch {
-              setApiHint('复制失败，请稍后重试');
+              showToast('复制失败，请稍后重试');
             }
+          });
+        });
+        container.querySelectorAll('.api-goods-card-spec').forEach(button => {
+          button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            let inlineSpecItems = [];
+            try {
+              inlineSpecItems = normalizeApiGoodsSpecItems(JSON.parse(button.dataset.goodsSpecItems || '[]'));
+            } catch {}
+            const cacheKey = String(button.dataset.goodsCacheKey || '');
+            const cachedCard = cacheKey ? apiGoodsCardCache.get(cacheKey) : null;
+            window.openApiGoodsSpecModal?.(normalizeApiGoodsCard(cachedCard || {}, {
+              cacheKey,
+              goodsId: button.dataset.goodsId || '',
+              url: button.dataset.goodsUrl || '',
+              title: button.dataset.goodsTitle || '',
+              imageUrl: button.dataset.goodsImageUrl || '',
+              priceText: button.dataset.goodsPriceText || '',
+              groupText: button.dataset.goodsGroupText || '',
+              specText: button.dataset.goodsSpecText || '查看商品规格',
+              specItems: inlineSpecItems,
+              stockText: button.dataset.goodsStockText || '',
+              salesText: button.dataset.goodsSalesText || '',
+              pendingGroupText: button.dataset.goodsPendingGroupText || '',
+            }));
           });
         });
         container.scrollTop = container.scrollHeight;
@@ -9589,6 +10923,56 @@
         recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
         setApiHint('图片已发送，正在同步最新消息');
       });
+      window.addEventListener('resize', syncApiVideoLibraryPopoverPosition);
+      window.addEventListener('scroll', syncApiVideoLibraryPopoverPosition, true);
+      document.getElementById('btnApiVideoUpload')?.addEventListener('click', async () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        recordApiSyncState('选择视频', `会话：${apiActiveSessionName || apiActiveSessionId}`);
+        const selected = await window.pddApi.apiSelectVideo();
+        if (selected?.canceled) {
+          recordApiSyncState('视频取消', '用户取消选择视频');
+          setApiHint('已取消选择视频');
+          return;
+        }
+        if (!selected?.filePath) {
+          recordApiSyncState('视频失败', '未拿到视频路径');
+          setApiHint('未选择视频文件');
+          return;
+        }
+        const fileName = String(selected.filePath).split(/[\\/]/).pop() || '视频';
+        apiVideoLibraryLoading = true;
+        apiVideoLibraryError = '';
+        renderApiVideoLibraryModal();
+        recordApiSyncState('视频上传', `文件：${fileName}`);
+        setApiHint('正在上传视频并等待审核，请稍候...');
+        const result = await window.pddApi.apiUploadVideo({
+          shopId: apiActiveSessionShopId,
+          filePath: selected.filePath,
+          timeoutMs: 120000,
+        });
+        if (result?.error) {
+          apiVideoLibraryLoading = false;
+          apiVideoLibraryError = result.error;
+          renderApiVideoLibraryModal();
+          recordApiSyncState('视频失败', result.error || '视频上传失败');
+          setApiHint(`视频上传失败：${result.error || '未知错误'}`);
+          return;
+        }
+        recordApiSyncState('视频完成', `${fileName} 已进入可发送列表`);
+        setApiHint('视频已上传完成，正在刷新素材列表');
+        await loadApiVideoLibrary({ keepSelection: false });
+        const uploadedVideo = normalizeApiVideoItem(result);
+        if (uploadedVideo?.id) {
+          apiSelectedVideo = apiVideoLibrary.find(item => Number(item.id || 0) === Number(uploadedVideo.id || 0)) || uploadedVideo;
+          renderApiVideoLibraryModal();
+        }
+      });
+      document.getElementById('btnApiVideoSend')?.addEventListener('click', async () => {
+        await sendSelectedApiVideo();
+      });
 
       document.getElementById('btnApiTransfer')?.addEventListener('click', async () => {
         if (!apiActiveSessionId) {
@@ -9600,17 +10984,33 @@
         setApiHint('已模拟执行会话处理动作，当前先复用已读链路。');
       });
 
-      document.getElementById('btnApiRisk').addEventListener('click', async () => {
+      document.getElementById('btnApiRisk').addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+        }
+      });
+      document.getElementById('btnApiRiskReport').addEventListener('click', () => {
         if (!apiActiveSessionId) {
           setApiHint('请先选择一个接口会话');
           return;
         }
-        try {
-          await navigator.clipboard.writeText(apiActiveSessionId);
-          setApiHint(`已复制会话ID：${apiActiveSessionId}`);
-        } catch {
-          setApiHint(`会话ID：${apiActiveSessionId}`);
+        setApiHint('举报功能开发中');
+      });
+      document.getElementById('btnApiRiskBlacklist').addEventListener('click', () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
         }
+        setApiHint('拉黑功能开发中');
+      });
+      document.getElementById('btnApiRiskManage').addEventListener('click', () => {
+        if (!apiActiveSessionId) {
+          setApiHint('请先选择一个接口会话');
+          return;
+        }
+        setApiHint('黑名单管理功能开发中');
       });
       document.getElementById('btnApiStar').addEventListener('click', async () => {
         if (!apiActiveSessionId) {
@@ -10314,6 +11714,27 @@
     // ==================== 通用工具 ====================
     function showModal(id) { document.getElementById(id).classList.add('visible'); }
     function hideModal(id) { document.getElementById(id).classList.remove('visible'); }
+    window.showModal = showModal;
+    window.hideModal = hideModal;
+
+    function showApiImagePreview(url) {
+      const normalizedUrl = String(url || '').trim();
+      const previewImage = document.getElementById('apiImagePreviewContent');
+      if (!normalizedUrl || !previewImage) {
+        showToast('图片地址无效');
+        return;
+      }
+      previewImage.src = normalizedUrl;
+      showModal('modalApiImagePreview');
+    }
+
+    function hideApiImagePreview() {
+      hideModal('modalApiImagePreview');
+      const previewImage = document.getElementById('apiImagePreviewContent');
+      if (previewImage) {
+        previewImage.removeAttribute('src');
+      }
+    }
 
     let toastTimer = null;
 

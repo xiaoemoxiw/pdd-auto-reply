@@ -156,7 +156,7 @@ function registerApiIpc({
   ipcMain.handle('api-get-goods-card', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
-    if (!params.url) return { error: '缺少商品链接' };
+    if (!params.url && !params.goodsId) return { error: '缺少商品链接' };
     try {
       return await getApiClient(shopId).getGoodsCard(params);
     } catch (error) {
@@ -263,6 +263,17 @@ function registerApiIpc({
     return { canceled: false, filePath: result.filePaths[0] };
   });
 
+  ipcMain.handle('api-select-video', async () => {
+    const result = await dialog.showOpenDialog(getMainWindow(), {
+      properties: ['openFile'],
+      filters: [{ name: '视频文件', extensions: ['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv'] }]
+    });
+    if (result.canceled || !result.filePaths?.length) {
+      return { canceled: true };
+    }
+    return { canceled: false, filePath: result.filePaths[0] };
+  });
+
   ipcMain.handle('api-send-image', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
@@ -297,6 +308,50 @@ function registerApiIpc({
         imageUrl: error.imageUrl || '',
         uploadBaseUrl: error.uploadBaseUrl || ''
       };
+    }
+  });
+
+  ipcMain.handle('api-get-video-library', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    try {
+      return await getApiClient(shopId).getVideoLibrary(params);
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('api-send-video', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    const videoUrl = String(params.videoUrl || params.url || '').trim();
+    if (!videoUrl) return { error: '缺少视频地址' };
+    try {
+      return await getApiClient(shopId).sendVideoUrl(params.session || params.sessionId, videoUrl, params);
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('api-upload-video', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.filePath) return { error: '缺少视频路径' };
+    try {
+      const uploadResult = await uploadImageViaPddPage(shopId, params.filePath);
+      const client = getApiClient(shopId);
+      const fileDetail = await client.waitVideoFileReady({
+        fileId: uploadResult?.file_id || uploadResult?.id,
+        fileUrl: uploadResult?.file_url || uploadResult?.url || uploadResult?.processed_url || uploadResult?.download_url,
+        timeoutMs: params.timeoutMs,
+      });
+      return {
+        success: true,
+        ...fileDetail,
+      };
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
     }
   });
 

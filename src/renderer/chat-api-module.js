@@ -151,8 +151,9 @@
     const status = callRuntime('getApiConversationFollowStatus', session);
     if (status && typeof status === 'object') return status;
     return {
-      text: session ? '已关注本店' : '未选择会话',
+      text: session ? '已关注本店' : '',
       highlighted: false,
+      visible: !!session,
     };
   }
 
@@ -160,7 +161,10 @@
     const followStatusEl = document.getElementById('apiChatFollowStatus');
     if (!followStatusEl) return;
     const followStatus = getApiConversationFollowStatus(session);
-    followStatusEl.textContent = followStatus.text || (session ? '已关注本店' : '未选择会话');
+    const isVisible = followStatus.visible !== false;
+    followStatusEl.hidden = !isVisible;
+    followStatusEl.style.display = isVisible ? '' : 'none';
+    followStatusEl.textContent = followStatus.text || '';
     followStatusEl.classList.toggle('is-unread', !!followStatus.highlighted);
   }
 
@@ -229,7 +233,7 @@
 
   function getApiSideOrderLoadingText(tab = 'personal') {
     return {
-      personal: '正在读取个人订单...',
+      personal: '近90天无订单，更早订单请在管理后台查看',
       aftersale: '正在读取售后订单...',
       pending: '正在读取店铺待支付...',
     }[tab] || '正在读取订单数据...';
@@ -848,6 +852,17 @@
     const listEl = document.getElementById('apiSideOrderList');
     const emptyEl = document.getElementById('apiSideOrderEmpty');
     if (!listEl || !emptyEl) return;
+    const showEmpty = (text) => {
+      listEl.style.display = 'none';
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+      emptyEl.textContent = text;
+    };
+    const showList = (html) => {
+      listEl.style.display = 'flex';
+      emptyEl.style.display = 'none';
+      listEl.innerHTML = html;
+    };
     const state = getState();
     const tab = String(state.apiSideTab || 'personal');
     if (tab === 'sync') {
@@ -857,9 +872,7 @@
     ensureApiSideOrderSessionScope();
     const session = getApiSideOrderSession();
     if (!session) {
-      listEl.innerHTML = '';
-      emptyEl.style.display = 'block';
-      emptyEl.textContent = '请先选择一个接口会话';
+      showEmpty('请先选择一个接口会话');
       return;
     }
     const entry = getApiSideOrderEntry(tab);
@@ -874,33 +887,24 @@
       entry.loading = true;
       entry.error = '';
       if (!entry.items.length) {
-        listEl.innerHTML = '';
-        emptyEl.style.display = 'block';
-        emptyEl.textContent = getApiSideOrderLoadingText(tab);
+        showEmpty(getApiSideOrderLoadingText(tab));
       }
       void loadApiSideOrders(tab);
       if (!entry.items.length) return;
     }
     if (entry.loading && !entry.items.length) {
-      listEl.innerHTML = '';
-      emptyEl.style.display = 'block';
-      emptyEl.textContent = getApiSideOrderLoadingText(tab);
+      showEmpty(getApiSideOrderLoadingText(tab));
       return;
     }
     if (entry.error && !entry.items.length) {
-      listEl.innerHTML = '';
-      emptyEl.style.display = 'block';
-      emptyEl.textContent = entry.error;
+      showEmpty(entry.error);
       return;
     }
     if (!entry.items.length) {
-      listEl.innerHTML = '';
-      emptyEl.style.display = 'block';
-      emptyEl.textContent = getApiSideOrderEmptyText(tab);
+      showEmpty(getApiSideOrderEmptyText(tab));
       return;
     }
-    emptyEl.style.display = 'none';
-    listEl.innerHTML = entry.items.map(renderApiSideOrderCard).join('');
+    showList(entry.items.map(renderApiSideOrderCard).join(''));
     syncApiSideOrderCountdowns();
   }
 
@@ -1353,6 +1357,66 @@
       ?? session.raw?.group_number;
     const numericValue = Number(rawValue);
     return Number.isFinite(numericValue) ? numericValue : 0;
+  }
+
+  function getApiSessionGenderValue(session = {}) {
+    const candidates = [
+      session.gender,
+      session.raw?.gender,
+      session.sex,
+      session.raw?.sex,
+      session.raw?.buyer_gender,
+      session.raw?.buyerGender,
+      session.raw?.buyer_sex,
+      session.raw?.buyerSex,
+      session.raw?.user_info?.gender,
+      session.raw?.user_info?.sex,
+      session.raw?.user_info?.buyer_gender,
+      session.raw?.user_info?.buyerGender,
+      session.raw?.user_info?.buyer_sex,
+      session.raw?.user_info?.buyerSex,
+    ];
+    for (const candidate of candidates) {
+      if (candidate === null || candidate === undefined || candidate === '') continue;
+      const normalized = String(candidate).trim().toLowerCase();
+      if (normalized === '0' || normalized === 'female' || normalized === 'woman' || normalized === 'girl' || normalized === '女') {
+        return 'female';
+      }
+      if (normalized === '1' || normalized === 'male' || normalized === 'man' || normalized === 'boy' || normalized === '男') {
+        return 'male';
+      }
+    }
+    return 'unknown';
+  }
+
+  function applyApiConversationMeta(session = null) {
+    const orderCountEl = document.getElementById('apiChatOrderCount');
+    const genderEl = document.getElementById('apiChatGender');
+    if (orderCountEl) {
+      const orderCount = session ? Math.max(0, getApiSessionGroupNumber(session)) : 0;
+      if (orderCount >= 1) {
+        orderCountEl.textContent = `下单数 ${orderCount}`;
+        orderCountEl.hidden = false;
+      } else {
+        orderCountEl.hidden = true;
+      }
+    }
+    if (!genderEl) return;
+    const genderValue = session ? getApiSessionGenderValue(session) : 'unknown';
+    genderEl.classList.remove('is-female', 'is-male', 'is-unknown');
+    if (genderValue === 'female') {
+      genderEl.textContent = '女';
+      genderEl.classList.add('is-female');
+      genderEl.hidden = false;
+      return;
+    }
+    if (genderValue === 'male') {
+      genderEl.textContent = '男';
+      genderEl.classList.add('is-male');
+      genderEl.hidden = false;
+      return;
+    }
+    genderEl.hidden = true;
   }
 
   function clearApiActiveSession() {
@@ -3521,6 +3585,7 @@
       document.getElementById('apiChatCustomerName').textContent = state.apiActiveSessionName || '未选择客户';
       document.getElementById('btnApiStar').textContent = state.isApiSessionStarred?.(activeSession || {}) ? '取消收藏' : '收藏';
       applyApiChatFollowStatus(activeSession);
+      applyApiConversationMeta(activeSession);
       document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
       mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 

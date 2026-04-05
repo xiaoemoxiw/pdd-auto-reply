@@ -2122,6 +2122,7 @@
       color: #333;
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 8px;
     }
 
@@ -2259,6 +2260,26 @@
       color: #e24c3d;
     }
 
+    .api-chat-order-tag {
+      background: #fff4e8;
+      color: #c5771b;
+    }
+
+    .api-chat-gender-tag.is-female {
+      background: #ffffff;
+      color: #d54b8b;
+    }
+
+    .api-chat-gender-tag.is-male {
+      background: #ffffff;
+      color: #3e78d3;
+    }
+
+    .api-chat-gender-tag.is-unknown {
+      background: #f2f4f7;
+      color: #667085;
+    }
+
     .api-banner {
       background: linear-gradient(90deg, #fff7d7 0%, #fff3c4 100%);
       color: #8a6b00;
@@ -2315,7 +2336,7 @@
       align-items: center;
       height: 22px;
       padding: 0 8px;
-      border-radius: 11px;
+      border-radius: 5px;
       background: #fff1f0;
       color: #e02e24;
       font-size: 11px;
@@ -3516,7 +3537,7 @@
       position: fixed;
       left: 0;
       top: 0;
-      width: min(400px, calc(100vw - 32px));
+      width: min(420px, calc(100vw - 32px));
       max-height: min(320px, calc(100vh - 32px));
       background: #fff;
       border: 1px solid #e6ebf5;
@@ -3591,8 +3612,10 @@
 
     .api-video-grid {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
+      flex-wrap: wrap;
       align-items: flex-start;
+      align-content: flex-start;
       gap: 8px;
       max-height: 188px;
       overflow-y: auto;
@@ -3604,6 +3627,9 @@
       flex-direction: column;
       align-items: flex-start;
       gap: 8px;
+      width: 118px;
+      flex: 0 0 118px;
+      box-sizing: border-box;
       border: 1px solid #e7eaf0;
       border-radius: 10px;
       background: #fff;
@@ -5606,7 +5632,9 @@
                 <div>
                   <div class="api-conversation-title">
                     <span id="apiChatCustomerName">未选择客户</span>
-                    <span class="api-chat-tag api-chat-follow-tag" id="apiChatFollowStatus">已关注本店</span>
+                    <span class="api-chat-tag api-chat-follow-tag" id="apiChatFollowStatus" hidden>已关注本店</span>
+                    <span class="api-chat-tag api-chat-order-tag" id="apiChatOrderCount" hidden>订单数：</span>
+                    <span class="api-chat-tag api-chat-gender-tag" id="apiChatGender" hidden></span>
                   </div>
                 </div>
                 <div class="api-conversation-actions">
@@ -8780,8 +8808,9 @@
     function getApiConversationFollowStatus(session = null) {
       if (!session) {
         return {
-          text: '未选择会话',
+          text: '',
           highlighted: false,
+          visible: false,
         };
       }
       const pendingReplyText = formatApiPendingReplyText(session);
@@ -8789,6 +8818,7 @@
         return {
           text: pendingReplyText,
           highlighted: true,
+          visible: true,
         };
       }
       const unreadCount = Number(session.unreadCount || 0);
@@ -8796,14 +8826,16 @@
         return {
           text: `未读 ${unreadCount}`,
           highlighted: true,
+          visible: true,
         };
       }
       const isShopMember = typeof session.isShopMember === 'boolean'
         ? session.isShopMember
         : (typeof session.is_shop_member === 'boolean' ? session.is_shop_member : null);
       return {
-        text: isShopMember === false ? '未关注本店' : '已关注本店',
+        text: isShopMember === true ? '已关注本店' : '',
         highlighted: false,
+        visible: isShopMember === true,
       };
     }
 
@@ -8811,7 +8843,10 @@
       const followStatusEl = document.getElementById('apiChatFollowStatus');
       if (!followStatusEl) return;
       const followStatus = getApiConversationFollowStatus(session);
-      followStatusEl.textContent = followStatus.text;
+      const isVisible = followStatus.visible !== false;
+      followStatusEl.hidden = !isVisible;
+      followStatusEl.style.display = isVisible ? '' : 'none';
+      followStatusEl.textContent = followStatus.text || '';
       followStatusEl.classList.toggle('is-unread', !!followStatus.highlighted);
     }
 
@@ -9223,6 +9258,66 @@
         ?? session.raw?.group_number;
       const numericValue = Number(rawValue);
       return Number.isFinite(numericValue) ? numericValue : 0;
+    }
+
+    function getApiSessionGenderValue(session = {}) {
+      const candidates = [
+        session.gender,
+        session.raw?.gender,
+        session.sex,
+        session.raw?.sex,
+        session.raw?.buyer_gender,
+        session.raw?.buyerGender,
+        session.raw?.buyer_sex,
+        session.raw?.buyerSex,
+        session.raw?.user_info?.gender,
+        session.raw?.user_info?.sex,
+        session.raw?.user_info?.buyer_gender,
+        session.raw?.user_info?.buyerGender,
+        session.raw?.user_info?.buyer_sex,
+        session.raw?.user_info?.buyerSex,
+      ];
+      for (const candidate of candidates) {
+        if (candidate === null || candidate === undefined || candidate === '') continue;
+        const normalized = String(candidate).trim().toLowerCase();
+        if (normalized === '0' || normalized === 'female' || normalized === 'woman' || normalized === 'girl' || normalized === '女') {
+          return 'female';
+        }
+        if (normalized === '1' || normalized === 'male' || normalized === 'man' || normalized === 'boy' || normalized === '男') {
+          return 'male';
+        }
+      }
+      return 'unknown';
+    }
+
+    function applyApiConversationMeta(session = null) {
+      const orderCountEl = document.getElementById('apiChatOrderCount');
+      const genderEl = document.getElementById('apiChatGender');
+      if (orderCountEl) {
+        const orderCount = session ? Math.max(0, getApiSessionGroupNumber(session)) : 0;
+        if (orderCount >= 1) {
+          orderCountEl.textContent = `下单数 ${orderCount}`;
+          orderCountEl.hidden = false;
+        } else {
+          orderCountEl.hidden = true;
+        }
+      }
+      if (!genderEl) return;
+      const genderValue = session ? getApiSessionGenderValue(session) : 'unknown';
+      genderEl.classList.remove('is-female', 'is-male', 'is-unknown');
+      if (genderValue === 'female') {
+        genderEl.textContent = '女';
+        genderEl.classList.add('is-female');
+        genderEl.hidden = false;
+        return;
+      }
+      if (genderValue === 'male') {
+        genderEl.textContent = '男';
+        genderEl.classList.add('is-male');
+        genderEl.hidden = false;
+        return;
+      }
+      genderEl.hidden = true;
     }
 
     function setApiActiveSessionSnapshot(session = null) {
@@ -9794,6 +9889,7 @@
         document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
         document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
         applyApiChatFollowStatus(activeSession);
+        applyApiConversationMeta(activeSession);
         document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
         mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 

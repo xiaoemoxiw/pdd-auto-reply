@@ -888,11 +888,11 @@ function startNetworkMonitor(view, shopId) {
           } catch {}
         }
       }
-      if (String(entry?.method || 'GET').toUpperCase() === 'POST' && String(entry?.url || '').includes('/mercury/')) {
-        const requestBody = typeof entry?.requestBody === 'string' ? entry.requestBody : '';
+      if (String(normalizedEntry?.method || 'GET').toUpperCase() === 'POST' && String(normalizedEntry?.url || '').includes('/mercury/')) {
+        const requestBody = typeof normalizedEntry?.requestBody === 'string' ? normalizedEntry.requestBody : '';
         if (requestBody) {
           try {
-            const parsedBody = JSON.parse(requestBody);
+            const parsedBody = safeParseCapturedBody(requestBody);
             const orderSn = String(parsedBody?.orderSn || parsedBody?.order_sn || '').trim();
             const hasSmallPaymentFields = [
               parsedBody?.playMoneyAmount,
@@ -908,11 +908,11 @@ function startNetworkMonitor(view, shopId) {
               '/mercury/micro_transfer/detail',
               '/mercury/micro_transfer/queryTips',
               '/mercury/play_money/check',
-            ].some(part => String(entry?.url || '').includes(part));
+            ].some(part => String(normalizedEntry?.url || '').includes(part));
             if (orderSn && hasSmallPaymentFields && !isKnownPrecheck) {
               store.set(`apiSmallPaymentSubmitTemplate.${shopId}`, {
-                url: entry.url,
-                method: entry.method || 'POST',
+                url: normalizedEntry.url,
+                method: normalizedEntry.method || 'POST',
                 requestBody: JSON.stringify(parsedBody),
                 updatedAt: Date.now(),
               });
@@ -920,10 +920,12 @@ function startNetworkMonitor(view, shopId) {
           } catch {}
         }
       }
-      console.log(`[接口抓取:${shopId}] [${entry.method}] ${entry.url} -> ${entry.status}`);
-      sendToDebug('api-traffic', { shopId, entry });
-      pushApiSessionsFromTraffic(shopId, entry);
-      pushApiMessagesFromTraffic(shopId, entry);
+      if (shouldConsoleLogApiTraffic(normalizedEntry)) {
+        console.log(`[接口抓取:${shopId}] [${normalizedEntry.method}] ${normalizedEntry.url} -> ${normalizedEntry.status}`);
+      }
+      sendToDebug('api-traffic', { shopId, entry: normalizedEntry });
+      pushApiSessionsFromTraffic(shopId, normalizedEntry);
+      pushApiMessagesFromTraffic(shopId, normalizedEntry);
     },
     onCustomerMessage(msg) {
       if (!store.get('autoReplyEnabled')) return;

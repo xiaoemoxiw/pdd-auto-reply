@@ -11,7 +11,9 @@
     "snapshot:api-traffic": "electron tools/snapshot-api-traffic.js",
     "rebuild:api-traffic-index": "electron tools/rebuild-api-traffic-index.js",
     "export:api-sample": "electron tools/export-api-traffic-sample.js",
-    "analyze:api-traffic": "electron tools/analyze-api-traffic.js"
+    "analyze:api-traffic": "electron tools/analyze-api-traffic.js",
+    "build:api-traffic-report": "electron tools/build-api-traffic-report.js",
+    "refresh:api-traffic-artifacts": "electron tools/export-api-traffic-sample.js && electron tools/build-api-traffic-report.js"
   },
   "author": "",
   "license": "MIT",

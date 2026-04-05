@@ -773,7 +773,7 @@ function testGetLatestMessageTemplateIgnoresSystemMessage() {
   assert.strictEqual(template, null);
 }
 
-async function testSendMessageRejectsUnconfirmedResult() {
+async function testSendMessageAllowsUnconfirmedResult() {
   const client = new PddApiClient('shop-1', {
     getApiTraffic() {
       return [];
@@ -795,10 +795,10 @@ async function testSendMessageRejectsUnconfirmedResult() {
   client._post = async () => ({ result: { code: 0 } });
   client.getSessionMessages = async () => ([]);
 
-  await assert.rejects(
-    () => client.sendMessage('session-1', 'hello'),
-    /未确认消息已入会话/
-  );
+  const result = await client.sendMessage('session-1', 'hello');
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.confirmed, false);
+  assert.match(result.warning, /接口已返回成功/);
 }
 
 async function main() {
@@ -828,7 +828,7 @@ async function main() {
     testGetLatestBuyerInfoFallsBackToSessionRaw();
     testGetLatestMessageTemplateUsesSendMessageBody();
     testGetLatestMessageTemplateIgnoresSystemMessage();
-    await testSendMessageRejectsUnconfirmedResult();
+    await testSendMessageAllowsUnconfirmedResult();
     console.log('pdd-api-session-window-test passed');
   } finally {
     Module._load = originalLoad;

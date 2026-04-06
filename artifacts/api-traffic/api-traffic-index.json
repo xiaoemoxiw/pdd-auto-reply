@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updatedAt": 119577054,
+  "updatedAt": 119593046,
   "byShop": {
     "shop_504805789": {
       "shopId": "shop_504805789",
-      "updatedAt": 1775512042630,
-      "totalCaptured": 11761,
+      "updatedAt": 119593046,
+      "totalCaptured": 11763,
       "uniqueInterfaceCount": 316,
       "interfaces": {
         "http | request-response | POST | /faas/mms/functions/chat-eva/dynamic-material-dispatch |  | fetch | unknown": {
@@ -1619,14 +1619,14 @@
           "resourceType": "WebSocket",
           "host": "titan-ws.pinduoduo.com",
           "firstSeenAt": 785036561,
-          "lastSeenAt": 119548007,
-          "hitCount": 838,
+          "lastSeenAt": 119593008,
+          "hitCount": 839,
           "lastStatus": 101,
           "lastMimeType": "websocket",
           "lastSummary": "sent · WS-SEND · / · cmd=websocket-sent",
           "sample": {
             "requestHeaders": {},
-            "requestBody": "AAAAAAAAAHUAAAABAAAAAA==",
+            "requestBody": "AAAAAAAAAHYAAAABAAAAAA==",
             "responseHeaders": {},
             "responseBody": "",
             "triggerContext": null,
@@ -1810,8 +1810,8 @@
           "resourceType": "WebSocket",
           "host": "titan-ws.pinduoduo.com",
           "firstSeenAt": 785036598,
-          "lastSeenAt": 119548041,
-          "hitCount": 822,
+          "lastSeenAt": 119593046,
+          "hitCount": 823,
           "lastStatus": 101,
           "lastMimeType": "websocket",
           "lastSummary": "received · WS-RECV · / · cmd=websocket-received",
@@ -1819,7 +1819,7 @@
             "requestHeaders": {},
             "requestBody": "",
             "responseHeaders": {},
-            "responseBody": "AAAAAAAAAHUAAAABAAAAAnAB",
+            "responseBody": "AAAAAAAAAHYAAAABAAAAAnAB",
             "triggerContext": null,
             "status": 101,
             "mimeType": "websocket",

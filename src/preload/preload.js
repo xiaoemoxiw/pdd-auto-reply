@@ -80,6 +80,10 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiGetRefundOrders: (params) => ipcRenderer.invoke('api-get-refund-orders', params),
   apiSubmitRefundApply: (params) => ipcRenderer.invoke('api-submit-refund-apply', params),
   apiGetSideOrders: (params) => ipcRenderer.invoke('api-get-side-orders', params),
+  apiGetInviteOrderState: (params) => ipcRenderer.invoke('api-get-invite-order-state', params),
+  apiAddInviteOrderItem: (params) => ipcRenderer.invoke('api-add-invite-order-item', params),
+  apiClearInviteOrderItems: (params) => ipcRenderer.invoke('api-clear-invite-order-items', params),
+  apiSubmitInviteOrder: (params) => ipcRenderer.invoke('api-submit-invite-order', params),
   apiGetSmallPaymentInfo: (params) => ipcRenderer.invoke('api-get-small-payment-info', params),
   apiSubmitSmallPayment: (params) => ipcRenderer.invoke('api-submit-small-payment', params),
   apiGetOrderRemark: (params) => ipcRenderer.invoke('api-get-order-remark', params),
@@ -158,7 +162,12 @@ contextBridge.exposeInMainWorld('pddApi', {
   onPddPageFailed: (cb) => ipcRenderer.on('pdd-page-failed', (_, d) => cb(d)),
   onPddNavigated: (cb) => ipcRenderer.on('pdd-navigated', (_, d) => cb(d)),
   onAutoReplySent: (cb) => ipcRenderer.on('auto-reply-sent', (_, d) => cb(d)),
+  onAutoReplyError: (cb) => ipcRenderer.on('auto-reply-error', (_, d) => cb(d)),
   onUnmatchedMessage: (cb) => ipcRenderer.on('unmatched-message', (_, d) => cb(d)),
+  onFallbackScheduled: (cb) => ipcRenderer.on('fallback-scheduled', (_, d) => cb(d)),
+  onFallbackTriggered: (cb) => ipcRenderer.on('fallback-triggered', (_, d) => cb(d)),
+  onFallbackSendStart: (cb) => ipcRenderer.on('fallback-send-start', (_, d) => cb(d)),
+  onFallbackSkipped: (cb) => ipcRenderer.on('fallback-skipped', (_, d) => cb(d)),
   onFallbackCancelled: (cb) => ipcRenderer.on('fallback-cancelled', (_, d) => cb(d)),
   onChatUrlDetected: (cb) => ipcRenderer.on('chat-url-detected', (_, d) => cb(d)),
 
@@ -170,5 +179,6 @@ contextBridge.exposeInMainWorld('pddApi', {
   onApiAuthExpired: (cb) => ipcRenderer.on('api-auth-expired', (_, d) => cb(d)),
   onApiSessionUpdated: (cb) => ipcRenderer.on('api-session-updated', (_, d) => cb(d)),
   onApiNewMessage: (cb) => ipcRenderer.on('api-new-message', (_, d) => cb(d)),
+  onApiBootstrapInspect: (cb) => ipcRenderer.on('api-bootstrap-inspect', (_, d) => cb(d)),
   onApiMessageSent: (cb) => ipcRenderer.on('api-message-sent', (_, d) => cb(d))
 });

@@ -989,6 +989,232 @@
       resize: none;
     }
 
+    .api-invite-order-modal {
+      width: min(92vw, 860px);
+      max-width: 860px;
+    }
+
+    .api-invite-order-body {
+      padding: 0;
+    }
+
+    .api-invite-order-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid #edf0f5;
+    }
+
+    .api-invite-order-search {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .api-invite-order-search .form-input {
+      height: 38px;
+    }
+
+    .api-invite-order-search .btn {
+      min-width: 84px;
+      height: 38px;
+    }
+
+    .api-invite-order-content {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      min-height: 420px;
+    }
+
+    .api-invite-order-panel {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .api-invite-order-panel+.api-invite-order-panel {
+      border-left: 1px solid #edf0f5;
+      background: #fbfcfe;
+    }
+
+    .api-invite-order-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 20px;
+      border-bottom: 1px solid #edf0f5;
+      font-size: 14px;
+      color: #4b5565;
+      font-weight: 600;
+    }
+
+    .api-invite-order-panel-header-action {
+      border: none;
+      background: none;
+      color: #4f73ef;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .api-invite-order-panel-header-action:disabled {
+      color: #b8c0d0;
+      cursor: default;
+    }
+
+    .api-invite-order-list {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 12px 14px 16px;
+    }
+
+    .api-invite-order-card {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #e7ebf3;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .api-invite-order-card+.api-invite-order-card {
+      margin-top: 10px;
+    }
+
+    .api-invite-order-media {
+      width: 72px;
+      height: 72px;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #f3f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #a6adbb;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .api-invite-order-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .api-invite-order-info {
+      min-width: 0;
+    }
+
+    .api-invite-order-title {
+      color: #2f3640;
+      font-size: 14px;
+      line-height: 1.5;
+      font-weight: 500;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow: hidden;
+    }
+
+    .api-invite-order-price {
+      margin-top: 8px;
+      color: #111827;
+      font-size: 22px;
+      line-height: 1.1;
+      font-weight: 700;
+    }
+
+    .api-invite-order-meta {
+      margin-top: 6px;
+      color: #7f8794;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .api-invite-order-action {
+      min-width: 84px;
+      height: 34px;
+      padding: 0 14px;
+      border: 1px solid #89a2f4;
+      border-radius: 6px;
+      background: #fff;
+      color: #4f73ef;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .api-invite-order-action.is-selected,
+    .api-invite-order-action:disabled {
+      border-color: #d7dcea;
+      background: #f5f7fb;
+      color: #98a2b3;
+      cursor: default;
+    }
+
+    .api-invite-order-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 220px;
+      padding: 24px;
+      color: #98a2b3;
+      font-size: 13px;
+      line-height: 1.7;
+      text-align: center;
+    }
+
+    .api-invite-order-selected-list {
+      padding: 12px 0 0;
+    }
+
+    .api-invite-order-selected-item {
+      padding: 0 20px 12px;
+      color: #4b5565;
+      font-size: 13px;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+
+    .api-invite-order-selected-item strong {
+      color: #2f3640;
+      font-weight: 600;
+    }
+
+    .api-invite-order-summary {
+      margin-top: auto;
+      padding: 14px 20px 18px;
+      border-top: 1px solid #edf0f5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      color: #4b5565;
+      font-size: 13px;
+    }
+
+    .api-invite-order-summary strong {
+      color: #e02e24;
+      font-size: 26px;
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    .api-invite-order-status {
+      padding: 0 20px 16px;
+      color: #7f8794;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
     .api-small-payment-modal {
       width: min(92vw, 700px);
       max-width: 700px;
@@ -2315,9 +2541,9 @@
     }
 
     .api-session-item-wait {
-      position: absolute;
-      right: 0;
-      bottom: 0;
+      text-align: right;
+      display: block;
+      margin-top: 4px;
       font-size: 10px;
       line-height: 1.1;
       color: #f08b00;
@@ -2330,8 +2556,8 @@
     }
 
     .api-session-item.reply-pending .api-session-main {
-      padding-right: 72px;
-      padding-bottom: 14px;
+      padding-right: 0;
+      padding-bottom: 0;
     }
 
     .api-session-shop {
@@ -5049,19 +5275,21 @@
     .api-side-debug-card {
       flex: 1;
       min-height: 0;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 10px;
       padding: 12px;
       border-radius: 8px;
       background: #fff;
       border: 1px solid #eceef2;
+      overflow: hidden;
     }
 
     .api-side-debug-title {
       font-size: 12px;
       font-weight: 600;
       color: #5d6472;
-      margin-bottom: 10px;
+      margin-bottom: 0;
     }
 
     .api-side-debug-list {
@@ -5071,6 +5299,7 @@
       flex-direction: column;
       gap: 8px;
       overflow-y: auto;
+      padding-right: 2px;
     }
 
     .api-side-debug-item {
@@ -6079,7 +6308,7 @@
                   <!-- <span>🛡</span> -->
                   <span id="btnApiRefund">退</span>
                   <span class="api-composer-action-link" style="margin-left:auto;">邀请关注</span>
-                  <span class="api-composer-action-link">邀请下单</span>
+                  <span class="api-composer-action-link" id="btnApiInviteOrder">邀请下单</span>
                   <span class="api-composer-action-link">小额打款</span>
                 </div>
                 <div class="api-compose-inputbar">
@@ -6112,7 +6341,6 @@
               </div>
               <div class="api-side-order-stage">
                 <div class="api-side-debug-card" id="apiSideSyncCard">
-                  <div class="api-side-debug-title">接口同步状态</div>
                   <div class="api-side-debug-list" id="apiSideSyncState"></div>
                 </div>
                 <div class="api-side-order-list" id="apiSideOrderList"></div>
@@ -7530,6 +7758,50 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modalApiInviteOrder">
+    <div class="modal api-invite-order-modal">
+      <div class="modal-header">
+        <h3>邀请消费者下单</h3>
+        <button class="modal-close" type="button"
+          onclick="window.closeApiInviteOrderModal ? window.closeApiInviteOrderModal() : hideModal('modalApiInviteOrder')">&times;</button>
+      </div>
+      <div class="modal-body api-invite-order-body">
+        <div class="api-invite-order-toolbar">
+          <div class="api-invite-order-search">
+            <input class="form-input" id="apiInviteOrderKeyword" type="text" placeholder="请输入商品关键词">
+            <button class="btn btn-secondary" type="button" id="btnApiInviteOrderSearch">搜索</button>
+          </div>
+          <div class="form-hint" id="apiInviteOrderHint">将优先对齐嵌入页真实邀请下单能力</div>
+        </div>
+        <div class="api-invite-order-content">
+          <div class="api-invite-order-panel">
+            <div class="api-invite-order-panel-header">
+              <span>店铺商品</span>
+            </div>
+            <div class="api-invite-order-list" id="apiInviteOrderGoodsList"></div>
+          </div>
+          <div class="api-invite-order-panel">
+            <div class="api-invite-order-panel-header">
+              <span>邀请下单的商品清单</span>
+              <button class="api-invite-order-panel-header-action" type="button" id="btnApiInviteOrderClear">清空</button>
+            </div>
+            <div class="api-invite-order-list api-invite-order-selected-list" id="apiInviteOrderSelectedList"></div>
+            <div class="api-invite-order-summary">
+              <span id="apiInviteOrderCountText">已选 0 件商品</span>
+              <span>合计：<strong id="apiInviteOrderTotalText">¥0.00</strong></span>
+            </div>
+            <div class="api-invite-order-status" id="apiInviteOrderStatusText">未添加任何商品，请从左侧列表选择商品</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button"
+          onclick="window.closeApiInviteOrderModal ? window.closeApiInviteOrderModal() : hideModal('modalApiInviteOrder')">取消</button>
+        <button class="btn btn-primary" type="button" id="btnApiInviteOrderSubmit">发送</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalApiImagePreview">
     <div class="modal api-image-preview-modal">
       <div class="modal-header">
@@ -7748,6 +8020,7 @@
     const apiGoodsCardCache = new Map();
     const apiGoodsCardPending = new Set();
     let apiSyntheticRefundMessages = [];
+    let apiSyntheticSystemMessages = [];
     let apiVideoLibrary = [];
     let apiVideoLibraryLoading = false;
     let apiVideoLibraryError = '';
@@ -7776,6 +8049,7 @@
           apiGoodsCardCache,
           apiGoodsCardPending,
           apiSyntheticRefundMessages,
+          apiSyntheticSystemMessages,
           apiVideoLibrary,
           apiSelectedVideo,
           API_ALL_SHOPS,
@@ -7969,6 +8243,14 @@
       }
     }
 
+    function isRendererOnlyApiView(view) {
+      return view === 'chat-api'
+        || view === 'mail-api'
+        || view === 'invoice-api'
+        || view === 'violation-api'
+        || view === 'ticket-api';
+    }
+
     async function loadViewContent(view, options = {}) {
       if (view === 'chat-api') {
         await loadApiChatView(options);
@@ -8041,6 +8323,12 @@
         await loadViewContent(view, nextViewOptions);
       } catch (error) {
         addLog(`切换页面失败: ${error.message || error}`, 'error');
+        if (isRendererOnlyApiView(view)) {
+          if (view === 'chat-api') {
+            setApiHint(error?.message || '进入客户对话（接口对接）失败');
+          }
+          return;
+        }
         try {
           await window.pddApi.switchView(previousView);
         } catch (restoreError) {
@@ -8627,6 +8915,15 @@
             );
             return messageKey === syntheticKey;
           });
+          if (!duplicated) {
+            displayMessages.push(item);
+          }
+        });
+      apiSyntheticSystemMessages
+        .filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey)
+        .forEach(item => {
+          const syntheticKey = String(item?.syntheticKey || '');
+          const duplicated = syntheticKey && displayMessages.some(message => String(message?.syntheticKey || '') === syntheticKey);
           if (!duplicated) {
             displayMessages.push(item);
           }
@@ -9709,6 +10006,7 @@
       const shopId = String(payload.shopId || apiActiveSessionShopId || '');
       const sessionId = String(payload.sessionId || apiActiveSessionId || '');
       const text = String(payload.text || '').trim();
+      const isSystem = payload.isSystem === true || String(payload.actor || '').toLowerCase() === 'system';
       const refundCard = payload?.refundCard && typeof payload.refundCard === 'object'
         ? { ...payload.refundCard }
         : null;
@@ -9721,18 +10019,24 @@
       });
       if (!shopId || !sessionId || (!text && !refundCard && !videoMeta)) return;
       const timestamp = Number(payload.timestamp || Date.now()) || Date.now();
+      const syntheticKey = String(payload.syntheticKey || '').trim();
       const localMessage = {
         sessionId,
         shopId,
         content: text || (videoMeta?.url || ''),
         timestamp,
         isFromBuyer: false,
-        senderName: getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号',
+        isSystem,
+        actor: isSystem ? 'system' : 'seller',
+        senderName: isSystem ? '' : (getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号'),
         readState: '',
         refundCard,
         extra: refundCard ? { refundCard } : (videoMeta ? { video: videoMeta } : null),
-        raw: {},
+        raw: isSystem ? { type: 67, content: text } : {},
       };
+      if (syntheticKey) {
+        localMessage.syntheticKey = syntheticKey;
+      }
       if (refundCard) {
         const syntheticKey = buildApiSyntheticRefundMessageKey({
           shopId,
@@ -9741,6 +10045,10 @@
         });
         localMessage.syntheticKey = syntheticKey;
         apiSyntheticRefundMessages = apiSyntheticRefundMessages
+          .filter(item => String(item?.syntheticKey || '') !== syntheticKey)
+          .concat([{ ...localMessage }]);
+      } else if (isSystem && syntheticKey) {
+        apiSyntheticSystemMessages = apiSyntheticSystemMessages
           .filter(item => String(item?.syntheticKey || '') !== syntheticKey)
           .concat([{ ...localMessage }]);
       }
@@ -10246,6 +10554,14 @@
         .concat(shops.map(shop => `<option value="${esc(shop.id)}">${esc(shop.name || '未命名店铺')}</option>`));
       select.innerHTML = options.join('');
       select.value = getApiScopeShopId();
+    }
+
+    function renderApiShopHeader() {
+      const runtimeRender = window.renderApiShopHeader;
+      if (typeof runtimeRender === 'function' && runtimeRender !== renderApiShopHeader) {
+        return runtimeRender();
+      }
+      return undefined;
     }
 
     async function loadApiStarredSessions() {
@@ -11415,261 +11731,6 @@
       await loadApiTraffic(getApiStatusShopId(true));
       setApiHint('商品信息区已预留，后续可继续从抓包中补真实接口。');
     });
-
-    if (!window.__chatApiModuleBound) {
-      document.getElementById('btnApiSendMessage').addEventListener('click', async () => {
-        const text = document.getElementById('apiMessageInput').value.trim();
-        const activeSession = getApiActiveSession();
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        if (!text) {
-          setApiHint('请输入要发送的消息');
-          return;
-        }
-        recordApiSyncState('消息发送', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-        const result = await window.pddApi.apiSendMessage({
-          shopId: apiActiveSessionShopId,
-          sessionId: apiActiveSessionId,
-          session: activeSession || undefined,
-          text,
-        });
-        if (result?.error) {
-          recordApiSyncState('发送失败', result.error);
-          setApiHint(`接口发送失败：${result.error}`);
-          return;
-        }
-        const successPayload = {
-          ...result,
-          shopId: apiActiveSessionShopId,
-          sessionId: apiActiveSessionId,
-          text,
-        };
-        recordApiSyncState('发送成功', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-        clearApiPendingReplyState(successPayload);
-        appendApiLocalServiceMessage(successPayload);
-        document.getElementById('apiMessageInput').value = '';
-        setApiHint('接口发送成功，正在同步最新消息');
-      });
-      document.getElementById('btnApiSendImage').addEventListener('click', async () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        toggleApiEmojiPanel(false);
-        recordApiSyncState('选择图片', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-        const selected = await window.pddApi.apiSelectImage();
-        if (selected?.canceled) {
-          recordApiSyncState('图片取消', '用户取消选择图片');
-          setApiHint('已取消选择图片');
-          return;
-        }
-        if (!selected?.filePath) {
-          recordApiSyncState('图片失败', '未拿到图片路径');
-          setApiHint('未选择图片文件');
-          return;
-        }
-        const fileName = String(selected.filePath).split(/[\\/]/).pop() || '图片';
-        recordApiSyncState('图片上传', `文件：${fileName}`);
-        setApiHint('正在上传并发送图片，请稍候...');
-        const result = await window.pddApi.apiSendImage({
-          shopId: apiActiveSessionShopId,
-          sessionId: apiActiveSessionId,
-          session: getApiActiveSession() || undefined,
-          filePath: selected.filePath,
-        });
-        if (result?.error) {
-          const attemptText = Array.isArray(result?.attempts) && result.attempts.length
-            ? result.attempts.map(item => `${item.baseUrl} → ${item.error}`).join('；')
-            : '';
-          const detail = [
-            result?.step ? `阶段：${result.step}` : '',
-            result?.uploadBaseUrl ? `上传域：${result.uploadBaseUrl}` : '',
-            attemptText,
-            result?.error || ''
-          ].filter(Boolean).join('；');
-          recordApiSyncState('图片失败', detail || '图片发送失败');
-          setApiHint(`图片发送失败：${detail || result.error}`);
-          return;
-        }
-        recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
-        setApiHint('图片已发送，正在同步最新消息');
-      });
-      window.addEventListener('resize', syncApiVideoLibraryPopoverPosition);
-      window.addEventListener('scroll', syncApiVideoLibraryPopoverPosition, true);
-      document.getElementById('btnApiVideoUpload')?.addEventListener('click', async () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        recordApiSyncState('选择视频', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-        const selected = await window.pddApi.apiSelectVideo();
-        if (selected?.canceled) {
-          recordApiSyncState('视频取消', '用户取消选择视频');
-          setApiHint('已取消选择视频');
-          return;
-        }
-        if (!selected?.filePath) {
-          recordApiSyncState('视频失败', '未拿到视频路径');
-          setApiHint('未选择视频文件');
-          return;
-        }
-        const fileName = String(selected.filePath).split(/[\\/]/).pop() || '视频';
-        apiVideoLibraryLoading = true;
-        apiVideoLibraryError = '';
-        renderApiVideoLibraryModal();
-        recordApiSyncState('视频上传', `文件：${fileName}`);
-        setApiHint('正在上传视频并等待审核，请稍候...');
-        const result = await window.pddApi.apiUploadVideo({
-          shopId: apiActiveSessionShopId,
-          filePath: selected.filePath,
-          timeoutMs: 120000,
-        });
-        if (result?.error) {
-          apiVideoLibraryLoading = false;
-          apiVideoLibraryError = result.error;
-          renderApiVideoLibraryModal();
-          recordApiSyncState('视频失败', result.error || '视频上传失败');
-          setApiHint(`视频上传失败：${result.error || '未知错误'}`);
-          return;
-        }
-        recordApiSyncState('视频完成', `${fileName} 已进入可发送列表`);
-        setApiHint('视频已上传完成，正在刷新素材列表');
-        await loadApiVideoLibrary({ keepSelection: false });
-        const uploadedVideo = normalizeApiVideoItem(result);
-        if (uploadedVideo?.id) {
-          apiSelectedVideo = apiVideoLibrary.find(item => Number(item.id || 0) === Number(uploadedVideo.id || 0)) || uploadedVideo;
-          renderApiVideoLibraryModal();
-        }
-      });
-      document.getElementById('btnApiVideoSend')?.addEventListener('click', async () => {
-        await sendSelectedApiVideo();
-      });
-
-      document.getElementById('btnApiTransfer')?.addEventListener('click', async () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        await window.pddApi.apiMarkLatestConversations({ shopId: apiActiveSessionShopId, size: 100 });
-        await loadApiTraffic(apiActiveSessionShopId);
-        setApiHint('已模拟执行会话处理动作，当前先复用已读链路。');
-      });
-
-      document.getElementById('btnApiRisk').addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-        }
-      });
-      document.getElementById('btnApiRiskReport').addEventListener('click', () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        setApiHint('举报功能开发中');
-      });
-      document.getElementById('btnApiRiskBlacklist').addEventListener('click', () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        setApiHint('拉黑功能开发中');
-      });
-      document.getElementById('btnApiRiskManage').addEventListener('click', () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        setApiHint('黑名单管理功能开发中');
-      });
-      document.getElementById('btnApiStar').addEventListener('click', async () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        const activeSession = getApiActiveSession();
-        const result = await window.pddApi.toggleApiStarredSession(activeSession || {
-          shopId: apiActiveSessionShopId,
-          sessionId: apiActiveSessionId,
-          customerName: apiActiveSessionName,
-        });
-        if (result?.error) {
-          setApiHint(result.error);
-          return;
-        }
-        apiStarredSessions = Array.isArray(result.sessions) ? result.sessions.map(item => buildApiSession(item)) : apiStarredSessions;
-        renderApiSessions();
-        renderApiMessages();
-        setApiHint(result.starred ? '已收藏当前会话' : '已取消收藏当前会话');
-      });
-
-      document.getElementById('apiMessageInput').addEventListener('keydown', async (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-          e.preventDefault();
-          document.getElementById('btnApiSendMessage').click();
-        }
-      });
-
-      window.pddApi.onApiSessionUpdated(async (payload) => {
-        emitRendererDebug('chat-api', 'onApiSessionUpdated', {
-          currentView,
-          payloadShopId: payload?.shopId || '',
-          payloadCount: Array.isArray(payload?.sessions) ? payload.sessions.length : -1,
-          apiSelectedShopId,
-          beforeCount: apiSessions.length
-        });
-        if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-        if (Array.isArray(payload?.sessions) && payload.sessions.length > 0) {
-          mergeApiSessionsForShop(payload.shopId, payload.sessions);
-        }
-        if (Array.isArray(payload?.sessions)) {
-          await syncApiSelectionWithFilter();
-          renderApiSideCards();
-        }
-        if (currentView === 'chat-api') {
-          await loadApiTraffic(getApiStatusShopId(true));
-        }
-      });
-
-      window.pddApi.onApiNewMessage(async (payload) => {
-        if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-        await loadApiTraffic(getApiStatusShopId(true));
-        const isCurrentSession = String(payload?.sessionId || '') === String(apiActiveSessionId)
-          && String(payload?.shopId || '') === String(apiActiveSessionShopId || '');
-        const incomingMessages = Array.isArray(payload?.messages) ? payload.messages : [];
-        if (isCurrentSession && incomingMessages.length) {
-          incomingMessages.forEach(message => {
-            appendApiIncomingMessage({
-              ...message,
-              shopId: payload.shopId || message?.shopId || apiActiveSessionShopId,
-              sessionId: payload.sessionId || message?.sessionId || apiActiveSessionId,
-            });
-          });
-        } else if (!isCurrentSession) {
-          await loadApiSessions({ keepCurrent: true });
-        }
-        setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
-      });
-
-      window.pddApi.onApiMessageSent(async (payload) => {
-        await refreshApiAfterMessageSent(payload);
-      });
-
-      window.pddApi.onApiAuthExpired((payload) => {
-        if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-        apiTokenStatus = {
-          ...(apiTokenStatus || {}),
-          authExpired: true,
-          authState: payload?.authState || 'expired',
-          authHint: payload?.errorMsg || '',
-        };
-        renderApiStatus();
-        setApiHint(payload?.errorMsg || window.__chatApiModuleAccess?.getApiAuthHintText?.() || '接口认证已过期，请重新导入 Token 或刷新登录态');
-      });
-    }
 
     // ==================== 店铺管理 ====================
     async function loadShops() {

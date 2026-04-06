@@ -86,7 +86,7 @@ const store = new Store({
     autoReplyEnabled: false,
     defaultReply: {
       enabled: true,
-      texts: ['亲，您好！您的问题我已收到，请稍等，马上为您处理~'],
+      texts: ['亲，目前咨询客户较多，客服小姐姐在一个一个回复，稍等一下~'],
       delay: 2000,
       cooldown: 60000,
       strategy: 'random',
@@ -120,12 +120,15 @@ const store = new Store({
   }
 });
 
-// 运行时状态：兜底延迟发送的计时器（customer -> timer）
+// 运行时状态：兜底延迟发送的计时器（fallbackKey -> timer）
 const pendingFallbacks = new Map();
-// 运行时状态：每个客户最后一次兜底发送的时间戳（用于冷却）
+const pendingFallbackMeta = new Map(); // fallbackKey -> { messageKey, createdAt }
+// 运行时状态：每个会话最后一次兜底发送的时间戳（用于冷却）
 const fallbackCooldowns = new Map();
 // 跨通道消息去重：防止 DOM 监听和网络监控同时处理同一条消息
-const messageDedup = new Map(); // "customer|message" -> timestamp
+const messageDedup = new Map(); // "shop|session|messageId" or "shop|session|message" -> timestamp
+// 发送去重：防止同一会话的同一自动回复在短时间内被并发重复发送
+const autoReplySendDedup = new Map(); // "shop|session|question|answer" -> timestamp
 const embeddedPageActions = new Map(); // shopId -> last action
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
@@ -213,6 +216,26 @@ const MOCK_RULES = [
     ],
     excludeKeywords: [],
     reply: '亲，请提供一下您的订单号，我帮您查询物流信息哦~'
+  },
+  {
+    id: 'qa_8', name: '品质口感咨询', enabled: true, matchType: 'contains', priority: 85, shops: null,
+    keywords: ['品质好吗', '好吃吗', '口感好吗', '甜吗', '新鲜吗'],
+    keywordGroups: [
+      ['品质好吗', '品质怎么样', '质量好吗', '质量怎么样'],
+      ['好吃吗', '口感好吗', '口感怎么样', '甜吗', '新鲜吗', '味道怎么样']
+    ],
+    excludeKeywords: ['不好吃', '不新鲜', '质量不好', '品质差'],
+    reply: '亲，咱家商品品质和口感都不错呢，大多数顾客反馈都很好，您可以放心拍下哦~'
+  },
+  {
+    id: 'qa_9', name: '历史订单咨询', enabled: true, matchType: 'contains', priority: 88, shops: null,
+    keywords: ['之前买过', '以前买过', '我2月份买的', '我上次买的', '老订单'],
+    keywordGroups: [
+      ['之前买过', '以前买过', '上次买的', '之前下单', '以前下单', '老顾客'],
+      ['1月份买的', '2月份买的', '3月份买的', '上个月买的', '前几天买的', '之前买的']
+    ],
+    excludeKeywords: ['现在买', '现在下单', '准备买', '想买'],
+    reply: '亲，麻烦您提供一下对应订单号或订单截图，我帮您核实之前购买的商品信息哦~'
   }
 ];
 
@@ -1005,6 +1028,12 @@ function getApiClient(shopId) {
   const client = new PddApiClient(shopId, {
     onLog(message, extra) {
       sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      if (message === '[API] Bootstrap检查会话') {
+        mainWindow?.webContents.send('api-bootstrap-inspect', {
+          shopId,
+          ...(extra && typeof extra === 'object' ? extra : {}),
+        });
+      }
       if (!shouldConsoleLogApiMessage(message)) {
         return;
       }
@@ -1065,8 +1094,27 @@ function getApiClient(shopId) {
       message: payload.text,
       customer: payload.customer,
       conversationId: payload.sessionId,
+      sessionId: payload.sessionId,
+      messageId: payload.messageId || '',
+      session: payload.session || null,
       source: 'api-polling',
       shopId
+    }).catch(error => {
+      const message = error?.message || String(error || '未知错误');
+      console.error(`[PDD助手] 接口自动回复处理失败: ${message}`);
+      mainWindow?.webContents.send('auto-reply-error', {
+        shopId,
+        sessionId: payload.sessionId || '',
+        customer: payload.customer || '',
+        message: payload.text || '',
+        error: message,
+        errorCode: error?.errorCode || 0,
+      });
+      sendToDebug('auto-reply-error', {
+        shopId,
+        sessionId: payload.sessionId || '',
+        error: message,
+      });
     });
   });
 
@@ -2306,8 +2354,8 @@ async function selectConversationInView(view) {
 }
 
 /**
- * 统一消息处理管线：DOM 监听和网络监控共用
- * @param {{ message: string, customer: string, conversationId: string, source?: string, shopId?: string }} data
+ * 统一消息处理管线：DOM 监听、网络监控和接口轮询共用
+ * @param {{ message: string, customer: string, conversationId?: string, sessionId?: string, session?: object, source?: string, shopId?: string }} data
  */
 async function handleNewCustomerMessage(data) {
   if (!store.get('autoReplyEnabled')) {
@@ -2315,18 +2363,24 @@ async function handleNewCustomerMessage(data) {
     return;
   }
 
-  // 跨通道去重：10秒内相同客户的相同消息只处理一次
-  const dedupKey = `${data.customer}|${data.message}`;
+  const normalizedMessage = String(data.message || '').replace(/\s+/g, ' ').trim();
+  const dedupShopId = String(data.shopId || '');
+  const dedupSessionId = String(data.sessionId || data.conversationId || '');
+  const dedupMessageId = String(data.messageId || '');
+  // 跨通道去重：优先按会话+消息ID，其次按会话+消息文本
+  const dedupKey = dedupMessageId
+    ? `${dedupShopId}|${dedupSessionId}|${dedupMessageId}`
+    : `${dedupShopId}|${dedupSessionId || data.customer || ''}|${normalizedMessage}`;
   const now = Date.now();
   const lastProcessed = messageDedup.get(dedupKey);
-  if (lastProcessed && now - lastProcessed < 10000) {
+  if (lastProcessed && now - lastProcessed < 30000) {
     console.log(`[PDD助手] 跨通道去重，跳过: "${data.message?.slice(0, 30)}" (${now - lastProcessed}ms前已处理)`);
     return;
   }
   messageDedup.set(dedupKey, now);
   if (messageDedup.size > 200) {
     for (const [k, t] of messageDedup) {
-      if (now - t > 60000) messageDedup.delete(k);
+      if (now - t > 180000) messageDedup.delete(k);
     }
   }
 
@@ -2363,95 +2417,239 @@ async function handleNewCustomerMessage(data) {
     return;
   }
 
+  const fallbackKey = buildFallbackKey(data);
+  const source = data.source || 'unknown';
+  const conversationId = data.conversationId || data.sessionId || '';
+  const fallbackMessageKey = [
+    String(data.shopId || '').trim(),
+    String(conversationId || data.customer || '').trim(),
+    normalizedMessage,
+  ].join('|');
+
   const doSend = async () => {
-    const view = shopManager?.getActiveView();
-    if (!view) return;
-    if (data.source === 'api-polling' && data.shopId && shopManager?.getActiveShopId() !== data.shopId) {
-      console.log(`[PDD助手] 接口轮询消息来自店铺 ${data.shopId}，当前嵌入页店铺为 ${shopManager?.getActiveShopId() || '无'}，跳过嵌入页发送`);
+    const sendDedupKey = [
+      data.shopId || '',
+      conversationId || data.customer || '',
+      normalizedMessage,
+      String(result.reply || '').replace(/\s+/g, ' ').trim(),
+    ].join('|');
+    const lastSentAt = autoReplySendDedup.get(sendDedupKey);
+    if (lastSentAt && Date.now() - lastSentAt < 30000) {
+      console.log(`[PDD助手] 自动回复发送去重，跳过重复发送: "${data.message?.slice(0, 30)}"`);
+      sendToDebug('auto-reply-dedup-skipped', {
+        shopId: data.shopId || shopManager?.getActiveShopId() || '',
+        conversationId,
+        customer: data.customer,
+        question: data.message,
+        answer: result.reply,
+        source,
+      });
       return;
     }
+    autoReplySendDedup.set(sendDedupKey, Date.now());
+    if (autoReplySendDedup.size > 200) {
+      const cutoff = Date.now() - 180000;
+      for (const [key, timestamp] of autoReplySendDedup) {
+        if (timestamp < cutoff) autoReplySendDedup.delete(key);
+      }
+    }
 
-    // 确保有活跃会话（没有则自动选择）
-    await selectConversationInView(view);
-
-    view.webContents.send('send-reply', {
-      conversationId: data.conversationId,
-      message: result.reply,
-      source: data.source || 'unknown',
-    });
     const replyData = {
       shopId: data.shopId || shopManager?.getActiveShopId() || '',
-      conversationId: data.conversationId,
+      conversationId,
       customer: data.customer,
       question: data.message,
       answer: result.reply,
       matched: result.matched,
       ruleName: result.ruleName,
       score: result.score,
-      source: data.source || 'unknown',
+      source,
     };
+
+    if (source === 'api-polling') {
+      if (!data.shopId) {
+        throw new Error('接口自动回复缺少店铺信息');
+      }
+      const sessionRef = data.session || data.sessionId || data.conversationId;
+      if (!sessionRef) {
+        throw new Error('接口自动回复缺少会话标识');
+      }
+      const sendResult = await getApiClient(data.shopId).sendManualMessage(sessionRef, result.reply, {
+        manualSource: 'auto-reply',
+      });
+      const apiReplyData = {
+        ...replyData,
+        sendMode: sendResult?.sendMode || 'manual-interface',
+        manualSource: sendResult?.manualSource || 'auto-reply',
+        actualText: sendResult?.text || '',
+        requestedText: sendResult?.requestedText || result.reply,
+      };
+      mainWindow?.webContents.send('auto-reply-sent', apiReplyData);
+      sendToDebug('auto-reply-sent', apiReplyData);
+      return;
+    }
+
+    const view = shopManager?.getActiveView();
+    if (!view) return;
+
+    // 确保有活跃会话（没有则自动选择）
+    await selectConversationInView(view);
+
+    view.webContents.send('send-reply', {
+      conversationId,
+      message: result.reply,
+      source,
+    });
     mainWindow?.webContents.send('auto-reply-sent', replyData);
     sendToDebug('auto-reply-sent', replyData);
   };
 
   if (result.matched) {
-    cancelPendingFallback(data.customer);
+    cancelPendingFallback(fallbackKey);
     await doSend();
   } else {
     // ---- 兜底回复流程 ----
 
     // 冷却检查：同一客户在冷却期内不重复兜底
     const cooldown = defaultReply?.cooldown || 60000;
-    const lastTime = fallbackCooldowns.get(data.customer);
+    const lastTime = fallbackCooldowns.get(fallbackKey);
     if (lastTime && Date.now() - lastTime < cooldown) {
+      const remainingMs = Math.max(0, cooldown - (Date.now() - lastTime));
+      mainWindow?.webContents.send('fallback-skipped', {
+        customer: data.customer,
+        message: data.message,
+        reason: '冷却中',
+        remainingMs,
+        shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      });
+      sendToDebug('fallback-skipped', {
+        customer: data.customer,
+        message: data.message,
+        reason: 'cooldown',
+        remainingMs,
+        shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      });
       appendUnmatchedLog(data);
       return;
     }
 
-    // 取消该客户之前的待发兜底（如果有）
-    cancelPendingFallback(data.customer);
+    // 同一会话内，同一条未命中消息已在待发队列中时，不要反复重排队。
+    const existingPendingMeta = pendingFallbackMeta.get(fallbackKey);
+    if (existingPendingMeta?.messageKey === fallbackMessageKey) {
+      sendToDebug('fallback-schedule-dedup-skipped', {
+        shopId: data.shopId || shopManager?.getActiveShopId() || '',
+        sessionId: data.sessionId || data.conversationId || '',
+        customer: data.customer || '',
+        message: data.message || '',
+        source,
+      });
+      return;
+    }
+
+    // 取消同一会话之前的待发兜底（如果有）
+    cancelPendingFallback(fallbackKey);
 
     // 通知 UI 显示需要人工关注
     mainWindow?.webContents.send('unmatched-message', {
+      shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      sessionId: data.sessionId || data.conversationId || '',
       customer: data.customer,
       message: data.message,
-      fallbackReply: result.reply
+      fallbackReply: result.reply,
+      source,
     });
-    sendToDebug('unmatched-message', { customer: data.customer, message: data.message });
+    sendToDebug('unmatched-message', {
+      shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      sessionId: data.sessionId || data.conversationId || '',
+      customer: data.customer,
+      message: data.message,
+      source,
+    });
 
     // 记录未匹配消息
     appendUnmatchedLog(data);
 
     // 延迟发送兜底（给人工抢答留时间）
     const delay = defaultReply?.delay || 2000;
+    mainWindow?.webContents.send('fallback-scheduled', {
+      shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      sessionId: data.sessionId || data.conversationId || '',
+      customer: data.customer || '',
+      message: data.message || '',
+      delayMs: delay,
+      source,
+    });
     const timer = setTimeout(async () => {
-      pendingFallbacks.delete(data.customer);
+      pendingFallbacks.delete(fallbackKey);
+      pendingFallbackMeta.delete(fallbackKey);
 
-      // 人工抢答取消：检查输入框是否有人正在输入
-      if (defaultReply?.cancelOnHumanReply !== false) {
-        const view = shopManager?.getActiveView();
-        if (view) {
-          try {
-            const humanTyping = await view.webContents.executeJavaScript(
-              `window.__PDD_HELPER__?.checkInputBoxHasContent?.() || false`
-            );
-            if (humanTyping) {
-              console.log(`[PDD助手] 检测到人工正在输入，取消兜底回复: ${data.customer}`);
-              mainWindow?.webContents.send('fallback-cancelled', {
-                customer: data.customer,
-                reason: '人工正在输入'
-              });
-              return;
-            }
-          } catch { /* 检查失败则继续发送 */ }
+      try {
+        mainWindow?.webContents.send('fallback-triggered', {
+          shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          sessionId: data.sessionId || data.conversationId || '',
+          customer: data.customer || '',
+          message: data.message || '',
+          source,
+        });
+        // 接口对接页没有复用嵌入页输入框；若继续检查隐藏 BrowserView 的草稿，
+        // 会把接口页兜底误判为“人工正在输入”而取消发送。
+        if (source !== 'api-polling' && defaultReply?.cancelOnHumanReply !== false) {
+          const view = shopManager?.getActiveView();
+          if (view) {
+            try {
+              const humanTyping = await view.webContents.executeJavaScript(
+                `window.__PDD_HELPER__?.checkInputBoxHasContent?.() || false`
+              );
+              if (humanTyping) {
+                console.log(`[PDD助手] 检测到人工正在输入，取消兜底回复: ${data.customer}`);
+                mainWindow?.webContents.send('fallback-cancelled', {
+                  customer: data.customer,
+                  reason: '人工正在输入'
+                });
+                return;
+              }
+            } catch { /* 检查失败则继续发送 */ }
+          }
         }
-      }
 
-      fallbackCooldowns.set(data.customer, Date.now());
-      await doSend();
+        mainWindow?.webContents.send('fallback-send-start', {
+          shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          sessionId: data.sessionId || data.conversationId || '',
+          customer: data.customer || '',
+          message: data.message || '',
+          source,
+        });
+        await doSend();
+        fallbackCooldowns.set(fallbackKey, Date.now());
+      } catch (error) {
+        const message = error?.message || String(error || '兜底回复发送失败');
+        console.error(`[PDD助手] 兜底回复发送失败: ${message}`);
+        mainWindow?.webContents.send('auto-reply-error', {
+          shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          sessionId: data.sessionId || data.conversationId || '',
+          customer: data.customer || '',
+          message: data.message || '',
+          error: message,
+          errorCode: error?.errorCode || 0,
+          source,
+          phase: 'fallback-send',
+        });
+        sendToDebug('auto-reply-error', {
+          shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          sessionId: data.sessionId || data.conversationId || '',
+          customer: data.customer || '',
+          error: message,
+          source,
+          phase: 'fallback-send',
+        });
+      }
     }, delay);
 
-    pendingFallbacks.set(data.customer, timer);
+    pendingFallbacks.set(fallbackKey, timer);
+    pendingFallbackMeta.set(fallbackKey, {
+      messageKey: fallbackMessageKey,
+      createdAt: Date.now(),
+    });
   }
 }
 
@@ -2464,12 +2662,21 @@ ipcMain.on('new-customer-message', (event, data) => {
   });
 });
 
-function cancelPendingFallback(customer) {
-  const existing = pendingFallbacks.get(customer);
+function buildFallbackKey(data = {}) {
+  return [
+    String(data?.shopId || '').trim(),
+    String(data?.sessionId || data?.conversationId || '').trim(),
+    String(data?.customer || '').trim(),
+  ].join('|');
+}
+
+function cancelPendingFallback(fallbackKey) {
+  const existing = pendingFallbacks.get(fallbackKey);
   if (existing) {
     clearTimeout(existing);
-    pendingFallbacks.delete(customer);
+    pendingFallbacks.delete(fallbackKey);
   }
+  pendingFallbackMeta.delete(fallbackKey);
 }
 
 function appendUnmatchedLog(data) {
@@ -2478,11 +2685,48 @@ function appendUnmatchedLog(data) {
     message: data.message,
     customer: data.customer,
     timestamp: Date.now(),
-    shopId: shopManager?.getActiveShopId() || ''
+    shopId: data.shopId || shopManager?.getActiveShopId() || ''
   });
   // 保留最近 N 条
   if (log.length > UNMATCHED_LOG_MAX) log.length = UNMATCHED_LOG_MAX;
   store.set('unmatchedLog', log);
+}
+
+function ensureBuiltInRules(rules = []) {
+  const normalized = Array.isArray(rules) ? [...rules] : [];
+  const builtInRuleIds = ['qa_8', 'qa_9'];
+  for (const ruleId of builtInRuleIds) {
+    const hasRule = normalized.some(rule => String(rule?.id || '') === ruleId);
+    if (hasRule) continue;
+    const builtInRule = MOCK_RULES.find(rule => rule.id === ruleId);
+    if (builtInRule) normalized.push({ ...builtInRule });
+  }
+  return normalized;
+}
+
+function ensureDefaultReplyConfig(config = null) {
+  const legacyText = '亲，您好！您的问题我已收到，请稍等，马上为您处理~';
+  const nextText = '亲，目前咨询客户较多，客服小姐姐在一个一个回复，稍等一下~';
+  const normalized = config && typeof config === 'object' ? { ...config } : {};
+
+  if (!Array.isArray(normalized.texts) && normalized.text) {
+    normalized.texts = [normalized.text];
+  }
+
+  if (!Array.isArray(normalized.texts) || normalized.texts.length === 0) {
+    normalized.texts = [nextText];
+    return normalized;
+  }
+
+  if (normalized.texts.length === 1 && String(normalized.texts[0] || '').trim() === legacyText) {
+    normalized.texts = [nextText];
+  }
+
+  if (String(normalized.text || '').trim() === legacyText) {
+    normalized.text = nextText;
+  }
+
+  return normalized;
 }
 
 // ---- App Lifecycle ----
@@ -2491,8 +2735,19 @@ function initMockData() {
   if (!store.get('shopGroups') || store.get('shopGroups').length === 0) {
     store.set('shopGroups', MOCK_GROUPS);
   }
-  if (store.get('rules').length === 0) {
+  const currentRules = store.get('rules');
+  if (!Array.isArray(currentRules) || currentRules.length === 0) {
     store.set('rules', MOCK_RULES);
+  } else {
+    const mergedRules = ensureBuiltInRules(currentRules);
+    if (mergedRules.length !== currentRules.length) {
+      store.set('rules', mergedRules);
+    }
+  }
+  const currentDefaultReply = store.get('defaultReply');
+  const mergedDefaultReply = ensureDefaultReplyConfig(currentDefaultReply);
+  if (JSON.stringify(mergedDefaultReply) !== JSON.stringify(currentDefaultReply || {})) {
+    store.set('defaultReply', mergedDefaultReply);
   }
   if (!store.get('quickPhrases') || store.get('quickPhrases').length === 0) {
     store.set('quickPhrases', MOCK_QUICK_PHRASES);

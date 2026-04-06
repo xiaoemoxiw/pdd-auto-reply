@@ -197,6 +197,51 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-get-invite-order-state', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    try {
+      return await getApiClient(shopId).getInviteOrderState(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-add-invite-order-item', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    if (!params.itemId) return { error: '缺少商品标识' };
+    try {
+      return await getApiClient(shopId).addInviteOrderItem(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-clear-invite-order-items', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    try {
+      return await getApiClient(shopId).clearInviteOrderItems(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('api-submit-invite-order', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    try {
+      return await getApiClient(shopId).submitInviteOrder(params);
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
   ipcMain.handle('api-get-small-payment-info', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
@@ -268,7 +313,9 @@ function registerApiIpc({
     if (!params.sessionId) return { error: '缺少 sessionId' };
     if (!params.text) return { error: '缺少发送内容' };
     try {
-      return await getApiClient(shopId).sendMessage(params.session || params.sessionId, params.text);
+      return await getApiClient(shopId).sendManualMessage(params.session || params.sessionId, params.text, {
+        manualSource: 'renderer-manual',
+      });
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }

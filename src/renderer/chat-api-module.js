@@ -18,6 +18,18 @@
     order: null,
     info: null,
   };
+  let apiInviteOrderState = {
+    visible: false,
+    loading: false,
+    submitting: false,
+    keyword: '',
+    goodsItems: [],
+    selectedItems: [],
+    selectedCount: 0,
+    totalText: '¥0.00',
+    statusText: '未添加任何商品，请从左侧列表选择商品',
+    canClear: false,
+  };
   let apiSideOrderSessionKey = '';
   let apiSideOrderCountdownTimer = null;
   let apiGoodsSpecModalState = {
@@ -1503,7 +1515,9 @@
   }
 
   function appendApiLocalServiceMessage(payload = {}) {
-    return callRuntime('appendApiLocalServiceMessage', payload);
+    const result = callRuntime('appendApiLocalServiceMessage', payload);
+    renderApiMessages();
+    return result;
   }
 
   function refreshApiAfterMessageSent(payload = {}) {
@@ -2004,6 +2018,237 @@
       };
     }
     return null;
+  }
+
+  function getApiSystemNoticeText(messageOrText = '') {
+    if (typeof messageOrText === 'string') return messageOrText.trim();
+    return [
+      messageOrText?.content,
+      messageOrText?.raw?.content,
+      messageOrText?.raw?.msg_content,
+      messageOrText?.raw?.text,
+      messageOrText?.raw?.message,
+      messageOrText?.raw?.info?.mall_content,
+      messageOrText?.extra?.text,
+      messageOrText?.raw?.extra?.text,
+      messageOrText?.raw?.ext?.text,
+    ].filter(Boolean).map(item => String(item || '').trim()).find(Boolean) || '';
+  }
+
+  function normalizeApiSystemActionText(text = '') {
+    return String(text || '')
+      .trim()
+      .replace(/^>>\s*/, '')
+      .replace(/\s*<<$/, '')
+      .trim();
+  }
+
+  function isApiUnmatchedReplyNoticeMessage(message = {}) {
+    return /机器人未找到对应(?:的)?回复/.test(getApiSystemNoticeText(message));
+  }
+
+  function getApiRefundSystemNoticeKind(message = {}) {
+    const statusMeta = getApiRefundStatusUpdateMeta(message);
+    if (statusMeta?.kind) return statusMeta.kind;
+    const source = getApiSystemNoticeText(message);
+    if (!source) return '';
+    if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) return 'refund-pending';
+    if (/^退款成功(?:通知)?$/.test(source)) return 'refund-success';
+    return '';
+  }
+
+  function getApiRefundSystemNoticeDisplayText(message = {}) {
+    const statusMeta = getApiRefundStatusUpdateMeta(message);
+    if (statusMeta?.displayText) return statusMeta.displayText;
+    const source = getApiSystemNoticeText(message);
+    const kind = getApiRefundSystemNoticeKind(message);
+    if (kind === 'refund-pending') return '消费者已同意您发起的退款申请，请及时处理';
+    if (kind === 'refund-success') return '退款成功';
+    return source;
+  }
+
+  function renderApiRefundSystemNoticeCardHtml(message = {}, options = {}) {
+    const kind = getApiRefundSystemNoticeKind(message);
+    if (!kind) return '';
+    const card = findApiMatchedRefundCard(options.sortedMessages, {
+      targetMessageId: getApiRefundStatusUpdateMeta(message)?.targetMessageId,
+      messageIndex: options.messageIndex,
+      activeSession: options.activeSession,
+    });
+    const displayText = getApiRefundSystemNoticeDisplayText(message);
+    if (!card) {
+      if (kind === 'refund-success') {
+        return `<div class="api-system-refund-card success">
+          <div class="api-system-refund-card-success-head">
+            <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+            <span>${esc(displayText)}</span>
+          </div>
+        </div>`;
+      }
+      return `<div class="api-system-refund-card pending">
+        <div class="api-system-refund-card-header">${esc(displayText)}</div>
+      </div>`;
+    }
+    const imageHtml = card.imageUrl
+      ? `<img class="api-system-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+      : `<div class="api-system-refund-card-media-placeholder">商品</div>`;
+    if (kind === 'refund-success') {
+      return `<div class="api-system-refund-card success">
+        <div class="api-system-refund-card-success-head">
+          <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+          <span>退款成功</span>
+        </div>
+        <div class="api-system-refund-card-goods">
+          ${imageHtml}
+          <div class="api-system-refund-card-main">
+            <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+            <div class="api-system-refund-card-success-meta">
+              <div class="api-system-refund-card-spec">${esc(card.specText || '')}</div>
+              <div class="api-system-refund-card-success-actual">实收： ${esc(card.amountText || '--')}</div>
+            </div>
+          </div>
+        </div>
+        <div class="api-system-refund-card-success-amount">
+          <span class="api-system-refund-card-success-amount-label">退款金额</span>
+          <span class="api-system-refund-card-success-amount-value">${esc(card.amountText || '--')}</span>
+        </div>
+      </div>`;
+    }
+    const rows = [
+      { label: '申请类型', value: card.actionText || '退款' },
+      { label: '申请原因', value: card.reasonText || '其他原因' },
+      card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
+      { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
+      card.contactText ? { label: '联系方式', value: card.contactText } : null,
+    ].filter(Boolean);
+    return `<div class="api-system-refund-card pending">
+      <div class="api-system-refund-card-header">${esc(displayText)}</div>
+      <div class="api-system-refund-card-goods">
+        <div class="api-system-refund-card-media-block">
+          ${imageHtml}
+          <div class="api-system-refund-card-media-title">${esc(card.goodsTitle || '订单商品')}</div>
+        </div>
+        <div class="api-system-refund-card-side">
+          <div class="api-system-refund-card-side-top">
+            <span class="api-system-refund-card-action">去处理</span>
+          </div>
+          ${card.amountText ? `<div class="api-system-refund-card-side-price">${esc(card.amountText)}</div>` : ''}
+        </div>
+      </div>
+      <div class="api-system-refund-card-rows">
+        ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  function isApiSystemNoticeMessage(message = {}) {
+    if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const messageType = Number(raw?.type ?? message?.type ?? -1);
+    if (messageType === 31 || messageType === 90) return true;
+    if (String(raw?.template_name || raw?.templateName || '').trim()) return true;
+    if (raw?.system && typeof raw.system === 'object' && Object.keys(raw.system).length) return true;
+    const source = getApiSystemNoticeText(message);
+    if (!source) return false;
+    return [
+      /您接待过此消费者/,
+      /机器人已暂停接待/,
+      /机器人未找到对应(?:的)?回复/,
+      /立即恢复接待/,
+      /为避免插嘴/,
+      /为避免插播/,
+      /为避免抢答/,
+      /当前用户来自/,
+      /商品详情页/,
+      /订单已超承诺发货时间/,
+      /请人工跟进/,
+      /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
+      /^退款成功通知$/,
+      /^退款成功$/,
+    ].some(pattern => pattern.test(source));
+  }
+
+  function getApiSystemPromptContext(sortedMessages = [], messageIndex = -1) {
+    const activeSession = getApiActiveSession() || {};
+    const state = getState();
+    const currentMessage = sortedMessages[messageIndex] || {};
+    const customer = String(activeSession.customerName || activeSession.displayName || state.apiActiveSessionName || '').trim();
+    const previousBuyerMessage = sortedMessages
+      .slice(0, messageIndex)
+      .reverse()
+      .find(item => !isApiSystemNoticeMessage(item) && item.isFromBuyer && String(item.content || '').trim());
+    return {
+      customer,
+      message: String(previousBuyerMessage?.content || '').trim(),
+      systemText: getApiSystemNoticeText(currentMessage),
+    };
+  }
+
+  async function handleApiSystemAction(action = '', messageIndex = -1, sortedMessages = []) {
+    if (action !== 'create-rule') return;
+    const state = getState();
+    const context = getApiSystemPromptContext(sortedMessages, messageIndex);
+    try {
+      if (state.currentView !== 'qa') {
+        await callRuntime('switchView', 'qa');
+      }
+      if (typeof window.openQAUnmatchedFromContext !== 'function') {
+        setApiHint('未找到规则入口');
+        return;
+      }
+      const result = await window.openQAUnmatchedFromContext({
+        customer: context.customer,
+        message: context.message,
+      });
+      if (result?.matched || result?.prefilled) {
+        setApiHint('已打开规则编辑');
+      } else {
+        setApiHint('未定位到对应消息，请手动补充规则');
+      }
+    } catch (error) {
+      setApiHint('打开规则入口失败');
+      addLog(`打开规则入口失败: ${error.message || error}`, 'error');
+    }
+  }
+
+  function buildApiSystemActionHtml(actionText = '', options = {}) {
+    const normalized = normalizeApiSystemActionText(actionText);
+    if (!normalized) return '';
+    const source = getApiSystemNoticeText(options.message);
+    if (
+      /^点击添加$/.test(normalized)
+      && /机器人未找到对应(?:的)?回复/.test(source)
+      && Number.isInteger(options.messageIndex)
+      && options.messageIndex >= 0
+    ) {
+      return `<button class="api-message-system-action api-message-system-action-button" type="button" data-system-action="create-rule" data-message-index="${options.messageIndex}">${esc(normalized)}</button>`;
+    }
+    return `<span class="api-message-system-action">${renderApiPddEmojiHtml(normalized)}</span>`;
+  }
+
+  function renderApiSystemMessageHtml(messageOrText = '', options = {}) {
+    const source = getApiSystemNoticeText(messageOrText);
+    if (!source) return '';
+    const refundNoticeKind = getApiRefundSystemNoticeKind(messageOrText);
+    if (refundNoticeKind) {
+      return renderApiRefundSystemNoticeCardHtml(messageOrText, options);
+    }
+    const actionPattern = /(>>[^<>\n]+<<|点击(?:添加|【[^】\n]+】))/g;
+    const normalizedSource = source.replace(/^(\s*>>[^<>\n]+<<\s*)+/, '').trim();
+    const target = normalizedSource || source;
+    const actionMatch = target.match(actionPattern);
+    if (actionMatch) {
+      const actionText = actionMatch[0];
+      const actionIndex = target.indexOf(actionText);
+      const prefix = actionIndex >= 0 ? target.slice(0, actionIndex) : target;
+      const suffix = actionIndex >= 0 ? target.slice(actionIndex + actionText.length) : '';
+      return [
+        prefix ? `<span class="api-message-system-main">${renderApiPddEmojiHtml(prefix)}</span>` : '',
+        buildApiSystemActionHtml(actionText, options),
+        suffix ? `<span class="api-message-system-main">${renderApiPddEmojiHtml(suffix)}</span>` : '',
+      ].join('');
+    }
+    return `<span class="api-message-system-main">${renderApiPddEmojiHtml(target)}</span>`;
   }
 
   function findApiMatchedRefundCard(sortedMessages = [], options = {}) {
@@ -3094,6 +3339,338 @@
     }
   }
 
+  function normalizeApiInviteOrderSnapshot(result = {}) {
+    const goodsItems = Array.isArray(result?.goodsItems)
+      ? result.goodsItems.filter(item => item && typeof item === 'object')
+      : [];
+    const selectedItems = Array.isArray(result?.selectedItems)
+      ? result.selectedItems.filter(item => item && typeof item === 'object')
+      : [];
+    const selectedCount = Number.isFinite(Number(result?.selectedCount))
+      ? Number(result.selectedCount)
+      : selectedItems.length;
+    const totalText = String(result?.totalText || result?.totalPriceText || '').trim() || '¥0.00';
+    const emptyText = String(result?.emptyText || '').trim();
+    const statusText = String(result?.statusText || '').trim()
+      || emptyText
+      || (selectedCount > 0 ? `已选 ${selectedCount} 件商品，可直接发送给买家` : '未添加任何商品，请从左侧列表选择商品');
+    return {
+      goodsItems,
+      selectedItems,
+      selectedCount,
+      totalText,
+      statusText,
+      canClear: selectedCount > 0,
+      source: String(result?.source || '').trim(),
+    };
+  }
+
+  function renderApiInviteOrderModal() {
+    const goodsListEl = document.getElementById('apiInviteOrderGoodsList');
+    const selectedListEl = document.getElementById('apiInviteOrderSelectedList');
+    const countTextEl = document.getElementById('apiInviteOrderCountText');
+    const totalTextEl = document.getElementById('apiInviteOrderTotalText');
+    const statusTextEl = document.getElementById('apiInviteOrderStatusText');
+    const submitButton = document.getElementById('btnApiInviteOrderSubmit');
+    const clearButton = document.getElementById('btnApiInviteOrderClear');
+    const searchButton = document.getElementById('btnApiInviteOrderSearch');
+    const keywordInput = document.getElementById('apiInviteOrderKeyword');
+    if (keywordInput && keywordInput.value !== apiInviteOrderState.keyword) {
+      keywordInput.value = apiInviteOrderState.keyword;
+    }
+    if (goodsListEl) {
+      if (apiInviteOrderState.loading && !apiInviteOrderState.goodsItems.length) {
+        goodsListEl.innerHTML = '<div class="api-invite-order-empty">正在读取邀请下单商品列表...</div>';
+      } else if (!apiInviteOrderState.goodsItems.length) {
+        goodsListEl.innerHTML = `<div class="api-invite-order-empty">${esc(apiInviteOrderState.statusText || '暂未读取到店铺商品')}</div>`;
+      } else {
+        goodsListEl.innerHTML = apiInviteOrderState.goodsItems.map((item, index) => {
+          const itemId = item.itemId || `available:${index}`;
+          const buttonText = item.selected ? '已加入' : (item.buttonText || '加入清单');
+          return `
+            <div class="api-invite-order-card">
+              <div class="api-invite-order-media">
+                ${item.imageUrl ? `<img src="${esc(item.imageUrl)}" alt="${esc(item.title || '商品主图')}">` : '<span>商品</span>'}
+              </div>
+              <div class="api-invite-order-info">
+                <div class="api-invite-order-title">${esc(item.title || '未命名商品')}</div>
+                <div class="api-invite-order-price">${esc(item.priceText || '-')}</div>
+                ${item.metaText ? `<div class="api-invite-order-meta">${esc(item.metaText)}</div>` : ''}
+              </div>
+              <button class="api-invite-order-action ${item.selected ? 'is-selected' : ''}" type="button"
+                data-api-invite-order-item="${esc(itemId)}" ${item.selected ? 'disabled' : ''}>${esc(buttonText)}</button>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+    if (selectedListEl) {
+      if (!apiInviteOrderState.selectedItems.length) {
+        selectedListEl.innerHTML = '<div class="api-invite-order-empty">未添加任何商品，请从左侧列表选择商品</div>';
+      } else {
+        selectedListEl.innerHTML = apiInviteOrderState.selectedItems.map((item, index) => `
+          <div class="api-invite-order-selected-item">
+            <strong>${index + 1}.</strong> ${esc(item.title || item.text || '已选商品')}
+          </div>
+        `).join('');
+      }
+    }
+    if (countTextEl) {
+      countTextEl.textContent = `已选 ${apiInviteOrderState.selectedCount} 件商品`;
+    }
+    if (totalTextEl) {
+      totalTextEl.textContent = apiInviteOrderState.totalText || '¥0.00';
+    }
+    if (statusTextEl) {
+      statusTextEl.textContent = apiInviteOrderState.statusText || '';
+    }
+    if (submitButton) {
+      if (apiInviteOrderState.submitting) {
+        submitButton.disabled = true;
+        submitButton.textContent = '发送中...';
+      } else {
+        submitButton.disabled = apiInviteOrderState.loading || apiInviteOrderState.selectedCount <= 0;
+        submitButton.textContent = '发送';
+      }
+    }
+    if (clearButton) {
+      clearButton.disabled = apiInviteOrderState.loading || !apiInviteOrderState.canClear;
+    }
+    if (searchButton) {
+      searchButton.disabled = apiInviteOrderState.loading || apiInviteOrderState.submitting;
+      searchButton.textContent = apiInviteOrderState.loading ? '查询中...' : '搜索';
+    }
+  }
+
+  function applyApiInviteOrderSnapshot(result = {}, options = {}) {
+    const snapshot = normalizeApiInviteOrderSnapshot(result);
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      loading: false,
+      submitting: false,
+      goodsItems: snapshot.goodsItems,
+      selectedItems: snapshot.selectedItems,
+      selectedCount: snapshot.selectedCount,
+      totalText: snapshot.totalText,
+      statusText: snapshot.statusText,
+      canClear: snapshot.canClear,
+    };
+    if (!options.skipHint && snapshot.source) {
+      setApiHint(snapshot.source === 'api' ? '邀请下单已切到真实接口链路' : '邀请下单数据已刷新');
+    }
+    renderApiInviteOrderModal();
+  }
+
+  async function loadApiInviteOrderSnapshot(options = {}) {
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    if (!state.apiActiveSessionId || !activeSession) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    if (!window.pddApi?.apiGetInviteOrderState) {
+      setApiHint('当前版本缺少邀请下单能力');
+      return;
+    }
+    const nextKeyword = options.keyword !== undefined
+      ? String(options.keyword || '').trim()
+      : String(apiInviteOrderState.keyword || '').trim();
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      visible: true,
+      loading: true,
+      keyword: nextKeyword,
+    };
+    renderApiInviteOrderModal();
+    try {
+      const result = await window.pddApi.apiGetInviteOrderState({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession,
+        keyword: nextKeyword,
+        refreshOpen: options.refreshOpen !== false,
+      });
+      if (!apiInviteOrderState.visible) return;
+      if (!result || result.error) {
+        throw new Error(result?.error || '读取邀请下单弹窗失败');
+      }
+      applyApiInviteOrderSnapshot(result, options);
+    } catch (error) {
+      apiInviteOrderState = {
+        ...apiInviteOrderState,
+        loading: false,
+        goodsItems: [],
+        selectedItems: [],
+        selectedCount: 0,
+        totalText: '¥0.00',
+        statusText: error?.message || '读取邀请下单弹窗失败',
+        canClear: false,
+      };
+      renderApiInviteOrderModal();
+      setApiHint(error?.message || '读取邀请下单弹窗失败');
+      showApiSideOrderToast(error?.message || '读取邀请下单弹窗失败');
+    }
+  }
+
+  async function openApiInviteOrderModal() {
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      visible: true,
+      submitting: false,
+    };
+    renderApiInviteOrderModal();
+    window.showModal?.('modalApiInviteOrder');
+    await loadApiInviteOrderSnapshot({ refreshOpen: true, skipHint: true });
+  }
+
+  function closeApiInviteOrderModal(options = {}) {
+    apiInviteOrderState = {
+      visible: false,
+      loading: false,
+      submitting: false,
+      keyword: '',
+      goodsItems: [],
+      selectedItems: [],
+      selectedCount: 0,
+      totalText: '¥0.00',
+      statusText: '未添加任何商品，请从左侧列表选择商品',
+      canClear: false,
+    };
+    if (!options?.silent) {
+      window.hideModal?.('modalApiInviteOrder');
+    } else {
+      window.hideModal?.('modalApiInviteOrder');
+    }
+  }
+
+  async function handleApiInviteOrderSearch() {
+    const keyword = document.getElementById('apiInviteOrderKeyword')?.value || '';
+    await loadApiInviteOrderSnapshot({ keyword, refreshOpen: true, skipHint: true });
+  }
+
+  async function handleApiInviteOrderGoodsClick(event) {
+    const button = event.target.closest('[data-api-invite-order-item]');
+    if (!button || apiInviteOrderState.loading || apiInviteOrderState.submitting) return;
+    if (!window.pddApi?.apiAddInviteOrderItem) {
+      setApiHint('当前版本缺少邀请下单添加能力');
+      return;
+    }
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    const itemId = String(button.dataset.apiInviteOrderItem || '').trim();
+    if (!itemId || !activeSession) return;
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      loading: true,
+    };
+    renderApiInviteOrderModal();
+    try {
+      const result = await window.pddApi.apiAddInviteOrderItem({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession,
+        itemId,
+      });
+      if (!result || result.error) {
+        throw new Error(result?.error || '加入邀请下单清单失败');
+      }
+      applyApiInviteOrderSnapshot(result, { skipHint: true });
+      setApiHint('已加入邀请下单清单');
+    } catch (error) {
+      apiInviteOrderState = {
+        ...apiInviteOrderState,
+        loading: false,
+      };
+      renderApiInviteOrderModal();
+      setApiHint(error?.message || '加入邀请下单清单失败');
+      showApiSideOrderToast(error?.message || '加入邀请下单清单失败');
+    }
+  }
+
+  async function handleApiInviteOrderClear() {
+    if (!window.pddApi?.apiClearInviteOrderItems || !apiInviteOrderState.canClear) return;
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    if (!activeSession) return;
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      loading: true,
+    };
+    renderApiInviteOrderModal();
+    try {
+      const result = await window.pddApi.apiClearInviteOrderItems({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession,
+      });
+      if (!result || result.error) {
+        throw new Error(result?.error || '清空邀请下单清单失败');
+      }
+      applyApiInviteOrderSnapshot(result, { skipHint: true });
+      setApiHint('已清空邀请下单清单');
+    } catch (error) {
+      apiInviteOrderState = {
+        ...apiInviteOrderState,
+        loading: false,
+      };
+      renderApiInviteOrderModal();
+      setApiHint(error?.message || '清空邀请下单清单失败');
+      showApiSideOrderToast(error?.message || '清空邀请下单清单失败');
+    }
+  }
+
+  async function handleApiInviteOrderSubmit() {
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    if (!activeSession || !state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    if (!apiInviteOrderState.selectedCount) {
+      setApiHint('请先选择至少一个商品');
+      return;
+    }
+    if (!window.pddApi?.apiSubmitInviteOrder) {
+      setApiHint('当前版本缺少邀请下单发送能力');
+      return;
+    }
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      submitting: true,
+    };
+    renderApiInviteOrderModal();
+    try {
+      recordApiSyncState(
+        '邀请下单弹窗',
+        `会话：${activeSession.customerName || activeSession.customerId || state.apiActiveSessionId}；商品数：${apiInviteOrderState.selectedCount}`,
+      );
+      const result = await window.pddApi.apiSubmitInviteOrder({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession,
+      });
+      if (!result || result.error) {
+        throw new Error(result?.error || '发送邀请下单失败');
+      }
+      closeApiInviteOrderModal({ silent: true });
+      setApiHint(result?.message || '邀请下单已发送');
+      showApiSideOrderToast(result?.message || '邀请下单已发送');
+    } catch (error) {
+      apiInviteOrderState = {
+        ...apiInviteOrderState,
+        submitting: false,
+      };
+      renderApiInviteOrderModal();
+      setApiHint(error?.message || '发送邀请下单失败');
+      showApiSideOrderToast(error?.message || '发送邀请下单失败');
+    }
+  }
+
   function showApiRefundOrderEmptyHint() {
     const toastEl = document.getElementById('toastMsg');
     if (toastEl) {
@@ -3938,13 +4515,18 @@
   function getApiDisplayMessages(state = {}, activeSession = null) {
     const sessionKey = getApiSessionKey(activeSession || {});
     const remoteMessages = Array.isArray(state.apiMessages) ? state.apiMessages.slice() : [];
-    const syntheticMessages = (Array.isArray(state.apiSyntheticRefundMessages) ? state.apiSyntheticRefundMessages : [])
-      .filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey);
+    const syntheticMessages = [
+      ...(Array.isArray(state.apiSyntheticRefundMessages) ? state.apiSyntheticRefundMessages : []),
+      ...(Array.isArray(state.apiSyntheticSystemMessages) ? state.apiSyntheticSystemMessages : []),
+    ].filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey);
     const mergedMessages = remoteMessages.slice();
     syntheticMessages.forEach(item => {
       const syntheticKey = String(item?.syntheticKey || item?.refundCard?.localKey || '');
-      const duplicated = syntheticKey
-        && remoteMessages.some(remote => String(extractApiRefundCard(remote, activeSession)?.localKey || '') === syntheticKey);
+      const duplicated = syntheticKey && remoteMessages.some(remote => {
+        const refundKey = String(extractApiRefundCard(remote, activeSession)?.localKey || '');
+        const remoteSyntheticKey = String(remote?.syntheticKey || '');
+        return refundKey === syntheticKey || remoteSyntheticKey === syntheticKey;
+      });
       if (!duplicated) {
         mergedMessages.push(item);
       }
@@ -4188,9 +4770,24 @@
       const sortedMessages = displayMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
       let previousTimestamp = 0;
       container.innerHTML = sortedMessages.map((message, index) => {
+        const isSystem = isApiSystemNoticeMessage(message);
+        const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
         const isBuyer = !!message.isFromBuyer;
         const buyerAvatar = activeSession?.customerAvatar || '';
         const sellerText = (shopName || state.apiTokenStatus?.mallName || '主账号').slice(0, 4);
+        if (isSystem) {
+          const systemVariantClass = [
+            isApiUnmatchedReplyNoticeMessage(message) ? 'unmatched-reply' : '',
+            refundSystemNoticeKind ? 'refund-notice' : '',
+          ].filter(Boolean).join(' ');
+          const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
+            ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
+            : '';
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item system${systemVariantClass ? ` ${systemVariantClass}` : ''}">
+            <div class="api-message-system-bubble${systemVariantClass ? ` ${systemVariantClass}` : ''}">${renderApiSystemMessageHtml(message, { message, messageIndex: index, sortedMessages, activeSession })}</div>
+          </div>`;
+        }
         const avatarHtml = isBuyer
           ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((state.apiActiveSessionName || '客户').slice(0, 2)))
           : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
@@ -4263,6 +4860,13 @@
           } catch {
             showApiSideOrderToast('复制失败，请稍后重试');
           }
+        });
+      });
+      container.querySelectorAll('.api-message-system-action-button').forEach(button => {
+        button.addEventListener('click', async event => {
+          event.stopPropagation();
+          const messageIndex = Number(button.dataset.messageIndex);
+          await handleApiSystemAction(button.dataset.systemAction || '', messageIndex, sortedMessages);
         });
       });
       container.querySelectorAll('.api-goods-card-copy').forEach(button => {
@@ -4549,7 +5153,7 @@
         const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
         const groupNumber = getApiSessionGroupNumber(session);
         const orderTagHtml = groupNumber >= 1
-          ? `<span class="api-session-order-tag">订单：（${esc(String(groupNumber))}）</span>`
+          ? `<span class="api-session-order-tag">订单 ${esc(String(groupNumber))}</span>`
           : '';
         const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
         return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
@@ -4647,14 +5251,19 @@
       ...result,
       shopId: state.apiActiveSessionShopId,
       sessionId: state.apiActiveSessionId,
-      text,
+      requestedText: text,
+      text: result?.text || text,
     };
     recordApiSyncState('发送成功', `会话：${state.apiActiveSessionName || state.apiActiveSessionId}`);
     clearApiPendingReplyState(successPayload);
     appendApiLocalServiceMessage(successPayload);
     const input = document.getElementById('apiMessageInput');
     if (input) input.value = '';
-    setApiHint('接口发送成功，正在同步最新消息');
+    if (result?.sendMode === 'pending-confirm') {
+      setApiHint('当前会话命中平台待确认回复，已按平台待确认消息发送');
+      return;
+    }
+    setApiHint('消息已通过人工发送接口下发，正在同步最新消息');
   }
 
   async function handleApiSendImage() {
@@ -4798,6 +5407,7 @@
   async function handleApiNewMessage(payload) {
     const state = getState();
     if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    recordApiSyncState('轮询新消息', `会话：${payload?.customer || payload?.sessionId || '未知会话'}`);
     await loadApiTraffic(getApiStatusShopId(true));
     const nextState = getState();
     const isCurrentSession = String(payload?.sessionId || '') === String(nextState.apiActiveSessionId)
@@ -4817,8 +5427,108 @@
     setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
   }
 
+  function handleApiBootstrapInspect(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customerName || payload?.sessionId || '未知会话';
+    const previewText = String(payload?.previewText || '').trim() || '空';
+    const pickedText = String(payload?.pickedPendingText || '').trim() || '无';
+    const actor = String(payload?.lastMessageActor || 'unknown');
+    const unread = Number(payload?.unreadCount || 0) || 0;
+    const detail = `会话：${sessionText}；预览：${previewText}；识别：${pickedText}；actor：${actor}；未读：${unread}；emit：${payload?.willEmitPending ? '是' : '否'}`;
+    recordApiSyncState('Bootstrap检查', detail);
+  }
+
   async function handleApiMessageSent(payload) {
     await refreshApiAfterMessageSent(payload);
+  }
+
+  function handleApiAutoReplySent(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.conversationId || payload?.sessionId || '未知会话';
+    const ruleText = payload?.ruleName ? `，规则：${payload.ruleName}` : '';
+    const sendModeText = payload?.sendMode === 'pending-confirm'
+      ? '，按平台待确认消息发送'
+      : (payload?.sendMode === 'manual-interface' ? '，通过人工发送接口下发' : '');
+    recordApiSyncState('自动回复成功', `会话：${sessionText}${ruleText}${sendModeText}`);
+    if (payload?.sendMode === 'pending-confirm') {
+      setApiHint(`自动回复已按平台待确认消息发送：${sessionText}`);
+      return;
+    }
+    setApiHint(`自动回复已通过人工发送接口下发：${sessionText}`);
+  }
+
+  function handleApiAutoReplyError(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.sessionId || '未知会话';
+    const errorText = payload?.error || '未知错误';
+    const errorCode = Number(payload?.errorCode || 0) || 0;
+    const isPlatformPaused = /机器人已暂停接待，请人工跟进/.test(errorText)
+      || (payload?.phase === 'fallback-send' && (errorCode === 40013 || /code=40013/.test(errorText)));
+    recordApiSyncState('自动回复失败', `会话：${sessionText}，${errorText}`);
+    if (isPlatformPaused) {
+      appendApiLocalServiceMessage({
+        shopId: payload?.shopId || '',
+        sessionId: payload?.sessionId || '',
+        text: '机器人已暂停接待，请人工跟进',
+        isSystem: true,
+        syntheticKey: `platform-paused::${payload?.shopId || ''}::${payload?.sessionId || ''}`,
+        timestamp: Date.now(),
+      });
+    }
+    setApiHint(`自动回复失败：${errorText}`);
+  }
+
+  function handleApiUnmatchedMessage(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || '未知会话';
+    recordApiSyncState('自动回复未命中', `会话：${sessionText}，将发送兜底回复`);
+    setApiHint(`未命中规则，准备发送兜底：${sessionText}`);
+  }
+
+  function handleApiFallbackScheduled(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.sessionId || '未知会话';
+    const seconds = Math.max(0, Math.ceil(Number(payload?.delayMs || 0) / 1000));
+    recordApiSyncState('兜底排队', `会话：${sessionText}，${seconds} 秒后发送`);
+    setApiHint(`兜底已排队：${sessionText}`);
+  }
+
+  function handleApiFallbackTriggered(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.sessionId || '未知会话';
+    recordApiSyncState('兜底触发', `会话：${sessionText}，准备执行发送`);
+    setApiHint(`兜底开始执行：${sessionText}`);
+  }
+
+  function handleApiFallbackSendStart(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.sessionId || '未知会话';
+    recordApiSyncState('兜底发送', `会话：${sessionText}，已进入人工发送链路`);
+    setApiHint(`兜底进入人工发送链路：${sessionText}`);
+  }
+
+  function handleApiFallbackCancelled(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || '未知会话';
+    recordApiSyncState('兜底取消', `会话：${sessionText}，原因：${payload?.reason || '未知原因'}`);
+    setApiHint(`兜底已取消：${sessionText}`);
+  }
+
+  function handleApiFallbackSkipped(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || '未知会话';
+    const seconds = Math.max(0, Math.ceil(Number(payload?.remainingMs || 0) / 1000));
+    recordApiSyncState('兜底跳过', `会话：${sessionText}，冷却剩余 ${seconds} 秒`);
+    setApiHint(`兜底冷却中：${sessionText}`);
   }
 
   function handleApiAuthExpired(payload) {
@@ -4837,7 +5547,6 @@
   function bindChatApiModule() {
     if (initialized) return;
     initialized = true;
-    window.__chatApiModuleBound = true;
 
     renderApiEmojiPanel();
     startApiPendingReplyTicker();
@@ -4931,6 +5640,16 @@
     document.getElementById('btnApiRiskManage')?.addEventListener('click', () => handleApiRiskMenuAction('manage'));
     document.getElementById('btnApiStar')?.addEventListener('click', handleApiStar);
     document.getElementById('btnApiRefund')?.addEventListener('click', openApiRefundOrderSelector);
+    document.getElementById('btnApiInviteOrder')?.addEventListener('click', openApiInviteOrderModal);
+    document.getElementById('btnApiInviteOrderSearch')?.addEventListener('click', handleApiInviteOrderSearch);
+    document.getElementById('apiInviteOrderKeyword')?.addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      handleApiInviteOrderSearch();
+    });
+    document.getElementById('apiInviteOrderGoodsList')?.addEventListener('click', handleApiInviteOrderGoodsClick);
+    document.getElementById('btnApiInviteOrderClear')?.addEventListener('click', handleApiInviteOrderClear);
+    document.getElementById('btnApiInviteOrderSubmit')?.addEventListener('click', handleApiInviteOrderSubmit);
     document.getElementById('apiRefundOrderList')?.addEventListener('click', handleApiRefundOrderSelection);
     document.getElementById('btnApiRefundBack')?.addEventListener('click', handleApiRefundBack);
     document.getElementById('btnApiRefundSubmit')?.addEventListener('click', handleApiRefundSubmit);
@@ -5036,7 +5755,16 @@
 
     window.pddApi.onApiSessionUpdated(handleApiSessionUpdated);
     window.pddApi.onApiNewMessage(handleApiNewMessage);
+    window.pddApi.onApiBootstrapInspect?.(handleApiBootstrapInspect);
     window.pddApi.onApiMessageSent(handleApiMessageSent);
+    window.pddApi.onAutoReplySent(handleApiAutoReplySent);
+    window.pddApi.onAutoReplyError?.(handleApiAutoReplyError);
+    window.pddApi.onUnmatchedMessage(handleApiUnmatchedMessage);
+    window.pddApi.onFallbackScheduled?.(handleApiFallbackScheduled);
+    window.pddApi.onFallbackTriggered?.(handleApiFallbackTriggered);
+    window.pddApi.onFallbackSendStart?.(handleApiFallbackSendStart);
+    window.pddApi.onFallbackSkipped?.(handleApiFallbackSkipped);
+    window.pddApi.onFallbackCancelled(handleApiFallbackCancelled);
     window.pddApi.onApiAuthExpired(handleApiAuthExpired);
     renderApiSideOrders();
   }
@@ -5054,6 +5782,8 @@
   window.renderApiSideOrders = renderApiSideOrders;
   window.invalidateApiSideOrders = invalidateApiSideOrders;
   window.syncApiSelectionWithFilter = syncApiSelectionWithFilter;
+  window.openApiInviteOrderModal = openApiInviteOrderModal;
+  window.closeApiInviteOrderModal = closeApiInviteOrderModal;
   window.openApiSmallPaymentModal = openApiSmallPaymentModal;
   window.closeApiSmallPaymentModal = closeApiSmallPaymentModal;
   window.openApiGoodsSpecModal = openApiGoodsSpecModal;

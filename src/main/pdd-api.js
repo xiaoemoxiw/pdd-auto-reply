@@ -4470,6 +4470,9 @@ class PddApiClient extends EventEmitter {
       selectedItems: selectedItems.map((item, index) => ({
         itemId: `${item.goodsId || 'goods'}:${item.skuId || index}`,
         title: item.displayTitle || item.title || '已选商品',
+        imageUrl: String(item?.imageUrl || '').trim(),
+        priceText: `¥${this._formatInviteOrderFen(Number(item?.promoPrice || item?.skuPrice || 0)) || '0.00'}`,
+        goodsNumber: Number(item?.goodsNumber || 1),
       })),
       selectedCount: selectedItems.length,
       totalText: `¥${this._formatInviteOrderFen(totalFen || 0) || '0.00'}`,
@@ -4506,7 +4509,7 @@ class PddApiClient extends EventEmitter {
     return deduped;
   }
 
-  async _resolveInviteOrderSelection(uid, goodsId, goodsList = []) {
+  async _loadInviteOrderSkuSelector(uid, goodsId) {
     const payload = await this._requestGoodsPageApi('/latitude/goods/skuSelectorForMall', {
       goodsId,
       uid,
@@ -4517,11 +4520,101 @@ class PddApiClient extends EventEmitter {
     }
     const result = payload?.result || {};
     const skuList = Array.isArray(result?.sku) ? result.sku : [];
-    const targetSku = skuList.find(item => Number(item?.isOnsale) === 1 && Number(item?.quantity || 0) > 0)
+    return { payload, result, skuList };
+  }
+
+  _buildInviteOrderSkuSpecText(specs = [], { withKeys = false } = {}) {
+    return (Array.isArray(specs) ? specs : [])
+      .map(item => {
+        const key = String(item?.specKey || '').trim();
+        const value = String(item?.specValue || '').trim();
+        if (withKeys && key && value) return `${key}:${value}`;
+        return value || key;
+      })
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  _buildInviteOrderSkuPriceText(sku = {}) {
+    const price = Number(
+      sku?.groupPrice
+      || sku?.oldGroupPrice
+      || sku?.normalPrice
+      || sku?.price
+      || 0
+    );
+    return price > 0 ? `¥${this._formatInviteOrderFen(price)}` : '';
+  }
+
+  async getInviteOrderSkuOptions(params = {}) {
+    const uid = this._resolveInviteOrderUid(params);
+    const goodsId = Number(String(params?.itemId || params?.goodsId || '').trim());
+    if (!uid) {
+      throw new Error('缺少买家 UID');
+    }
+    if (!Number.isFinite(goodsId) || goodsId <= 0) {
+      throw new Error('缺少商品标识');
+    }
+    const state = this._getInviteOrderSessionState(uid);
+    if (!Array.isArray(state.goodsList) || !state.goodsList.length) {
+      state.goodsList = await this._loadInviteOrderGoodsList(uid);
+    }
+    const goodsInfo = state.goodsList.find(item => Number(item?.goodsId) === goodsId) || {};
+    const { result, skuList } = await this._loadInviteOrderSkuSelector(uid, goodsId);
+    const availableSku = skuList.find(item => Number(item?.isOnsale) === 1 && Number(item?.quantity || 0) > 0)
+      || skuList.find(item => Number(item?.isOnsale) === 1)
+      || skuList[0];
+    const optionLabelSet = new Set();
+    const skuOptions = skuList
+      .map((item, index) => {
+        const skuId = Number(item?.skuId || 0);
+        if (!skuId) return null;
+        const label = this._buildInviteOrderSkuSpecText(item?.specs || []);
+        const detailLabel = this._buildInviteOrderSkuSpecText(item?.specs || [], { withKeys: true });
+        const specKeys = Array.isArray(item?.specs) ? item.specs.map(spec => String(spec?.specKey || '').trim()).filter(Boolean) : [];
+        specKeys.forEach(key => optionLabelSet.add(key));
+        const quantity = Number(item?.quantity || 0);
+        return {
+          skuId,
+          label: label || `规格 ${index + 1}`,
+          detailLabel: detailLabel || label || `规格 ${index + 1}`,
+          priceText: this._buildInviteOrderSkuPriceText(item) || goodsInfo.priceText || '',
+          quantity,
+          stockText: Number.isFinite(quantity) ? `库存 ${Math.max(0, quantity)}` : '',
+          disabled: Number(item?.isOnsale) !== 1 || quantity <= 0,
+        };
+      })
+      .filter(Boolean);
+    return {
+      success: true,
+      source: 'api',
+      goodsId,
+      title: String(goodsInfo?.title || result?.goodsName || '').trim() || '商品',
+      imageUrl: String(goodsInfo?.imageUrl || '').trim(),
+      priceText: String(goodsInfo?.priceText || '').trim() || (availableSku ? this._buildInviteOrderSkuPriceText(availableSku) : ''),
+      optionLabel: optionLabelSet.size === 1 ? Array.from(optionLabelSet)[0] : '规格',
+      selectedSkuId: availableSku?.skuId ? String(availableSku.skuId) : '',
+      skuOptions,
+    };
+  }
+
+  async _resolveInviteOrderSelection(uid, goodsId, goodsList = [], preferredSkuId = '') {
+    const { result, skuList } = await this._loadInviteOrderSkuSelector(uid, goodsId);
+    const normalizedPreferredSkuId = Number(String(preferredSkuId || '').trim());
+    const targetSku = (Number.isFinite(normalizedPreferredSkuId) && normalizedPreferredSkuId > 0
+      ? skuList.find(item => Number(item?.skuId) === normalizedPreferredSkuId)
+      : null)
+      || skuList.find(item => Number(item?.isOnsale) === 1 && Number(item?.quantity || 0) > 0)
       || skuList.find(item => Number(item?.isOnsale) === 1)
       || skuList[0];
     if (!targetSku?.skuId) {
       throw new Error('该商品暂无可邀请规格');
+    }
+    if (Number.isFinite(normalizedPreferredSkuId) && normalizedPreferredSkuId > 0 && Number(targetSku?.skuId) !== normalizedPreferredSkuId) {
+      throw new Error('所选规格不存在');
+    }
+    if (Number(targetSku?.isOnsale) !== 1 || Number(targetSku?.quantity || 0) <= 0) {
+      throw new Error('所选规格当前不可邀请');
     }
     const skuPrice = Number(
       targetSku?.groupPrice
@@ -4548,12 +4641,7 @@ class PddApiClient extends EventEmitter {
       ? promoPayload.result.skuPromoPriceList[0]
       : null;
     const goodsInfo = goodsList.find(item => Number(item?.goodsId) === Number(goodsId)) || {};
-    const specText = Array.isArray(targetSku?.specs)
-      ? targetSku.specs
-        .map(item => `${item?.specKey || ''}${item?.specValue ? `:${item.specValue}` : ''}`.trim())
-        .filter(Boolean)
-        .join(' ')
-      : '';
+    const specText = this._buildInviteOrderSkuSpecText(targetSku?.specs || [], { withKeys: true });
     return {
       goodsId: Number(goodsId),
       skuId: Number(targetSku.skuId),
@@ -4561,6 +4649,7 @@ class PddApiClient extends EventEmitter {
       skuPrice: Number(promoItem?.skuPrice || skuPrice || 0),
       promoPrice: Number(promoItem?.promoPrice || skuPrice || 0),
       title: String(goodsInfo?.title || result?.goodsName || '').trim(),
+      imageUrl: String(goodsInfo?.imageUrl || '').trim(),
       displayTitle: specText
         ? `${String(goodsInfo?.title || result?.goodsName || '商品').trim()}（${specText}）`
         : String(goodsInfo?.title || result?.goodsName || '商品').trim(),
@@ -4583,6 +4672,7 @@ class PddApiClient extends EventEmitter {
   async addInviteOrderItem(params = {}) {
     const uid = this._resolveInviteOrderUid(params);
     const goodsId = Number(String(params?.itemId || '').trim());
+    const preferredSkuId = String(params?.skuId || '').trim();
     if (!uid) {
       throw new Error('缺少买家 UID');
     }
@@ -4595,7 +4685,7 @@ class PddApiClient extends EventEmitter {
     }
     const exists = state.selectedItems.find(item => Number(item?.goodsId) === goodsId);
     if (!exists) {
-      const selection = await this._resolveInviteOrderSelection(uid, goodsId, state.goodsList);
+      const selection = await this._resolveInviteOrderSelection(uid, goodsId, state.goodsList, preferredSkuId);
       state.selectedItems.push(selection);
     }
     return this._buildInviteOrderSnapshot(uid, {

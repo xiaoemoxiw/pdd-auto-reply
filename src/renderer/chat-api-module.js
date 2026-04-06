@@ -30,6 +30,20 @@
     statusText: '未添加任何商品，请从左侧列表选择商品',
     canClear: false,
   };
+  let apiInviteOrderSpecState = {
+    visible: false,
+    loading: false,
+    confirming: false,
+    itemId: '',
+    goodsId: '',
+    title: '',
+    imageUrl: '',
+    priceText: '',
+    optionLabel: '规格',
+    skuOptions: [],
+    selectedSkuId: '',
+    error: '',
+  };
   let apiSideOrderSessionKey = '';
   let apiSideOrderCountdownTimer = null;
   let apiGoodsSpecModalState = {
@@ -3365,6 +3379,169 @@
     };
   }
 
+  function normalizeApiInviteOrderSkuOptionsResult(result = {}) {
+    const skuOptions = Array.isArray(result?.skuOptions)
+      ? result.skuOptions
+        .filter(item => item && typeof item === 'object')
+        .map((item, index) => ({
+          skuId: String(item?.skuId || '').trim(),
+          label: String(item?.label || item?.detailLabel || `规格 ${index + 1}`).trim(),
+          detailLabel: String(item?.detailLabel || item?.label || `规格 ${index + 1}`).trim(),
+          priceText: String(item?.priceText || '').trim(),
+          stockText: String(item?.stockText || '').trim(),
+          disabled: Boolean(item?.disabled),
+        }))
+        .filter(item => item.skuId)
+      : [];
+    const fallbackSelectedSkuId = skuOptions.find(item => !item.disabled)?.skuId || '';
+    return {
+      goodsId: String(result?.goodsId || '').trim(),
+      title: String(result?.title || '').trim() || '商品',
+      imageUrl: String(result?.imageUrl || '').trim(),
+      priceText: String(result?.priceText || '').trim(),
+      optionLabel: String(result?.optionLabel || '').trim() || '规格',
+      skuOptions,
+      selectedSkuId: String(result?.selectedSkuId || '').trim() || fallbackSelectedSkuId,
+    };
+  }
+
+  function renderApiInviteOrderSpecModal() {
+    const summaryEl = document.getElementById('apiInviteOrderSpecSummary');
+    const loadingEl = document.getElementById('apiInviteOrderSpecLoading');
+    const errorEl = document.getElementById('apiInviteOrderSpecError');
+    const emptyEl = document.getElementById('apiInviteOrderSpecEmpty');
+    const optionsEl = document.getElementById('apiInviteOrderSpecOptions');
+    const confirmButton = document.getElementById('btnApiInviteOrderSpecConfirm');
+    const labelEl = document.getElementById('apiInviteOrderSpecLabel');
+    if (!summaryEl || !loadingEl || !errorEl || !emptyEl || !optionsEl || !confirmButton || !labelEl) return;
+    const summaryTitle = apiInviteOrderSpecState.title || '商品';
+    const summaryPrice = apiInviteOrderSpecState.priceText || '';
+    labelEl.textContent = apiInviteOrderSpecState.optionLabel || '规格';
+    summaryEl.innerHTML = `<div class="api-invite-order-spec-product">
+      ${apiInviteOrderSpecState.imageUrl
+        ? `<img class="api-invite-order-spec-product-image" src="${esc(apiInviteOrderSpecState.imageUrl)}" alt="${esc(summaryTitle)}">`
+        : '<div class="api-invite-order-spec-product-image is-placeholder">商品</div>'}
+      <div class="api-invite-order-spec-product-main">
+        ${summaryPrice ? `<div class="api-invite-order-spec-product-price">${esc(summaryPrice)}</div>` : ''}
+        <div class="api-invite-order-spec-product-title">${esc(summaryTitle)}</div>
+        <div class="api-invite-order-spec-product-tip">请选择：${esc(apiInviteOrderSpecState.optionLabel || '规格')}</div>
+      </div>
+    </div>`;
+    loadingEl.style.display = apiInviteOrderSpecState.loading ? 'flex' : 'none';
+    errorEl.style.display = apiInviteOrderSpecState.error ? 'block' : 'none';
+    errorEl.textContent = apiInviteOrderSpecState.error || '';
+    const shouldShowOptions = !apiInviteOrderSpecState.loading && !apiInviteOrderSpecState.error && apiInviteOrderSpecState.skuOptions.length > 0;
+    labelEl.style.display = !apiInviteOrderSpecState.error && (apiInviteOrderSpecState.loading || apiInviteOrderSpecState.skuOptions.length > 0) ? 'block' : 'none';
+    optionsEl.style.display = shouldShowOptions ? 'grid' : 'none';
+    emptyEl.style.display = !apiInviteOrderSpecState.loading && !apiInviteOrderSpecState.error && !apiInviteOrderSpecState.skuOptions.length ? 'block' : 'none';
+    optionsEl.innerHTML = apiInviteOrderSpecState.skuOptions.map(item => {
+      const isSelected = item.skuId === apiInviteOrderSpecState.selectedSkuId;
+      return `<button
+        type="button"
+        class="api-invite-order-spec-option${isSelected ? ' is-selected' : ''}${item.disabled ? ' is-disabled' : ''}"
+        data-api-invite-order-sku-id="${esc(item.skuId)}"
+        ${item.disabled ? 'disabled' : ''}
+        title="${esc(item.detailLabel || item.label)}"
+      >${esc(item.label)}</button>`;
+    }).join('');
+    const hasSelectableOption = apiInviteOrderSpecState.skuOptions.some(item => !item.disabled);
+    if (apiInviteOrderSpecState.confirming) {
+      confirmButton.disabled = true;
+      confirmButton.textContent = '加入中...';
+    } else {
+      confirmButton.disabled = apiInviteOrderSpecState.loading || !hasSelectableOption || !apiInviteOrderSpecState.selectedSkuId;
+      confirmButton.textContent = '确定';
+    }
+  }
+
+  async function loadApiInviteOrderSkuOptions(item = {}) {
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    const itemId = String(item?.itemId || '').trim();
+    if (!activeSession || !itemId) {
+      throw new Error('缺少商品信息');
+    }
+    if (!window.pddApi?.apiGetInviteOrderSkuOptions) {
+      throw new Error('当前版本缺少邀请下单规格能力');
+    }
+    const result = await window.pddApi.apiGetInviteOrderSkuOptions({
+      shopId: state.apiActiveSessionShopId,
+      sessionId: state.apiActiveSessionId,
+      session: activeSession,
+      itemId,
+    });
+    if (!result || result.error) {
+      throw new Error(result?.error || '读取邀请下单规格失败');
+    }
+    return normalizeApiInviteOrderSkuOptionsResult(result);
+  }
+
+  async function openApiInviteOrderSpecModal(item = {}) {
+    const itemId = String(item?.itemId || '').trim();
+    if (!itemId) return;
+    apiInviteOrderSpecState = {
+      visible: true,
+      loading: true,
+      confirming: false,
+      itemId,
+      goodsId: String(item?.goodsId || itemId).trim(),
+      title: String(item?.title || '').trim(),
+      imageUrl: String(item?.imageUrl || '').trim(),
+      priceText: String(item?.priceText || '').trim(),
+      optionLabel: '规格',
+      skuOptions: [],
+      selectedSkuId: '',
+      error: '',
+    };
+    renderApiInviteOrderSpecModal();
+    window.showModal?.('modalApiInviteOrderSpec');
+    try {
+      const result = await loadApiInviteOrderSkuOptions(item);
+      if (!apiInviteOrderSpecState.visible || apiInviteOrderSpecState.itemId !== itemId) return;
+      apiInviteOrderSpecState = {
+        ...apiInviteOrderSpecState,
+        loading: false,
+        goodsId: result.goodsId || apiInviteOrderSpecState.goodsId,
+        title: result.title || apiInviteOrderSpecState.title,
+        imageUrl: result.imageUrl || apiInviteOrderSpecState.imageUrl,
+        priceText: result.priceText || apiInviteOrderSpecState.priceText,
+        optionLabel: result.optionLabel || '规格',
+        skuOptions: result.skuOptions,
+        selectedSkuId: result.selectedSkuId || '',
+        error: '',
+      };
+      renderApiInviteOrderSpecModal();
+    } catch (error) {
+      if (!apiInviteOrderSpecState.visible || apiInviteOrderSpecState.itemId !== itemId) return;
+      apiInviteOrderSpecState = {
+        ...apiInviteOrderSpecState,
+        loading: false,
+        error: error?.message || '读取邀请下单规格失败',
+      };
+      renderApiInviteOrderSpecModal();
+      setApiHint(error?.message || '读取邀请下单规格失败');
+      showApiSideOrderToast(error?.message || '读取邀请下单规格失败');
+    }
+  }
+
+  function closeApiInviteOrderSpecModal() {
+    apiInviteOrderSpecState = {
+      visible: false,
+      loading: false,
+      confirming: false,
+      itemId: '',
+      goodsId: '',
+      title: '',
+      imageUrl: '',
+      priceText: '',
+      optionLabel: '规格',
+      skuOptions: [],
+      selectedSkuId: '',
+      error: '',
+    };
+    window.hideModal?.('modalApiInviteOrderSpec');
+  }
+
   function renderApiInviteOrderModal() {
     const goodsListEl = document.getElementById('apiInviteOrderGoodsList');
     const selectedListEl = document.getElementById('apiInviteOrderSelectedList');
@@ -3408,11 +3585,26 @@
       if (!apiInviteOrderState.selectedItems.length) {
         selectedListEl.innerHTML = '<div class="api-invite-order-empty">未添加任何商品，请从左侧列表选择商品</div>';
       } else {
-        selectedListEl.innerHTML = apiInviteOrderState.selectedItems.map((item, index) => `
-          <div class="api-invite-order-selected-item">
-            <strong>${index + 1}.</strong> ${esc(item.title || item.text || '已选商品')}
-          </div>
-        `).join('');
+        selectedListEl.innerHTML = apiInviteOrderState.selectedItems.map((item, index) => {
+          const title = item.title || item.text || '已选商品';
+          const priceText = item.priceText || '-';
+          const quantity = Math.max(1, Number(item.goodsNumber || item.quantity || 1) || 1);
+          return `
+            <div class="api-invite-order-selected-item">
+              <div class="api-invite-order-selected-media">
+                ${item.imageUrl ? `<img src="${esc(item.imageUrl)}" alt="${esc(title)}">` : '<span>商品</span>'}
+              </div>
+              <div class="api-invite-order-selected-info">
+                <div class="api-invite-order-selected-title">${esc(title)}</div>
+                <div class="api-invite-order-selected-price">${esc(priceText)}</div>
+              </div>
+              <div class="api-invite-order-selected-side">
+                <span class="api-invite-order-selected-index">${index + 1}</span>
+                <span class="api-invite-order-selected-qty">x${quantity}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
       }
     }
     if (countTextEl) {
@@ -3529,6 +3721,7 @@
   }
 
   function closeApiInviteOrderModal(options = {}) {
+    closeApiInviteOrderSpecModal();
     apiInviteOrderState = {
       visible: false,
       loading: false,
@@ -3556,37 +3749,66 @@
   async function handleApiInviteOrderGoodsClick(event) {
     const button = event.target.closest('[data-api-invite-order-item]');
     if (!button || apiInviteOrderState.loading || apiInviteOrderState.submitting) return;
+    if (!window.pddApi?.apiGetInviteOrderSkuOptions) {
+      setApiHint('当前版本缺少邀请下单规格能力');
+      return;
+    }
+    const itemId = String(button.dataset.apiInviteOrderItem || '').trim();
+    if (!itemId) return;
+    const item = apiInviteOrderState.goodsItems.find(candidate => String(candidate?.itemId || '').trim() === itemId);
+    await openApiInviteOrderSpecModal(item || { itemId });
+  }
+
+  function handleApiInviteOrderSpecOptionClick(event) {
+    const button = event.target.closest('[data-api-invite-order-sku-id]');
+    if (!button || apiInviteOrderSpecState.loading || apiInviteOrderSpecState.confirming || button.disabled) return;
+    const skuId = String(button.dataset.apiInviteOrderSkuId || '').trim();
+    if (!skuId) return;
+    apiInviteOrderSpecState = {
+      ...apiInviteOrderSpecState,
+      selectedSkuId: skuId,
+      error: '',
+    };
+    renderApiInviteOrderSpecModal();
+  }
+
+  async function handleApiInviteOrderSpecConfirm() {
     if (!window.pddApi?.apiAddInviteOrderItem) {
       setApiHint('当前版本缺少邀请下单添加能力');
       return;
     }
     const state = getState();
     const activeSession = getApiActiveSession();
-    const itemId = String(button.dataset.apiInviteOrderItem || '').trim();
-    if (!itemId || !activeSession) return;
-    apiInviteOrderState = {
-      ...apiInviteOrderState,
-      loading: true,
+    const itemId = String(apiInviteOrderSpecState.itemId || '').trim();
+    const selectedSkuId = String(apiInviteOrderSpecState.selectedSkuId || '').trim();
+    if (!activeSession || !itemId || !selectedSkuId) return;
+    apiInviteOrderSpecState = {
+      ...apiInviteOrderSpecState,
+      confirming: true,
+      error: '',
     };
-    renderApiInviteOrderModal();
+    renderApiInviteOrderSpecModal();
     try {
       const result = await window.pddApi.apiAddInviteOrderItem({
         shopId: state.apiActiveSessionShopId,
         sessionId: state.apiActiveSessionId,
         session: activeSession,
         itemId,
+        skuId: selectedSkuId,
       });
       if (!result || result.error) {
         throw new Error(result?.error || '加入邀请下单清单失败');
       }
+      closeApiInviteOrderSpecModal();
       applyApiInviteOrderSnapshot(result, { skipHint: true });
       setApiHint('已加入邀请下单清单');
     } catch (error) {
-      apiInviteOrderState = {
-        ...apiInviteOrderState,
-        loading: false,
+      apiInviteOrderSpecState = {
+        ...apiInviteOrderSpecState,
+        confirming: false,
+        error: error?.message || '加入邀请下单清单失败',
       };
-      renderApiInviteOrderModal();
+      renderApiInviteOrderSpecModal();
       setApiHint(error?.message || '加入邀请下单清单失败');
       showApiSideOrderToast(error?.message || '加入邀请下单清单失败');
     }
@@ -3657,7 +3879,22 @@
       if (!result || result.error) {
         throw new Error(result?.error || '发送邀请下单失败');
       }
+      const previewCard = buildApiInviteOrderPreviewCard();
+      const syntheticKey = `invite-order::${state.apiActiveSessionShopId}::${state.apiActiveSessionId}::${Date.now()}`;
       closeApiInviteOrderModal({ silent: true });
+      appendApiLocalServiceMessage({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        text: previewCard.messageText,
+        inviteOrderCard: previewCard,
+        syntheticKey,
+        timestamp: Date.now(),
+      });
+      await refreshApiAfterMessageSent({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        syntheticKey,
+      });
       setApiHint(result?.message || '邀请下单已发送');
       showApiSideOrderToast(result?.message || '邀请下单已发送');
     } catch (error) {
@@ -4512,12 +4749,69 @@
     </div>`;
   }
 
+  function extractApiInviteOrderCard(message = {}) {
+    const directCard = message?.inviteOrderCard && typeof message.inviteOrderCard === 'object'
+      ? message.inviteOrderCard
+      : null;
+    if (directCard) return directCard;
+    const extraCard = message?.extra?.inviteOrderCard && typeof message.extra.inviteOrderCard === 'object'
+      ? message.extra.inviteOrderCard
+      : null;
+    return extraCard || null;
+  }
+
+  function buildApiInviteOrderPreviewCard() {
+    const selectedItems = Array.isArray(apiInviteOrderState.selectedItems) ? apiInviteOrderState.selectedItems : [];
+    const firstItem = selectedItems[0] || {};
+    const title = String(firstItem.title || firstItem.text || '已选商品').trim() || '已选商品';
+    const specMatch = title.match(/（(.+?)）$/);
+    const displayTitle = specMatch ? title.replace(/（.+?）$/, '').trim() : title;
+    const specText = specMatch ? specMatch[1].trim() : '';
+    return {
+      messageText: '亲，喜欢的话，您可点击“发起拼单”完成支付',
+      title: displayTitle || title,
+      specText,
+      imageUrl: String(firstItem.imageUrl || '').trim(),
+      priceText: String(firstItem.priceText || '').trim(),
+      totalText: String(apiInviteOrderState.totalText || '').trim() || '¥0.00',
+      count: Math.max(1, Number(apiInviteOrderState.selectedCount || selectedItems.length || 1) || 1),
+    };
+  }
+
+  function renderApiInviteOrderCardHtml(card = {}) {
+    const count = Math.max(1, Number(card?.count || 1) || 1);
+    const countText = `x${count}`;
+    const imageHtml = card.imageUrl
+      ? `<img class="api-invite-order-message-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">`
+      : '<div class="api-invite-order-message-image is-placeholder">商品</div>';
+    return `<div class="api-invite-order-message-bubble">
+      ${card.messageText ? `<div class="api-invite-order-message-text">${esc(card.messageText)}</div>` : ''}
+      <div class="api-invite-order-message-divider"></div>
+      <div class="api-invite-order-message-card">
+        ${imageHtml}
+        <div class="api-invite-order-message-main">
+          <div class="api-invite-order-message-title">${esc(card.title || '商品')}</div>
+          ${card.specText ? `<div class="api-invite-order-message-spec">${esc(card.specText)}</div>` : ''}
+        </div>
+        <div class="api-invite-order-message-side">
+          ${card.priceText ? `<div class="api-invite-order-message-price">${esc(card.priceText)}</div>` : ''}
+          <div class="api-invite-order-message-count">${esc(countText)}</div>
+        </div>
+      </div>
+      <div class="api-invite-order-message-divider"></div>
+      <div class="api-invite-order-message-footer">
+        <span class="api-invite-order-message-total">合计：<strong>${esc(card.totalText || card.priceText || '¥0.00')}</strong></span>
+      </div>
+    </div>`;
+  }
+
   function getApiDisplayMessages(state = {}, activeSession = null) {
     const sessionKey = getApiSessionKey(activeSession || {});
     const remoteMessages = Array.isArray(state.apiMessages) ? state.apiMessages.slice() : [];
     const syntheticMessages = [
       ...(Array.isArray(state.apiSyntheticRefundMessages) ? state.apiSyntheticRefundMessages : []),
       ...(Array.isArray(state.apiSyntheticSystemMessages) ? state.apiSyntheticSystemMessages : []),
+      ...(Array.isArray(state.apiSyntheticServiceMessages) ? state.apiSyntheticServiceMessages : []),
     ].filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey);
     const mergedMessages = remoteMessages.slice();
     syntheticMessages.forEach(item => {
@@ -4804,6 +5098,7 @@
           goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
         ) : null;
         const refundCard = !isBuyer ? extractApiRefundCard(message, activeSession) : null;
+        const inviteOrderCard = !isBuyer ? extractApiInviteOrderCard(message) : null;
         const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
         const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, {
           cardIndex: index,
@@ -4818,6 +5113,8 @@
           ? renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index, activeSession })
           : resolvedRefundCard
           ? renderApiRefundCardHtml(resolvedRefundCard)
+          : inviteOrderCard
+          ? renderApiInviteOrderCardHtml(inviteOrderCard)
           : goodsLinkInfo
           ? renderApiGoodsCardHtml(goodsCard)
           : videoMessage
@@ -4825,7 +5122,7 @@
           : imageMessage
             ? `<div class="api-message-bubble"><div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div></div>`
             : `<div class="api-message-bubble"><div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div></div>`;
-        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !refundStatusUpdate && !imageMessage && !videoMessage && String(message.content || '').trim()
+        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !inviteOrderCard && !refundStatusUpdate && !imageMessage && !videoMessage && String(message.content || '').trim()
           ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
           : '';
         const footerHtml = !isBuyer
@@ -4837,6 +5134,9 @@
         previousTimestamp = message.timestamp;
         if (resolvedRefundCard || refundStatusUpdate) {
           return `${divider}<div class="api-message-item platform-card">${bubbleHtml}</div>`;
+        }
+        if (inviteOrderCard) {
+          return `${divider}<div class="api-message-item platform-card invite-order-card">${bubbleHtml}</div>`;
         }
         return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
           <div class="api-message-avatar">${avatarHtml}</div>
@@ -5648,6 +5948,8 @@
       handleApiInviteOrderSearch();
     });
     document.getElementById('apiInviteOrderGoodsList')?.addEventListener('click', handleApiInviteOrderGoodsClick);
+    document.getElementById('apiInviteOrderSpecOptions')?.addEventListener('click', handleApiInviteOrderSpecOptionClick);
+    document.getElementById('btnApiInviteOrderSpecConfirm')?.addEventListener('click', handleApiInviteOrderSpecConfirm);
     document.getElementById('btnApiInviteOrderClear')?.addEventListener('click', handleApiInviteOrderClear);
     document.getElementById('btnApiInviteOrderSubmit')?.addEventListener('click', handleApiInviteOrderSubmit);
     document.getElementById('apiRefundOrderList')?.addEventListener('click', handleApiRefundOrderSelection);
@@ -5784,6 +6086,7 @@
   window.syncApiSelectionWithFilter = syncApiSelectionWithFilter;
   window.openApiInviteOrderModal = openApiInviteOrderModal;
   window.closeApiInviteOrderModal = closeApiInviteOrderModal;
+  window.closeApiInviteOrderSpecModal = closeApiInviteOrderSpecModal;
   window.openApiSmallPaymentModal = openApiSmallPaymentModal;
   window.closeApiSmallPaymentModal = closeApiSmallPaymentModal;
   window.openApiGoodsSpecModal = openApiGoodsSpecModal;

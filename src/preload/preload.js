@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiSubmitRefundApply: (params) => ipcRenderer.invoke('api-submit-refund-apply', params),
   apiGetSideOrders: (params) => ipcRenderer.invoke('api-get-side-orders', params),
   apiGetInviteOrderState: (params) => ipcRenderer.invoke('api-get-invite-order-state', params),
+  apiGetInviteOrderSkuOptions: (params) => ipcRenderer.invoke('api-get-invite-order-sku-options', params),
   apiAddInviteOrderItem: (params) => ipcRenderer.invoke('api-add-invite-order-item', params),
   apiClearInviteOrderItems: (params) => ipcRenderer.invoke('api-clear-invite-order-items', params),
   apiSubmitInviteOrder: (params) => ipcRenderer.invoke('api-submit-invite-order', params),

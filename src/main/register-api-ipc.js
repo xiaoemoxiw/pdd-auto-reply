@@ -208,6 +208,18 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-get-invite-order-sku-options', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    if (!params.itemId && !params.goodsId) return { error: '缺少商品标识' };
+    try {
+      return await getApiClient(shopId).getInviteOrderSkuOptions(params);
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
   ipcMain.handle('api-add-invite-order-item', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

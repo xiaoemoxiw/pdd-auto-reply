@@ -990,53 +990,125 @@
     }
 
     .api-invite-order-modal {
-      width: min(92vw, 860px);
-      max-width: 860px;
+      width: min(92vw, 830px);
+      max-width: 830px;
+    }
+
+    .api-invite-order-modal .modal-header {
+      padding: 12px 18px 10px;
+      border-bottom: 1px solid #eef1f5;
+    }
+
+    .api-invite-order-modal .modal-header h3 {
+      color: #2f3640;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .api-invite-order-modal .modal-close {
+      color: #a0a8b8;
+    }
+
+    .api-invite-order-modal .modal-footer {
+      padding: 10px 18px 16px;
+      border-top: none;
+      gap: 8px;
+    }
+
+    .api-invite-order-modal .modal-footer .btn {
+      min-width: 72px;
+      height: 36px;
+      padding: 0 18px;
+      border-radius: 4px;
+    }
+
+    .api-invite-order-modal .modal-footer .btn-secondary {
+      border-color: #d7dce5;
+      color: #5f6b7c;
+      background: #fff;
+    }
+
+    .api-invite-order-modal .modal-footer .btn-primary {
+      border-color: #4b74e6;
+      background: #4b74e6;
     }
 
     .api-invite-order-body {
       padding: 0;
+      overflow: hidden;
     }
 
     .api-invite-order-toolbar {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
+      gap: 16px;
       align-items: center;
-      padding: 18px 20px 14px;
-      border-bottom: 1px solid #edf0f5;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid #eef1f5;
+      background: #fff;
+    }
+
+    .api-invite-order-toolbar-main {
+      min-width: 0;
+    }
+
+    .api-invite-order-toolbar-title {
+      color: #2f3640;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .api-invite-order-toolbar-note {
+      margin-top: 4px;
+      color: #9aa3b2;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .api-invite-order-search {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
+      width: 300px;
+      max-width: 100%;
     }
 
     .api-invite-order-search .form-input {
-      height: 38px;
+      height: 34px;
+      border-color: #e2e7f0;
+      font-size: 12px;
+      background: #fff;
     }
 
     .api-invite-order-search .btn {
-      min-width: 84px;
-      height: 38px;
+      min-width: 72px;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 4px;
+      font-size: 12px;
     }
 
     .api-invite-order-content {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 300px;
-      min-height: 420px;
+      grid-template-columns: minmax(0, 1fr) 292px;
+      min-height: 446px;
+      background: #fff;
     }
 
     .api-invite-order-panel {
       min-width: 0;
       display: flex;
       flex-direction: column;
+      background: #fff;
     }
 
     .api-invite-order-panel+.api-invite-order-panel {
-      border-left: 1px solid #edf0f5;
-      background: #fbfcfe;
+      border-left: 1px solid #eef1f5;
+      background: #fafbfd;
     }
 
     .api-invite-order-panel-header {
@@ -1044,11 +1116,12 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 14px 20px;
-      border-bottom: 1px solid #edf0f5;
-      font-size: 14px;
+      padding: 14px 18px;
+      border-bottom: 1px solid #eef1f5;
       color: #4b5565;
+      font-size: 13px;
       font-weight: 600;
+      line-height: 1.4;
     }
 
     .api-invite-order-panel-header-action {
@@ -1069,28 +1142,27 @@
       flex: 1;
       min-height: 0;
       overflow: auto;
-      padding: 12px 14px 16px;
+      padding: 12px 18px 16px;
     }
 
     .api-invite-order-card {
       display: grid;
-      grid-template-columns: 72px minmax(0, 1fr) auto;
+      grid-template-columns: 64px minmax(0, 1fr) auto;
       gap: 12px;
       align-items: center;
-      padding: 12px;
-      border: 1px solid #e7ebf3;
-      border-radius: 8px;
+      padding: 12px 10px;
+      border-bottom: 1px solid #f0f2f6;
       background: #fff;
     }
 
     .api-invite-order-card+.api-invite-order-card {
-      margin-top: 10px;
+      margin-top: 0;
     }
 
     .api-invite-order-media {
-      width: 72px;
-      height: 72px;
-      border-radius: 6px;
+      width: 64px;
+      height: 64px;
+      border-radius: 4px;
       overflow: hidden;
       background: #f3f5f9;
       display: flex;
@@ -1114,7 +1186,7 @@
 
     .api-invite-order-title {
       color: #2f3640;
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.5;
       font-weight: 500;
       word-break: break-word;
@@ -1126,29 +1198,29 @@
     }
 
     .api-invite-order-price {
-      margin-top: 8px;
-      color: #111827;
-      font-size: 22px;
-      line-height: 1.1;
+      margin-top: 6px;
+      color: #1f2937;
+      font-size: 16px;
+      line-height: 1.2;
       font-weight: 700;
     }
 
     .api-invite-order-meta {
-      margin-top: 6px;
-      color: #7f8794;
+      margin-top: 4px;
+      color: #98a2b3;
       font-size: 12px;
       line-height: 1.5;
     }
 
     .api-invite-order-action {
-      min-width: 84px;
-      height: 34px;
-      padding: 0 14px;
-      border: 1px solid #89a2f4;
-      border-radius: 6px;
+      min-width: 78px;
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid #7c9bf8;
+      border-radius: 4px;
       background: #fff;
       color: #4f73ef;
-      font-size: 13px;
+      font-size: 12px;
       cursor: pointer;
     }
 
@@ -1167,52 +1239,304 @@
       min-height: 220px;
       padding: 24px;
       color: #98a2b3;
-      font-size: 13px;
-      line-height: 1.7;
+      font-size: 12px;
+      line-height: 1.8;
       text-align: center;
     }
 
     .api-invite-order-selected-list {
-      padding: 12px 0 0;
+      padding-top: 12px;
+      padding-bottom: 12px;
     }
 
     .api-invite-order-selected-item {
-      padding: 0 20px 12px;
-      color: #4b5565;
-      font-size: 13px;
-      line-height: 1.6;
-      word-break: break-word;
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
     }
 
-    .api-invite-order-selected-item strong {
+    .api-invite-order-selected-item+.api-invite-order-selected-item {
+      border-top: 1px solid #eef1f5;
+    }
+
+    .api-invite-order-selected-media {
+      width: 52px;
+      height: 52px;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #f3f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #a6adbb;
+      font-size: 12px;
+    }
+
+    .api-invite-order-selected-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .api-invite-order-selected-info {
+      min-width: 0;
+    }
+
+    .api-invite-order-selected-title {
       color: #2f3640;
+      font-size: 12px;
+      line-height: 1.5;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow: hidden;
+    }
+
+    .api-invite-order-selected-price {
+      margin-top: 4px;
+      color: #1f2937;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    .api-invite-order-selected-side {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      color: #98a2b3;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .api-invite-order-selected-index {
+      min-width: 18px;
+      text-align: center;
       font-weight: 600;
+    }
+
+    .api-invite-order-selected-qty {
+      min-width: 28px;
+      height: 20px;
+      padding: 0 6px;
+      border: 1px solid #dde3ec;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #6b7280;
+      background: #fff;
     }
 
     .api-invite-order-summary {
       margin-top: auto;
-      padding: 14px 20px 18px;
-      border-top: 1px solid #edf0f5;
+      padding: 12px 18px 8px;
+      border-top: 1px solid #eef1f5;
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-end;
       gap: 12px;
       color: #4b5565;
-      font-size: 13px;
+      font-size: 12px;
+      background: #fff;
+    }
+
+    .api-invite-order-summary-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .api-invite-order-summary-sub {
+      color: #9aa3b2;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .api-invite-order-summary-total {
+      flex-shrink: 0;
+      color: #6b7280;
+      white-space: nowrap;
     }
 
     .api-invite-order-summary strong {
       color: #e02e24;
-      font-size: 26px;
+      font-size: 18px;
       line-height: 1;
       font-weight: 700;
     }
 
     .api-invite-order-status {
-      padding: 0 20px 16px;
-      color: #7f8794;
-      font-size: 12px;
+      padding: 0 18px 12px;
+      color: #9aa3b2;
+      font-size: 11px;
       line-height: 1.6;
+      background: #fff;
+    }
+
+    .api-invite-order-spec-modal {
+      width: min(92vw, 520px);
+      max-width: 520px;
+    }
+
+    .api-invite-order-spec-modal .modal-header {
+      padding: 10px 16px;
+      border-bottom: none;
+    }
+
+    .api-invite-order-spec-modal .modal-header h3 {
+      color: #2f3640;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .api-invite-order-spec-modal .modal-body {
+      padding: 0 16px 12px;
+    }
+
+    .api-invite-order-spec-modal .modal-footer {
+      justify-content: center;
+      padding: 10px 16px 18px;
+      border-top: none;
+    }
+
+    .api-invite-order-spec-modal .modal-footer .btn {
+      min-width: 88px;
+      height: 36px;
+      border-radius: 4px;
+    }
+
+    .api-invite-order-spec-summary {
+      padding: 4px 0 12px;
+    }
+
+    .api-invite-order-spec-product {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .api-invite-order-spec-product-image {
+      width: 72px;
+      height: 72px;
+      border-radius: 4px;
+      object-fit: cover;
+      background: #f3f5f9;
+      flex-shrink: 0;
+    }
+
+    .api-invite-order-spec-product-image.is-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #a6adbb;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .api-invite-order-spec-product-main {
+      min-width: 0;
+      flex: 1;
+      padding-top: 2px;
+    }
+
+    .api-invite-order-spec-product-price {
+      color: #ef5350;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .api-invite-order-spec-product-title {
+      margin-top: 4px;
+      color: #2f3640;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .api-invite-order-spec-product-tip {
+      margin-top: 6px;
+      color: #5f6b7c;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .api-invite-order-spec-loading,
+    .api-invite-order-spec-error,
+    .api-invite-order-spec-empty {
+      min-height: 120px;
+      border: 1px solid #eef1f5;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #98a2b3;
+      font-size: 12px;
+      line-height: 1.8;
+      text-align: center;
+      background: #fafbfd;
+      padding: 12px;
+    }
+
+    .api-invite-order-spec-error {
+      color: #d14343;
+      background: #fff8f8;
+      border-color: #f4d4d4;
+    }
+
+    .api-invite-order-spec-label {
+      margin-top: 8px;
+      color: #5f6b7c;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    .api-invite-order-spec-options {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      max-height: 260px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .api-invite-order-spec-option {
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid #d7dce5;
+      border-radius: 4px;
+      background: #fff;
+      color: #3f4752;
+      font-size: 12px;
+      line-height: 1.5;
+      text-align: left;
+      cursor: pointer;
+      word-break: break-word;
+    }
+
+    .api-invite-order-spec-option.is-selected {
+      border-color: #4b74e6;
+      background: #edf3ff;
+      color: #355ed1;
+    }
+
+    .api-invite-order-spec-option.is-disabled,
+    .api-invite-order-spec-option:disabled {
+      border-color: #e5e9f0;
+      background: #f7f8fb;
+      color: #b0b7c3;
+      cursor: not-allowed;
     }
 
     .api-small-payment-modal {
@@ -3518,6 +3842,140 @@
     .api-goods-card-bubble {
       width: 238px;
       padding: 10px 10px 9px;
+    }
+
+    .api-message-item.platform-card.invite-order-card {
+      margin: 8px auto 14px;
+      padding: 0 16px;
+    }
+
+    .api-message-item.platform-card.invite-order-card .api-invite-order-message-bubble {
+      width: min(100%, 336px);
+    }
+
+    .api-invite-order-message-bubble {
+      width: 336px;
+      background: #fff;
+      border: 1px solid #e8e8eb;
+      border-radius: 4px;
+      box-shadow: none;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .api-invite-order-message-text {
+      padding: 16px 20px 14px;
+      color: #333;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    .api-invite-order-message-divider {
+      height: 1px;
+      background: #ececec;
+      margin: 0 20px;
+    }
+
+    .api-invite-order-message-card {
+      display: flex;
+      gap: 10px;
+      padding: 12px 20px;
+      background: #fff;
+    }
+
+    .api-invite-order-message-image {
+      width: 62px;
+      height: 62px;
+      object-fit: cover;
+      border-radius: 0;
+      background: #eceef2;
+      flex-shrink: 0;
+    }
+
+    .api-invite-order-message-image.is-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #a1a8b3;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .api-invite-order-message-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 10px;
+      padding-top: 2px;
+    }
+
+    .api-invite-order-message-title {
+      color: #333;
+      font-size: 13px;
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow: hidden;
+      word-break: break-word;
+    }
+
+    .api-invite-order-message-spec {
+      color: #999;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .api-invite-order-message-side {
+      min-width: 54px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 2px;
+      color: #999;
+    }
+
+    .api-invite-order-message-price {
+      color: #333;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .api-invite-order-message-count {
+      color: #999;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .api-invite-order-message-footer {
+      padding: 14px 20px 16px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .api-invite-order-message-total {
+      color: #666;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .api-invite-order-message-total strong {
+      color: #111;
+      font-size: 18px;
+      line-height: 1;
+      font-weight: 700;
     }
 
     .api-refund-card-bubble {
@@ -7767,11 +8225,14 @@
       </div>
       <div class="modal-body api-invite-order-body">
         <div class="api-invite-order-toolbar">
+          <div class="api-invite-order-toolbar-main">
+            <div class="api-invite-order-toolbar-title">选择商品</div>
+            <div class="api-invite-order-toolbar-note" id="apiInviteOrderHint">将优先对齐嵌入页真实邀请下单能力</div>
+          </div>
           <div class="api-invite-order-search">
             <input class="form-input" id="apiInviteOrderKeyword" type="text" placeholder="请输入商品关键词">
             <button class="btn btn-secondary" type="button" id="btnApiInviteOrderSearch">搜索</button>
           </div>
-          <div class="form-hint" id="apiInviteOrderHint">将优先对齐嵌入页真实邀请下单能力</div>
         </div>
         <div class="api-invite-order-content">
           <div class="api-invite-order-panel">
@@ -7787,8 +8248,11 @@
             </div>
             <div class="api-invite-order-list api-invite-order-selected-list" id="apiInviteOrderSelectedList"></div>
             <div class="api-invite-order-summary">
-              <span id="apiInviteOrderCountText">已选 0 件商品</span>
-              <span>合计：<strong id="apiInviteOrderTotalText">¥0.00</strong></span>
+              <div class="api-invite-order-summary-meta">
+                <span id="apiInviteOrderCountText">已选 0 件商品</span>
+                <span class="api-invite-order-summary-sub">加入清单后可直接发送给买家</span>
+              </div>
+              <span class="api-invite-order-summary-total">合计：<strong id="apiInviteOrderTotalText">¥0.00</strong></span>
             </div>
             <div class="api-invite-order-status" id="apiInviteOrderStatusText">未添加任何商品，请从左侧列表选择商品</div>
           </div>
@@ -7810,6 +8274,27 @@
       </div>
       <div class="modal-body api-image-preview-body">
         <img class="api-image-preview-content" id="apiImagePreviewContent" alt="对话图片预览">
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalApiInviteOrderSpec">
+    <div class="modal api-invite-order-spec-modal">
+      <div class="modal-header">
+        <h3>选择商品规格</h3>
+        <button class="modal-close" type="button"
+          onclick="window.closeApiInviteOrderSpecModal ? window.closeApiInviteOrderSpecModal() : hideModal('modalApiInviteOrderSpec')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="api-invite-order-spec-summary" id="apiInviteOrderSpecSummary"></div>
+        <div class="api-invite-order-spec-loading" id="apiInviteOrderSpecLoading" style="display:none;">正在加载可邀请规格...</div>
+        <div class="api-invite-order-spec-error" id="apiInviteOrderSpecError" style="display:none;"></div>
+        <div class="api-invite-order-spec-empty" id="apiInviteOrderSpecEmpty" style="display:none;">当前商品暂无可邀请规格</div>
+        <div class="api-invite-order-spec-label" id="apiInviteOrderSpecLabel">规格</div>
+        <div class="api-invite-order-spec-options" id="apiInviteOrderSpecOptions"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" type="button" id="btnApiInviteOrderSpecConfirm">确定</button>
       </div>
     </div>
   </div>
@@ -8021,6 +8506,7 @@
     const apiGoodsCardPending = new Set();
     let apiSyntheticRefundMessages = [];
     let apiSyntheticSystemMessages = [];
+    let apiSyntheticServiceMessages = [];
     let apiVideoLibrary = [];
     let apiVideoLibraryLoading = false;
     let apiVideoLibraryError = '';
@@ -8050,6 +8536,7 @@
           apiGoodsCardPending,
           apiSyntheticRefundMessages,
           apiSyntheticSystemMessages,
+          apiSyntheticServiceMessages,
           apiVideoLibrary,
           apiSelectedVideo,
           API_ALL_SHOPS,
@@ -8898,6 +9385,43 @@
       </div>`;
     }
 
+    function extractApiInviteOrderCard(message = {}) {
+      const directCard = message?.inviteOrderCard && typeof message.inviteOrderCard === 'object'
+        ? message.inviteOrderCard
+        : null;
+      if (directCard) return directCard;
+      const extraCard = message?.extra?.inviteOrderCard && typeof message.extra.inviteOrderCard === 'object'
+        ? message.extra.inviteOrderCard
+        : null;
+      return extraCard || null;
+    }
+
+    function renderApiInviteOrderCardHtml(card = {}) {
+      const count = Math.max(1, Number(card?.count || 1) || 1);
+      const imageHtml = card.imageUrl
+        ? `<img class="api-invite-order-message-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">`
+        : '<div class="api-invite-order-message-image is-placeholder">商品</div>';
+      return `<div class="api-invite-order-message-bubble">
+        ${card.messageText ? `<div class="api-invite-order-message-text">${esc(card.messageText)}</div>` : ''}
+        <div class="api-invite-order-message-divider"></div>
+        <div class="api-invite-order-message-card">
+          ${imageHtml}
+          <div class="api-invite-order-message-main">
+            <div class="api-invite-order-message-title">${esc(card.title || '商品')}</div>
+            ${card.specText ? `<div class="api-invite-order-message-spec">${esc(card.specText)}</div>` : ''}
+          </div>
+          <div class="api-invite-order-message-side">
+            ${card.priceText ? `<div class="api-invite-order-message-price">${esc(card.priceText)}</div>` : ''}
+            <div class="api-invite-order-message-count">x${count}</div>
+          </div>
+        </div>
+        <div class="api-invite-order-message-divider"></div>
+        <div class="api-invite-order-message-footer">
+          <span class="api-invite-order-message-total">合计：<strong>${esc(card.totalText || card.priceText || '¥0.00')}</strong></span>
+        </div>
+      </div>`;
+    }
+
     function getApiDisplayMessages(activeSession = null) {
       const sessionKey = getApiSessionKey(activeSession || {});
       const displayMessages = apiMessages.slice();
@@ -8920,6 +9444,15 @@
           }
         });
       apiSyntheticSystemMessages
+        .filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey)
+        .forEach(item => {
+          const syntheticKey = String(item?.syntheticKey || '');
+          const duplicated = syntheticKey && displayMessages.some(message => String(message?.syntheticKey || '') === syntheticKey);
+          if (!duplicated) {
+            displayMessages.push(item);
+          }
+        });
+      apiSyntheticServiceMessages
         .filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey)
         .forEach(item => {
           const syntheticKey = String(item?.syntheticKey || '');
@@ -10010,6 +10543,9 @@
       const refundCard = payload?.refundCard && typeof payload.refundCard === 'object'
         ? { ...payload.refundCard }
         : null;
+      const inviteOrderCard = payload?.inviteOrderCard && typeof payload.inviteOrderCard === 'object'
+        ? { ...payload.inviteOrderCard }
+        : null;
       const videoMeta = normalizeApiVideoItem({
         id: payload.videoId,
         url: payload.videoUrl,
@@ -10017,13 +10553,13 @@
         duration: payload.videoDuration,
         name: payload.videoName,
       });
-      if (!shopId || !sessionId || (!text && !refundCard && !videoMeta)) return;
+      if (!shopId || !sessionId || (!text && !refundCard && !inviteOrderCard && !videoMeta)) return;
       const timestamp = Number(payload.timestamp || Date.now()) || Date.now();
       const syntheticKey = String(payload.syntheticKey || '').trim();
       const localMessage = {
         sessionId,
         shopId,
-        content: text || (videoMeta?.url || ''),
+        content: text || inviteOrderCard?.messageText || (videoMeta?.url || ''),
         timestamp,
         isFromBuyer: false,
         isSystem,
@@ -10031,7 +10567,8 @@
         senderName: isSystem ? '' : (getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号'),
         readState: '',
         refundCard,
-        extra: refundCard ? { refundCard } : (videoMeta ? { video: videoMeta } : null),
+        inviteOrderCard,
+        extra: refundCard ? { refundCard } : (inviteOrderCard ? { inviteOrderCard } : (videoMeta ? { video: videoMeta } : null)),
         raw: isSystem ? { type: 67, content: text } : {},
       };
       if (syntheticKey) {
@@ -10049,6 +10586,10 @@
           .concat([{ ...localMessage }]);
       } else if (isSystem && syntheticKey) {
         apiSyntheticSystemMessages = apiSyntheticSystemMessages
+          .filter(item => String(item?.syntheticKey || '') !== syntheticKey)
+          .concat([{ ...localMessage }]);
+      } else if (inviteOrderCard && syntheticKey) {
+        apiSyntheticServiceMessages = apiSyntheticServiceMessages
           .filter(item => String(item?.syntheticKey || '') !== syntheticKey)
           .concat([{ ...localMessage }]);
       }
@@ -10948,6 +11489,7 @@
             goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
           ) : null;
           const refundCard = !isBuyer ? extractApiRefundCard(message) : null;
+          const inviteOrderCard = !isBuyer ? extractApiInviteOrderCard(message) : null;
           const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, { cardIndex: index }) : null;
           if (goodsLinkInfo && fallbackGoodsCard) {
             void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
@@ -10955,6 +11497,8 @@
           const imageMessage = !videoMessage && isApiImageMessage(message);
           const bubbleHtml = resolvedRefundCard
             ? renderApiRefundCardHtml(resolvedRefundCard)
+            : inviteOrderCard
+              ? renderApiInviteOrderCardHtml(inviteOrderCard)
             : goodsLinkInfo
               ? renderApiGoodsCardHtml(goodsCard)
               : videoMessage
@@ -10966,7 +11510,7 @@
                   : `<div class="api-message-bubble">
                 <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
               </div>`;
-          const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !imageMessage && !videoMessage && String(message.content || '').trim()
+          const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !inviteOrderCard && !imageMessage && !videoMessage && String(message.content || '').trim()
             ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
             : '';
           const footerHtml = !isBuyer
@@ -10978,6 +11522,9 @@
           previousTimestamp = message.timestamp;
           if (resolvedRefundCard) {
             return `${divider}<div class="api-message-item platform-card">${bubbleHtml}</div>`;
+          }
+          if (inviteOrderCard) {
+            return `${divider}<div class="api-message-item platform-card invite-order-card">${bubbleHtml}</div>`;
           }
           return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
             <div class="api-message-avatar">${avatarHtml}</div>
@@ -11342,10 +11889,28 @@
         apiPostSendRefreshTimer = null;
       }
       await loadApiSessions({ keepCurrent: true, silentStatus: true });
+      const isCurrentSession = String(payload?.sessionId || '') === String(apiActiveSessionId || '')
+        && String(payload?.shopId || '') === String(apiActiveSessionShopId || '');
+      if (isCurrentSession && apiActiveSessionId) {
+        await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId, {
+          forceRefresh: true,
+          preserveMessages: true,
+          silentStatus: true,
+        });
+      }
       apiPostSendRefreshTimer = setTimeout(async () => {
         if (currentView !== 'chat-api') return;
         if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
         await loadApiSessions({ keepCurrent: true, silentStatus: true });
+        const stillCurrentSession = String(payload?.sessionId || '') === String(apiActiveSessionId || '')
+          && String(payload?.shopId || '') === String(apiActiveSessionShopId || '');
+        if (stillCurrentSession && apiActiveSessionId) {
+          await openApiSession(apiActiveSessionId, apiActiveSessionName, apiActiveSessionShopId, {
+            forceRefresh: true,
+            preserveMessages: true,
+            silentStatus: true,
+          });
+        }
       }, 1200);
     }
 

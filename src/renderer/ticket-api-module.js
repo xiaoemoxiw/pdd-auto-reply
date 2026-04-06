@@ -12,6 +12,7 @@
   let ticketApiDetailLoading = false;
   let ticketApiDetailError = '';
   let ticketApiPageMode = 'list';
+  let ticketApiActiveLogisticsTab = 'outbound';
 
   function getEl(id) {
     return document.getElementById(id);
@@ -948,6 +949,155 @@
     `;
   }
 
+  function maskPhoneNumber(value = '') {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (digits.length < 7) return String(value || '');
+    return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+  }
+
+  function parseTicketNamePhone(text = '') {
+    const source = String(text || '');
+    const match = source.match(/【([^：:】]+)[：:]\s*(1\d{10})】/);
+    if (match) {
+      return { name: match[1], phone: match[2] };
+    }
+    const phoneMatch = source.match(/(1\d{10})/);
+    if (!phoneMatch) return { name: '', phone: '' };
+    const leftText = source.slice(0, phoneMatch.index).replace(/[【】:\s：]/g, ' ').trim();
+    const name = leftText.split(/\s+/).filter(Boolean).slice(-1)[0] || '';
+    return { name, phone: phoneMatch[1] };
+  }
+
+  function buildTicketReceiverSummary(detail = {}) {
+    const fields = collectTicketFlowFields(detail.flowList || []);
+    const receiverItems = fields.filter(item => /联系人|姓名|收货人|手机|电话|地址|代收点|联系地址|自取地址/.test(`${item.key} ${item.value}`));
+    const combinedText = receiverItems.map(item => `${item.key} ${item.value || ''}`).join('\n');
+    const parsed = parseTicketNamePhone(combinedText);
+    const nameField = receiverItems.find(item => /联系人|姓名|收货人/.test(item.key));
+    const phoneField = receiverItems.find(item => /手机|电话/.test(item.key));
+    const addressField = receiverItems.find(item => /地址|代收点|联系地址|自取地址/.test(item.key));
+    const addressText = normalizeTicketFieldValue(addressField?.value || combinedText.match(/(?:签收代收点|联系地址|收货地址|地址)[：:]\s*([^\n。]+)/)?.[1] || '');
+    return {
+      alertText: '通过拨打隐私号等方式尝试获取用户联系方式无效时，请按平台要求联系可触达的第三方后继续处理。',
+      receiverName: normalizeTicketFieldValue(nameField?.value || parsed.name || ''),
+      receiverPhone: normalizeTicketFieldValue(phoneField?.value || parsed.phone || ''),
+      receiverPhoneMasked: maskPhoneNumber(phoneField?.value || parsed.phone || ''),
+      receiverAddress: addressText || normalizeTicketFieldValue(addressField?.value || ''),
+      rawText: combinedText
+    };
+  }
+
+  function buildTicketAfterSalesSummary(detail = {}) {
+    const group = detail.afterSalesInfo;
+    if (!group?.items?.length) return { empty: true, items: [] };
+    return { empty: false, items: group.items };
+  }
+
+  function buildTicketLogisticsTabs(detail = {}) {
+    const fields = collectTicketFlowFields(detail.flowList || []);
+    const logisticsItems = fields.filter(item => /物流|运单|快递|签收|揽收|轨迹|取件|送达|发货|退货|逆向|自取/.test(`${item.key} ${item.value}`));
+    const shippingNotes = logisticsItems.length
+      ? logisticsItems.map(item => `${item.key}：${item.value || '-'}`)
+      : (detail.flowList || []).flatMap(item => {
+        const lines = [];
+        if (item.title) lines.push(item.title);
+        (item.itemList || []).forEach(field => {
+          if (field.key || field.value) lines.push(`${field.key || '信息'}：${field.value || '-'}`);
+        });
+        return lines;
+      }).slice(0, 6);
+    const outboundTab = {
+      key: 'outbound',
+      label: '发货物流',
+      trackingNo: '',
+      notes: shippingNotes,
+      footerText: detail.updateTime ? formatApiDateTime(detail.updateTime) : ''
+    };
+    const reverseTrackingNo = normalizeTicketFieldValue(detail.raw?.reverseTrackingNumber || detail.reverseTrackingNumber || '');
+    const reverseShippingId = normalizeTicketFieldValue(detail.raw?.reverseShippingId || detail.reverseShippingId || '');
+    const reverseNotes = [];
+    if (reverseShippingId) reverseNotes.push(`逆向物流单号：${reverseShippingId}`);
+    if (reverseTrackingNo) reverseNotes.push(`逆向运单号：${reverseTrackingNo}`);
+    const tabs = [outboundTab];
+    if (reverseNotes.length) {
+      tabs.push({
+        key: 'reverse',
+        label: '退货物流',
+        trackingNo: reverseTrackingNo,
+        notes: reverseNotes,
+        footerText: ''
+      });
+    } else {
+      tabs.push({
+        key: 'reverse',
+        label: '退货物流',
+        trackingNo: '',
+        notes: ['暂无退货物流信息'],
+        footerText: ''
+      });
+    }
+    return tabs;
+  }
+
+  function classifyTicketProgressField(field = {}) {
+    const key = String(field.key || '');
+    const value = String(field.value || '');
+    const text = `${key} ${value}`;
+    if (Array.isArray(field.urls) && field.urls.length) return 'proof';
+    if (/凭证|截图|图片|照片/.test(text)) return 'proof';
+    if (/话术|发送话术|回复内容|联系内容/.test(text)) return 'script';
+    if (/地址|代收点|联系地址|收货地址|自取地址/.test(text)) return 'address';
+    if (/物流|运单|快递|签收|揽收|轨迹|取件|送达|发货|退货|逆向/.test(text)) return 'logistics';
+    if (/货物情况|情况确认|处理结果|凭证发送情况|处理方案|核实结果/.test(text)) return 'status';
+    return 'general';
+  }
+
+  function groupTicketProgressFields(fields = []) {
+    return fields.reduce((acc, field) => {
+      const type = classifyTicketProgressField(field);
+      if (!acc[type]) acc[type] = [];
+      acc[type].push(field);
+      return acc;
+    }, {});
+  }
+
+  function renderTicketProgressFieldRow(field = {}) {
+    const label = esc(field.key || '-');
+    const value = esc(field.value || '-');
+    return `<div class="ticket-api-progress-row"><span class="ticket-api-progress-row-label">${label}</span><span class="ticket-api-progress-row-value">${value}</span></div>`;
+  }
+
+  function renderTicketProgressGroup(title, fields = []) {
+    if (!fields.length) return '';
+    return `
+      <div class="ticket-api-progress-group">
+        <div class="ticket-api-progress-group-title">${esc(title)}</div>
+        <div class="ticket-api-progress-group-body">
+          ${fields.map(renderTicketProgressFieldRow).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderTicketProgressProofGroup(fields = []) {
+    if (!fields.length) return '';
+    return `
+      <div class="ticket-api-progress-group">
+        <div class="ticket-api-progress-group-title">联系凭证</div>
+        <div class="ticket-api-progress-group-body">
+          ${fields.map(field => `
+            ${field.value ? renderTicketProgressFieldRow(field) : ''}
+            ${field.urls?.length ? `
+              <div class="ticket-api-progress-image-list">
+                ${field.urls.map(url => `<img class="ticket-api-progress-image" src="${esc(url)}" alt="">`).join('')}
+              </div>
+            ` : ''}
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   function setTicketApiPageMode(mode, options = {}) {
     ticketApiPageMode = mode === 'detail' ? 'detail' : 'list';
     getEl('ticketApiPageRoot')?.classList.toggle('is-detail-mode', ticketApiPageMode === 'detail');
@@ -962,39 +1112,146 @@
       return '<div class="ticket-api-empty-note">暂无服务进度记录</div>';
     }
     return `
-      <div class="ticket-api-flow-list">
-        ${flowList.map(item => `
-          <div class="ticket-api-flow-item">
-            <div class="ticket-api-flow-item-time">${esc(formatApiDateTime(item.createdAt) || '-')}</div>
-            <div class="ticket-api-flow-item-title">${esc(item.title || '-')}</div>
-            ${item.operatorName ? `<div class="ticket-api-flow-item-operator">处理人：${esc(item.operatorName)}</div>` : ''}
-            ${item.content ? `<div class="ticket-api-flow-item-content">${esc(item.content)}</div>` : ''}
-            ${item.itemList.length ? `
-              <div class="ticket-api-flow-field-list">
-                ${item.itemList.map(field => `
-                  <div class="ticket-api-flow-field">
-                    <div class="ticket-api-flow-field-label">${esc(field.key || '-')}</div>
-                    <div class="ticket-api-flow-field-value">${esc(field.value || '-')}</div>
+      <div class="ticket-api-progress-list">
+        ${flowList.map((item, index) => `
+          <div class="ticket-api-progress-item ${index === 0 ? 'is-current' : ''}">
+            <div class="ticket-api-progress-point"></div>
+            <div class="ticket-api-progress-body">
+              <div class="ticket-api-progress-time">${esc(formatApiDateTime(item.createdAt) || '-')}</div>
+              <div class="ticket-api-progress-title">${esc(item.title || '-')}</div>
+              ${item.content ? `<div class="ticket-api-progress-content">${esc(item.content)}</div>` : ''}
+              ${item.itemList.length ? (() => {
+                const groups = groupTicketProgressFields(item.itemList);
+                return `
+                  <div class="ticket-api-progress-fields">
+                    ${renderTicketProgressGroup('处理结果', groups.status || [])}
+                    ${renderTicketProgressGroup('联系地址', groups.address || [])}
+                    ${renderTicketProgressGroup('物流说明', groups.logistics || [])}
+                    ${renderTicketProgressGroup('发送话术', groups.script || [])}
+                    ${renderTicketProgressGroup('补充信息', groups.general || [])}
+                    ${renderTicketProgressProofGroup(groups.proof || [])}
                   </div>
-                `).join('')}
+                `;
+              })() : ''}
+              <div class="ticket-api-progress-meta">
+                <span>处理人：${esc(item.operatorName || '-')}</span>
               </div>
-            ` : ''}
-            ${item.images.length ? `
-              <div class="ticket-api-inline-gallery">
-                ${item.images.map((url, index) => `
-                  <div class="ticket-api-inline-gallery-item">
-                    <img class="ticket-api-inline-gallery-image" src="${esc(url)}" alt="">
-                    <div class="ticket-api-inline-gallery-caption">凭证 ${index + 1}</div>
-                  </div>
-                `).join('')}
-              </div>
-            ` : ''}
+            </div>
           </div>
         `).join('')}
       </div>
     `;
   }
 
+  async function copyTicketDetailText(text, successText = '已复制') {
+    const content = String(text || '').trim();
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      if (typeof window.showToast === 'function') {
+        window.showToast(successText);
+      }
+    } catch {
+      if (typeof window.showToast === 'function') {
+        window.showToast('复制失败，请稍后重试');
+      }
+    }
+  }
+
+  function bindTicketDetailActions(container) {
+    if (!container) return;
+    container.querySelectorAll('[data-ticket-copy]').forEach(button => {
+      button.addEventListener('click', async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        await copyTicketDetailText(button.dataset.ticketCopy, button.dataset.ticketCopySuccess || '已复制');
+      });
+    });
+    container.querySelectorAll('[data-ticket-logistics-tab]').forEach(button => {
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const tabKey = button.dataset.ticketLogisticsTab || 'outbound';
+        if (tabKey === ticketApiActiveLogisticsTab) return;
+        ticketApiActiveLogisticsTab = tabKey;
+        renderTicketApiDetail();
+      });
+    });
+  }
+
+  function renderTicketDetailReceiver(summary = {}) {
+    const displayName = summary.receiverName || '-';
+    const displayPhone = summary.receiverPhoneMasked || summary.receiverPhone || '-';
+    const rawPhone = summary.receiverPhone || '';
+    const displayAddress = summary.receiverAddress || '暂无联系地址信息';
+    return `
+      <div class="ticket-api-side-card">
+        <div class="ticket-api-side-card-title">收货信息</div>
+        <div class="ticket-api-side-alert">${esc(summary.alertText || '请核对收货信息后继续处理')}</div>
+        <div class="ticket-api-kv-card">
+          <div class="ticket-api-kv-row">
+            <span class="ticket-api-kv-label">收货人</span>
+            <span class="ticket-api-kv-value">${esc(displayName)}</span>
+          </div>
+          <div class="ticket-api-kv-row">
+            <span class="ticket-api-kv-label">手机号</span>
+            <span class="ticket-api-kv-value">
+              ${esc(displayPhone)}
+              ${rawPhone ? `<button class="ticket-api-inline-button" data-ticket-copy="${esc(rawPhone)}" data-ticket-copy-success="手机号已复制">查看手机号</button>` : ''}
+            </span>
+          </div>
+          <div class="ticket-api-kv-row is-block">
+            <span class="ticket-api-kv-label">联系地址</span>
+            <span class="ticket-api-kv-value">
+              ${esc(displayAddress)}
+              ${summary.receiverAddress ? `<button class="ticket-api-inline-button" data-ticket-copy="${esc(summary.receiverAddress)}" data-ticket-copy-success="地址已复制">查看姓名和地址</button>` : ''}
+            </span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderTicketDetailAfterSales(summary = {}) {
+    if (summary.empty) {
+      return `
+        <div class="ticket-api-side-card">
+          <div class="ticket-api-side-card-title">售后信息</div>
+          <div class="ticket-api-side-empty">暂无售后信息</div>
+        </div>
+      `;
+    }
+    return renderTicketInfoGroup({ title: '售后信息', items: summary.items });
+  }
+
+  function renderTicketDetailLogistics(tabs = []) {
+    const normalizedTabs = tabs.length ? tabs : [{ key: 'outbound', label: '发货物流', notes: ['暂无物流信息'] }];
+    const activeTab = normalizedTabs.find(tab => tab.key === ticketApiActiveLogisticsTab) || normalizedTabs[0];
+    return `
+      <div class="ticket-api-side-card">
+        <div class="ticket-api-side-card-title">物流轨迹</div>
+        <div class="ticket-api-logistics-tabs">
+          ${normalizedTabs.map(tab => `
+            <button
+              class="ticket-api-logistics-tab ${tab.key === activeTab.key ? 'active' : ''}"
+              type="button"
+              data-ticket-logistics-tab="${esc(tab.key)}"
+            >${esc(tab.label)}</button>
+          `).join('')}
+        </div>
+        <div class="ticket-api-logistics-body">
+          <div class="ticket-api-logistics-number">
+            物流信息：${esc(activeTab.trackingNo || '暂无运单号')}
+            ${activeTab.trackingNo ? `<button class="ticket-api-inline-button" data-ticket-copy="${esc(activeTab.trackingNo)}" data-ticket-copy-success="物流单号已复制">复制</button>` : ''}
+          </div>
+          <div class="ticket-api-logistics-note">
+            ${activeTab.notes.map(item => `<div>${esc(item)}</div>`).join('')}
+          </div>
+          ${activeTab.footerText ? `<div class="ticket-api-logistics-footer">${esc(activeTab.footerText)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
   function findMatchedPayloads(record) {
     if (!record?.ticketNo) return [];
     const matches = [];
@@ -1041,39 +1298,36 @@
 
     const matchedPayloads = findMatchedPayloads(ticketApiActiveDetail);
     const detail = extractDetailFromPayloads(matchedPayloads, ticketApiActiveDetail);
-    const detailImages = Array.from(new Set([...(ticketApiActiveDetail.detailImages || ticketApiActiveDetail.images || []), ...(detail.images || [])])).filter(Boolean).slice(0, 18);
     const flowList = Array.isArray(ticketApiActiveDetail.flowList) ? ticketApiActiveDetail.flowList : [];
-    const infoGroups = [
-      ticketApiActiveDetail.orderInfo,
-      ticketApiActiveDetail.afterSalesInfo,
-      ticketApiActiveDetail.receiverInfo,
-      ticketApiActiveDetail.logisticsInfo,
-      ticketApiActiveDetail.serviceInfo
-    ].filter(Boolean);
     const orderText = ticketApiActiveDetail.orderSn || ticketApiActiveDetail.ticketNo || '-';
+    const ticketFinished = Boolean(ticketApiActiveDetail.raw?.todoDetail?.finished) || isTicketClosed(ticketApiActiveDetail.status || '');
+    const processLabel = Number(ticketApiActiveDetail.raw?.todoDetail?.serviceDomain ?? ticketApiActiveDetail.serviceDomain ?? 0) === 1 ? '平台处理' : '商家处理';
+    const receiverSummary = buildTicketReceiverSummary(ticketApiActiveDetail);
+    const afterSalesSummary = buildTicketAfterSalesSummary(ticketApiActiveDetail);
+    const logisticsTabs = buildTicketLogisticsTabs(ticketApiActiveDetail);
+    const serviceInfoGroup = ticketApiActiveDetail.serviceInfo;
+    const orderInfoGroup = ticketApiActiveDetail.orderInfo;
+    const goodsTitle = ticketApiActiveDetail.goodsName || ticketApiActiveDetail.questionTitle || '工单';
 
     head.innerHTML = `
-      <div class="mail-api-detail-title">${esc(ticketApiActiveDetail.questionTitle || ticketApiActiveDetail.ticketType || '工单')}</div>
-      <div class="mail-api-detail-meta">
+      <div class="ticket-api-detail-topline">
+        <span class="ticket-api-detail-state ${ticketFinished ? 'is-finished' : 'is-pending'}">${ticketFinished ? '[已完结]' : '[处理中]'}</span>
+        <span class="ticket-api-detail-topic">${esc(ticketApiActiveDetail.questionTitle || ticketApiActiveDetail.ticketType || '工单')}</span>
+        <span class="ticket-api-detail-origin">${esc(processLabel)}</span>
+      </div>
+      <div class="ticket-api-detail-submeta">
+        <span>工单号：${esc(ticketApiActiveDetail.ticketNo || '-')}</span>
         <span>订单号：${esc(orderText)}</span>
         <span>创建时间：${esc(formatApiDateTime(ticketApiActiveDetail.createTime) || '-')}</span>
       </div>
-      <div class="ticket-api-detail-summary">
-        <span class="ticket-api-detail-summary-chip">工单号：${esc(ticketApiActiveDetail.ticketNo)}</span>
-        <span class="ticket-api-detail-summary-chip">状态：${esc(ticketApiActiveDetail.status || '-')}</span>
-        <span class="ticket-api-detail-summary-chip">处理人：${esc(ticketApiActiveDetail.assignee || '-')}</span>
-        <span class="ticket-api-detail-summary-chip">问题类型：${esc(ticketApiActiveDetail.ticketType || '-')}</span>
-      </div>
     `;
 
-    const questionText = [ticketApiActiveDetail.questionTitle, ticketApiActiveDetail.questionDesc].filter(Boolean).join('\n');
-
     panel.innerHTML = `
-      <div class="ticket-api-detail-layout">
-        <div class="ticket-api-detail-main">
+      <div class="ticket-api-detail-scene">
+        <div class="ticket-api-detail-left">
           ${ticketApiDetailError ? `<div class="ticket-api-detail-error">${esc(ticketApiDetailError)}</div>` : ''}
-          <div class="ticket-api-detail-section">
-            <div class="ticket-api-detail-section-title">服务进度</div>
+          <section class="ticket-api-detail-card">
+            <div class="ticket-api-detail-card-title">服务进度</div>
             ${renderTicketFlowList(flowList.length ? flowList : detail.timeline.map(item => ({
               createdAt: item.time,
               title: item.title,
@@ -1082,68 +1336,43 @@
               itemList: [],
               images: []
             })))}
-          </div>
-          <div class="ticket-api-detail-section">
-            <div class="ticket-api-detail-section-title">问题说明</div>
-            <div class="ticket-api-detail-grid">
-              <div class="ticket-api-detail-item is-full">
-                <div class="ticket-api-detail-item-label">问题描述</div>
-                <div class="ticket-api-detail-item-value">${esc(questionText || '-')}</div>
+          </section>
+        </div>
+        <aside class="ticket-api-detail-right">
+          <div class="ticket-api-side-card">
+            <div class="ticket-api-side-card-title">订单信息</div>
+            <div class="ticket-api-order-hero">
+              <div class="ticket-api-order-hero-meta">
+                <span>订单编号：${esc(orderText)}</span>
+                ${ticketApiActiveDetail.orderSn ? `<button class="ticket-api-inline-button" data-ticket-copy="${esc(ticketApiActiveDetail.orderSn)}" data-ticket-copy-success="订单号已复制">复制</button>` : ''}
               </div>
-              <div class="ticket-api-detail-item">
-                <div class="ticket-api-detail-item-label">创建时间</div>
-                <div class="ticket-api-detail-item-value">${esc(formatApiDateTime(ticketApiActiveDetail.createTime) || '-')}</div>
-              </div>
-              <div class="ticket-api-detail-item">
-                <div class="ticket-api-detail-item-label">更新时间</div>
-                <div class="ticket-api-detail-item-value">${esc(formatApiDateTime(ticketApiActiveDetail.updateTime) || '-')}</div>
-              </div>
-              <div class="ticket-api-detail-item">
-                <div class="ticket-api-detail-item-label">工单状态</div>
-                <div class="ticket-api-detail-item-value">${esc(ticketApiActiveDetail.status || '-')}</div>
-              </div>
-              <div class="ticket-api-detail-item">
-                <div class="ticket-api-detail-item-label">处理进度</div>
-                <div class="ticket-api-detail-item-value">${esc(ticketApiActiveDetail.progressText || '-')}</div>
-              </div>
-            </div>
-          </div>
-          <div class="ticket-api-detail-section">
-            <div class="ticket-api-detail-section-title">图片/附件</div>
-            ${detailImages.length ? `
-              <div class="ticket-api-gallery">
-                ${detailImages.map((url, index) => `
-                  <div class="ticket-api-gallery-item">
-                    <img class="ticket-api-gallery-image" src="${esc(url)}" alt="">
-                    <div class="ticket-api-gallery-caption">图片 ${index + 1}</div>
+              <div class="ticket-api-order-hero-content">
+                ${ticketApiActiveDetail.goodsThumb ? `<img class="ticket-api-order-hero-image" src="${esc(ticketApiActiveDetail.goodsThumb)}" alt="">` : '<div class="ticket-api-order-hero-image is-placeholder">暂无商品图</div>'}
+                <div class="ticket-api-order-hero-body">
+                  <div class="ticket-api-order-hero-title">${esc(goodsTitle)}</div>
+                  ${ticketApiActiveDetail.goodsSpec ? `<div class="ticket-api-order-hero-spec">${esc(ticketApiActiveDetail.goodsSpec)}</div>` : ''}
+                  <div class="ticket-api-order-hero-status">
+                    ${ticketApiActiveDetail.orderStatus ? `<span class="ticket-api-order-status">${esc(ticketApiActiveDetail.orderStatus)}</span>` : ''}
+                    ${ticketApiActiveDetail.goodsNumber ? `<span>数量：x${esc(ticketApiActiveDetail.goodsNumber)}</span>` : ''}
                   </div>
-                `).join('')}
+                  <div class="ticket-api-order-hero-price">
+                    <span>${esc(ticketApiActiveDetail.goodsPriceText || '-')}</span>
+                    <span>${esc(ticketApiActiveDetail.merchantAmountText ? `实收：${ticketApiActiveDetail.merchantAmountText}` : '')}</span>
+                  </div>
+                </div>
               </div>
-            ` : '<div class="ticket-api-empty-note">暂无图片数据</div>'}
-          </div>
-        </div>
-        <div class="ticket-api-detail-aside">
-          <div class="ticket-api-goods-card">
-            ${ticketApiActiveDetail.goodsThumb ? `<img class="ticket-api-goods-card-image" src="${esc(ticketApiActiveDetail.goodsThumb)}" alt="">` : '<div class="ticket-api-goods-card-placeholder">暂无商品图</div>'}
-            <div class="ticket-api-goods-card-body">
-              <div class="ticket-api-goods-card-order">订单号：${esc(orderText)}</div>
-              <div class="ticket-api-goods-card-title">${esc(ticketApiActiveDetail.goodsName || ticketApiActiveDetail.questionTitle || '工单')}</div>
-              ${ticketApiActiveDetail.goodsSpec ? `<div class="ticket-api-goods-card-spec">${esc(ticketApiActiveDetail.goodsSpec)}</div>` : ''}
-              <div class="ticket-api-goods-card-meta">
-                ${ticketApiActiveDetail.orderStatus ? `<span>${esc(ticketApiActiveDetail.orderStatus)}</span>` : ''}
-                ${ticketApiActiveDetail.goodsNumber ? `<span>x ${esc(ticketApiActiveDetail.goodsNumber)}</span>` : ''}
-              </div>
-              <div class="ticket-api-goods-card-price">
-                <span>${esc(ticketApiActiveDetail.goodsPriceText || '-')}</span>
-                <span>${esc(ticketApiActiveDetail.merchantAmountText ? `实收 ${ticketApiActiveDetail.merchantAmountText}` : '')}</span>
-              </div>
+              ${orderInfoGroup ? `<div class="ticket-api-order-hero-extra">${orderInfoGroup.items.map(item => `<span>${esc(item.label)}：${esc(item.value)}</span>`).join('')}</div>` : ''}
             </div>
           </div>
-          ${infoGroups.map(renderTicketInfoGroup).join('')}
-        </div>
+          ${renderTicketDetailAfterSales(afterSalesSummary)}
+          ${renderTicketDetailReceiver(receiverSummary)}
+          ${renderTicketDetailLogistics(logisticsTabs)}
+          ${serviceInfoGroup ? renderTicketInfoGroup(serviceInfoGroup) : ''}
+        </aside>
       </div>
     `;
 
+    bindTicketDetailActions(panel);
     getEl('ticketApiDetailMeta').textContent = `已打开记录：${ticketApiActiveDetail.ticketNo}`;
   }
 
@@ -1256,6 +1485,7 @@
     if (!ticketNo) return;
     ticketApiActiveId = String(ticketNo);
     ticketApiActiveDetail = ticketApiList.find(item => String(item.ticketNo) === String(ticketNo)) || null;
+    ticketApiActiveLogisticsTab = 'outbound';
     setTicketApiPageMode('detail');
     const baseRecord = ticketApiList.find(item => String(item.ticketNo) === String(ticketNo)) || ticketApiActiveDetail;
     const detailRequestId = resolveTicketDetailRequestId(baseRecord || {});
@@ -1325,6 +1555,7 @@
     ticketApiDetailLoading = false;
     ticketApiDetailError = '';
     ticketApiPageMode = 'list';
+    ticketApiActiveLogisticsTab = 'outbound';
     const keyword = getEl('ticketApiKeyword');
     if (keyword) keyword.value = '';
     ['ticketApiTypeFilter', 'ticketApiStatusFilter'].forEach(id => {

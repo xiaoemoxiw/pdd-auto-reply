@@ -1032,12 +1032,11 @@ function startNetworkMonitor(view, shopId) {
               '/mercury/play_money/check',
             ].some(part => String(normalizedEntry?.url || '').includes(part));
             if (orderSn && hasSmallPaymentFields && !isKnownPrecheck) {
-              store.set(`apiSmallPaymentSubmitTemplate.${shopId}`, {
+              rememberSmallPaymentSubmitTemplate(shopId, {
                 url: normalizedEntry.url,
                 method: normalizedEntry.method || 'POST',
                 requestBody: JSON.stringify(parsedBody),
-                updatedAt: Date.now(),
-              });
+              }, parsedBody);
             }
           } catch {}
         }
@@ -1118,6 +1117,66 @@ function getLatestEmbeddedPageAction(shopId, requestTimestamp = Date.now()) {
     ...action,
     requestDelayMs: delta,
   };
+}
+
+function inferSmallPaymentTemplateLabel(body = {}) {
+  const candidates = [
+    body?.transferTypeDesc,
+    body?.transfer_type_desc,
+    body?.remarks,
+    body?.remark,
+    body?.leaveMessage,
+    body?.leave_message,
+  ].map(item => String(item || '').trim()).filter(Boolean);
+  for (const text of candidates) {
+    if (text.includes('补运费')) return 'shipping';
+    if (text.includes('补差价')) return 'difference';
+    if (text.includes('其他') || text.includes('补偿')) return 'other';
+  }
+  const refundType = body?.refundType ?? body?.refund_type;
+  if (Number(refundType) === 2) {
+    return 'other';
+  }
+  return '';
+}
+
+function normalizeStoredSmallPaymentTemplates(value) {
+  if (!value || typeof value !== 'object') {
+    return { latest: null, byLabel: {}, byRefundType: {} };
+  }
+  if (value.latest || value.byLabel || value.byRefundType) {
+    return {
+      latest: value.latest && typeof value.latest === 'object' ? value.latest : null,
+      byLabel: value.byLabel && typeof value.byLabel === 'object' ? { ...value.byLabel } : {},
+      byRefundType: value.byRefundType && typeof value.byRefundType === 'object' ? { ...value.byRefundType } : {},
+    };
+  }
+  return {
+    latest: value,
+    byLabel: {},
+    byRefundType: {},
+  };
+}
+
+function rememberSmallPaymentSubmitTemplate(shopId, template = {}, parsedBody = {}) {
+  if (!shopId || !template || typeof template !== 'object') return;
+  const nextState = normalizeStoredSmallPaymentTemplates(
+    store.get(`apiSmallPaymentSubmitTemplate.${shopId}`)
+  );
+  const templateEntry = {
+    ...template,
+    updatedAt: Date.now(),
+  };
+  nextState.latest = templateEntry;
+  const inferredLabel = inferSmallPaymentTemplateLabel(parsedBody);
+  if (inferredLabel) {
+    nextState.byLabel[inferredLabel] = templateEntry;
+  }
+  const refundType = parsedBody?.refundType ?? parsedBody?.refund_type;
+  if (Number.isFinite(Number(refundType))) {
+    nextState.byRefundType[String(Math.max(0, Math.round(Number(refundType))))] = templateEntry;
+  }
+  store.set(`apiSmallPaymentSubmitTemplate.${shopId}`, nextState);
 }
 
 function getApiClient(shopId) {

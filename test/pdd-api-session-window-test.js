@@ -376,6 +376,53 @@ function testParseMessagesKeepsInviteOrderAsSellerMessage() {
   assert.strictEqual(messages[0].isFromBuyer, false);
 }
 
+function testParseMessagesKeepsInviteOrderV3AsSellerMessage() {
+  const client = new PddApiClient('shop-1', {
+    getApiTraffic() {
+      return [];
+    },
+    getShopInfo() {
+      return { mallId: 90001 };
+    }
+  });
+
+  const messages = client._parseMessages({
+    data: {
+      msg_list: [
+        {
+          msg_id: 'invite-order-v3-1',
+          type: 64,
+          template_name: 'substitute_order_v3',
+          send_time: 1743446497,
+          from: { uid: '90001' },
+          to: { uid: 'buyer-9' },
+          info: {
+            data: {
+              title: '亲，喜欢的话，您可点击“发起拼单”完成支付',
+              goods_list: [
+                {
+                  goods_name: '测试商品V3',
+                  goods_number: 1,
+                  sku_price: 1889,
+                  sku_thumb_url: 'https://img.pddpic.com/example-v3.jpeg',
+                }
+              ],
+              sku_count: 1,
+              mall_total_amount: 1389,
+            }
+          }
+        }
+      ]
+    }
+  });
+
+  assert.strictEqual(messages.length, 1);
+  assert.strictEqual(messages[0].actor, 'seller');
+  assert.strictEqual(messages[0].isSystem, false);
+  assert.strictEqual(messages[0].isFromBuyer, false);
+  assert.strictEqual(messages[0].content, '亲，喜欢的话，您可点击“发起拼单”完成支付');
+}
+
 function testFilterDisplaySessions() {
   const client = new PddApiClient('shop-1', {
     getApiTraffic() {
@@ -859,6 +906,7 @@ async function main() {
     testSystemNoticeOverridesBuyerRole();
     testParseMessagesMarksRefundSystemNotices();
     testParseMessagesKeepsInviteOrderAsSellerMessage();
+    testParseMessagesKeepsInviteOrderV3AsSellerMessage();
     testFilterDisplaySessions();
     testFilterDisplaySessionsIgnoresSellerPendingState();
     await testGetSessionListFiltersOldSessions();

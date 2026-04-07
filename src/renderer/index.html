@@ -1544,6 +1544,139 @@
       max-width: 700px;
     }
 
+    .api-small-payment-select-modal {
+      width: min(92vw, 760px);
+      max-width: 760px;
+    }
+
+    .api-small-payment-select-body {
+      padding: 0;
+    }
+
+    .api-small-payment-select-list {
+      background: #fff;
+    }
+
+    .api-small-payment-select-list.is-scrollable {
+      max-height: 460px;
+      overflow-y: auto;
+    }
+
+    .api-small-payment-select-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 18px 24px;
+      border-bottom: 1px solid #eef1f5;
+    }
+
+    .api-small-payment-select-item:last-child {
+      border-bottom: none;
+    }
+
+    .api-small-payment-select-media {
+      width: 64px;
+      height: 64px;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #f3f5f9;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #a6adbb;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .api-small-payment-select-media img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .api-small-payment-select-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .api-small-payment-select-id {
+      color: #8a94a6;
+      font-size: 12px;
+      line-height: 1.4;
+      word-break: break-all;
+    }
+
+    .api-small-payment-select-title {
+      margin-top: 4px;
+      color: #333;
+      font-size: 14px;
+      line-height: 1.45;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow: hidden;
+    }
+
+    .api-small-payment-select-meta {
+      margin-top: 6px;
+      color: #7f8794;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .api-small-payment-select-price {
+      margin-top: 8px;
+      color: #222;
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .api-small-payment-select-action {
+      flex-shrink: 0;
+      padding-top: 10px;
+    }
+
+    .api-small-payment-select-btn {
+      min-width: 88px;
+      height: 32px;
+      padding: 0 14px;
+      border: 1px solid #89a2f4;
+      border-radius: 4px;
+      background: #fff;
+      color: #4f73ef;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .api-small-payment-select-btn:hover {
+      background: #eef3ff;
+    }
+
+    .api-small-payment-select-empty {
+      padding: 56px 20px;
+      text-align: center;
+      color: #999;
+      font-size: 13px;
+    }
+
+    .api-small-payment-select-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 24px;
+      border-top: 1px solid #eef1f5;
+      color: #7f8794;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
     .api-small-payment-body {
       padding: 24px 28px 20px;
     }
@@ -2503,6 +2636,7 @@
     }
 
     .api-session-search {
+      width: 100%;
       border: none;
       background: transparent;
       padding: 0;
@@ -3878,6 +4012,19 @@
       padding: 10px 10px 9px;
     }
 
+    .api-message-item.buyer.goods-link-card {
+      justify-content: flex-start;
+    }
+
+    .api-message-item.buyer.goods-link-card .api-message-body {
+      align-items: flex-start;
+      max-width: none;
+    }
+
+    .api-message-item.buyer.goods-link-card .api-message-row {
+      justify-content: flex-start;
+    }
+
     .api-message-item.platform-card.invite-order-card {
       margin: 8px auto 14px;
       padding: 0 16px;
@@ -4264,6 +4411,13 @@
       min-height: 58px;
     }
 
+    .api-goods-card-summary {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
     .api-goods-card-title {
       display: -webkit-box;
       -webkit-box-orient: vertical;
@@ -4283,7 +4437,6 @@
       align-items: baseline;
       gap: 4px;
       flex-wrap: wrap;
-      margin-top: auto;
     }
 
     .api-goods-card-price {
@@ -6731,7 +6884,7 @@
             <div class="api-sidebar-search-row">
               <div class="api-search-wrap">
                 <span class="api-search-icon"></span>
-                <input class="api-session-search" id="apiSessionSearch" placeholder="输入订单号、客户名或会话关键词">
+                <input class="api-session-search" id="apiSessionSearch" placeholder="输入订单号添加会话">
               </div>
               <button class="api-plus-btn" id="btnApiPlus">+</button>
             </div>
@@ -8182,6 +8335,24 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modalApiSmallPaymentOrderSelect">
+    <div class="modal api-small-payment-select-modal">
+      <div class="modal-header">
+        <h3>选择打款订单</h3>
+        <button class="modal-close" type="button"
+          onclick="window.closeApiSmallPaymentOrderSelector ? window.closeApiSmallPaymentOrderSelector() : hideModal('modalApiSmallPaymentOrderSelect')">&times;</button>
+      </div>
+      <div class="modal-body api-small-payment-select-body">
+        <div class="api-small-payment-select-list" id="apiSmallPaymentSelectList"></div>
+        <div class="api-small-payment-select-empty" id="apiSmallPaymentSelectEmpty" style="display:none;">当前会话暂无可选订单</div>
+      </div>
+      <div class="api-small-payment-select-footer">
+        <span>仅展示近3个月内的支付成功订单，3个月前的订单请使用订单号搜索</span>
+        <span id="apiSmallPaymentSelectSummary">0条数据</span>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalApiSmallPayment">
     <div class="modal api-small-payment-modal">
       <div class="modal-header">
@@ -8771,8 +8942,29 @@
       if (typeof chatApiModuleFns.renderApiGoodsCardHtml === 'function') {
         renderApiGoodsCardHtml = chatApiModuleFns.renderApiGoodsCardHtml;
       }
+      if (typeof chatApiModuleFns.getApiSystemNoticeText === 'function') {
+        getApiSystemNoticeText = chatApiModuleFns.getApiSystemNoticeText;
+      }
+      if (typeof chatApiModuleFns.isApiUnmatchedReplyNoticeMessage === 'function') {
+        isApiUnmatchedReplyNoticeMessage = chatApiModuleFns.isApiUnmatchedReplyNoticeMessage;
+      }
+      if (typeof chatApiModuleFns.getApiRefundSystemNoticeKind === 'function') {
+        getApiRefundSystemNoticeKind = chatApiModuleFns.getApiRefundSystemNoticeKind;
+      }
+      if (typeof chatApiModuleFns.getApiRefundSystemNoticeDisplayText === 'function') {
+        getApiRefundSystemNoticeDisplayText = chatApiModuleFns.getApiRefundSystemNoticeDisplayText;
+      }
+      if (typeof chatApiModuleFns.isApiSystemNoticeMessage === 'function') {
+        isApiSystemNoticeMessage = chatApiModuleFns.isApiSystemNoticeMessage;
+      }
       if (typeof chatApiModuleFns.renderApiRefundCardHtml === 'function') {
         renderApiRefundCardHtml = chatApiModuleFns.renderApiRefundCardHtml;
+      }
+      if (typeof chatApiModuleFns.extractApiInviteOrderCard === 'function') {
+        extractApiInviteOrderCard = chatApiModuleFns.extractApiInviteOrderCard;
+      }
+      if (typeof chatApiModuleFns.isApiInviteOrderTemplateMessage === 'function') {
+        isApiInviteOrderTemplateMessage = chatApiModuleFns.isApiInviteOrderTemplateMessage;
       }
       if (typeof chatApiModuleFns.renderApiInviteOrderCardHtml === 'function') {
         renderApiInviteOrderCardHtml = chatApiModuleFns.renderApiInviteOrderCardHtml;
@@ -9072,8 +9264,8 @@
         message?.raw,
         message,
       ].filter(Boolean);
-      const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
-        || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
+      const match = rawText.match(/https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
+        || rawText.match(/https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
       let url = match?.[0]
         ? match[0].replace(/&amp;/gi, '&')
         : pickApiGoodsText(structuredSources, ['url', 'share_url', 'shareUrl', 'goods_url', 'goodsUrl', 'jump_url', 'jumpUrl', 'link_url', 'linkUrl']);
@@ -9083,14 +9275,17 @@
       if (url && /^\/(?:goods2?|goods)\.html\?/i.test(url)) {
         url = `https://mobile.yangkeduo.com${url}`;
       }
-      const isHttpGoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
-      const isH5GoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
+      const isHttpGoodsUrl = url && /^https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
+      const isH5GoodsUrl = url && /^https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
       if (url && !isHttpGoodsUrl && !isH5GoodsUrl) {
         url = '';
       }
-      const goodsIdMatch = url
+      const goodsIdMatch = (url
         ? (url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i))
-        : null;
+        : null)
+        || rawText.match(/[?&]goods_id=(\d+)/i)
+        || rawText.match(/[?&]goodsId=(\d+)/i)
+        || rawText.match(/商品ID[:：]?\s*(\d{6,})/i);
       const goodsId = goodsIdMatch?.[1]
         || pickApiGoodsText(structuredSources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']);
       if (goodsId) {
@@ -9291,8 +9486,10 @@
               ${imageHtml}
             </div>
             <div class="api-goods-card-main">
-              <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
-              ${priceHtml}
+              <div class="api-goods-card-summary">
+                <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
+                ${priceHtml}
+              </div>
               <button
                 class="api-goods-card-spec"
                 type="button"
@@ -9586,6 +9783,10 @@
     }
 
     function extractApiInviteOrderCard(message = {}) {
+      const moduleFn = window.__chatApiModuleFns?.extractApiInviteOrderCard;
+      if (typeof moduleFn === 'function' && moduleFn !== extractApiInviteOrderCard) {
+        return moduleFn(message);
+      }
       const directCard = message?.inviteOrderCard && typeof message.inviteOrderCard === 'object'
         ? message.inviteOrderCard
         : null;
@@ -9605,8 +9806,12 @@
       const goodsList = [
         infoData?.goods_info_list,
         infoData?.goodsInfoList,
+        infoData?.goods_list,
+        infoData?.goodsList,
         info?.goods_info_list,
         info?.goodsInfoList,
+        info?.goods_list,
+        info?.goodsList,
         infoData?.goods,
         info?.goods,
       ].find(Array.isArray) || [];
@@ -9628,6 +9833,8 @@
         raw?.message,
         info?.mall_content,
         infoData?.mall_content,
+        info?.title,
+        infoData?.title,
         infoData?.content,
         infoData?.text,
         infoData?.msg_content,
@@ -9667,6 +9874,8 @@
         'total_text',
         'payAmountText',
         'pay_amount_text',
+        'mallTotalAmountText',
+        'mall_total_amount_text',
         'totalAmountText',
         'total_amount_text',
         'amountText',
@@ -9679,6 +9888,10 @@
       ]) || formatApiGoodsPrice(pickApiGoodsNumber(sources, [
         'pay_amount',
         'payAmount',
+        'mall_total_amount',
+        'mallTotalAmount',
+        'discount_amount',
+        'discountAmount',
         'total_amount',
         'totalAmount',
         'order_amount',
@@ -9702,6 +9915,8 @@
         ]);
         return sum + (quantity || 1);
       }, 0) || pickApiGoodsNumber(sources, [
+        'sku_count',
+        'skuCount',
         'goodsNumber',
         'goods_number',
         'quantity',
@@ -9796,6 +10011,10 @@
     }
 
     function renderApiInviteOrderCardHtml(card = {}) {
+      const moduleFn = window.__chatApiModuleFns?.renderApiInviteOrderCardHtml;
+      if (typeof moduleFn === 'function' && moduleFn !== renderApiInviteOrderCardHtml) {
+        return moduleFn(card);
+      }
       const count = Math.max(1, Number(card?.count || 1) || 1);
       const imageHtml = card.imageUrl
         ? `<img class="api-invite-order-message-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">`
@@ -10040,6 +10259,10 @@
     }
 
     function getApiSystemNoticeText(messageOrText = '') {
+      const moduleFn = window.__chatApiModuleFns?.getApiSystemNoticeText;
+      if (typeof moduleFn === 'function' && moduleFn !== getApiSystemNoticeText) {
+        return moduleFn(messageOrText);
+      }
       if (typeof messageOrText === 'string') return String(messageOrText || '').trim();
       const raw = messageOrText?.raw && typeof messageOrText.raw === 'object' ? messageOrText.raw : {};
       const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
@@ -10093,10 +10316,18 @@
     }
 
     function isApiUnmatchedReplyNoticeMessage(message = {}) {
+      const moduleFn = window.__chatApiModuleFns?.isApiUnmatchedReplyNoticeMessage;
+      if (typeof moduleFn === 'function' && moduleFn !== isApiUnmatchedReplyNoticeMessage) {
+        return moduleFn(message);
+      }
       return /机器人未找到对应(?:的)?回复/.test(getApiSystemNoticeText(message));
     }
 
     function getApiRefundSystemNoticeKind(message = {}) {
+      const moduleFn = window.__chatApiModuleFns?.getApiRefundSystemNoticeKind;
+      if (typeof moduleFn === 'function' && moduleFn !== getApiRefundSystemNoticeKind) {
+        return moduleFn(message);
+      }
       const statusMeta = getApiRefundStatusUpdateMeta(message);
       if (statusMeta?.kind && statusMeta.kind !== 'refund-rejected') return statusMeta.kind;
       const source = getApiSystemNoticeText(message);
@@ -10107,6 +10338,10 @@
     }
 
     function getApiRefundSystemNoticeDisplayText(message = {}) {
+      const moduleFn = window.__chatApiModuleFns?.getApiRefundSystemNoticeDisplayText;
+      if (typeof moduleFn === 'function' && moduleFn !== getApiRefundSystemNoticeDisplayText) {
+        return moduleFn(message);
+      }
       const statusMeta = getApiRefundStatusUpdateMeta(message);
       if (statusMeta?.displayText) return statusMeta.displayText;
       const source = getApiSystemNoticeText(message);
@@ -10117,11 +10352,15 @@
     }
 
     function isApiInviteOrderTemplateMessage(message = {}) {
+      const moduleFn = window.__chatApiModuleFns?.isApiInviteOrderTemplateMessage;
+      if (typeof moduleFn === 'function' && moduleFn !== isApiInviteOrderTemplateMessage) {
+        return moduleFn(message);
+      }
       const raw = message?.raw && typeof message.raw === 'object'
         ? message.raw
         : (message && typeof message === 'object' ? message : {});
       const templateName = String(raw?.template_name || raw?.templateName || message?.template_name || message?.templateName || '').trim();
-      if (templateName === 'substitute_order_v2') return true;
+      if (templateName === 'substitute_order_v2' || templateName === 'substitute_order_v3') return true;
       if (templateName) return false;
       const messageType = Number(
         raw?.type
@@ -10136,10 +10375,18 @@
       if (isApiRefundPendingNoticeText(sourceText) || isApiRefundSuccessNoticeText(sourceText)) {
         return false;
       }
-      const infoData = raw?.info?.data;
-      const goodsInfoList = Array.isArray(infoData?.goods_info_list)
-        ? infoData.goods_info_list
-        : (Array.isArray(infoData?.goodsInfoList) ? infoData.goodsInfoList : []);
+      const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+      const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+      const goodsInfoList = [
+        infoData?.goods_info_list,
+        infoData?.goodsInfoList,
+        infoData?.goods_list,
+        infoData?.goodsList,
+        info?.goods_info_list,
+        info?.goodsInfoList,
+        info?.goods_list,
+        info?.goodsList,
+      ].find(Array.isArray) || [];
       return messageType === 64 && !!(
         goodsInfoList.length
         && goodsInfoList.some(entry => entry && typeof entry === 'object')
@@ -10267,6 +10514,10 @@
     }
 
     function isApiSystemNoticeMessage(message = {}) {
+      const moduleFn = window.__chatApiModuleFns?.isApiSystemNoticeMessage;
+      if (typeof moduleFn === 'function' && moduleFn !== isApiSystemNoticeMessage) {
+        return moduleFn(message);
+      }
       const source = getApiSystemNoticeText(message);
       if (isApiRefundDefaultSellerNoteText(source)) return false;
       if (extractApiRefundCard(message)) return false;
@@ -11974,10 +12225,20 @@
         let previousTimestamp = 0;
         container.innerHTML = sortedMessages.map((message, index) => {
           const isBuyer = !!message.isFromBuyer;
+          const goodsLinkInfo = extractApiGoodsLinkInfo(message);
+          const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
+          const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
+          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
+            goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
+            goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
+          ) : null;
           const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
           const isSystem = isApiSystemNoticeMessage(message);
           const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
           const buyerAvatar = activeSession?.customerAvatar || '';
+          const buyerAvatarHtml = buyerAvatar
+            ? `<img src="${esc(buyerAvatar)}" alt="">`
+            : esc((apiActiveSessionName || '客户').slice(0, 2));
           const senderName = isBuyer ? '' : getApiSellerDisplayName(message, activeSession);
           const sellerText = senderName.slice(0, 4) || '主账号';
           const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
@@ -11986,6 +12247,20 @@
           if (refundStatusUpdate) {
             previousTimestamp = message.timestamp;
             return `${divider}<div class="api-message-item platform-card">${renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index })}</div>`;
+          }
+          if (goodsLinkInfo && fallbackGoodsCard) {
+            void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
+          }
+          if (isSystem && goodsLinkInfo) {
+            previousTimestamp = message.timestamp;
+            return `${divider}<div class="api-message-item buyer goods-link-card">
+              <div class="api-message-avatar">${buyerAvatarHtml}</div>
+              <div class="api-message-body">
+                <div class="api-message-row">
+                  ${renderApiGoodsCardHtml(goodsCard)}
+                </div>
+              </div>
+            </div>`;
           }
           if (isSystem) {
             const systemVariantClass = [
@@ -12005,19 +12280,9 @@
           const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
           const imageUrl = getApiImageMessageUrl(message);
           const videoMessage = isApiVideoMessage(message);
-          const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
-          const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
-          const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
-          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
-            goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
-            goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
-          ) : null;
           const refundCard = !isBuyer ? extractApiRefundCard(message) : null;
           const inviteOrderCard = !isBuyer ? extractApiInviteOrderCard(message) : null;
           const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, { cardIndex: index }) : null;
-          if (goodsLinkInfo && fallbackGoodsCard) {
-            void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
-          }
           const imageMessage = !videoMessage && isApiImageMessage(message);
           const bubbleHtml = resolvedRefundCard
             ? renderApiRefundCardHtml(resolvedRefundCard)
@@ -12053,6 +12318,16 @@
           }
           if (inviteOrderCard) {
             return `${divider}<div class="api-message-item platform-card invite-order-card">${bubbleHtml}</div>`;
+          }
+          if (goodsLinkInfo) {
+            return `${divider}<div class="api-message-item buyer goods-link-card">
+              <div class="api-message-avatar">${buyerAvatarHtml}</div>
+              <div class="api-message-body">
+                <div class="api-message-row">
+                  ${bubbleHtml}
+                </div>
+              </div>
+            </div>`;
           }
           return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
             <div class="api-message-avatar">${avatarHtml}</div>

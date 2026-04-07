@@ -7,6 +7,7 @@
   let apiRefundSelectedOrder = null;
   let apiRefundAllowOrderReselect = true;
   let apiRefundCustomAmount = '';
+  let apiSmallPaymentCandidates = [];
   let apiSmallPaymentState = {
     visible: false,
     loading: false,
@@ -2207,7 +2208,7 @@
       ? message.raw
       : (message && typeof message === 'object' ? message : {});
     const templateName = String(raw?.template_name || raw?.templateName || message?.template_name || message?.templateName || '').trim();
-    if (templateName === 'substitute_order_v2') return true;
+    if (templateName === 'substitute_order_v2' || templateName === 'substitute_order_v3') return true;
     if (templateName) return false;
     const messageType = Number(
       raw?.type
@@ -2222,10 +2223,18 @@
     if (isApiRefundPendingNoticeText(sourceText) || isApiRefundSuccessNoticeText(sourceText)) {
       return false;
     }
-    const infoData = raw?.info?.data;
-    const goodsInfoList = Array.isArray(infoData?.goods_info_list)
-      ? infoData.goods_info_list
-      : (Array.isArray(infoData?.goodsInfoList) ? infoData.goodsInfoList : []);
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const goodsInfoList = [
+      infoData?.goods_info_list,
+      infoData?.goodsInfoList,
+      infoData?.goods_list,
+      infoData?.goodsList,
+      info?.goods_info_list,
+      info?.goodsInfoList,
+      info?.goods_list,
+      info?.goodsList,
+    ].find(Array.isArray) || [];
     return messageType === 64 && !!(
       goodsInfoList.length
       && goodsInfoList.some(entry => entry && typeof entry === 'object')
@@ -3101,34 +3110,69 @@
     return items.filter(item => item && item.key && (item.orderId || item.orderSn));
   }
 
-  function renderApiSmallPaymentOrderSelector() {
-    const container = document.getElementById('apiSmallPaymentOrderSelector');
-    if (!container) return;
-    const orders = getApiSmallPaymentCandidateOrders();
-    const currentKey = String(apiSmallPaymentState.orderKey || '');
-    if (!apiSmallPaymentState.selectingOrder || orders.length <= 1) {
-      container.style.display = 'none';
-      container.innerHTML = '';
+  async function ensureApiSmallPaymentCandidateOrders() {
+    const existingOrders = getApiSmallPaymentCandidateOrders();
+    if (existingOrders.length) {
+      return existingOrders;
+    }
+    const state = getState();
+    if (!state.apiActiveSessionId || !state.apiActiveSessionShopId) {
+      return [];
+    }
+    ensureApiSideOrderSessionScope();
+    const session = getApiSideOrderSession();
+    if (!session) {
+      return [];
+    }
+    const entry = getApiSideOrderEntry('personal');
+    entry.cacheKey = `${getApiSessionKey(session.shopId, session.sessionId)}::personal`;
+    entry.loading = true;
+    entry.error = '';
+    await loadApiSideOrders('personal');
+    return getApiSmallPaymentCandidateOrders();
+  }
+
+  function renderApiSmallPaymentOrderSelectModal() {
+    const listEl = document.getElementById('apiSmallPaymentSelectList');
+    const emptyEl = document.getElementById('apiSmallPaymentSelectEmpty');
+    const summaryEl = document.getElementById('apiSmallPaymentSelectSummary');
+    if (!listEl || !emptyEl || !summaryEl) return;
+    listEl.classList.toggle('is-scrollable', apiSmallPaymentCandidates.length > 3);
+    summaryEl.textContent = `${apiSmallPaymentCandidates.length}条数据`;
+    if (!apiSmallPaymentCandidates.length) {
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
       return;
     }
-    container.style.display = 'block';
-    container.innerHTML = orders.map(order => {
-      const orderKey = String(order?.key || '');
+    emptyEl.style.display = 'none';
+    listEl.innerHTML = apiSmallPaymentCandidates.map(order => {
       const quantityText = getApiSmallPaymentOrderQuantity(order);
       const detailText = String(order?.detailText || '所拍规格待确认').trim();
-      const metaText = [detailText, quantityText].filter(Boolean).join(' · ');
-      const selected = orderKey === currentKey;
+      const metaText = [detailText, quantityText].filter(Boolean).join(' x ');
       return `
-        <div class="api-small-payment-order-option">
-          <div class="api-small-payment-order-option-main">
-            <div class="api-small-payment-order-option-id">订单编号：${esc(order?.orderId || '-')}</div>
-            <div class="api-small-payment-order-option-title">${esc(order?.title || '未命名商品')}</div>
-            <div class="api-small-payment-order-option-meta">${esc(metaText || '所拍规格待确认')} · ¥${esc(formatApiSideOrderMoneyNumber(getApiSideOrderPriceBaseAmount(order) || 0))}</div>
+        <div class="api-small-payment-select-item">
+          <div class="api-small-payment-select-media">
+            ${order.imageUrl ? `<img src="${esc(order.imageUrl)}" alt="${esc(order.title || '订单商品')}">` : '<span>商品</span>'}
           </div>
-          <button class="api-small-payment-order-option-btn" type="button" data-api-small-payment-select-order="${esc(orderKey)}">${selected ? '当前订单' : '选择'}</button>
+          <div class="api-small-payment-select-main">
+            <div class="api-small-payment-select-id">订单编号：${esc(order.orderId || '-')}</div>
+            <div class="api-small-payment-select-title">${esc(order.title || '未命名商品')}</div>
+            <div class="api-small-payment-select-meta">${esc(metaText || '所拍规格待确认')}</div>
+            <div class="api-small-payment-select-price">¥${esc(formatApiSideOrderMoneyNumber(getApiSideOrderPriceBaseAmount(order) || 0))}</div>
+          </div>
+          <div class="api-small-payment-select-action">
+            <button class="api-small-payment-select-btn" type="button" data-api-small-payment-order-key="${esc(order.key)}">选择订单</button>
+          </div>
         </div>
       `;
     }).join('');
+  }
+
+  function renderApiSmallPaymentOrderSelector() {
+    const container = document.getElementById('apiSmallPaymentOrderSelector');
+    if (!container) return;
+    container.style.display = 'none';
+    container.innerHTML = '';
   }
 
   function renderApiSmallPaymentStatus(order = getSelectedApiSmallPaymentOrder()) {
@@ -3233,8 +3277,8 @@
       } else if (info?.submitTemplateReady) {
         const recognizedCount = Number(info?.submitTemplateMeta?.recognizedCount || 0) || 0;
         permissionText.textContent = recognizedCount > 0
-          ? `已捕获真实提交模板，已识别 ${recognizedCount} 个关键字段，当前仍待对齐后接通接口页确认提交`
-          : '已捕获真实提交模板，当前仍待对齐字段后接通接口页确认提交';
+          ? `已捕获真实提交模板，已识别 ${recognizedCount} 个关键字段，当前优先按真实字段提交`
+          : '已捕获真实提交模板，当前将按模板字段尝试提交';
       } else if (info?.needChargePlayMoney) {
         permissionText.textContent = '当前打款能力涉及收费规则，请在确认前核对平台说明';
       } else if (Array.isArray(info?.tips) && info.tips.length) {
@@ -3244,7 +3288,7 @@
       }
     }
     if (changeOrderButton) {
-      changeOrderButton.textContent = apiSmallPaymentState.selectingOrder ? '收起列表' : '修改订单';
+      changeOrderButton.textContent = '重选订单';
     }
     if (submitButton) {
       if (apiSmallPaymentState.loading) {
@@ -3369,17 +3413,65 @@
     syncApiSmallPaymentForm(order);
   }
 
-  function openApiSmallPaymentModal(orderKey = '') {
+  async function openApiSmallPaymentOrderSelector(options = {}) {
     const state = getState();
     if (!state.apiActiveSessionId) {
       setApiHint('请先选择一个接口会话');
       return;
     }
-    const order = getApiSideOrderItem(orderKey);
+    const preferredOrderKey = String(options?.orderKey || '').trim();
+    const orders = await ensureApiSmallPaymentCandidateOrders();
+    apiSmallPaymentCandidates = orders;
+    if (!orders.length) {
+      setApiHint('当前会话暂无可选订单');
+      showApiSideOrderToast('当前会话暂无可选订单');
+      return;
+    }
+    if (preferredOrderKey) {
+      const matchedOrder = orders.find(item => String(item?.key || '') === preferredOrderKey);
+      if (matchedOrder) {
+        openApiSmallPaymentModal(matchedOrder.key);
+        return;
+      }
+    }
+    if (orders.length === 1) {
+      openApiSmallPaymentModal(orders[0]?.key || '');
+      return;
+    }
+    renderApiSmallPaymentOrderSelectModal();
+    window.showModal?.('modalApiSmallPaymentOrderSelect');
+  }
+
+  function closeApiSmallPaymentOrderSelector() {
+    window.hideModal?.('modalApiSmallPaymentOrderSelect');
+  }
+
+  function handleApiSmallPaymentOrderSelection(event) {
+    const button = event.target.closest('[data-api-small-payment-order-key]');
+    if (!button) return;
+    const orderKey = String(button.dataset.apiSmallPaymentOrderKey || '').trim();
+    if (!orderKey) return;
+    closeApiSmallPaymentOrderSelector();
+    openApiSmallPaymentModal(orderKey);
+  }
+
+  function openApiSmallPaymentModal(orderKey = '') {
+    const normalizedOrderKey = String(orderKey || '').trim();
+    if (!normalizedOrderKey) {
+      void openApiSmallPaymentOrderSelector();
+      return;
+    }
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    const order = getApiSideOrderItem(normalizedOrderKey);
     if (!order) {
       showApiSideOrderToast('未找到对应订单');
       return;
     }
+    closeApiSmallPaymentOrderSelector();
     closeApiSideOrderPriceEditor();
     apiSideOrderRemarkState = {
       ...apiSideOrderRemarkState,
@@ -3413,16 +3505,8 @@
   }
 
   function handleApiSmallPaymentChangeOrder() {
-    const orders = getApiSmallPaymentCandidateOrders();
-    if (orders.length <= 1) {
-      showApiSideOrderToast('当前仅有一笔可选订单');
-      return;
-    }
-    apiSmallPaymentState = {
-      ...apiSmallPaymentState,
-      selectingOrder: !apiSmallPaymentState.selectingOrder,
-    };
-    syncApiSmallPaymentForm();
+    closeApiSmallPaymentModal({ silent: true });
+    void openApiSmallPaymentOrderSelector();
   }
 
   async function handleApiSmallPaymentSubmit() {
@@ -4515,8 +4599,8 @@
       message?.raw,
       message,
     ].filter(Boolean);
-    const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
-      || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
+    const match = rawText.match(/https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
+      || rawText.match(/https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
     let url = match?.[0]
       ? match[0].replace(/&amp;/gi, '&')
       : pickApiGoodsText(structuredSources, ['url', 'share_url', 'shareUrl', 'goods_url', 'goodsUrl', 'jump_url', 'jumpUrl', 'link_url', 'linkUrl']);
@@ -4526,14 +4610,17 @@
     if (url && /^\/(?:goods2?|goods)\.html\?/i.test(url)) {
       url = `https://mobile.yangkeduo.com${url}`;
     }
-    const isHttpGoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
-    const isH5GoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
+    const isHttpGoodsUrl = url && /^https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
+    const isH5GoodsUrl = url && /^https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
     if (url && !isHttpGoodsUrl && !isH5GoodsUrl) {
       url = '';
     }
-    const goodsIdMatch = url
+    const goodsIdMatch = (url
       ? (url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i))
-      : null;
+      : null)
+      || rawText.match(/[?&]goods_id=(\d+)/i)
+      || rawText.match(/[?&]goodsId=(\d+)/i)
+      || rawText.match(/商品ID[:：]?\s*(\d{6,})/i);
     const goodsId = goodsIdMatch?.[1]
       || pickApiGoodsText(structuredSources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']);
     if (goodsId) {
@@ -4729,26 +4816,32 @@
       </div>
       <div class="api-goods-card-divider"></div>
       <div class="api-goods-card-body">
-        ${imageHtml}
-        <div class="api-goods-card-main">
-          <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
-          ${priceHtml}
-          <button
-            class="api-goods-card-spec"
-            type="button"
-            data-goods-cache-key="${esc(card.cacheKey || '')}"
-            data-goods-id="${esc(card.goodsId || '')}"
-            data-goods-url="${esc(card.url || '')}"
-            data-goods-title="${esc(card.title || '')}"
-            data-goods-image-url="${esc(card.imageUrl || '')}"
-            data-goods-price-text="${esc(card.priceText || '')}"
-            data-goods-group-text="${esc(card.groupText || '')}"
-            data-goods-spec-text="${esc(card.specText || '查看商品规格')}"
-            data-goods-stock-text="${esc(card.stockText || '')}"
-            data-goods-sales-text="${esc(card.salesText || '')}"
-            data-goods-pending-group-text="${esc(card.pendingGroupText || '')}"
-            data-goods-spec-items="${esc(JSON.stringify(specItems || []))}"
-          >${esc(card.specText || '查看商品规格')}</button>
+        <div class="api-goods-card-content">
+          <div class="api-goods-card-media">
+            ${imageHtml}
+          </div>
+          <div class="api-goods-card-main">
+            <div class="api-goods-card-summary">
+              <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
+              ${priceHtml}
+            </div>
+            <button
+              class="api-goods-card-spec"
+              type="button"
+              data-goods-cache-key="${esc(card.cacheKey || '')}"
+              data-goods-id="${esc(card.goodsId || '')}"
+              data-goods-url="${esc(card.url || '')}"
+              data-goods-title="${esc(card.title || '')}"
+              data-goods-image-url="${esc(card.imageUrl || '')}"
+              data-goods-price-text="${esc(card.priceText || '')}"
+              data-goods-group-text="${esc(card.groupText || '')}"
+              data-goods-spec-text="${esc(card.specText || '查看商品规格')}"
+              data-goods-stock-text="${esc(card.stockText || '')}"
+              data-goods-sales-text="${esc(card.salesText || '')}"
+              data-goods-pending-group-text="${esc(card.pendingGroupText || '')}"
+              data-goods-spec-items="${esc(JSON.stringify(specItems || []))}"
+            >${esc(card.specText || '查看商品规格')}</button>
+          </div>
         </div>
       </div>
     </div>`;
@@ -4973,8 +5066,12 @@
     const goodsList = [
       infoData?.goods_info_list,
       infoData?.goodsInfoList,
+      infoData?.goods_list,
+      infoData?.goodsList,
       info?.goods_info_list,
       info?.goodsInfoList,
+      info?.goods_list,
+      info?.goodsList,
       infoData?.goods,
       info?.goods,
     ].find(Array.isArray) || [];
@@ -4996,6 +5093,8 @@
       raw?.message,
       info?.mall_content,
       infoData?.mall_content,
+      info?.title,
+      infoData?.title,
       infoData?.content,
       infoData?.text,
       infoData?.msg_content,
@@ -5035,6 +5134,8 @@
       'total_text',
       'payAmountText',
       'pay_amount_text',
+      'mallTotalAmountText',
+      'mall_total_amount_text',
       'totalAmountText',
       'total_amount_text',
       'amountText',
@@ -5047,6 +5148,10 @@
     ]) || formatApiGoodsPrice(pickApiGoodsNumber(sources, [
       'pay_amount',
       'payAmount',
+      'mall_total_amount',
+      'mallTotalAmount',
+      'discount_amount',
+      'discountAmount',
       'total_amount',
       'totalAmount',
       'order_amount',
@@ -5070,6 +5175,8 @@
       ]);
       return sum + (quantity || 1);
     }, 0) || pickApiGoodsNumber(sources, [
+      'sku_count',
+      'skuCount',
       'goodsNumber',
       'goods_number',
       'quantity',
@@ -5500,10 +5607,20 @@
       let previousTimestamp = 0;
       container.innerHTML = sortedMessages.map((message, index) => {
         const isBuyer = !!message.isFromBuyer;
+        const goodsLinkInfo = extractApiGoodsLinkInfo(message);
+        const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
+        const cachedGoodsCard = goodsLinkInfo ? state.apiGoodsCardCache?.get(goodsLinkInfo.cacheKey) : null;
+        const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
+          goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
+          goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
+        ) : null;
         const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
         const isSystem = isApiSystemNoticeMessage(message);
         const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
         const buyerAvatar = activeSession?.customerAvatar || '';
+        const buyerAvatarHtml = buyerAvatar
+          ? `<img src="${esc(buyerAvatar)}" alt="">`
+          : esc((state.apiActiveSessionName || '客户').slice(0, 2));
         const senderName = isBuyer ? '' : getApiSellerDisplayName(message, activeSession);
         const sellerText = senderName.slice(0, 4) || '主账号';
         const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
@@ -5512,6 +5629,20 @@
         if (refundStatusUpdate) {
           previousTimestamp = message.timestamp;
           return `${divider}<div class="api-message-item platform-card">${renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index, activeSession })}</div>`;
+        }
+        if (goodsLinkInfo && fallbackGoodsCard) {
+          void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
+        }
+        if (isSystem && goodsLinkInfo) {
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item buyer goods-link-card">
+            <div class="api-message-avatar">${buyerAvatarHtml}</div>
+            <div class="api-message-body">
+              <div class="api-message-row">
+                ${renderApiGoodsCardHtml(goodsCard)}
+              </div>
+            </div>
+          </div>`;
         }
         if (isSystem) {
           const systemVariantClass = [
@@ -5530,22 +5661,12 @@
         const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
         const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
         const imageUrl = getApiImageMessageUrl(message);
-        const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
-        const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
-        const cachedGoodsCard = goodsLinkInfo ? state.apiGoodsCardCache?.get(goodsLinkInfo.cacheKey) : null;
-        const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
-          goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
-          goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
-        ) : null;
         const refundCard = !isBuyer ? extractApiRefundCard(message, activeSession) : null;
         const inviteOrderCard = !isBuyer ? extractApiInviteOrderCard(message) : null;
         const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, {
           cardIndex: index,
           activeSession,
         }) : null;
-        if (goodsLinkInfo && fallbackGoodsCard) {
-          void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
-        }
         const imageMessage = isApiImageMessage(message);
         const videoMessage = isApiVideoMessage(message);
         const bubbleHtml = resolvedRefundCard
@@ -5578,6 +5699,16 @@
         }
         if (inviteOrderCard) {
           return `${divider}<div class="api-message-item platform-card invite-order-card">${bubbleHtml}</div>`;
+        }
+        if (goodsLinkInfo) {
+          return `${divider}<div class="api-message-item buyer goods-link-card">
+            <div class="api-message-avatar">${buyerAvatarHtml}</div>
+            <div class="api-message-body">
+              <div class="api-message-row">
+                ${bubbleHtml}
+              </div>
+            </div>
+          </div>`;
         }
         return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
           <div class="api-message-avatar">${avatarHtml}</div>
@@ -6388,6 +6519,9 @@
     document.getElementById('btnApiRefund')?.addEventListener('click', openApiRefundOrderSelector);
     document.getElementById('btnApiInviteFollow')?.addEventListener('click', handleApiInviteFollowClick);
     document.getElementById('btnApiInviteOrder')?.addEventListener('click', openApiInviteOrderModal);
+    document.getElementById('btnApiSmallPayment')?.addEventListener('click', () => {
+      void openApiSmallPaymentOrderSelector();
+    });
     document.getElementById('btnApiInviteOrderSearch')?.addEventListener('click', handleApiInviteOrderSearch);
     document.getElementById('apiInviteOrderKeyword')?.addEventListener('keydown', event => {
       if (event.key !== 'Enter') return;
@@ -6403,6 +6537,7 @@
     document.getElementById('btnApiRefundBack')?.addEventListener('click', handleApiRefundBack);
     document.getElementById('btnApiRefundSubmit')?.addEventListener('click', handleApiRefundSubmit);
     document.getElementById('apiRefundNote')?.addEventListener('input', updateApiRefundNoteCount);
+    document.getElementById('apiSmallPaymentSelectList')?.addEventListener('click', handleApiSmallPaymentOrderSelection);
     document.getElementById('btnApiSmallPaymentChangeOrder')?.addEventListener('click', handleApiSmallPaymentChangeOrder);
     document.getElementById('apiSmallPaymentOrderSelector')?.addEventListener('click', async event => {
       const button = event.target.closest('[data-api-small-payment-select-order]');
@@ -6525,6 +6660,11 @@
   window.insertApiMessageText = insertApiMessageText;
   window.__chatApiModuleFns = {
     renderApiPddEmojiHtml,
+    getApiSystemNoticeText,
+    isApiUnmatchedReplyNoticeMessage,
+    getApiRefundSystemNoticeKind,
+    getApiRefundSystemNoticeDisplayText,
+    isApiSystemNoticeMessage,
     renderApiEmojiPanel,
     renderApiShopHeader,
     renderApiSessions,
@@ -6533,6 +6673,8 @@
     renderApiSideOrders,
     renderApiGoodsCardHtml,
     renderApiRefundCardHtml,
+    extractApiInviteOrderCard,
+    isApiInviteOrderTemplateMessage,
     renderApiInviteOrderCardHtml,
     renderApiVideoMessageHtml,
     renderApiSystemMessageHtml,
@@ -6553,6 +6695,8 @@
   window.openApiInviteOrderModal = openApiInviteOrderModal;
   window.closeApiInviteOrderModal = closeApiInviteOrderModal;
   window.closeApiInviteOrderSpecModal = closeApiInviteOrderSpecModal;
+  window.openApiSmallPaymentOrderSelector = openApiSmallPaymentOrderSelector;
+  window.closeApiSmallPaymentOrderSelector = closeApiSmallPaymentOrderSelector;
   window.openApiSmallPaymentModal = openApiSmallPaymentModal;
   window.closeApiSmallPaymentModal = closeApiSmallPaymentModal;
   window.openApiGoodsSpecModal = openApiGoodsSpecModal;

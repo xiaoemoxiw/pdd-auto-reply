@@ -2282,31 +2282,10 @@
         </div>
       </div>`;
     }
-    const rows = [
-      { label: '申请类型', value: card.actionText || '退款' },
-      { label: '申请原因', value: card.reasonText || '其他原因' },
-      card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
-      { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
-      card.contactText ? { label: '联系方式', value: card.contactText } : null,
-    ].filter(Boolean);
-    return `<div class="api-system-refund-card pending">
-      <div class="api-system-refund-card-header">${esc(displayText)}</div>
-      <div class="api-system-refund-card-goods">
-        <div class="api-system-refund-card-media-block">
-          ${imageHtml}
-          <div class="api-system-refund-card-media-title">${esc(card.goodsTitle || '订单商品')}</div>
-        </div>
-        <div class="api-system-refund-card-side">
-          <div class="api-system-refund-card-side-top">
-            <span class="api-system-refund-card-action">去处理</span>
-          </div>
-          ${card.amountText ? `<div class="api-system-refund-card-side-price">${esc(card.amountText)}</div>` : ''}
-        </div>
-      </div>
-      <div class="api-system-refund-card-rows">
-        ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
-      </div>
-    </div>`;
+    return renderApiRefundCardHtml(card, {
+      headerText: displayText,
+      actionButtonLabel: '去处理',
+    });
   }
 
   function isApiSystemNoticeMessage(message = {}) {
@@ -2547,32 +2526,10 @@
         </div>
       </div>`;
     }
-    const rows = [
-      { label: '申请类型', value: card.actionText || '退款' },
-      { label: '申请原因', value: card.reasonText || '其他原因' },
-      card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
-      { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
-      card.contactText ? { label: '联系方式', value: card.contactText } : null,
-    ].filter(Boolean);
-    return `<div class="api-system-refund-card success">
-      <div class="api-system-refund-card-header">${esc(displayText)}</div>
-      <div class="api-system-refund-card-goods">
-        ${imageHtml}
-        <div class="api-system-refund-card-main">
-          <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
-          <div class="api-system-refund-card-success-meta">
-            ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
-            ${card.amountText ? `<div class="api-system-refund-card-price">${esc(card.amountText)}</div>` : ''}
-          </div>
-        </div>
-      </div>
-      <div class="api-system-refund-card-rows">
-        ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
-      </div>
-      <div class="api-system-refund-card-footer">
-        <span class="api-system-refund-card-action">去处理</span>
-      </div>
-    </div>`;
+    return renderApiRefundCardHtml(card, {
+      headerText: displayText,
+      actionButtonLabel: '去处理',
+    });
   }
 
   function getApiRefundCardTypeText(type = 'refund') {
@@ -4952,19 +4909,31 @@
     hideApiGoodsSpecModalOverlay();
   }
 
-  function renderApiRefundCardHtml(card = {}) {
-    const imageHtml = card.imageUrl
-      ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
-      : '<div class="api-refund-card-media-placeholder">商品</div>';
-    const rows = [
+  function buildApiRefundCardRows(card = {}) {
+    return [
       { label: '申请类型', value: card.actionText || '退款' },
       { label: '申请原因', value: card.reasonText || '其他原因' },
       card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
       { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
       card.contactText ? { label: '联系方式', value: card.contactText } : null,
     ].filter(Boolean);
+  }
+
+  function renderApiRefundCardHtml(card = {}, options = {}) {
+    const imageHtml = card.imageUrl
+      ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+      : '<div class="api-refund-card-media-placeholder">商品</div>';
+    const rows = buildApiRefundCardRows(card);
+    const headerText = String(options.headerText || card.title || '商家想帮您申请快捷退款').trim();
+    const actionButtonLabel = String(options.actionButtonLabel || '').trim();
+    const footerHtml = actionButtonLabel
+      ? `<span class="api-refund-card-action">${esc(actionButtonLabel)}</span>`
+      : esc(card.footerText || '等待消费者确认');
+    const footerClass = actionButtonLabel
+      ? 'api-refund-card-section api-refund-card-footer is-action'
+      : 'api-refund-card-section api-refund-card-footer';
     return `<div class="api-message-bubble api-refund-card-bubble">
-      <div class="api-refund-card-header">${esc(card.title || '商家想帮您申请快捷退款')}</div>
+      <div class="api-refund-card-header">${esc(headerText)}</div>
       <div class="api-refund-card-section">
         <div class="api-refund-card-goods">
           ${imageHtml}
@@ -4980,7 +4949,7 @@
       <div class="api-refund-card-section api-refund-card-rows">
         ${rows.map(row => `<div class="api-refund-card-row"><span class="api-refund-card-label">${esc(row.label)}</span><span class="api-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
       </div>
-      <div class="api-refund-card-section api-refund-card-footer">${esc(card.footerText || '等待消费者确认')}</div>
+      <div class="${footerClass}">${footerHtml}</div>
     </div>`;
   }
 
@@ -5458,6 +5427,22 @@
     </div>`;
   }
 
+  function getApiSellerDisplayName(message = null, activeSession = null) {
+    const state = getState();
+    const sessionShopName = String(
+      activeSession?.shopName
+      || (state.shops || []).find(item => item.id === state.apiActiveSessionShopId)?.name
+      || ''
+    ).trim();
+    return String(
+      message?.senderName
+      || state.apiTokenStatus?.serviceName
+      || sessionShopName
+      || state.apiTokenStatus?.mallName
+      || '主账号'
+    ).trim();
+  }
+
   function renderApiMessages() {
     try {
       const state = getState();
@@ -5514,19 +5499,25 @@
       const sortedMessages = displayMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
       let previousTimestamp = 0;
       container.innerHTML = sortedMessages.map((message, index) => {
+        const isBuyer = !!message.isFromBuyer;
+        const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
         const isSystem = isApiSystemNoticeMessage(message);
         const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
-        const isBuyer = !!message.isFromBuyer;
         const buyerAvatar = activeSession?.customerAvatar || '';
-        const sellerText = (shopName || state.apiTokenStatus?.mallName || '主账号').slice(0, 4);
+        const senderName = isBuyer ? '' : getApiSellerDisplayName(message, activeSession);
+        const sellerText = senderName.slice(0, 4) || '主账号';
+        const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
+          ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
+          : '';
+        if (refundStatusUpdate) {
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item platform-card">${renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index, activeSession })}</div>`;
+        }
         if (isSystem) {
           const systemVariantClass = [
             isApiUnmatchedReplyNoticeMessage(message) ? 'unmatched-reply' : '',
             refundSystemNoticeKind ? 'refund-notice' : '',
           ].filter(Boolean).join(' ');
-          const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
-            ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
-            : '';
           previousTimestamp = message.timestamp;
           return `${divider}<div class="api-message-item system${systemVariantClass ? ` ${systemVariantClass}` : ''}">
             <div class="api-message-system-bubble${systemVariantClass ? ` ${systemVariantClass}` : ''}">${renderApiSystemMessageHtml(message, { message, messageIndex: index, sortedMessages, activeSession })}</div>
@@ -5535,7 +5526,6 @@
         const avatarHtml = isBuyer
           ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((state.apiActiveSessionName || '客户').slice(0, 2)))
           : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
-        const senderName = shopName || message.senderName || '主账号';
         const readState = isBuyer ? '' : getApiMessageReadState(message);
         const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
         const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
@@ -5549,7 +5539,6 @@
         ) : null;
         const refundCard = !isBuyer ? extractApiRefundCard(message, activeSession) : null;
         const inviteOrderCard = !isBuyer ? extractApiInviteOrderCard(message) : null;
-        const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
         const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, {
           cardIndex: index,
           activeSession,
@@ -5559,9 +5548,7 @@
         }
         const imageMessage = isApiImageMessage(message);
         const videoMessage = isApiVideoMessage(message);
-        const bubbleHtml = refundStatusUpdate
-          ? renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index, activeSession })
-          : resolvedRefundCard
+        const bubbleHtml = resolvedRefundCard
           ? renderApiRefundCardHtml(resolvedRefundCard)
           : inviteOrderCard
           ? renderApiInviteOrderCardHtml(inviteOrderCard)
@@ -5576,21 +5563,17 @@
           && !goodsLinkInfo
           && !resolvedRefundCard
           && !inviteOrderCard
-          && !refundStatusUpdate
           && !imageMessage
           && !videoMessage
           && String(message.content || '').trim();
-        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !inviteOrderCard && !refundStatusUpdate && !imageMessage && !videoMessage && String(message.content || '').trim()
+        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !inviteOrderCard && !imageMessage && !videoMessage && String(message.content || '').trim()
           ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
           : '';
         const footerHtml = isPlainTextSellerMessage
           ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
           : '';
-        const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
-          ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
-          : '';
         previousTimestamp = message.timestamp;
-        if (resolvedRefundCard || refundStatusUpdate) {
+        if (resolvedRefundCard) {
           return `${divider}<div class="api-message-item platform-card">${bubbleHtml}</div>`;
         }
         if (inviteOrderCard) {
@@ -6540,6 +6523,24 @@
   window.toggleApiEmojiPanel = toggleApiEmojiPanel;
   window.syncApiEmojiPanelPosition = syncApiEmojiPanelPosition;
   window.insertApiMessageText = insertApiMessageText;
+  window.__chatApiModuleFns = {
+    renderApiPddEmojiHtml,
+    renderApiEmojiPanel,
+    renderApiShopHeader,
+    renderApiSessions,
+    renderApiMessages,
+    renderApiPhrasePanel,
+    renderApiSideOrders,
+    renderApiGoodsCardHtml,
+    renderApiRefundCardHtml,
+    renderApiInviteOrderCardHtml,
+    renderApiVideoMessageHtml,
+    renderApiSystemMessageHtml,
+    renderApiRefundSystemNoticeCardHtml,
+    renderApiRefundStatusUpdateCardHtml,
+    ensureApiGoodsCardLoaded,
+    getApiRefundStatusUpdateMeta,
+  };
   window.renderApiPddEmojiHtml = renderApiPddEmojiHtml;
   window.renderApiEmojiPanel = renderApiEmojiPanel;
   window.renderApiShopHeader = renderApiShopHeader;

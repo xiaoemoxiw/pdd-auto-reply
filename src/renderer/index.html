@@ -4144,12 +4144,32 @@
     .api-refund-card-footer {
       display: flex;
       justify-content: flex-end;
-      padding: 14px 18px 16px;
+      padding: 8px 10px 10px;
       color: #b3b3b3;
       font-size: 12px;
       line-height: 1.2;
       border-top: 1px solid #ececec;
       background: #fff;
+    }
+
+    .api-refund-card-footer.is-action {
+      color: inherit;
+    }
+
+    .api-refund-card-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 68px;
+      height: 28px;
+      padding: 0 14px;
+      border: 1px solid #4f74f9;
+      border-radius: 4px;
+      color: #4f74f9;
+      font-size: 12px;
+      line-height: 1;
+      background: #fff;
+      box-sizing: border-box;
     }
 
     .api-refund-card-section {
@@ -8722,6 +8742,60 @@
     if (typeof window.initRendererModules === 'function') {
       window.initRendererModules();
     }
+    const chatApiModuleFns = window.__chatApiModuleFns;
+    if (chatApiModuleFns && typeof chatApiModuleFns === 'object') {
+      if (typeof chatApiModuleFns.renderApiPddEmojiHtml === 'function') {
+        renderApiPddEmojiHtml = chatApiModuleFns.renderApiPddEmojiHtml;
+        window.renderApiPddEmojiHtml = chatApiModuleFns.renderApiPddEmojiHtml;
+      }
+      if (typeof chatApiModuleFns.renderApiEmojiPanel === 'function') {
+        renderApiEmojiPanel = chatApiModuleFns.renderApiEmojiPanel;
+        window.renderApiEmojiPanel = chatApiModuleFns.renderApiEmojiPanel;
+      }
+      if (typeof chatApiModuleFns.renderApiShopHeader === 'function') {
+        renderApiShopHeader = chatApiModuleFns.renderApiShopHeader;
+        window.renderApiShopHeader = chatApiModuleFns.renderApiShopHeader;
+      }
+      if (typeof chatApiModuleFns.renderApiSessions === 'function') {
+        renderApiSessions = chatApiModuleFns.renderApiSessions;
+        window.renderApiSessions = chatApiModuleFns.renderApiSessions;
+      }
+      if (typeof chatApiModuleFns.renderApiMessages === 'function') {
+        renderApiMessages = chatApiModuleFns.renderApiMessages;
+        window.renderApiMessages = chatApiModuleFns.renderApiMessages;
+      }
+      if (typeof chatApiModuleFns.renderApiPhrasePanel === 'function') {
+        renderApiPhrasePanel = chatApiModuleFns.renderApiPhrasePanel;
+        window.renderApiPhrasePanel = chatApiModuleFns.renderApiPhrasePanel;
+      }
+      if (typeof chatApiModuleFns.renderApiGoodsCardHtml === 'function') {
+        renderApiGoodsCardHtml = chatApiModuleFns.renderApiGoodsCardHtml;
+      }
+      if (typeof chatApiModuleFns.renderApiRefundCardHtml === 'function') {
+        renderApiRefundCardHtml = chatApiModuleFns.renderApiRefundCardHtml;
+      }
+      if (typeof chatApiModuleFns.renderApiInviteOrderCardHtml === 'function') {
+        renderApiInviteOrderCardHtml = chatApiModuleFns.renderApiInviteOrderCardHtml;
+      }
+      if (typeof chatApiModuleFns.renderApiVideoMessageHtml === 'function') {
+        renderApiVideoMessageHtml = chatApiModuleFns.renderApiVideoMessageHtml;
+      }
+      if (typeof chatApiModuleFns.renderApiSystemMessageHtml === 'function') {
+        renderApiSystemMessageHtml = chatApiModuleFns.renderApiSystemMessageHtml;
+      }
+      if (typeof chatApiModuleFns.renderApiRefundSystemNoticeCardHtml === 'function') {
+        renderApiRefundSystemNoticeCardHtml = chatApiModuleFns.renderApiRefundSystemNoticeCardHtml;
+      }
+      if (typeof chatApiModuleFns.renderApiRefundStatusUpdateCardHtml === 'function') {
+        renderApiRefundStatusUpdateCardHtml = chatApiModuleFns.renderApiRefundStatusUpdateCardHtml;
+      }
+      if (typeof chatApiModuleFns.ensureApiGoodsCardLoaded === 'function') {
+        ensureApiGoodsCardLoaded = chatApiModuleFns.ensureApiGoodsCardLoaded;
+      }
+      if (typeof chatApiModuleFns.getApiRefundStatusUpdateMeta === 'function') {
+        getApiRefundStatusUpdateMeta = chatApiModuleFns.getApiRefundStatusUpdateMeta;
+      }
+    }
 
     // ==================== 导航 ====================
     document.querySelectorAll('.nav-item[data-view]').forEach(item => {
@@ -9463,19 +9537,35 @@
       };
     }
 
-    function renderApiRefundCardHtml(card = {}) {
-      const imageHtml = card.imageUrl
-        ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
-        : `<div class="api-refund-card-media-placeholder">商品</div>`;
-      const rows = [
+    function buildApiRefundCardRows(card = {}) {
+      return [
         { label: '申请类型', value: card.actionText || '退款' },
         { label: '申请原因', value: card.reasonText || '其他原因' },
         card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
         { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
         card.contactText ? { label: '联系方式', value: card.contactText } : null,
       ].filter(Boolean);
+    }
+
+    function renderApiRefundCardHtml(card = {}, options = {}) {
+      const moduleFn = window.__chatApiModuleFns?.renderApiRefundCardHtml;
+      if (typeof moduleFn === 'function' && moduleFn !== renderApiRefundCardHtml) {
+        return moduleFn(card, options);
+      }
+      const imageHtml = card.imageUrl
+        ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+        : `<div class="api-refund-card-media-placeholder">商品</div>`;
+      const rows = buildApiRefundCardRows(card);
+      const headerText = String(options.headerText || card.title || '商家想帮您申请快捷退款').trim();
+      const actionButtonLabel = String(options.actionButtonLabel || '').trim();
+      const footerHtml = actionButtonLabel
+        ? `<span class="api-refund-card-action">${esc(actionButtonLabel)}</span>`
+        : esc(card.footerText || '等待消费者确认');
+      const footerClass = actionButtonLabel
+        ? 'api-refund-card-section api-refund-card-footer is-action'
+        : 'api-refund-card-section api-refund-card-footer';
       return `<div class="api-message-bubble api-refund-card-bubble">
-        <div class="api-refund-card-header">${esc(card.title || '商家想帮您申请快捷退款')}</div>
+        <div class="api-refund-card-header">${esc(headerText)}</div>
         <div class="api-refund-card-section">
           <div class="api-refund-card-goods">
             ${imageHtml}
@@ -9491,7 +9581,7 @@
         <div class="api-refund-card-section api-refund-card-rows">
           ${rows.map(row => `<div class="api-refund-card-row"><span class="api-refund-card-label">${esc(row.label)}</span><span class="api-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
         </div>
-        <div class="api-refund-card-section api-refund-card-footer">${esc(card.footerText || '等待消费者确认')}</div>
+        <div class="${footerClass}">${footerHtml}</div>
       </div>`;
     }
 
@@ -10121,6 +10211,10 @@
     }
 
     function renderApiRefundSystemNoticeCardHtml(message = {}, options = {}) {
+      const moduleFn = window.__chatApiModuleFns?.renderApiRefundSystemNoticeCardHtml;
+      if (typeof moduleFn === 'function' && moduleFn !== renderApiRefundSystemNoticeCardHtml) {
+        return moduleFn(message, options);
+      }
       const kind = getApiRefundSystemNoticeKind(message);
       if (!kind) return '';
       const card = findApiNeighborRefundCard(options.sortedMessages, options.messageIndex);
@@ -10166,32 +10260,10 @@
           </div>
         </div>`;
       }
-      const rows = [
-        { label: '申请类型', value: card.actionText || '退款' },
-        { label: '申请原因', value: card.reasonText || '其他原因' },
-        card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
-        { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
-        card.contactText ? { label: '联系方式', value: card.contactText } : null,
-      ].filter(Boolean);
-      return `<div class="api-system-refund-card pending">
-        <div class="api-system-refund-card-header">${esc(displayText)}</div>
-        <div class="api-system-refund-card-goods">
-          <div class="api-system-refund-card-media-block">
-            ${imageHtml}
-            <div class="api-system-refund-card-media-title">${esc(card.goodsTitle || '订单商品')}</div>
-          </div>
-          <div class="api-system-refund-card-side">
-            <div class="api-system-refund-card-side-top">
-              <span class="api-system-refund-card-action">去处理</span>
-            </div>
-            ${card.amountText ? `<div class="api-system-refund-card-side-price">${esc(card.amountText)}</div>` : ''}
-          </div>
-          </div>
-          <div class="api-system-refund-card-rows">
-            ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
-          </div>
-        </div>
-      </div>`;
+      return renderApiRefundCardHtml(card, {
+        headerText: displayText,
+        actionButtonLabel: '去处理',
+      });
     }
 
     function isApiSystemNoticeMessage(message = {}) {
@@ -10200,6 +10272,11 @@
       if (extractApiRefundCard(message)) return false;
       if (isApiInviteOrderTemplateMessage(message)) return false;
       if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
+      const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+      const messageType = Number(raw?.type ?? message?.type ?? -1);
+      if (messageType === 31 || messageType === 90) return true;
+      if (String(raw?.template_name || raw?.templateName || '').trim()) return true;
+      if (raw?.system && typeof raw.system === 'object' && Object.keys(raw.system).length) return true;
       if (!source) return false;
       if (isApiRefundPendingNoticeText(source) || isApiRefundSuccessNoticeText(source)) return true;
       return [
@@ -10212,6 +10289,8 @@
         /为避免抢答/,
         /当前用户来自/,
         /商品详情页/,
+        /订单已超承诺发货时间/,
+        /请人工跟进/,
       ].some(pattern => pattern.test(source));
     }
 
@@ -10284,6 +10363,10 @@
     }
 
     function renderApiSystemMessageHtml(messageOrText = '', options = {}) {
+      const moduleFn = window.__chatApiModuleFns?.renderApiSystemMessageHtml;
+      if (typeof moduleFn === 'function' && moduleFn !== renderApiSystemMessageHtml) {
+        return moduleFn(messageOrText, options);
+      }
       const source = getApiSystemNoticeText(messageOrText);
       if (!source) return '';
       const refundNoticeKind = getApiRefundSystemNoticeKind(messageOrText);
@@ -10956,7 +11039,7 @@
         isFromBuyer: false,
         isSystem,
         actor: isSystem ? 'system' : 'seller',
-        senderName: isSystem ? '' : (getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号'),
+        senderName: isSystem ? '' : getApiSellerDisplayName(null, getApiActiveSession()),
         readState: '',
         refundCard,
         inviteOrderCard,
@@ -11018,7 +11101,12 @@
         content,
         timestamp: Number(payload.timestamp || Date.now()) || Date.now(),
         isFromBuyer: payload.isFromBuyer === true,
-        senderName: String(payload.senderName || getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号'),
+        senderName: String(
+          payload.senderName
+          || (payload.isFromBuyer === true
+            ? (apiActiveSessionName || getApiActiveSession()?.customerName || '客户')
+            : getApiSellerDisplayName(null, getApiActiveSession()))
+        ),
         readState: String(payload.readState || '').trim(),
         templateName: String(payload.templateName || '').trim(),
         refundCard,
@@ -11830,7 +11918,25 @@
       ) || 0;
     }
 
+    function getApiSellerDisplayName(message = null, activeSession = null) {
+      const sessionShopName = String(
+        activeSession?.shopName
+        || (shops.find(item => item.id === apiActiveSessionShopId)?.name || '')
+      ).trim();
+      return String(
+        message?.senderName
+        || apiTokenStatus?.serviceName
+        || sessionShopName
+        || apiTokenStatus?.mallName
+        || '主账号'
+      ).trim();
+    }
+
     function renderApiMessages() {
+      const moduleFn = window.__chatApiModuleFns?.renderApiMessages;
+      if (typeof moduleFn === 'function' && moduleFn !== renderApiMessages) {
+        return moduleFn();
+      }
       try {
         const container = document.getElementById('apiMessageList');
         const mainInner = document.querySelector('.api-chat-main-inner');
@@ -11867,19 +11973,25 @@
         const sortedMessages = displayMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
         let previousTimestamp = 0;
         container.innerHTML = sortedMessages.map((message, index) => {
+          const isBuyer = !!message.isFromBuyer;
+          const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
           const isSystem = isApiSystemNoticeMessage(message);
           const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
-          const isBuyer = !!message.isFromBuyer;
           const buyerAvatar = activeSession?.customerAvatar || '';
-          const sellerText = (shopName || apiTokenStatus?.mallName || '主账号').slice(0, 4);
+          const senderName = isBuyer ? '' : getApiSellerDisplayName(message, activeSession);
+          const sellerText = senderName.slice(0, 4) || '主账号';
+          const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
+            ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
+            : '';
+          if (refundStatusUpdate) {
+            previousTimestamp = message.timestamp;
+            return `${divider}<div class="api-message-item platform-card">${renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index })}</div>`;
+          }
           if (isSystem) {
             const systemVariantClass = [
               isApiUnmatchedReplyNoticeMessage(message) ? 'unmatched-reply' : '',
               refundSystemNoticeKind ? 'refund-notice' : '',
             ].filter(Boolean).join(' ');
-            const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
-              ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
-              : '';
             previousTimestamp = message.timestamp;
             return `${divider}<div class="api-message-item system${systemVariantClass ? ` ${systemVariantClass}` : ''}">
               <div class="api-message-system-bubble${systemVariantClass ? ` ${systemVariantClass}` : ''}">${renderApiSystemMessageHtml(message, { message, messageIndex: index, sortedMessages })}</div>
@@ -11888,7 +12000,6 @@
           const avatarHtml = isBuyer
             ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((apiActiveSessionName || '客户').slice(0, 2)))
             : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
-          const senderName = shopName || message.senderName || '主账号';
           const readState = isBuyer ? '' : getApiMessageReadState(message);
           const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
           const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
@@ -11935,9 +12046,6 @@
             : '';
           const footerHtml = isPlainTextSellerMessage
             ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
-            : '';
-          const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
-            ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
             : '';
           previousTimestamp = message.timestamp;
           if (resolvedRefundCard) {

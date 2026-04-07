@@ -484,6 +484,7 @@
   margin-top: 8px;
   color: #999;
   font-size: 12px;
+  padding-bottom: 2px;
 }
 
 .ticket-api-detail-summary {
@@ -500,7 +501,8 @@
   min-height: 24px;
   padding: 0 10px;
   border-radius: 999px;
-  background: #f3f4f6;
+  border: 1px solid #eef2f7;
+  background: #f8fafc;
   color: #666;
   font-size: 12px;
 }
@@ -524,6 +526,9 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  position: sticky;
+  top: 12px;
+  align-self: start;
 }
 
 .ticket-api-detail-card,
@@ -537,11 +542,25 @@
   padding: 18px;
 }
 
+.ticket-api-detail-card-head,
+.ticket-api-side-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .ticket-api-detail-card-title,
 .ticket-api-side-card-title {
   color: #333;
   font-size: 14px;
   font-weight: 600;
+}
+
+.ticket-api-detail-card-meta,
+.ticket-api-side-card-meta {
+  color: #999;
+  font-size: 12px;
 }
 
 .ticket-api-detail-error {
@@ -566,7 +585,8 @@
 }
 
 .ticket-api-side-card {
-  padding: 14px;
+  padding: 14px 14px 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 .ticket-api-side-list {
@@ -611,12 +631,14 @@
 .ticket-api-order-hero-meta {
   color: #666;
   font-size: 12px;
+  justify-content: space-between;
 }
 
 .ticket-api-order-hero-content {
   display: flex;
   gap: 12px;
   margin-top: 10px;
+  align-items: flex-start;
 }
 
 .ticket-api-order-hero-image {
@@ -641,6 +663,12 @@
   flex: 1;
 }
 
+.ticket-api-order-hero-pricebox {
+  min-width: 92px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
 .ticket-api-order-hero-title {
   color: #333;
   font-size: 13px;
@@ -658,19 +686,47 @@
 }
 
 .ticket-api-order-hero-price {
-  margin-top: 8px;
   color: #333;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.4;
+}
+
+.ticket-api-order-hero-paid {
+  margin-top: 6px;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .ticket-api-order-hero-extra {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid #f5f5f5;
-  color: #666;
+}
+
+.ticket-api-order-hero-extra-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.7;
+}
+
+.ticket-api-order-hero-extra-row + .ticket-api-order-hero-extra-row {
+  margin-top: 4px;
+}
+
+.ticket-api-order-hero-extra-label {
+  width: 56px;
+  flex-shrink: 0;
+  color: #999;
+}
+
+.ticket-api-order-hero-extra-value {
+  min-width: 0;
+  flex: 1;
+  color: #666;
 }
 
 .ticket-api-order-status {
@@ -679,6 +735,7 @@
 
 .ticket-api-side-empty {
   margin-top: 8px;
+  padding: 10px 0 2px;
   color: #999;
   font-size: 12px;
   line-height: 1.7;
@@ -742,6 +799,17 @@
   cursor: pointer;
 }
 
+.ticket-api-mini-button {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .ticket-api-logistics-tabs {
   display: flex;
   gap: 8px;
@@ -773,6 +841,11 @@
   color: #666;
   font-size: 12px;
   line-height: 1.7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .ticket-api-logistics-note {
@@ -787,6 +860,16 @@
   word-break: break-word;
 }
 
+.ticket-api-expand-link {
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .ticket-api-logistics-footer {
   margin-top: 8px;
   color: #999;
@@ -795,7 +878,7 @@
 
 .ticket-api-progress-list {
   position: relative;
-  margin-top: 14px;
+  margin-top: 12px;
   padding-left: 18px;
 }
 
@@ -811,7 +894,7 @@
 
 .ticket-api-progress-item {
   position: relative;
-  padding: 0 0 20px 18px;
+  padding: 0 0 18px 18px;
 }
 
 .ticket-api-progress-item:last-child {
@@ -832,6 +915,10 @@
   background: #1677ff;
 }
 
+.ticket-api-progress-item.is-current .ticket-api-progress-title {
+  color: #111827;
+}
+
 .ticket-api-progress-time {
   color: #999;
   font-size: 12px;
@@ -841,7 +928,7 @@
 .ticket-api-progress-title {
   margin-top: 4px;
   color: #333;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.6;
 }
@@ -855,15 +942,23 @@
   word-break: break-word;
 }
 
+.ticket-api-progress-empty {
+  margin-top: 8px;
+  color: #9ca3af;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .ticket-api-progress-fields {
   display: grid;
-  gap: 12px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .ticket-api-progress-group {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 6px;
+  border: 1px solid #f3f4f6;
   background: #fafafa;
 }
 
@@ -871,6 +966,7 @@
   color: #999;
   font-size: 12px;
   line-height: 1.6;
+  font-weight: 600;
 }
 
 .ticket-api-progress-group-body {
@@ -889,7 +985,7 @@
 
 .ticket-api-progress-row-value {
   color: #333;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
@@ -909,6 +1005,7 @@
   border-radius: 4px;
   object-fit: cover;
   background: #f8fafc;
+  cursor: pointer;
 }
 
 .ticket-api-progress-meta {
@@ -916,10 +1013,11 @@
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: 6px;
   color: #666;
   font-size: 12px;
   line-height: 1.7;
+  padding-top: 2px;
 }
 
 .ticket-api-traffic-panel {
@@ -957,6 +1055,15 @@
 
   .ticket-api-detail-scene {
     grid-template-columns: 1fr;
+  }
+
+  .ticket-api-detail-right {
+    position: static;
+  }
+
+  .ticket-api-order-hero-pricebox {
+    min-width: 0;
+    text-align: left;
   }
 
   .ticket-api-page.is-detail-mode .ticket-api-detail-shell {

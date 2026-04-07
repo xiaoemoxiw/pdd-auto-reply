@@ -9,10 +9,6 @@
   let ticketApiDatePreset = 'all';
   let ticketApiActiveId = '';
   let ticketApiActiveDetail = null;
-  let ticketApiDetailLoading = false;
-  let ticketApiDetailError = '';
-  let ticketApiPageMode = 'list';
-  let ticketApiActiveLogisticsTab = 'outbound';
 
   function getEl(id) {
     return document.getElementById(id);
@@ -122,207 +118,6 @@
     return result;
   }
 
-  function isFilledValue(value) {
-    if (value === 0 || value === false) return true;
-    if (Array.isArray(value)) return value.length > 0;
-    return value !== undefined && value !== null && String(value).trim() !== '';
-  }
-
-  function normalizeTicketFieldValue(value) {
-    if (value === undefined || value === null || value === '') return '';
-    if (Array.isArray(value)) {
-      return value.map(normalizeTicketFieldValue).filter(Boolean).join('、');
-    }
-    if (typeof value === 'object') {
-      return Object.values(value).map(normalizeTicketFieldValue).filter(Boolean).join(' · ');
-    }
-    if (typeof value === 'boolean') return value ? '是' : '否';
-    return String(value).trim();
-  }
-
-  function formatTicketAmount(value) {
-    const text = String(value ?? '').trim();
-    if (!text) return '';
-    const amount = Number(text);
-    if (!Number.isFinite(amount)) return text;
-    const normalized = text.includes('.') ? amount : amount / 100;
-    return `¥${normalized.toFixed(2)}`;
-  }
-
-  function buildTicketInfoGroup(title, items = []) {
-    const list = items
-      .map(([label, value]) => ({ label, value: normalizeTicketFieldValue(value) }))
-      .filter(item => isFilledValue(item.value));
-    return list.length ? { title, items: list } : null;
-  }
-
-  function resolveTicketDetailRequestId(source = {}) {
-    const directValue = pickFirstValue(source, [
-      'detailRequestId',
-      'detail_request_id',
-      'instanceId',
-      'instance_id',
-      'todoId',
-      'todo_id',
-      'id',
-      'workOrderId',
-      'work_order_id',
-      'workOrderSn',
-      'work_order_sn',
-      'ticketId',
-      'ticket_id',
-      'ticketSn',
-      'ticket_sn',
-      'taskId',
-      'task_id'
-    ]);
-    if (directValue) return String(directValue);
-    if (source?.raw && source.raw !== source) {
-      const rawValue = pickFirstValue(source.raw, [
-        'instanceId',
-        'instance_id',
-        'todoId',
-        'todo_id',
-        'id',
-        'workOrderId',
-        'work_order_id',
-        'workOrderSn',
-        'work_order_sn',
-        'ticketId',
-        'ticket_id',
-        'ticketSn',
-        'ticket_sn',
-        'taskId',
-        'task_id'
-      ]);
-      if (rawValue) return String(rawValue);
-    }
-    return '';
-  }
-
-  function normalizeTicketItemList(list = []) {
-    if (!Array.isArray(list)) return [];
-    return list.map(item => {
-      const urls = Array.isArray(item?.urls)
-        ? item.urls.map(normalizeImageUrl).filter(Boolean)
-        : [];
-      const value = normalizeTicketFieldValue(item?.value) || (urls.length ? `${urls.length}张图片凭证` : '');
-      return {
-        type: Number(item?.type || 0) || 0,
-        key: normalizeTicketFieldValue(item?.key) || '补充信息',
-        value,
-        urls
-      };
-    }).filter(item => item.key || item.value || item.urls.length);
-  }
-
-  function normalizeTicketFlowList(flowList = []) {
-    if (!Array.isArray(flowList)) return [];
-    return flowList.map((item, index) => {
-      const itemList = normalizeTicketItemList(item?.itemList);
-      const images = Array.from(new Set(itemList.flatMap(entry => entry.urls || []))).filter(Boolean);
-      return {
-        title: normalizeTicketFieldValue(item?.title) || `节点 ${index + 1}`,
-        content: normalizeTicketFieldValue(item?.content),
-        operatorName: normalizeTicketFieldValue(item?.operatorName),
-        createdAt: item?.createdAt || '',
-        itemList,
-        images
-      };
-    }).filter(item => item.title || item.content || item.itemList.length || item.images.length);
-  }
-
-  function collectTicketFlowFields(flowList = []) {
-    return flowList.flatMap(item => item?.itemList || []);
-  }
-
-  function normalizeTicketApiRemoteDetail(detail = {}, fallbackRecord = {}, requestInstanceId = '') {
-    const todoDetail = detail?.todoDetail && typeof detail.todoDetail === 'object' ? detail.todoDetail : {};
-    const flowList = normalizeTicketFlowList(todoDetail.flowList);
-    const flowFields = collectTicketFlowFields(flowList);
-    const currentFlow = flowList[0] || null;
-    const firstFlow = flowList[flowList.length - 1] || null;
-    const receiverFields = flowFields.filter(item => /手机|电话|收货|地址|联系人|姓名/.test(`${item.key} ${item.value}`));
-    const logisticsFields = flowFields.filter(item => /物流|运单|快递|签收|揽收|轨迹|逆向|取件/.test(`${item.key} ${item.value}`));
-    const ticketNo = String(requestInstanceId || detail?.instanceId || detail?.todoId || fallbackRecord.instanceId || fallbackRecord.ticketNo || '');
-    const statusCode = Number(detail?.status ?? fallbackRecord.statusCode ?? 0) || 0;
-    const statusText = mapTicketStatusCode(detail?.status ?? fallbackRecord.statusCode ?? fallbackRecord.status);
-    const questionTitle = String(detail?.problemTitle || fallbackRecord.questionTitle || fallbackRecord.ticketType || '工单');
-    const questionDesc = [
-      normalizeTicketFieldValue(todoDetail?.externalDetail),
-      firstFlow?.title && firstFlow.title !== questionTitle ? firstFlow.title : '',
-      normalizeTicketFieldValue(firstFlow?.content),
-      normalizeTicketFieldValue(fallbackRecord.questionDesc)
-    ].filter(Boolean).join('\n');
-    const images = Array.from(new Set([
-      normalizeImageUrl(detail?.thumbUrl),
-      ...(fallbackRecord.images || []),
-      ...extractImageUrls(detail, 18),
-      ...flowList.flatMap(item => item.images || [])
-    ])).filter(Boolean).slice(0, 18);
-    return {
-      ticketNo: ticketNo || String(fallbackRecord.ticketNo || ''),
-      instanceId: ticketNo || String(fallbackRecord.instanceId || ''),
-      detailRequestId: String(requestInstanceId || resolveTicketDetailRequestId(detail) || fallbackRecord.detailRequestId || ''),
-      orderSn: String(detail?.orderSn || fallbackRecord.orderSn || ''),
-      ticketType: String(fallbackRecord.ticketType || questionTitle),
-      questionTitle,
-      questionDesc,
-      goodsName: String(detail?.goodsName || fallbackRecord.goodsName || ''),
-      createTime: fallbackRecord.createTime || '',
-      updateTime: currentFlow?.createdAt || fallbackRecord.updateTime || '',
-      status: statusText || fallbackRecord.status || '待处理',
-      statusCode,
-      assignee: String(currentFlow?.operatorName || fallbackRecord.assignee || '-'),
-      progressText: String(
-        todoDetail?.externalDisplayTaskName
-        || todoDetail?.manualTaskName
-        || currentFlow?.title
-        || fallbackRecord.progressText
-        || statusText
-        || '-'
-      ),
-      images,
-      detailImages: images,
-      goodsThumb: normalizeImageUrl(detail?.thumbUrl) || images[0] || '',
-      goodsSpec: normalizeTicketFieldValue(detail?.spec),
-      goodsNumber: normalizeTicketFieldValue(detail?.goodsNumber),
-      goodsPriceText: formatTicketAmount(detail?.goodsPrice),
-      merchantAmountText: formatTicketAmount(detail?.merchantAmount),
-      orderStatus: normalizeTicketFieldValue(detail?.orderStatusStr),
-      flowList,
-      orderInfo: buildTicketInfoGroup('订单信息', [
-        ['订单号', detail?.orderSn || fallbackRecord.orderSn],
-        ['订单状态', detail?.orderStatusStr],
-        ['商品规格', detail?.spec],
-        ['商品数量', detail?.goodsNumber],
-        ['商品单价', formatTicketAmount(detail?.goodsPrice)],
-        ['实收金额', formatTicketAmount(detail?.merchantAmount)]
-      ]),
-      afterSalesInfo: buildTicketInfoGroup('售后信息', [
-        ['售后单号', detail?.afterSalesId],
-        ['售后状态', detail?.afterSalesStatusDesc || detail?.afterSalesStatus],
-        ['售后类型', detail?.afterSalesTypeDesc || detail?.afterSalesType],
-        ['退款金额', formatTicketAmount(detail?.refundAmount)]
-      ]),
-      receiverInfo: buildTicketInfoGroup('收货信息', receiverFields.map(item => [item.key, item.value])),
-      logisticsInfo: buildTicketInfoGroup('物流信息', [
-        ['逆向物流单号', detail?.reverseShippingId],
-        ['逆向运单号', detail?.reverseTrackingNumber],
-        ...logisticsFields.map(item => [item.key, item.value])
-      ]),
-      serviceInfo: buildTicketInfoGroup('服务信息', [
-        ['服务域', todoDetail?.serviceDomain ?? detail?.serviceDomain],
-        ['当前节点截止时间', formatApiDateTime(todoDetail?.curStepDeadline) || ''],
-        ['处理完成', todoDetail?.finished === undefined ? '' : (todoDetail.finished ? '是' : '否')],
-        ['处理角色', todoDetail?.handlerRole],
-        ['展示标签', Array.isArray(todoDetail?.displayTag) ? todoDetail.displayTag.join('、') : ''],
-        ['一键关闭', todoDetail?.showOneClickClose === undefined ? '' : (todoDetail.showOneClickClose ? '是' : '否')]
-      ]),
-      raw: detail
-    };
-  }
-
   function looksLikeTicketRecord(item) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
     const keys = Object.keys(item).join(' ').toLowerCase();
@@ -348,7 +143,6 @@
     return {
       ticketNo: String(item.instanceId || `instance-${index + 1}`),
       instanceId: String(item.instanceId || ''),
-      detailRequestId: String(item.instanceId || item.todoId || item.id || ''),
       orderSn: String(item.orderSn || ''),
       ticketType: String(item.problemTitle || '工单'),
       questionTitle: String(item.problemTitle || '工单'),
@@ -525,7 +319,6 @@
         'todoId',
         'todo_id'
       ]) || ''),
-      detailRequestId: resolveTicketDetailRequestId(item),
       orderSn,
       ticketType,
       questionTitle,
@@ -596,30 +389,6 @@
     return merged;
   }
 
-  function mergeTicketDetailRecord(base = {}, extra = {}) {
-    const merged = { ...base, ...extra };
-    Object.keys(base).forEach(key => {
-      if (!isFilledValue(merged[key]) && isFilledValue(base[key])) {
-        merged[key] = base[key];
-      }
-    });
-    Object.keys(extra).forEach(key => {
-      if (Array.isArray(extra[key])) {
-        merged[key] = extra[key].length ? extra[key] : (Array.isArray(base[key]) ? base[key] : []);
-      }
-    });
-    merged.raw = extra.raw || base.raw || {};
-    return merged;
-  }
-
-  function upsertTicketApiListItem(record = {}) {
-    const recordId = String(record.ticketNo || record.instanceId || '');
-    if (!recordId) return;
-    const index = ticketApiList.findIndex(item => String(item.ticketNo || item.instanceId || '') === recordId);
-    if (index === -1) return;
-    ticketApiList[index] = mergeTicketDetailRecord(ticketApiList[index], record);
-  }
-
   function parseTicketRecordsFromTraffic(entries = []) {
     const records = [];
     const recordMap = new Map();
@@ -650,15 +419,6 @@
       });
     });
     return dedupeTicketList([...recordMap.values(), ...records]);
-  }
-
-  function normalizeTicketApiRemoteList(list = []) {
-    return dedupeTicketList(list.map((item, index) => {
-      if (item && typeof item === 'object' && !Array.isArray(item) && ('instanceId' in item || 'problemTitle' in item || 'externalDisplayName' in item)) {
-        return normalizeTodoListItem(item, index);
-      }
-      return normalizeTicketRecord(item, index);
-    }));
   }
 
   function isTicketClosed(status = '') {
@@ -791,10 +551,10 @@
     if (ticketApiTypeFilter) filterLabels.push(`问题类型：${ticketApiTypeFilter}`);
     if (ticketApiDatePreset !== 'all') filterLabels.push(`创建时间：${getPresetDateRangeText()}`);
     if (ticketApiKeyword) filterLabels.push(`订单编号：${ticketApiKeyword}`);
-    getEl('ticketApiListStatus').textContent = filterLabels.length ? filterLabels.join(' · ') : '当前展示工单管理接口返回结果';
+    getEl('ticketApiListStatus').textContent = filterLabels.length ? filterLabels.join(' · ') : '当前仅展示工单管理相关抓包与接口提取结果';
 
     if (!visibleList.length) {
-      container.innerHTML = '<div class="ticket-api-list-empty">当前没有工单记录，可直接刷新列表重试。</div>';
+      container.innerHTML = '<div class="ticket-api-list-empty">当前没有工单记录，请先在嵌入网页打开工单列表后再刷新接口页。</div>';
       return;
     }
 
@@ -857,7 +617,7 @@
     try {
       const text = JSON.stringify(value, null, 2);
       if (text.length <= limit) return text;
-      return `${text.slice(0, limit)}\n...（已截断）`;
+      return `${text.slice(0, limit)}\n...（已截断，原始数据过大）`;
     } catch {
       return '';
     }
@@ -932,326 +692,6 @@
     return { merged, images, timeline };
   }
 
-  function renderTicketInfoGroup(group) {
-    if (!group?.items?.length) return '';
-    return `
-      <div class="ticket-api-side-card">
-        <div class="ticket-api-side-card-title">${esc(group.title)}</div>
-        <div class="ticket-api-side-list">
-          ${group.items.map(item => `
-            <div class="ticket-api-side-list-item">
-              <div class="ticket-api-side-list-label">${esc(item.label)}</div>
-              <div class="ticket-api-side-list-value">${esc(item.value || '-')}</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-  }
-
-  function maskPhoneNumber(value = '') {
-    const digits = String(value || '').replace(/\D/g, '');
-    if (digits.length < 7) return String(value || '');
-    return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
-  }
-
-  function parseTicketNamePhone(text = '') {
-    const source = String(text || '');
-    const match = source.match(/【([^：:】]+)[：:]\s*(1\d{10})】/);
-    if (match) {
-      return { name: match[1], phone: match[2] };
-    }
-    const phoneMatch = source.match(/(1\d{10})/);
-    if (!phoneMatch) return { name: '', phone: '' };
-    const leftText = source.slice(0, phoneMatch.index).replace(/[【】:\s：]/g, ' ').trim();
-    const name = leftText.split(/\s+/).filter(Boolean).slice(-1)[0] || '';
-    return { name, phone: phoneMatch[1] };
-  }
-
-  function buildTicketReceiverSummary(detail = {}) {
-    const fields = collectTicketFlowFields(detail.flowList || []);
-    const receiverItems = fields.filter(item => /联系人|姓名|收货人|手机|电话|地址|代收点|联系地址|自取地址/.test(`${item.key} ${item.value}`));
-    const combinedText = receiverItems.map(item => `${item.key} ${item.value || ''}`).join('\n');
-    const parsed = parseTicketNamePhone(combinedText);
-    const nameField = receiverItems.find(item => /联系人|姓名|收货人/.test(item.key));
-    const phoneField = receiverItems.find(item => /手机|电话/.test(item.key));
-    const addressField = receiverItems.find(item => /地址|代收点|联系地址|自取地址/.test(item.key));
-    const addressText = normalizeTicketFieldValue(addressField?.value || combinedText.match(/(?:签收代收点|联系地址|收货地址|地址)[：:]\s*([^\n。]+)/)?.[1] || '');
-    return {
-      alertText: '通过拨打隐私号等方式尝试获取用户联系方式无效时，请按平台要求联系可触达的第三方后继续处理。',
-      receiverName: normalizeTicketFieldValue(nameField?.value || parsed.name || ''),
-      receiverPhone: normalizeTicketFieldValue(phoneField?.value || parsed.phone || ''),
-      receiverPhoneMasked: maskPhoneNumber(phoneField?.value || parsed.phone || ''),
-      receiverAddress: addressText || normalizeTicketFieldValue(addressField?.value || ''),
-      rawText: combinedText
-    };
-  }
-
-  function buildTicketAfterSalesSummary(detail = {}) {
-    const group = detail.afterSalesInfo;
-    if (!group?.items?.length) return { empty: true, items: [] };
-    return { empty: false, items: group.items };
-  }
-
-  function buildTicketLogisticsTabs(detail = {}) {
-    const fields = collectTicketFlowFields(detail.flowList || []);
-    const logisticsItems = fields.filter(item => /物流|运单|快递|签收|揽收|轨迹|取件|送达|发货|退货|逆向|自取/.test(`${item.key} ${item.value}`));
-    const shippingNotes = logisticsItems.length
-      ? logisticsItems.map(item => `${item.key}：${item.value || '-'}`)
-      : (detail.flowList || []).flatMap(item => {
-        const lines = [];
-        if (item.title) lines.push(item.title);
-        (item.itemList || []).forEach(field => {
-          if (field.key || field.value) lines.push(`${field.key || '信息'}：${field.value || '-'}`);
-        });
-        return lines;
-      }).slice(0, 6);
-    const outboundTab = {
-      key: 'outbound',
-      label: '发货物流',
-      trackingNo: '',
-      notes: shippingNotes,
-      footerText: detail.updateTime ? formatApiDateTime(detail.updateTime) : ''
-    };
-    const reverseTrackingNo = normalizeTicketFieldValue(detail.raw?.reverseTrackingNumber || detail.reverseTrackingNumber || '');
-    const reverseShippingId = normalizeTicketFieldValue(detail.raw?.reverseShippingId || detail.reverseShippingId || '');
-    const reverseNotes = [];
-    if (reverseShippingId) reverseNotes.push(`逆向物流单号：${reverseShippingId}`);
-    if (reverseTrackingNo) reverseNotes.push(`逆向运单号：${reverseTrackingNo}`);
-    const tabs = [outboundTab];
-    if (reverseNotes.length) {
-      tabs.push({
-        key: 'reverse',
-        label: '退货物流',
-        trackingNo: reverseTrackingNo,
-        notes: reverseNotes,
-        footerText: ''
-      });
-    } else {
-      tabs.push({
-        key: 'reverse',
-        label: '退货物流',
-        trackingNo: '',
-        notes: ['暂无退货物流信息'],
-        footerText: ''
-      });
-    }
-    return tabs;
-  }
-
-  function classifyTicketProgressField(field = {}) {
-    const key = String(field.key || '');
-    const value = String(field.value || '');
-    const text = `${key} ${value}`;
-    if (Array.isArray(field.urls) && field.urls.length) return 'proof';
-    if (/凭证|截图|图片|照片/.test(text)) return 'proof';
-    if (/话术|发送话术|回复内容|联系内容/.test(text)) return 'script';
-    if (/地址|代收点|联系地址|收货地址|自取地址/.test(text)) return 'address';
-    if (/物流|运单|快递|签收|揽收|轨迹|取件|送达|发货|退货|逆向/.test(text)) return 'logistics';
-    if (/货物情况|情况确认|处理结果|凭证发送情况|处理方案|核实结果/.test(text)) return 'status';
-    return 'general';
-  }
-
-  function groupTicketProgressFields(fields = []) {
-    return fields.reduce((acc, field) => {
-      const type = classifyTicketProgressField(field);
-      if (!acc[type]) acc[type] = [];
-      acc[type].push(field);
-      return acc;
-    }, {});
-  }
-
-  function renderTicketProgressFieldRow(field = {}) {
-    const label = esc(field.key || '-');
-    const value = esc(field.value || '-');
-    return `<div class="ticket-api-progress-row"><span class="ticket-api-progress-row-label">${label}</span><span class="ticket-api-progress-row-value">${value}</span></div>`;
-  }
-
-  function renderTicketProgressGroup(title, fields = []) {
-    if (!fields.length) return '';
-    return `
-      <div class="ticket-api-progress-group">
-        <div class="ticket-api-progress-group-title">${esc(title)}</div>
-        <div class="ticket-api-progress-group-body">
-          ${fields.map(renderTicketProgressFieldRow).join('')}
-        </div>
-      </div>
-    `;
-  }
-
-  function renderTicketProgressProofGroup(fields = []) {
-    if (!fields.length) return '';
-    return `
-      <div class="ticket-api-progress-group">
-        <div class="ticket-api-progress-group-title">联系凭证</div>
-        <div class="ticket-api-progress-group-body">
-          ${fields.map(field => `
-            ${field.value ? renderTicketProgressFieldRow(field) : ''}
-            ${field.urls?.length ? `
-              <div class="ticket-api-progress-image-list">
-                ${field.urls.map(url => `<img class="ticket-api-progress-image" src="${esc(url)}" alt="">`).join('')}
-              </div>
-            ` : ''}
-          `).join('')}
-        </div>
-      </div>
-    `;
-  }
-
-  function setTicketApiPageMode(mode, options = {}) {
-    ticketApiPageMode = mode === 'detail' ? 'detail' : 'list';
-    getEl('ticketApiPageRoot')?.classList.toggle('is-detail-mode', ticketApiPageMode === 'detail');
-    getEl('ticketApiPageRoot')?.classList.toggle('is-list-mode', ticketApiPageMode !== 'detail');
-    if (options.scroll === false) return;
-    const targetId = ticketApiPageMode === 'detail' ? 'ticketApiDetailShell' : 'ticketApiListSection';
-    getEl(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  function renderTicketFlowList(flowList = []) {
-    if (!flowList.length) {
-      return '<div class="ticket-api-empty-note">暂无服务进度记录</div>';
-    }
-    return `
-      <div class="ticket-api-progress-list">
-        ${flowList.map((item, index) => `
-          <div class="ticket-api-progress-item ${index === 0 ? 'is-current' : ''}">
-            <div class="ticket-api-progress-point"></div>
-            <div class="ticket-api-progress-body">
-              <div class="ticket-api-progress-time">${esc(formatApiDateTime(item.createdAt) || '-')}</div>
-              <div class="ticket-api-progress-title">${esc(item.title || '-')}</div>
-              ${item.content ? `<div class="ticket-api-progress-content">${esc(item.content)}</div>` : ''}
-              ${item.itemList.length ? (() => {
-                const groups = groupTicketProgressFields(item.itemList);
-                return `
-                  <div class="ticket-api-progress-fields">
-                    ${renderTicketProgressGroup('处理结果', groups.status || [])}
-                    ${renderTicketProgressGroup('联系地址', groups.address || [])}
-                    ${renderTicketProgressGroup('物流说明', groups.logistics || [])}
-                    ${renderTicketProgressGroup('发送话术', groups.script || [])}
-                    ${renderTicketProgressGroup('补充信息', groups.general || [])}
-                    ${renderTicketProgressProofGroup(groups.proof || [])}
-                  </div>
-                `;
-              })() : ''}
-              <div class="ticket-api-progress-meta">
-                <span>处理人：${esc(item.operatorName || '-')}</span>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  async function copyTicketDetailText(text, successText = '已复制') {
-    const content = String(text || '').trim();
-    if (!content) return;
-    try {
-      await navigator.clipboard.writeText(content);
-      if (typeof window.showToast === 'function') {
-        window.showToast(successText);
-      }
-    } catch {
-      if (typeof window.showToast === 'function') {
-        window.showToast('复制失败，请稍后重试');
-      }
-    }
-  }
-
-  function bindTicketDetailActions(container) {
-    if (!container) return;
-    container.querySelectorAll('[data-ticket-copy]').forEach(button => {
-      button.addEventListener('click', async event => {
-        event.preventDefault();
-        event.stopPropagation();
-        await copyTicketDetailText(button.dataset.ticketCopy, button.dataset.ticketCopySuccess || '已复制');
-      });
-    });
-    container.querySelectorAll('[data-ticket-logistics-tab]').forEach(button => {
-      button.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        const tabKey = button.dataset.ticketLogisticsTab || 'outbound';
-        if (tabKey === ticketApiActiveLogisticsTab) return;
-        ticketApiActiveLogisticsTab = tabKey;
-        renderTicketApiDetail();
-      });
-    });
-  }
-
-  function renderTicketDetailReceiver(summary = {}) {
-    const displayName = summary.receiverName || '-';
-    const displayPhone = summary.receiverPhoneMasked || summary.receiverPhone || '-';
-    const rawPhone = summary.receiverPhone || '';
-    const displayAddress = summary.receiverAddress || '暂无联系地址信息';
-    return `
-      <div class="ticket-api-side-card">
-        <div class="ticket-api-side-card-title">收货信息</div>
-        <div class="ticket-api-side-alert">${esc(summary.alertText || '请核对收货信息后继续处理')}</div>
-        <div class="ticket-api-kv-card">
-          <div class="ticket-api-kv-row">
-            <span class="ticket-api-kv-label">收货人</span>
-            <span class="ticket-api-kv-value">${esc(displayName)}</span>
-          </div>
-          <div class="ticket-api-kv-row">
-            <span class="ticket-api-kv-label">手机号</span>
-            <span class="ticket-api-kv-value">
-              ${esc(displayPhone)}
-              ${rawPhone ? `<button class="ticket-api-inline-button" data-ticket-copy="${esc(rawPhone)}" data-ticket-copy-success="手机号已复制">查看手机号</button>` : ''}
-            </span>
-          </div>
-          <div class="ticket-api-kv-row is-block">
-            <span class="ticket-api-kv-label">联系地址</span>
-            <span class="ticket-api-kv-value">
-              ${esc(displayAddress)}
-              ${summary.receiverAddress ? `<button class="ticket-api-inline-button" data-ticket-copy="${esc(summary.receiverAddress)}" data-ticket-copy-success="地址已复制">查看姓名和地址</button>` : ''}
-            </span>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderTicketDetailAfterSales(summary = {}) {
-    if (summary.empty) {
-      return `
-        <div class="ticket-api-side-card">
-          <div class="ticket-api-side-card-title">售后信息</div>
-          <div class="ticket-api-side-empty">暂无售后信息</div>
-        </div>
-      `;
-    }
-    return renderTicketInfoGroup({ title: '售后信息', items: summary.items });
-  }
-
-  function renderTicketDetailLogistics(tabs = []) {
-    const normalizedTabs = tabs.length ? tabs : [{ key: 'outbound', label: '发货物流', notes: ['暂无物流信息'] }];
-    const activeTab = normalizedTabs.find(tab => tab.key === ticketApiActiveLogisticsTab) || normalizedTabs[0];
-    return `
-      <div class="ticket-api-side-card">
-        <div class="ticket-api-side-card-title">物流轨迹</div>
-        <div class="ticket-api-logistics-tabs">
-          ${normalizedTabs.map(tab => `
-            <button
-              class="ticket-api-logistics-tab ${tab.key === activeTab.key ? 'active' : ''}"
-              type="button"
-              data-ticket-logistics-tab="${esc(tab.key)}"
-            >${esc(tab.label)}</button>
-          `).join('')}
-        </div>
-        <div class="ticket-api-logistics-body">
-          <div class="ticket-api-logistics-number">
-            物流信息：${esc(activeTab.trackingNo || '暂无运单号')}
-            ${activeTab.trackingNo ? `<button class="ticket-api-inline-button" data-ticket-copy="${esc(activeTab.trackingNo)}" data-ticket-copy-success="物流单号已复制">复制</button>` : ''}
-          </div>
-          <div class="ticket-api-logistics-note">
-            ${activeTab.notes.map(item => `<div>${esc(item)}</div>`).join('')}
-          </div>
-          ${activeTab.footerText ? `<div class="ticket-api-logistics-footer">${esc(activeTab.footerText)}</div>` : ''}
-        </div>
-      </div>
-    `;
-  }
   function findMatchedPayloads(record) {
     if (!record?.ticketNo) return [];
     const matches = [];
@@ -1279,108 +719,99 @@
         <div class="mail-api-detail-meta"><span>工单号：-</span><span>提交时间：-</span></div>
       `;
       panel.innerHTML = '<div class="invoice-api-detail-empty">请选择一条工单记录查看详情</div>';
-      getEl('ticketApiDetailMeta').textContent = '点击列表中的“立即查看”打开详情页';
-      return;
-    }
-
-    if (ticketApiDetailLoading) {
-      head.innerHTML = `
-        <div class="mail-api-detail-title">${esc(ticketApiActiveDetail.questionTitle || ticketApiActiveDetail.ticketType || '工单')}</div>
-        <div class="mail-api-detail-meta">
-          <span>工单号：${esc(ticketApiActiveDetail.ticketNo || '-')}</span>
-          <span>订单号：${esc(ticketApiActiveDetail.orderSn || '-')}</span>
-        </div>
-      `;
-      panel.innerHTML = '<div class="invoice-api-detail-empty">正在加载工单详情接口数据...</div>';
-      getEl('ticketApiDetailMeta').textContent = `正在加载：${ticketApiActiveDetail.ticketNo}`;
+      getEl('ticketApiDetailMeta').textContent = '点击列表中的“立即查看”打开详情';
       return;
     }
 
     const matchedPayloads = findMatchedPayloads(ticketApiActiveDetail);
     const detail = extractDetailFromPayloads(matchedPayloads, ticketApiActiveDetail);
-    const flowList = Array.isArray(ticketApiActiveDetail.flowList) ? ticketApiActiveDetail.flowList : [];
+    const detailImages = detail.images || [];
+    const timeline = detail.timeline || [];
     const orderText = ticketApiActiveDetail.orderSn || ticketApiActiveDetail.ticketNo || '-';
-    const ticketFinished = Boolean(ticketApiActiveDetail.raw?.todoDetail?.finished) || isTicketClosed(ticketApiActiveDetail.status || '');
-    const processLabel = Number(ticketApiActiveDetail.raw?.todoDetail?.serviceDomain ?? ticketApiActiveDetail.serviceDomain ?? 0) === 1 ? '平台处理' : '商家处理';
-    const receiverSummary = buildTicketReceiverSummary(ticketApiActiveDetail);
-    const afterSalesSummary = buildTicketAfterSalesSummary(ticketApiActiveDetail);
-    const logisticsTabs = buildTicketLogisticsTabs(ticketApiActiveDetail);
-    const serviceInfoGroup = ticketApiActiveDetail.serviceInfo;
-    const orderInfoGroup = ticketApiActiveDetail.orderInfo;
-    const goodsTitle = ticketApiActiveDetail.goodsName || ticketApiActiveDetail.questionTitle || '工单';
 
     head.innerHTML = `
-      <div class="ticket-api-detail-topline">
-        <span class="ticket-api-detail-state ${ticketFinished ? 'is-finished' : 'is-pending'}">${ticketFinished ? '[已完结]' : '[处理中]'}</span>
-        <span class="ticket-api-detail-topic">${esc(ticketApiActiveDetail.questionTitle || ticketApiActiveDetail.ticketType || '工单')}</span>
-        <span class="ticket-api-detail-origin">${esc(processLabel)}</span>
-      </div>
-      <div class="ticket-api-detail-submeta">
-        <span>工单号：${esc(ticketApiActiveDetail.ticketNo || '-')}</span>
+      <div class="mail-api-detail-title">${esc(ticketApiActiveDetail.questionTitle || ticketApiActiveDetail.ticketType || '工单')}</div>
+      <div class="mail-api-detail-meta">
         <span>订单号：${esc(orderText)}</span>
         <span>创建时间：${esc(formatApiDateTime(ticketApiActiveDetail.createTime) || '-')}</span>
       </div>
-    `;
-
-    panel.innerHTML = `
-      <div class="ticket-api-detail-scene">
-        <div class="ticket-api-detail-left">
-          ${ticketApiDetailError ? `<div class="ticket-api-detail-error">${esc(ticketApiDetailError)}</div>` : ''}
-          <section class="ticket-api-detail-card">
-            <div class="ticket-api-detail-card-title">服务进度</div>
-            ${renderTicketFlowList(flowList.length ? flowList : detail.timeline.map(item => ({
-              createdAt: item.time,
-              title: item.title,
-              content: item.desc,
-              operatorName: '',
-              itemList: [],
-              images: []
-            })))}
-          </section>
-        </div>
-        <aside class="ticket-api-detail-right">
-          <div class="ticket-api-side-card">
-            <div class="ticket-api-side-card-title">订单信息</div>
-            <div class="ticket-api-order-hero">
-              <div class="ticket-api-order-hero-meta">
-                <span>订单编号：${esc(orderText)}</span>
-                ${ticketApiActiveDetail.orderSn ? `<button class="ticket-api-inline-button" data-ticket-copy="${esc(ticketApiActiveDetail.orderSn)}" data-ticket-copy-success="订单号已复制">复制</button>` : ''}
-              </div>
-              <div class="ticket-api-order-hero-content">
-                ${ticketApiActiveDetail.goodsThumb ? `<img class="ticket-api-order-hero-image" src="${esc(ticketApiActiveDetail.goodsThumb)}" alt="">` : '<div class="ticket-api-order-hero-image is-placeholder">暂无商品图</div>'}
-                <div class="ticket-api-order-hero-body">
-                  <div class="ticket-api-order-hero-title">${esc(goodsTitle)}</div>
-                  ${ticketApiActiveDetail.goodsSpec ? `<div class="ticket-api-order-hero-spec">${esc(ticketApiActiveDetail.goodsSpec)}</div>` : ''}
-                  <div class="ticket-api-order-hero-status">
-                    ${ticketApiActiveDetail.orderStatus ? `<span class="ticket-api-order-status">${esc(ticketApiActiveDetail.orderStatus)}</span>` : ''}
-                    ${ticketApiActiveDetail.goodsNumber ? `<span>数量：x${esc(ticketApiActiveDetail.goodsNumber)}</span>` : ''}
-                  </div>
-                  <div class="ticket-api-order-hero-price">
-                    <span>${esc(ticketApiActiveDetail.goodsPriceText || '-')}</span>
-                    <span>${esc(ticketApiActiveDetail.merchantAmountText ? `实收：${ticketApiActiveDetail.merchantAmountText}` : '')}</span>
-                  </div>
-                </div>
-              </div>
-              ${orderInfoGroup ? `<div class="ticket-api-order-hero-extra">${orderInfoGroup.items.map(item => `<span>${esc(item.label)}：${esc(item.value)}</span>`).join('')}</div>` : ''}
-            </div>
-          </div>
-          ${renderTicketDetailAfterSales(afterSalesSummary)}
-          ${renderTicketDetailReceiver(receiverSummary)}
-          ${renderTicketDetailLogistics(logisticsTabs)}
-          ${serviceInfoGroup ? renderTicketInfoGroup(serviceInfoGroup) : ''}
-        </aside>
+      <div class="ticket-api-detail-summary">
+        <span class="ticket-api-detail-summary-chip">工单号：${esc(ticketApiActiveDetail.ticketNo)}</span>
+        <span class="ticket-api-detail-summary-chip">状态：${esc(ticketApiActiveDetail.status || '-')}</span>
+        <span class="ticket-api-detail-summary-chip">处理人：${esc(ticketApiActiveDetail.assignee || '-')}</span>
+        <span class="ticket-api-detail-summary-chip">问题类型：${esc(ticketApiActiveDetail.ticketType || '-')}</span>
       </div>
     `;
 
-    bindTicketDetailActions(panel);
+    const baseItems = [
+      ['工单号', ticketApiActiveDetail.ticketNo || '-'],
+      ['订单号', ticketApiActiveDetail.orderSn || '-'],
+      ['问题类型', ticketApiActiveDetail.ticketType || '-'],
+      ['工单状态', ticketApiActiveDetail.status || '-'],
+      ['处理人', ticketApiActiveDetail.assignee || '-'],
+      ['创建时间', formatApiDateTime(ticketApiActiveDetail.createTime) || '-'],
+      ['更新时间', formatApiDateTime(ticketApiActiveDetail.updateTime) || '-'],
+      ['处理进度', ticketApiActiveDetail.progressText || '-'],
+      ['商品信息', ticketApiActiveDetail.goodsName || '-']
+    ];
+
+    const questionText = [ticketApiActiveDetail.questionTitle, ticketApiActiveDetail.questionDesc].filter(Boolean).join('\n');
+
+    panel.innerHTML = `
+      <div class="ticket-api-detail-section">
+        <div class="ticket-api-detail-section-title">基础信息</div>
+        <div class="ticket-api-detail-grid">
+          ${baseItems.map(([label, value]) => `
+            <div class="ticket-api-detail-item">
+              <div class="ticket-api-detail-item-label">${esc(label)}</div>
+              <div class="ticket-api-detail-item-value">${esc(value)}</div>
+            </div>
+          `).join('')}
+          <div class="ticket-api-detail-item is-full">
+            <div class="ticket-api-detail-item-label">问题描述</div>
+            <div class="ticket-api-detail-item-value">${esc(questionText || '-')}</div>
+          </div>
+        </div>
+      </div>
+      <div class="ticket-api-detail-section">
+        <div class="ticket-api-detail-section-title">图片/附件</div>
+        ${detailImages.length ? `
+          <div class="ticket-api-gallery">
+            ${detailImages.map((url, index) => `
+              <div class="ticket-api-gallery-item">
+                <img class="ticket-api-gallery-image" src="${esc(url)}" alt="">
+                <div class="ticket-api-gallery-caption">图片 ${index + 1}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div class="ticket-api-table-meta" style="padding:0 2px 2px;">暂无图片数据（需要确保详情接口抓包已进入记录）</div>'}
+      </div>
+      <div class="ticket-api-detail-section">
+        <div class="ticket-api-detail-section-title">流转记录</div>
+        ${timeline.length ? `
+          <div class="ticket-api-timeline">
+            ${timeline.map(item => `
+              <div class="ticket-api-timeline-item">
+                <div class="ticket-api-timeline-time">${esc(formatApiDateTime(item.time) || item.time || '-')}</div>
+                <div class="ticket-api-timeline-title">${esc(item.title || '-')}</div>
+                <div class="ticket-api-timeline-desc">${esc(item.desc || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div class="ticket-api-table-meta" style="padding:0 2px 2px;">暂无流转记录（需要确保详情/流转接口抓包已进入记录）</div>'}
+      </div>
+      <div class="ticket-api-detail-section">
+        <div class="ticket-api-detail-section-title">原始数据</div>
+        <div class="ticket-api-raw-block"><pre>${esc(stringifySafely(detail.merged, 20000) || '')}</pre></div>
+      </div>
+    `;
+
     getEl('ticketApiDetailMeta').textContent = `已打开记录：${ticketApiActiveDetail.ticketNo}`;
   }
 
   function renderTicketApiTraffic() {
     const container = getEl('ticketApiTrafficList');
-    const summary = getEl('ticketApiTrafficSummary');
-    if (!container || !summary) return;
-    summary.textContent = `${ticketApiEntries.length} 条抓包记录`;
+    getEl('ticketApiTrafficSummary').textContent = `${ticketApiEntries.length} 条抓包记录`;
     if (!ticketApiEntries.length) {
       container.innerHTML = '<span class="mail-api-traffic-chip">暂无抓包</span>';
       return;
@@ -1399,11 +830,11 @@
       banner.textContent = '当前没有活跃店铺，请先切换店铺后再查看工单管理接口页。';
       return;
     }
-    if (!ticketApiList.length) {
-      banner.textContent = '正在加载工单列表，请稍候。';
+    if (!ticketApiEntries.length) {
+      banner.textContent = '请先在嵌入网页打开工单管理列表页，再切到接口对接页查看同步结果。';
       return;
     }
-    banner.textContent = `已加载 ${ticketApiList.length} 条工单数据，点击“立即查看”进入详情页。`;
+    banner.textContent = `已抓取 ${ticketApiEntries.length} 条工单管理相关记录，当前解析出 ${ticketApiList.length} 条工单数据。`;
   }
 
   function updateTicketUpdatedAt() {
@@ -1435,7 +866,8 @@
     updateTicketUpdatedAt();
   }
 
-  async function renderTicketApiState() {
+  async function loadTicketApiList() {
+    ticketApiList = parseTicketRecordsFromTraffic(ticketApiEntries);
     renderTicketFilterOptions();
     renderTicketMetrics();
     renderTicketQuickSummary();
@@ -1447,98 +879,25 @@
       ticketApiActiveDetail = visibleList.find(item => String(item.ticketNo) === String(ticketApiActiveId)) || ticketApiActiveDetail;
       renderTicketApiList();
       renderTicketApiDetail();
-      setTicketApiPageMode(ticketApiPageMode, { scroll: false });
+      return;
+    }
+    if (visibleList[0]?.ticketNo) {
+      await openTicketApiDetail(visibleList[0].ticketNo, { skipTraffic: true });
       return;
     }
     ticketApiActiveId = '';
     ticketApiActiveDetail = null;
-    setTicketApiPageMode('list', { scroll: false });
     renderTicketApiDetail();
-  }
-
-  async function loadTicketApiList(options = {}) {
-    let remoteLoaded = false;
-    let remoteError = '';
-    if (activeShopId && typeof window.pddApi.ticketGetList === 'function') {
-      const result = await window.pddApi.ticketGetList({
-        shopId: activeShopId,
-        pageNo: 1,
-        pageSize: 100
-      });
-      if (result && !result.error) {
-        ticketApiList = normalizeTicketApiRemoteList(Array.isArray(result.list) ? result.list : []);
-        remoteLoaded = true;
-      } else {
-        remoteError = result?.error || '加载工单管理列表失败';
-      }
-    }
-    if (!remoteLoaded) {
-      ticketApiList = parseTicketRecordsFromTraffic(ticketApiEntries);
-      if (remoteError && options.silentError !== true) {
-        addLog(`${remoteError}，已回退到抓包解析结果`, 'error');
-      }
-    }
-    await renderTicketApiState();
   }
 
   async function openTicketApiDetail(ticketNo, options = {}) {
     if (!ticketNo) return;
     ticketApiActiveId = String(ticketNo);
     ticketApiActiveDetail = ticketApiList.find(item => String(item.ticketNo) === String(ticketNo)) || null;
-    ticketApiActiveLogisticsTab = 'outbound';
-    setTicketApiPageMode('detail');
-    const baseRecord = ticketApiList.find(item => String(item.ticketNo) === String(ticketNo)) || ticketApiActiveDetail;
-    const detailRequestId = resolveTicketDetailRequestId(baseRecord || {});
-    ticketApiDetailLoading = Boolean(baseRecord && activeShopId && detailRequestId && typeof window.pddApi.ticketGetDetail === 'function');
-    ticketApiDetailError = '';
     renderTicketApiList();
     renderTicketApiDetail();
     if (!options.skipTraffic) {
       await loadTicketApiTraffic();
-    }
-    if (!baseRecord) {
-      ticketApiDetailLoading = false;
-      renderTicketApiDetail();
-      return;
-    }
-    if (!detailRequestId) {
-      ticketApiDetailLoading = false;
-      ticketApiDetailError = '该记录缺少详情实例 ID，已先展示列表基础信息';
-      renderTicketApiDetail();
-      return;
-    }
-    if (!activeShopId || typeof window.pddApi.ticketGetDetail !== 'function') {
-      ticketApiDetailLoading = false;
-      renderTicketApiDetail();
-      return;
-    }
-    const activeIdAtRequest = ticketApiActiveId;
-    try {
-      const result = await window.pddApi.ticketGetDetail({
-        shopId: activeShopId,
-        detailRequestId,
-        instanceId: detailRequestId,
-        ticketNo: baseRecord.ticketNo
-      });
-      if (ticketApiActiveId !== activeIdAtRequest) return;
-      if (result && !result.error && result.detail) {
-        const normalizedDetail = normalizeTicketApiRemoteDetail(result.detail, baseRecord, result.instanceId || baseRecord.instanceId || baseRecord.ticketNo);
-        const mergedDetail = mergeTicketDetailRecord(baseRecord, normalizedDetail);
-        ticketApiActiveDetail = mergedDetail;
-        upsertTicketApiListItem(mergedDetail);
-      } else if (result?.error) {
-        ticketApiDetailError = result.error;
-      } else {
-        ticketApiDetailError = '工单详情接口未返回可识别的详情数据';
-      }
-    } catch (error) {
-      if (ticketApiActiveId !== activeIdAtRequest) return;
-      ticketApiDetailError = error?.message || '加载工单详情失败';
-    } finally {
-      if (ticketApiActiveId !== activeIdAtRequest) return;
-      ticketApiDetailLoading = false;
-      renderTicketApiList();
-      renderTicketApiDetail();
     }
   }
 
@@ -1552,10 +911,6 @@
     ticketApiDatePreset = 'all';
     ticketApiActiveId = '';
     ticketApiActiveDetail = null;
-    ticketApiDetailLoading = false;
-    ticketApiDetailError = '';
-    ticketApiPageMode = 'list';
-    ticketApiActiveLogisticsTab = 'outbound';
     const keyword = getEl('ticketApiKeyword');
     if (keyword) keyword.value = '';
     ['ticketApiTypeFilter', 'ticketApiStatusFilter'].forEach(id => {
@@ -1572,7 +927,6 @@
     renderTicketApiTraffic();
     updateTicketApiBannerText();
     updateTicketUpdatedAt();
-    setTicketApiPageMode('list', { scroll: false });
   }
 
   async function loadTicketApiView() {
@@ -1593,7 +947,7 @@
     getEl('btnTicketApiRefreshPage')?.addEventListener('click', () => window.pddApi.reloadPdd());
     getEl('btnTicketApiReloadTraffic')?.addEventListener('click', async () => {
       await loadTicketApiTraffic();
-      updateTicketApiBannerText();
+      await loadTicketApiList();
       addLog('已刷新工单管理抓包记录', 'info');
     });
     getEl('btnTicketApiRefreshList')?.addEventListener('click', async () => {
@@ -1605,11 +959,10 @@
       const shopId = activeShopId || API_ALL_SHOPS;
       await window.pddApi.clearApiTraffic({ shopId });
       await loadTicketApiTraffic();
-      updateTicketApiBannerText();
+      await loadTicketApiList();
       addLog('已清空当前范围的工单管理抓包记录', 'info');
     });
     getEl('btnTicketApiBackToTicket')?.addEventListener('click', () => switchView('ticket'));
-    getEl('btnTicketApiBackToList')?.addEventListener('click', () => setTicketApiPageMode('list'));
     getEl('btnTicketApiApplyFilters')?.addEventListener('click', async () => {
       ticketApiKeyword = getEl('ticketApiKeyword').value || '';
       await loadTicketApiList();

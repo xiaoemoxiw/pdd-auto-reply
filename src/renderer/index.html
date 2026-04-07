@@ -989,384 +989,6 @@
       resize: none;
     }
 
-    .api-small-payment-modal {
-      width: min(92vw, 700px);
-      max-width: 700px;
-    }
-
-    .api-small-payment-body {
-      padding: 24px 28px 20px;
-    }
-
-    .api-small-payment-intro {
-      padding: 14px 16px;
-      border: 1px solid #bad3ff;
-      border-radius: 6px;
-      background: #f5f9ff;
-      color: #3b4252;
-      font-size: 13px;
-      line-height: 1.8;
-    }
-
-    .api-small-payment-intro strong {
-      display: block;
-      margin-bottom: 2px;
-      color: #1f2430;
-      font-size: 14px;
-    }
-
-    .api-small-payment-section {
-      margin-top: 24px;
-    }
-
-    .api-small-payment-form-row {
-      display: grid;
-      grid-template-columns: 72px minmax(0, 1fr);
-      gap: 12px;
-      align-items: start;
-    }
-
-    .api-small-payment-form-row+.api-small-payment-form-row {
-      margin-top: 18px;
-    }
-
-    .api-small-payment-form-label {
-      padding-top: 12px;
-      color: #5b6472;
-      font-size: 14px;
-      line-height: 1.4;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .api-small-payment-order-card {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 10px 14px;
-      border: 1px solid #dfe4ec;
-      border-radius: 6px;
-      background: #fff;
-    }
-
-    .api-small-payment-order-media,
-    .api-small-payment-order-media img {
-      width: 82px;
-      height: 82px;
-      border-radius: 4px;
-      flex-shrink: 0;
-    }
-
-    .api-small-payment-order-media {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #f3f5f9;
-      overflow: hidden;
-      color: #a6adbb;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .api-small-payment-order-media img {
-      display: block;
-      object-fit: cover;
-      background: #f3f5f9;
-    }
-
-    .api-small-payment-order-main {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .api-small-payment-order-id {
-      color: #333;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .api-small-payment-order-title {
-      margin-top: 4px;
-      color: #333;
-      font-size: 15px;
-      line-height: 1.45;
-      font-weight: 600;
-      word-break: break-word;
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
-      overflow: hidden;
-    }
-
-    .api-small-payment-order-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: 8px;
-    }
-
-    .api-small-payment-order-detail {
-      min-width: 0;
-      flex: 1;
-      color: #7f8794;
-      font-size: 13px;
-      line-height: 1.4;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .api-small-payment-order-price {
-      color: #666;
-      font-size: 15px;
-      line-height: 1.2;
-      white-space: nowrap;
-    }
-
-    .api-small-payment-order-price strong {
-      color: #444;
-      font-size: 28px;
-      font-weight: 600;
-      line-height: 1;
-    }
-
-    .api-small-payment-order-action {
-      flex-shrink: 0;
-    }
-
-    .api-small-payment-order-btn {
-      min-width: 94px;
-      height: 36px;
-      padding: 0 14px;
-      border: 1px solid #89a2f4;
-      border-radius: 6px;
-      background: #fff;
-      color: #4f73ef;
-      font-size: 14px;
-      line-height: 1;
-      cursor: pointer;
-    }
-
-    .api-small-payment-order-btn:hover {
-      background: #eef3ff;
-    }
-
-    .api-small-payment-order-selector {
-      margin-top: 10px;
-      border: 1px solid #dfe4ec;
-      border-radius: 6px;
-      background: #f8fafc;
-      max-height: 220px;
-      overflow: auto;
-    }
-
-    .api-small-payment-order-option {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 12px 14px;
-      border-bottom: 1px solid #e8edf5;
-    }
-
-    .api-small-payment-order-option:last-child {
-      border-bottom: none;
-    }
-
-    .api-small-payment-order-option-main {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .api-small-payment-order-option-id {
-      color: #333;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .api-small-payment-order-option-title {
-      margin-top: 4px;
-      color: #333;
-      font-size: 13px;
-      line-height: 1.45;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .api-small-payment-order-option-meta {
-      margin-top: 4px;
-      color: #7f8794;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .api-small-payment-order-option-btn {
-      flex-shrink: 0;
-      height: 30px;
-      padding: 0 12px;
-      border: 1px solid #89a2f4;
-      border-radius: 6px;
-      background: #fff;
-      color: #4f73ef;
-      font-size: 13px;
-      cursor: pointer;
-    }
-
-    .api-small-payment-order-option-btn:hover {
-      background: #eef3ff;
-    }
-
-    .api-small-payment-status-card {
-      margin-top: 18px;
-      padding: 12px 14px;
-      border: 1px solid #e5e9f2;
-      border-radius: 6px;
-      background: #fafbfd;
-    }
-
-    .api-small-payment-status-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px 16px;
-      align-items: center;
-    }
-
-    .api-small-payment-status-chip {
-      color: #5b6472;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .api-small-payment-status-chip strong {
-      color: #1f2430;
-      font-weight: 600;
-    }
-
-    .api-small-payment-status-tips {
-      margin-top: 10px;
-      color: #7f8794;
-      font-size: 12px;
-      line-height: 1.6;
-    }
-
-    .api-small-payment-status-tips span+span::before {
-      content: " / ";
-      color: #c0c6d4;
-    }
-
-    .api-small-payment-type-group {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .api-small-payment-type-option {
-      position: relative;
-      flex: 1;
-      min-width: 140px;
-    }
-
-    .api-small-payment-type-option input {
-      position: absolute;
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .api-small-payment-type-option span {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 40px;
-      border: 1px solid #d6dbe6;
-      border-radius: 6px;
-      background: #fff;
-      color: #555;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.18s ease;
-    }
-
-    .api-small-payment-type-option input:checked+span {
-      border-color: #6f8ff4;
-      background: #f5f8ff;
-      color: #4f73ef;
-      box-shadow: inset 0 0 0 1px rgba(79, 115, 239, 0.15);
-    }
-
-    .api-small-payment-amount-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .api-small-payment-amount-input-wrap {
-      position: relative;
-      width: 216px;
-      max-width: 100%;
-    }
-
-    .api-small-payment-amount-prefix {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #555;
-      font-size: 18px;
-      line-height: 1;
-    }
-
-    .api-small-payment-amount-input {
-      height: 42px;
-      padding-left: 30px;
-      font-size: 18px;
-    }
-
-    .api-small-payment-amount-tip {
-      color: #666;
-      font-size: 13px;
-      line-height: 1.4;
-      white-space: nowrap;
-    }
-
-    .api-small-payment-note-wrap {
-      position: relative;
-    }
-
-    .api-small-payment-note {
-      min-height: 114px;
-      padding-bottom: 28px;
-      resize: none;
-    }
-
-    .api-small-payment-note-count {
-      position: absolute;
-      right: 14px;
-      bottom: 10px;
-      color: #a0a7b4;
-      font-size: 12px;
-      line-height: 1;
-      pointer-events: none;
-    }
-
-    .api-small-payment-permission {
-      margin-top: 26px;
-      text-align: center;
-      color: #4f73ef;
-      font-size: 14px;
-      line-height: 1.6;
-    }
-
-    .api-small-payment-modal .modal-footer {
-      justify-content: flex-end;
-      gap: 12px;
-      padding: 14px 24px;
-    }
-
     .api-refund-amount:disabled {
       background: #f5f5f5;
       color: #666;
@@ -2263,30 +1885,25 @@
       flex-direction: column;
       justify-content: center;
       position: relative;
-      padding-right: 0;
+      padding-right: 58px;
     }
 
     .api-session-item-title {
-      width: 100%;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
       min-width: 0;
-      position: relative;
     }
 
     .api-session-item-info-row {
       display: flex;
       align-items: center;
-      justify-content: flex-start;
       gap: 8px;
       min-width: 0;
       flex: 1;
     }
 
     .api-session-item-name {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
       color: #333;
       display: flex;
@@ -2305,13 +1922,10 @@
     }
 
     .api-session-item-time {
-      display: flex;
-      align-items: center;
       font-size: 11px;
       color: #999;
       white-space: nowrap;
       flex-shrink: 0;
-      text-align: right;
     }
 
     .api-session-item-wait {
@@ -2330,23 +1944,24 @@
     }
 
     .api-session-item.reply-pending .api-session-main {
-      padding-right: 72px;
       padding-bottom: 14px;
     }
 
     .api-session-shop {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 6px;
       min-width: 0;
       flex-shrink: 0;
     }
 
     .api-session-time-group {
+      position: absolute;
+      top: 0;
+      right: 0;
       display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      min-width: max-content;
+      align-items: flex-end;
+      justify-content: flex-start;
       flex-shrink: 0;
     }
 
@@ -2354,17 +1969,17 @@
     .api-session-order-tag {
       display: inline-flex;
       align-items: center;
-      height: 16px;
-      padding: 0 5px;
-      border-radius: 5px;
-      font-size: 8px;
-      line-height: 16px;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 11px;
+      font-size: 11px;
+      line-height: 22px;
     }
 
     .api-session-shop-tag {
       background: #eef3ff;
       color: #4d66a5;
-      font-size: 9px;
+      font-size: 10px;
       max-width: 92px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -2372,8 +1987,8 @@
     }
 
     .api-session-order-tag {
-      background: #b91212;
-      color: #ffffff;
+      background: #fff4e8;
+      color: #b96812;
     }
 
     .api-session-star {
@@ -2500,7 +2115,6 @@
       color: #333;
       display: flex;
       align-items: center;
-      flex-wrap: wrap;
       gap: 8px;
     }
 
@@ -2539,95 +2153,6 @@
       color: #e02e24;
     }
 
-    .api-conversation-risk {
-      position: relative;
-      display: flex;
-      align-items: center;
-    }
-
-    .api-conversation-risk::after {
-      content: '';
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      height: 12px;
-    }
-
-    .api-conversation-action-icon {
-      width: 34px;
-      min-width: 34px;
-      padding: 0;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .api-conversation-action-icon svg {
-      width: 18px;
-      height: 18px;
-      stroke: currentColor;
-      fill: none;
-      stroke-width: 1.9;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
-    .api-conversation-risk:hover .api-risk-menu,
-    .api-conversation-risk:focus-within .api-risk-menu {
-      opacity: 1;
-      transform: translate(-50%, 0);
-      pointer-events: auto;
-    }
-
-    .api-risk-menu {
-      position: absolute;
-      top: calc(100% + 10px);
-      left: 50%;
-      transform: translate(-50%, 6px);
-      min-width: 108px;
-      padding: 10px 0;
-      border: 1px solid #ebeef5;
-      border-radius: 10px;
-      background: #fff;
-      box-shadow: 0 12px 24px rgba(31, 45, 61, 0.12);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.18s ease, transform 0.18s ease;
-      z-index: 30;
-    }
-
-    .api-risk-menu::before {
-      content: '';
-      position: absolute;
-      top: -8px;
-      left: 50%;
-      width: 14px;
-      height: 14px;
-      background: #fff;
-      border-top: 1px solid #ebeef5;
-      border-left: 1px solid #ebeef5;
-      transform: translateX(-50%) rotate(45deg);
-    }
-
-    .api-risk-menu-item {
-      width: 100%;
-      border: 0;
-      background: transparent;
-      color: #333;
-      font-size: 14px;
-      line-height: 22px;
-      text-align: center;
-      padding: 12px 18px;
-      cursor: pointer;
-      transition: background 0.18s ease, color 0.18s ease;
-    }
-
-    .api-risk-menu-item:hover {
-      background: #fff6f5;
-      color: #e02e24;
-    }
-
     .api-chat-follow-tag {
       background: #f2f7ff;
       color: #4f73ef;
@@ -2636,26 +2161,6 @@
     .api-chat-follow-tag.is-unread {
       background: #fff1f0;
       color: #e24c3d;
-    }
-
-    .api-chat-order-tag {
-      background: #fff4e8;
-      color: #c5771b;
-    }
-
-    .api-chat-gender-tag.is-female {
-      background: #ffffff;
-      color: #d54b8b;
-    }
-
-    .api-chat-gender-tag.is-male {
-      background: #ffffff;
-      color: #3e78d3;
-    }
-
-    .api-chat-gender-tag.is-unknown {
-      background: #f2f4f7;
-      color: #667085;
     }
 
     .api-banner {
@@ -2714,7 +2219,7 @@
       align-items: center;
       height: 22px;
       padding: 0 8px;
-      border-radius: 5px;
+      border-radius: 11px;
       background: #fff1f0;
       color: #e02e24;
       font-size: 11px;
@@ -2769,13 +2274,6 @@
 
     .api-message-item.system.unmatched-reply {
       margin: 6px auto 10px;
-    }
-
-    .api-message-item.platform-card {
-      display: flex;
-      justify-content: center;
-      margin: 8px auto 14px;
-      padding: 0 16px;
     }
 
     .api-message-avatar {
@@ -2849,361 +2347,6 @@
       font-size: 12px;
       line-height: 1.5;
       letter-spacing: 0;
-    }
-
-    .api-message-system-bubble.refund-notice {
-      display: block;
-      max-width: min(96%, 560px);
-      padding: 0;
-      background: transparent;
-      color: inherit;
-    }
-
-    .api-system-refund-card {
-      display: flex;
-      flex-direction: column;
-      width: 540px;
-      max-width: 100%;
-      border: 1px solid #d9d9d9;
-      border-radius: 0;
-      background: #fff;
-      box-shadow: none;
-      overflow: hidden;
-      text-align: left;
-    }
-
-    .api-system-refund-card.pending {
-      width: 368px;
-      border-color: #ececec;
-    }
-
-    .api-system-refund-card-header {
-      padding: 15px 10px 9px;
-      border-bottom: 1px solid #e6e6e6;
-      color: #333;
-      font-size: 14px;
-      line-height: 1.3;
-      font-weight: 500;
-      word-break: break-word;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-header {
-      padding: 5px;
-      border-bottom-color: #ececec;
-      line-height: 1.4;
-    }
-
-    .api-system-refund-card-body {
-      background: #fff;
-    }
-
-    .api-system-refund-card-goods {
-      display: flex;
-      gap: 16px;
-      padding: 8px 16px;
-      border-bottom: 1px solid #e6e6e6;
-      background: #fff;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-goods {
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 10px 18px;
-      border-bottom-color: #ececec;
-    }
-
-    .api-system-refund-card-media,
-    .api-system-refund-card-media-placeholder {
-      width: 66px;
-      height: 66px;
-      flex-shrink: 0;
-      border-radius: 0;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-media,
-    .api-system-refund-card.pending .api-system-refund-card-media-placeholder {
-      width: 100px;
-      height: 100px;
-    }
-
-    .api-system-refund-card-media {
-      display: block;
-      object-fit: cover;
-      background: #eceef2;
-    }
-
-    .api-system-refund-card-media-placeholder {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #eceef2;
-      color: #a1a8b3;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .api-system-refund-card-main {
-      min-width: 0;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-main {
-      gap: 4px;
-    }
-
-    .api-system-refund-card-media-block {
-      width: 100px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .api-system-refund-card-media-title {
-      color: #333;
-      font-size: 12px;
-      line-height: 1.45;
-      word-break: break-word;
-    }
-
-    .api-system-refund-card-side {
-      min-width: 0;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 10px;
-    }
-
-    .api-system-refund-card-side-top {
-      width: 100%;
-      display: flex;
-      justify-content: flex-end;
-    }
-
-    .api-system-refund-card-side-price {
-      color: #333;
-      font-size: 16px;
-      line-height: 1.2;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-
-    .api-system-refund-card-title-row {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    .api-system-refund-card-goods-title {
-      min-width: 0;
-      flex: 1;
-      color: #333;
-      font-size: 12px;
-      line-height: 1.56;
-      word-break: break-word;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-goods-title {
-      font-size: 14px;
-      line-height: 1.4;
-    }
-
-    .api-system-refund-card-price {
-      flex-shrink: 0;
-      color: #333;
-      font-size: 12px;
-      line-height: 1;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-price {
-      font-size: 16px;
-      font-weight: 600;
-    }
-
-    .api-system-refund-card-spec {
-      color: #999;
-      font-size: 12px;
-      line-height: 1;
-      word-break: break-word;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-spec {
-      font-size: 12px;
-      line-height: 1.2;
-    }
-
-    .api-system-refund-card-rows {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding: 8px 10px;
-      background: #fff;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-rows {
-      gap: 10px;
-      padding: 16px 18px 18px;
-    }
-
-    .api-system-refund-card-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      font-size: 11px;
-      line-height: 1.4;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-row {
-      gap: 14px;
-      font-size: 12px;
-      line-height: 1;
-    }
-
-    .api-system-refund-card-label {
-      width: 48px;
-      flex-shrink: 0;
-      color: #999;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-label {
-      width: 50px;
-    }
-
-    .api-system-refund-card-value {
-      min-width: 0;
-      flex: 1;
-      color: #333;
-      font-size: 11px;
-      line-height: 1.4;
-      word-break: break-word;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-value {
-      font-size: 12px;
-      line-height: 1;
-    }
-
-    .api-system-refund-card-value.is-emphasis {
-      color: #f03b2f;
-      font-weight: 600;
-    }
-
-    .api-system-refund-card-footer {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      min-height: 25px;
-      padding: 8px 10px;
-      border-top: 1px solid #e6e6e6;
-      background: #fff;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-footer {
-      padding: 14px 18px 16px;
-      border-top-color: #ececec;
-    }
-
-    .api-system-refund-card-action {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 28px;
-      height: 25px;
-      padding: 0 16px;
-      border: 1px solid #4f74f9;
-      border-radius: 7px;
-      color: #4f74f9;
-      font-size: 10px;
-      line-height: 1;
-      background: #fff;
-      box-sizing: border-box;
-    }
-
-    .api-system-refund-card.pending .api-system-refund-card-action {
-      font-size: 11px;
-    }
-
-    .api-system-refund-card.success {
-      border-color: #e6e7ea;
-    }
-
-    .api-system-refund-card-success-head {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 14px 16px 12px;
-      color: #333;
-      font-size: 13px;
-      line-height: 1.2;
-      font-weight: 600;
-      border-bottom: 1px solid #ececec;
-      background: #fff;
-    }
-
-    .api-system-refund-card-success-icon {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: #21b45b;
-      position: relative;
-      flex-shrink: 0;
-    }
-
-    .api-system-refund-card-success-icon::before {
-      content: '';
-      position: absolute;
-      left: 4px;
-      top: 3px;
-      width: 6px;
-      height: 3px;
-      border-left: 2px solid #fff;
-      border-bottom: 2px solid #fff;
-      transform: rotate(-45deg);
-    }
-
-    .api-system-refund-card-success-meta {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: auto;
-    }
-
-    .api-system-refund-card-success-actual {
-      flex-shrink: 0;
-      color: #333;
-      font-size: 12px;
-      line-height: 1.2;
-      white-space: nowrap;
-    }
-
-    .api-system-refund-card-success-amount {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 16px 14px;
-      color: #333;
-      font-size: 12px;
-      line-height: 1.2;
-      background: #fff;
-    }
-
-    .api-system-refund-card-success-amount-label {
-      color: #999;
-    }
-
-    .api-system-refund-card-success-amount-value {
-      color: #e14b44;
-      font-size: 13px;
-      font-weight: 600;
     }
 
     .api-message-system-main {
@@ -3292,150 +2435,6 @@
     .api-goods-card-bubble {
       width: 238px;
       padding: 10px 10px 9px;
-    }
-
-    .api-refund-card-bubble {
-      width: 368px;
-      padding: 0;
-      background: #fff !important;
-      border: 1px solid #e7e7ea !important;
-      border-radius: 2px !important;
-      box-shadow: none !important;
-      overflow: hidden;
-      text-align: left;
-    }
-
-    .api-refund-card-header {
-      padding: 5px 5px;
-      font-size: 14px;
-      line-height: 1.4;
-      color: #333;
-      font-weight: 400;
-      border-bottom: 1px solid #ececec;
-    }
-
-    .api-refund-card-goods {
-      display: flex;
-      gap: 10px;
-      margin: 0;
-      padding: 14px 18px;
-      background: #fff;
-      border-radius: 0;
-      border-bottom: 1px solid #ececec;
-    }
-
-    .api-refund-card-media,
-    .api-refund-card-media-placeholder {
-      width: 53px;
-      height: 53px;
-      border-radius: 0;
-      flex-shrink: 0;
-    }
-
-    .api-refund-card-media {
-      display: block;
-      object-fit: cover;
-      background: #eceef2;
-    }
-
-    .api-refund-card-media-placeholder {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #eceef2;
-      color: #a1a8b3;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .api-refund-card-main {
-      min-width: 0;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .api-refund-card-goods-title {
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
-      overflow: hidden;
-      font-size: 13px;
-      line-height: 1.5;
-      color: #333;
-      word-break: break-word;
-    }
-
-    .api-refund-card-goods-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      margin-top: auto;
-    }
-
-    .api-refund-card-goods-price {
-      color: #333;
-      font-size: 16px;
-      font-weight: 600;
-      line-height: 1;
-    }
-
-    .api-refund-card-goods-spec {
-      color: #999;
-      font-size: 12px;
-      line-height: 1.2;
-      text-align: right;
-    }
-
-    .api-refund-card-rows {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      padding: 16px 18px 18px;
-    }
-
-    .api-refund-card-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 14px;
-      font-size: 11px;
-      line-height: 1;
-    }
-
-    .api-refund-card-label {
-      width: 50px;
-      flex-shrink: 0;
-      color: #999;
-    }
-
-    .api-refund-card-value {
-      min-width: 0;
-      flex: 1;
-      color: #333;
-      word-break: break-word;
-    }
-
-    .api-refund-card-value.is-emphasis {
-      color: #e14b44;
-      font-weight: 600;
-    }
-
-    .api-refund-card-footer {
-      display: flex;
-      justify-content: flex-end;
-      padding: 14px 18px 16px;
-      color: #b3b3b3;
-      font-size: 12px;
-      line-height: 1.2;
-      border-top: 1px solid #ececec;
-      background: #fff;
-    }
-
-    .api-refund-card-section {
-      background: #fff;
     }
 
     .api-goods-card-top {
@@ -3579,165 +2578,6 @@
       box-sizing: border-box;
       white-space: nowrap;
       letter-spacing: 0;
-      cursor: pointer;
-    }
-
-    .api-goods-spec-modal {
-      width: min(90vw, 400px);
-      max-width: 400px;
-    }
-
-    .api-goods-spec-summary {
-      margin-bottom: 14px;
-      padding: 14px;
-      border: 1px solid #e8ebf2;
-      border-radius: 8px;
-      background: #f8f9fc;
-    }
-
-    .api-goods-spec-product {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
-    }
-
-    .api-goods-spec-product-image {
-      width: 72px;
-      height: 72px;
-      border-radius: 8px;
-      object-fit: cover;
-      flex-shrink: 0;
-      background: #eef2f7;
-    }
-
-    .api-goods-spec-product-image.placeholder {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #8c94a3;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .api-goods-spec-product-main {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .api-goods-spec-product-id-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .api-goods-spec-product-id {
-      min-width: 0;
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: #7f8794;
-      font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .api-goods-spec-product-title {
-      margin-top: 4px;
-      color: #1f2430;
-      font-size: 14px;
-      font-weight: 600;
-      line-height: 1.5;
-      word-break: break-word;
-    }
-
-    .api-goods-spec-product-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 8px;
-    }
-
-    .api-goods-spec-product-meta span {
-      padding: 2px 8px;
-      color: #474748;
-      font-size: 12px;
-      line-height: 20px;
-    }
-
-    .api-goods-spec-loading,
-    .api-goods-spec-empty,
-    .api-goods-spec-error {
-      padding: 18px 12px;
-      border-radius: 8px;
-      text-align: center;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .api-goods-spec-loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #5b6472;
-      background: #f8f9fc;
-    }
-
-    .api-goods-spec-empty {
-      color: #7f8794;
-      background: #f8f9fc;
-    }
-
-    .api-goods-spec-error {
-      color: #cf3d33;
-      background: #fff3f1;
-      border: 1px solid #ffd9d3;
-    }
-
-    .api-goods-spec-table-wrap {
-      overflow: auto;
-      border: 1px solid #e8ebf2;
-      border-radius: 8px;
-      background: #fff;
-    }
-
-    .api-goods-spec-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      table-layout: fixed;
-    }
-
-    .api-goods-spec-table th,
-    .api-goods-spec-table td {
-      padding: 10px 12px;
-      border-bottom: 1px solid #edf0f5;
-      text-align: left;
-      color: #303546;
-      vertical-align: top;
-      word-break: break-word;
-    }
-
-    .api-goods-spec-cell {
-      display: block;
-      min-width: 0;
-    }
-
-    .api-goods-spec-cell.is-truncate {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      word-break: normal;
-      cursor: default;
-    }
-
-    .api-goods-spec-table th {
-      background: #f7f8fb;
-      color: #5b6472;
-      font-weight: 600;
-    }
-
-    .api-goods-spec-table tbody tr:last-child td {
-      border-bottom: 0;
     }
 
     .api-message-bubble {
@@ -3779,367 +2619,7 @@
       max-width: 180px;
       max-height: 180px;
       border-radius: 8px;
-      cursor: zoom-in;
-    }
-
-    .api-image-preview-modal {
-      width: min(90vw, 960px);
-      max-width: 960px;
-      background: #111827;
-    }
-
-    .api-image-preview-modal .modal-header {
-      border-bottom-color: rgba(255, 255, 255, 0.08);
-    }
-
-    .api-image-preview-modal .modal-header h3,
-    .api-image-preview-modal .modal-close {
-      color: #fff;
-    }
-
-    .api-image-preview-modal .modal-close:hover {
-      background: rgba(255, 255, 255, 0.12);
-    }
-
-    .api-image-preview-body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-      background: #111827;
-      max-height: 80vh;
-    }
-
-    .api-image-preview-content {
-      display: block;
-      max-width: 100%;
-      max-height: calc(80vh - 32px);
-      object-fit: contain;
-      border-radius: 8px;
-      background: #0f172a;
-    }
-
-    .api-message-video {
-      display: block;
-      position: relative;
-      width: 100px;
-      min-width: 100px;
-      max-width: 100px;
-      border-radius: 8px;
-      overflow: hidden;
-      background: #111827;
-      color: #fff;
-    }
-
-    .api-message-video-cover {
-      width: 100%;
-      height: 180px;
-      object-fit: cover;
-      display: block;
-      background: linear-gradient(135deg, #eef2ff, #c7d2fe);
-    }
-
-    .api-message-video-fallback {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 180px;
-      background: linear-gradient(135deg, #64748b, #0f172a);
-      font-size: 42px;
-    }
-
-    .api-message-video-mask {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.32));
-      pointer-events: none;
-    }
-
-    .api-message-video-play {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: rgba(15, 23, 42, 0.62);
-      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
-      position: relative;
-    }
-
-    .api-message-video-play::before {
-      content: '';
-      position: absolute;
-      top: 8px;
-      left: 12px;
-      border-top: 8px solid transparent;
-      border-bottom: 8px solid transparent;
-      border-left: 10px solid #fff;
-    }
-
-    .api-message-video-footer {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      padding: 6px 8px;
-      background: linear-gradient(rgba(15, 23, 42, 0), rgba(15, 23, 42, 0.82));
-      font-size: 10px;
-      line-height: 1.3;
-    }
-
-    .api-message-video-duration,
-    .api-message-video-label {
-      color: #fff;
-    }
-
-    .api-video-popover-backdrop {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.08);
-      backdrop-filter: blur(1px);
-      z-index: 2090;
-    }
-
-    .api-video-popover-backdrop.visible {
-      display: block;
-    }
-
-    .api-video-popover {
-      display: none;
-      position: fixed;
-      left: 0;
-      top: 0;
-      width: min(420px, calc(100vw - 32px));
-      max-height: min(320px, calc(100vh - 32px));
-      background: #fff;
-      border: 1px solid #e6ebf5;
-      border-radius: 12px;
-      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
-      overflow: hidden;
-      z-index: 2100;
-    }
-
-    .api-video-popover.visible {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .api-video-popover-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 12px 14px 10px;
-      border-bottom: 1px solid #eef1f6;
-    }
-
-    .api-video-popover-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: #202939;
-    }
-
-    .api-video-popover-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .api-video-popover-actions-text{
-      font-size: 10px
-    }
-
-    .api-video-popover-content {
-      flex: 1;
-      padding: 10px 12px;
-      min-height: 0;
-    }
-
-    .api-video-popover-footer {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding: 8px 12px 10px;
-      border-top: 1px solid #eef1f6;
-      background: #fff;
-    }
-
-    .api-video-empty {
-      min-height: 132px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      color: #2f3a4a;
-      font-size: 15px;
-      background:
-        linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)),
-        repeating-linear-gradient(-25deg, rgba(229, 231, 235, 0.22) 0, rgba(229, 231, 235, 0.22) 12px, rgba(255, 255, 255, 0) 12px, rgba(255, 255, 255, 0) 120px);
-    }
-
-    .api-video-empty-action {
-      border: none;
-      background: none;
-      color: #5b7cff;
       cursor: pointer;
-      font-size: inherit;
-      padding: 0;
-    }
-
-    .api-video-grid {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      align-content: flex-start;
-      gap: 8px;
-      max-height: 188px;
-      overflow-y: auto;
-      padding-right: 2px;
-    }
-
-    .api-video-card {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 8px;
-      width: 118px;
-      flex: 0 0 118px;
-      box-sizing: border-box;
-      border: 1px solid #e7eaf0;
-      border-radius: 10px;
-      background: #fff;
-      cursor: pointer;
-      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
-      text-align: left;
-      padding: 10px;
-    }
-
-    .api-video-card-media {
-      width: 100%;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 0;
-    }
-
-    .api-video-card:hover {
-      border-color: #c8d4ff;
-      box-shadow: 0 8px 20px rgba(91, 124, 255, 0.12);
-      transform: translateY(-1px);
-    }
-
-    .api-video-card.is-selected {
-      border-color: #5b7cff;
-      box-shadow: 0 0 0 2px rgba(91, 124, 255, 0.12);
-    }
-
-    .api-video-card.is-selected .api-video-card-media {
-      border-color: #9bb6eb;
-    }
-
-    .api-video-card-cover-wrap {
-      position: relative;
-      width: 98px;
-      height: 98px;
-      background: linear-gradient(135deg, #dbeafe, #e9d5ff);
-      border: 1px solid #d8dfeb;
-      border-radius: 6px;
-      overflow: hidden;
-    }
-
-    .api-video-card-cover {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-
-    .api-video-card-fallback {
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      color: #fff;
-      background: linear-gradient(135deg, #94a3b8, #334155);
-    }
-
-    .api-video-card-duration {
-      position: absolute;
-      right: 3px;
-      bottom: 3px;
-      padding: 1px 4px;
-      border-radius: 999px;
-      background: rgba(15, 23, 42, 0.72);
-      color: #fff;
-      font-size: 8px;
-      line-height: 1.4;
-    }
-
-    .api-video-card-send {
-      border: 0;
-      min-width: 50px;
-      height: 24px;
-      padding: 0 10px;
-      border-radius: 4px;
-      background: #c7d4e3;
-      color: #2f3d52;
-      font-size: 12px;
-      font-weight: 600;
-      line-height: 24px;
-      cursor: pointer;
-      box-shadow: none;
-      flex-shrink: 0;
-    }
-
-    .api-video-card-send:hover {
-      background: #bccbdd;
-    }
-
-    .api-video-card-body {
-      min-width: 0;
-      width: auto;
-      padding: 0;
-      display: flex;
-      align-items: flex-start;
-      gap: 4px;
-      max-width: 100%;
-    }
-
-    .api-video-card-name {
-      font-size: 12px;
-      line-height: 1.35;
-      color: #243041;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 46px;
-    }
-
-    .api-video-card-meta {
-      margin-top: 2px;
-      font-size: 10px;
-      color: #8a94a6;
-    }
-
-    .api-video-loading,
-    .api-video-error {
-      min-height: 132px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      color: #7b8494;
-      font-size: 13px;
-      padding: 16px;
     }
 
     .api-inline-emoji {
@@ -6014,32 +4494,12 @@
                 <div>
                   <div class="api-conversation-title">
                     <span id="apiChatCustomerName">未选择客户</span>
-                    <span class="api-chat-tag api-chat-follow-tag" id="apiChatFollowStatus" hidden>已关注本店</span>
-                    <span class="api-chat-tag api-chat-order-tag" id="apiChatOrderCount" hidden>订单数：</span>
-                    <span class="api-chat-tag api-chat-gender-tag" id="apiChatGender" hidden></span>
+                    <span class="api-chat-tag api-chat-follow-tag" id="apiChatFollowStatus">已关注本店</span>
                   </div>
                 </div>
                 <div class="api-conversation-actions">
-                  <div class="api-conversation-risk">
-                    <button
-                      class="api-conversation-action api-conversation-action-icon"
-                      id="btnApiRisk"
-                      type="button"
-                      aria-label="风险操作"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M12 3.8 21 19.4a1.2 1.2 0 0 1-1.05 1.8H4.05A1.2 1.2 0 0 1 3 19.4L12 3.8Z"></path>
-                        <path d="M12 8.8v5.1"></path>
-                        <circle cx="12" cy="17.3" r="1"></circle>
-                      </svg>
-                    </button>
-                    <div class="api-risk-menu" role="menu" aria-label="风险操作菜单">
-                      <button class="api-risk-menu-item" id="btnApiRiskReport" type="button" role="menuitem">举报</button>
-                      <button class="api-risk-menu-item" id="btnApiRiskBlacklist" type="button" role="menuitem">拉黑</button>
-                      <button class="api-risk-menu-item" id="btnApiRiskManage" type="button" role="menuitem">管理黑名单</button>
-                    </div>
-                  </div>
                   <button class="api-conversation-action" id="btnApiStar">收藏</button>
+                  <button class="api-conversation-action" id="btnApiRisk">拉黑</button>
                 </div>
               </div>
               <div class="api-message-list" id="apiMessageList"></div>
@@ -6066,17 +4526,10 @@
                       <path d="M12.7 16l2.7-2.7a1 1 0 0 1 1.4 0l1.7 1.7"></path>
                     </svg>
                   </button>
-                  <button class="api-composer-tool is-muted" id="btnApiVideoModal" type="button" aria-label="选择视频发送"
-                    onclick="openApiVideoLibraryModal()">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <rect x="4" y="6" width="12" height="12" rx="2"></rect>
-                      <path d="M16 10.2l4-2.2v8l-4-2.2"></path>
-                      <circle cx="9" cy="12" r="1.3"></circle>
-                    </svg>
-                  </button>
+                  <span>视频</span>
                   <!-- <span>🎫</span> -->
                   <span>🔗</span>
-                  <!-- <span>🛡</span> -->
+                  <span>🛡</span>
                   <span id="btnApiRefund">退</span>
                   <span class="api-composer-action-link" style="margin-left:auto;">邀请关注</span>
                   <span class="api-composer-action-link">邀请下单</span>
@@ -6135,9 +4588,9 @@
           <button class="btn btn-secondary" id="btnMailApiRefreshList">刷新列表</button>
           <button class="btn btn-secondary" id="btnMailApiRefreshDetail">刷新详情</button>
           <button class="btn btn-secondary" id="btnMailApiRefreshPage">刷新站内信页</button>
-          <button class="btn btn-secondary" id="btnMailApiReloadTraffic" style="display:none;">刷新抓包</button>
+          <button class="btn btn-secondary" id="btnMailApiReloadTraffic">刷新抓包</button>
           <button class="btn btn-secondary" id="btnMailApiOpenDebug">调试窗口</button>
-          <button class="btn btn-secondary" id="btnMailApiClearTraffic" style="display:none;">清空记录</button>
+          <button class="btn btn-secondary" id="btnMailApiClearTraffic">清空记录</button>
         </div>
         <div class="mail-api-layout">
           <div class="mail-api-pane mail-api-sidebar">
@@ -6183,7 +4636,7 @@
                 <button class="btn btn-secondary" id="btnMailApiNext">下一条</button>
                 <button class="btn btn-secondary" id="btnMailApiBackToMail">切回站内信页</button>
               </div>
-              <div class="mail-api-traffic-box" style="display:none;">
+              <div class="mail-api-traffic-box">
                 <div class="mail-api-traffic-summary" id="mailApiTrafficSummary">0 条抓包记录</div>
                 <div class="mail-api-traffic-list" id="mailApiTrafficList">
                   <span class="mail-api-traffic-chip">暂无抓包</span>
@@ -6213,9 +4666,9 @@
               <div class="invoice-api-toolbar">
                 <button class="btn btn-secondary" id="btnInvoiceApiRefreshList">刷新列表</button>
                 <button class="btn btn-secondary" id="btnInvoiceApiRefreshPage">刷新待开票页</button>
-                <button class="btn btn-secondary" id="btnInvoiceApiReloadTraffic" style="display:none;">刷新抓包</button>
+                <button class="btn btn-secondary" id="btnInvoiceApiReloadTraffic">刷新抓包</button>
                 <button class="btn btn-secondary" id="btnInvoiceApiOpenDebug">调试窗口</button>
-                <button class="btn btn-secondary" id="btnInvoiceApiClearTraffic" style="display:none;">清空记录</button>
+                <button class="btn btn-secondary" id="btnInvoiceApiClearTraffic">清空记录</button>
               </div>
             </div>
             <div class="invoice-api-metrics">
@@ -6351,9 +4804,9 @@
                     <th>发票金额</th>
                     <th>开票方式</th>
                     <th>发票种类</th>
-                    <th>发票类型</th>
                     <th>抬头类型</th>
-                    <th style="width:132px">操作</th>
+                    <th>抬头</th>
+                    <th style="width:88px">操作</th>
                   </tr>
                 </thead>
                 <tbody id="invoiceApiList"></tbody>
@@ -6377,7 +4830,7 @@
                 <div class="invoice-api-detail-header">
                   <div class="invoice-api-section-heading">
                     <div class="invoice-api-section-title">记录详情</div>
-                    <div class="invoice-api-section-meta" id="invoiceApiDetailMeta">点击行查看详情，点击“录入发票”弹出对话框</div>
+                    <div class="invoice-api-section-meta" id="invoiceApiDetailMeta">点击表格中的“查看”打开详情</div>
                   </div>
                   <button class="btn btn-secondary" id="btnInvoiceApiBackToInvoice">切回待开票页</button>
                 </div>
@@ -6392,7 +4845,7 @@
                   <div class="invoice-api-detail-empty">请选择一条待开票记录查看详情</div>
                 </div>
               </div>
-              <div class="invoice-api-detail-side" style="display:none;">
+              <div class="invoice-api-detail-side">
                 <div class="invoice-api-detail-header">
                   <div class="invoice-api-section-heading">
                     <div class="invoice-api-section-title">接口抓包</div>
@@ -6406,43 +4859,6 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-      <div class="modal-overlay" id="modalInvoiceApiEntry">
-        <div class="modal wide invoice-api-entry-modal">
-          <div class="modal-header">
-            <h3>录入发票</h3>
-            <button class="modal-close" onclick="hideModal('modalInvoiceApiEntry')">&times;</button>
-          </div>
-          <div class="modal-body invoice-api-entry-body">
-            <div class="invoice-api-entry-status" id="invoiceApiEntryStatus"></div>
-            <div class="invoice-api-entry-card" id="invoiceApiEntryCard"></div>
-            <div class="invoice-api-entry-form">
-              <div class="invoice-api-entry-field">
-                <label class="invoice-api-entry-label">发票文件</label>
-                <label class="invoice-api-entry-upload" for="invoiceApiEntryFile">
-                  <input id="invoiceApiEntryFile" type="file" accept=".pdf,.ofd,application/pdf,application/octet-stream">
-                  <span class="invoice-api-entry-upload-title" id="invoiceApiEntryFileName">上传文件</span>
-                  <span class="invoice-api-entry-upload-hint">支持上传 PDF 和 OFD 文件，大小不超过 5M</span>
-                </label>
-              </div>
-              <div class="invoice-api-entry-field">
-                <label class="invoice-api-entry-label" for="invoiceApiEntryNumber">发票号码</label>
-                <input class="form-input" id="invoiceApiEntryNumber" placeholder="请输入">
-              </div>
-              <div class="invoice-api-entry-field">
-                <label class="invoice-api-entry-label" for="invoiceApiEntryCode">发票代码</label>
-                <input class="form-input" id="invoiceApiEntryCode" placeholder="如果开具的发票无“发票代码”，可不填写">
-              </div>
-            </div>
-            <div class="invoice-api-entry-detail-grid" id="invoiceApiEntryDetailGrid"></div>
-          </div>
-          <div class="modal-footer">
-            <span class="invoice-api-entry-footer-meta" id="invoiceApiEntryFooterMeta">请先选择一条待开票记录</span>
-            <span class="spacer"></span>
-            <button class="btn btn-secondary" onclick="hideModal('modalInvoiceApiEntry')">取消</button>
-            <button class="btn btn-primary" id="btnInvoiceApiEntrySubmit">确认</button>
           </div>
         </div>
       </div>
@@ -6461,95 +4877,88 @@
           <div class="violation-api-section">
             <div class="violation-api-banner">
               <span class="violation-api-banner-icon">!</span>
-              <span id="violationApiBannerText">进入页面后会直接请求违规列表，并整理详情与申诉信息。</span>
+              <span id="violationApiBannerText">请先进入违规管理后台列表页，再切到接口对接页查看同步结果。</span>
             </div>
           </div>
 
-          <div class="violation-api-page-state" id="violationApiListShell">
-            <div class="violation-api-section">
-              <div class="violation-api-filter-bar">
-                <div class="violation-api-filter-group">
-                  <span class="violation-api-filter-label">快速筛选:</span>
-                  <button class="violation-api-quick-tab active" data-violation-quick="all">待申诉 <span
-                      id="violationApiQuickPendingCount">0</span></button>
-                  <button class="violation-api-quick-tab" data-violation-quick="appealing">待完善资料 <span
-                      id="violationApiQuickAppealingCount">0</span></button>
-                  <button class="violation-api-quick-tab" data-violation-quick="processing">平台处理中 <span
-                      id="violationApiQuickProcessingCount">0</span></button>
-                </div>
-              </div>
-              <div class="violation-api-filter-panel">
-                <div class="violation-api-filter-grid">
-                  <div class="violation-api-filter-item">
-                    <label class="violation-api-filter-label" for="violationApiStatusFilter">处理进度</label>
-                    <select class="form-select" id="violationApiStatusFilter">
-                      <option value="">全部</option>
-                    </select>
-                  </div>
-                  <div class="violation-api-filter-item">
-                    <label class="violation-api-filter-label" for="violationApiTypeFilter">违规类型</label>
-                    <select class="form-select" id="violationApiTypeFilter">
-                      <option value="">全部</option>
-                    </select>
-                  </div>
-                  <div class="violation-api-filter-item">
-                    <label class="violation-api-filter-label" for="violationApiKeyword">违规单号</label>
-                    <input class="form-input" id="violationApiKeyword" placeholder="请输入违规单号">
-                  </div>
-                </div>
-                <div class="violation-api-filter-actions">
-                  <button class="btn btn-primary" id="btnViolationApiApplyFilters">搜索</button>
-                  <button class="btn btn-secondary" id="btnViolationApiResetFilters">重置</button>
-                  <span class="spacer"></span>
-                  <button class="btn btn-secondary" id="btnViolationApiRefreshList">刷新列表</button>
-                  <button class="btn btn-secondary" id="btnViolationApiRefreshPage">刷新违规页</button>
-                  <button class="btn btn-secondary" id="btnViolationApiReloadTraffic" style="display:none;">刷新抓包</button>
-                  <button class="btn btn-secondary" id="btnViolationApiOpenDebug">调试窗口</button>
-                  <button class="btn btn-secondary" id="btnViolationApiClearTraffic" style="display:none;">清空记录</button>
-                </div>
+          <div class="violation-api-section">
+            <div class="violation-api-filter-bar">
+              <div class="violation-api-filter-group">
+                <span class="violation-api-filter-label">快速筛选:</span>
+                <button class="violation-api-quick-tab active" data-violation-quick="all">待申诉 <span id="violationApiQuickPendingCount">0</span></button>
+                <button class="violation-api-quick-tab" data-violation-quick="appealing">待完善资料 <span id="violationApiQuickAppealingCount">0</span></button>
+                <button class="violation-api-quick-tab" data-violation-quick="processing">平台处理中 <span id="violationApiQuickProcessingCount">0</span></button>
               </div>
             </div>
+            <div class="violation-api-filter-panel">
+              <div class="violation-api-filter-grid">
+                <div class="violation-api-filter-item">
+                  <label class="violation-api-filter-label" for="violationApiStatusFilter">处理进度</label>
+                  <select class="form-select" id="violationApiStatusFilter">
+                    <option value="">全部</option>
+                  </select>
+                </div>
+                <div class="violation-api-filter-item">
+                  <label class="violation-api-filter-label" for="violationApiTypeFilter">违规类型</label>
+                  <select class="form-select" id="violationApiTypeFilter">
+                    <option value="">全部</option>
+                  </select>
+                </div>
+                <div class="violation-api-filter-item">
+                  <label class="violation-api-filter-label" for="violationApiKeyword">违规单号</label>
+                  <input class="form-input" id="violationApiKeyword" placeholder="请输入违规单号">
+                </div>
+              </div>
+              <div class="violation-api-filter-actions">
+                <button class="btn btn-primary" id="btnViolationApiApplyFilters">搜索</button>
+                <button class="btn btn-secondary" id="btnViolationApiResetFilters">重置</button>
+                <span class="spacer"></span>
+                <button class="btn btn-secondary" id="btnViolationApiRefreshList">刷新列表</button>
+                <button class="btn btn-secondary" id="btnViolationApiRefreshPage">刷新违规页</button>
+                <button class="btn btn-secondary" id="btnViolationApiReloadTraffic">刷新抓包</button>
+                <button class="btn btn-secondary" id="btnViolationApiOpenDebug">调试窗口</button>
+                <button class="btn btn-secondary" id="btnViolationApiClearTraffic">清空记录</button>
+              </div>
+            </div>
+          </div>
 
-            <div class="violation-api-section">
+          <div class="violation-api-section">
+            <div class="violation-api-table-header">
+              <div class="violation-api-table-title">
+                <span>违规列表</span>
+                <span class="violation-api-table-meta" id="violationApiListMeta">0 条记录</span>
+              </div>
+              <div class="violation-api-table-status" id="violationApiListStatus">当前仅展示违规管理相关抓包与接口提取结果</div>
+            </div>
+            <div class="violation-api-table-wrap">
+              <table class="data-table violation-api-table">
+                <thead>
+                  <tr>
+                    <th>违规编号</th>
+                    <th>违规类型</th>
+                    <th>违规通知时间</th>
+                    <th>申诉时间</th>
+                    <th>平台处理时间</th>
+                    <th>当前进度</th>
+                    <th style="width:88px">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="violationApiList"></tbody>
+              </table>
+            </div>
+            <div class="violation-api-table-footer">
+              <span class="violation-api-table-meta" id="violationApiFooterTotal">共 0 条</span>
+            </div>
+          </div>
+
+          <div class="violation-api-detail-shell">
+            <div class="violation-api-detail-main violation-api-section">
               <div class="violation-api-table-header">
                 <div class="violation-api-table-title">
-                  <span>违规列表</span>
-                  <span class="violation-api-table-meta" id="violationApiListMeta">0 条记录</span>
+                  <span>违规详情</span>
+                  <span class="violation-api-table-meta" id="violationApiDetailMeta">点击表格中的“查看详情”打开详情</span>
                 </div>
-                <div class="violation-api-table-status" id="violationApiListStatus">当前展示违规管理接口返回结果</div>
-              </div>
-              <div class="violation-api-table-wrap">
-                <table class="data-table violation-api-table">
-                  <thead>
-                    <tr>
-                      <th>违规编号</th>
-                      <th>违规类型</th>
-                      <th>违规通知时间</th>
-                      <th>申诉时间</th>
-                      <th>平台处理时间</th>
-                      <th>当前进度</th>
-                      <th style="width:88px">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody id="violationApiList"></tbody>
-                </table>
-              </div>
-              <div class="violation-api-table-footer">
-                <span class="violation-api-table-meta" id="violationApiFooterTotal">共 0 条</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="violation-api-detail-shell violation-api-page-state is-hidden" id="violationApiDetailShell">
-            <div class="violation-api-detail-main violation-api-section">
-              <div class="violation-api-detail-toolbar">
-                <div class="violation-api-detail-breadcrumb" id="violationApiDetailBreadcrumb">店铺违规管理</div>
-                <div class="violation-api-detail-actions">
-                  <button class="btn btn-secondary" id="btnViolationApiOpenPlatformDetail">打开平台详情</button>
-                  <button class="btn btn-primary" id="btnViolationApiOpenAppeal">去申诉</button>
-                  <button class="btn btn-secondary" id="btnViolationApiBackToList">返回列表</button>
-                  <button class="btn btn-secondary" id="btnViolationApiBackToViolation">切回违规页</button>
-                </div>
+                <button class="btn btn-secondary" id="btnViolationApiBackToViolation">切回违规页</button>
               </div>
               <div class="violation-api-detail-head" id="violationApiDetailHead">
                 <div class="mail-api-detail-title">请选择一条违规记录</div>
@@ -6562,7 +4971,7 @@
                 <div class="invoice-api-detail-empty">请选择一条违规记录查看详情</div>
               </div>
             </div>
-            <div class="violation-api-detail-side violation-api-section" style="display:none;">
+            <div class="violation-api-detail-side violation-api-section">
               <div class="violation-api-table-header">
                 <div class="violation-api-table-title">
                   <span>接口抓包</span>
@@ -6579,7 +4988,7 @@
         </div>
       </div>
       <div class="view-page" id="viewTicketApi">
-        <div class="ticket-api-page" id="ticketApiPageRoot">
+        <div class="ticket-api-page">
           <div class="ticket-api-header-bar">
             <div class="ticket-api-header-main">
               <span class="ticket-api-header-title">工单数据</span>
@@ -6587,14 +4996,14 @@
             </div>
           </div>
 
-          <div class="ticket-api-section" id="ticketApiBannerSection">
+          <div class="ticket-api-section">
             <div class="ticket-api-banner">
               <span class="ticket-api-banner-icon">!</span>
-              <span id="ticketApiBannerText">进入页面后会直接请求工单列表，并整理工单详情。</span>
+              <span id="ticketApiBannerText">请先进入工单管理后台列表页，再切到接口对接页查看同步结果。</span>
             </div>
           </div>
 
-          <div class="ticket-api-section" id="ticketApiMetricsSection">
+          <div class="ticket-api-section">
             <div class="ticket-api-metrics" id="ticketApiMetrics">
               <div class="ticket-api-metric-card">
                 <div class="ticket-api-metric-label">工单量</div>
@@ -6624,18 +5033,14 @@
             </div>
           </div>
 
-          <div class="ticket-api-section" id="ticketApiFilterSection">
+          <div class="ticket-api-section">
             <div class="ticket-api-query-title">工单查询</div>
             <div class="ticket-api-filter-row">
               <div class="ticket-api-filter-inline-label">工单筛选</div>
-              <button class="ticket-api-quick-tab active" data-ticket-quick="pending">待处理 <span
-                  id="ticketApiQuickPendingCount">0</span></button>
-              <button class="ticket-api-quick-tab" data-ticket-quick="timeout">2小时内将逾期 <span
-                  id="ticketApiQuickTimeoutCount">0</span></button>
-              <button class="ticket-api-quick-tab" data-ticket-quick="processing">处理中 <span
-                  id="ticketApiQuickProcessingCount">0</span></button>
-              <button class="ticket-api-quick-tab" data-ticket-quick="closed">违规已处理 <span
-                  id="ticketApiQuickClosedCount">0</span></button>
+              <button class="ticket-api-quick-tab active" data-ticket-quick="pending">待处理 <span id="ticketApiQuickPendingCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="timeout">2小时内将逾期 <span id="ticketApiQuickTimeoutCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="processing">处理中 <span id="ticketApiQuickProcessingCount">0</span></button>
+              <button class="ticket-api-quick-tab" data-ticket-quick="closed">违规已处理 <span id="ticketApiQuickClosedCount">0</span></button>
             </div>
             <div class="ticket-api-filter-panel">
               <div class="ticket-api-filter-grid">
@@ -6675,20 +5080,20 @@
                 <span class="spacer"></span>
                 <button class="btn btn-secondary" id="btnTicketApiRefreshList">刷新列表</button>
                 <button class="btn btn-secondary" id="btnTicketApiRefreshPage">刷新工单页</button>
-                <button class="btn btn-secondary" id="btnTicketApiReloadTraffic" style="display:none;">刷新抓包</button>
+                <button class="btn btn-secondary" id="btnTicketApiReloadTraffic">刷新抓包</button>
                 <button class="btn btn-secondary" id="btnTicketApiOpenDebug">调试窗口</button>
-                <button class="btn btn-secondary" id="btnTicketApiClearTraffic" style="display:none;">清空记录</button>
+                <button class="btn btn-secondary" id="btnTicketApiClearTraffic">清空记录</button>
               </div>
             </div>
           </div>
 
-          <div class="ticket-api-section" id="ticketApiListSection">
+          <div class="ticket-api-section">
             <div class="ticket-api-table-header">
               <div class="ticket-api-table-title">
                 <span>查询结果</span>
                 <span class="ticket-api-table-meta">共查询到 <span id="ticketApiResultCount">0</span> 个工单</span>
               </div>
-              <div class="ticket-api-table-status" id="ticketApiListStatus">当前展示工单管理接口返回结果</div>
+              <div class="ticket-api-table-status" id="ticketApiListStatus">当前仅展示工单管理相关抓包与接口提取结果</div>
             </div>
             <div class="ticket-api-list-head">
               <div>订单信息</div>
@@ -6703,17 +5108,14 @@
             </div>
           </div>
 
-          <div class="ticket-api-detail-shell" id="ticketApiDetailShell">
+          <div class="ticket-api-detail-shell">
             <div class="ticket-api-detail-main ticket-api-section">
               <div class="ticket-api-table-header">
                 <div class="ticket-api-table-title">
                   <span>工单详情</span>
-                  <span class="ticket-api-table-meta" id="ticketApiDetailMeta">点击表格中的“立即查看”打开详情页</span>
+                  <span class="ticket-api-table-meta" id="ticketApiDetailMeta">点击表格中的“查看详情”打开详情</span>
                 </div>
-                <div>
-                  <button class="btn btn-secondary" id="btnTicketApiBackToList">返回列表</button>
-                  <button class="btn btn-secondary" id="btnTicketApiBackToTicket">切回工单页</button>
-                </div>
+                <button class="btn btn-secondary" id="btnTicketApiBackToTicket">切回工单页</button>
               </div>
               <div class="ticket-api-detail-head" id="ticketApiDetailHead">
                 <div class="mail-api-detail-title">请选择一条工单记录</div>
@@ -6726,7 +5128,7 @@
                 <div class="invoice-api-detail-empty">请选择一条工单记录查看详情</div>
               </div>
             </div>
-            <div class="ticket-api-detail-side ticket-api-section" style="display:none;">
+            <div class="ticket-api-detail-side ticket-api-section">
               <div class="ticket-api-table-header">
                 <div class="ticket-api-table-title">
                   <span>接口抓包</span>
@@ -6759,7 +5161,7 @@
           <button class="btn btn-secondary" id="btnSetGroup">设置分组</button>
           <button class="btn btn-secondary" id="btnSyncShops">同步Token</button>
           <button class="btn btn-secondary" id="btnRefreshShops">刷新</button>
-          <button class="btn btn-danger btn-sm" id="btnUnbindShops">移除选中</button>
+          <button class="btn btn-danger btn-sm" id="btnUnbindShops">解绑选中</button>
         </div>
         <div class="page-content">
           <table class="data-table" id="shopTable">
@@ -7439,157 +5841,6 @@
     </div>
   </div>
 
-  <div class="modal-overlay" id="modalApiSmallPayment">
-    <div class="modal api-small-payment-modal">
-      <div class="modal-header">
-        <h3>小额打款</h3>
-        <button class="modal-close" type="button"
-          onclick="window.closeApiSmallPaymentModal ? window.closeApiSmallPaymentModal() : hideModal('modalApiSmallPayment')">&times;</button>
-      </div>
-      <div class="modal-body api-small-payment-body">
-        <div class="api-small-payment-intro">
-          <strong>功能说明：</strong>
-          如您与消费者之间存在补运费、补差价等小额补偿需求，请使用小额打款功能，打款成功后消费者将收到您的补偿金。
-        </div>
-
-        <div class="api-small-payment-section">
-          <div class="api-small-payment-form-row">
-            <div class="api-small-payment-form-label">已选订单</div>
-            <div class="api-small-payment-order-card">
-              <div class="api-small-payment-order-media">
-                <img id="apiSmallPaymentGoodsImage" alt="商品主图" style="display:none;">
-                <span id="apiSmallPaymentGoodsPlaceholder">商品</span>
-              </div>
-              <div class="api-small-payment-order-main">
-                <div class="api-small-payment-order-id" id="apiSmallPaymentOrderId">订单编号：-</div>
-                <div class="api-small-payment-order-title" id="apiSmallPaymentGoodsTitle">当前订单信息待加载</div>
-                <div class="api-small-payment-order-meta">
-                  <div class="api-small-payment-order-detail" id="apiSmallPaymentGoodsDetail">所拍规格待确认</div>
-                  <div class="api-small-payment-order-price" id="apiSmallPaymentGoodsPrice"><strong>0</strong></div>
-                </div>
-              </div>
-              <div class="api-small-payment-order-action">
-                <button class="api-small-payment-order-btn" type="button" id="btnApiSmallPaymentChangeOrder">修改订单</button>
-              </div>
-            </div>
-            <div class="api-small-payment-order-selector" id="apiSmallPaymentOrderSelector" style="display:none;"></div>
-          </div>
-
-          <div class="api-small-payment-form-row">
-            <div class="api-small-payment-form-label">打款类型</div>
-            <div class="api-small-payment-type-group">
-              <label class="api-small-payment-type-option">
-                <input type="radio" name="apiSmallPaymentType" value="shipping" checked>
-                <span>补运费</span>
-              </label>
-              <label class="api-small-payment-type-option">
-                <input type="radio" name="apiSmallPaymentType" value="difference">
-                <span>补差价</span>
-              </label>
-              <label class="api-small-payment-type-option">
-                <input type="radio" name="apiSmallPaymentType" value="other">
-                <span>其他</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="api-small-payment-form-row">
-            <div class="api-small-payment-form-label">打款金额</div>
-            <div class="api-small-payment-amount-row">
-              <div class="api-small-payment-amount-input-wrap">
-                <span class="api-small-payment-amount-prefix">¥</span>
-                <input class="form-input api-small-payment-amount-input" id="apiSmallPaymentAmount" type="text"
-                  inputmode="decimal" placeholder="单次上限¥0.00">
-              </div>
-              <div class="api-small-payment-amount-tip" id="apiSmallPaymentAmountTip">最多可打款3次</div>
-            </div>
-          </div>
-
-          <div class="api-small-payment-form-row">
-            <div class="api-small-payment-form-label">给消费者留言</div>
-            <div class="api-small-payment-note-wrap">
-              <textarea class="form-textarea api-small-payment-note" id="apiSmallPaymentNote"
-                maxlength="60" placeholder="已补偿给您，请查收"></textarea>
-              <div class="api-small-payment-note-count" id="apiSmallPaymentNoteCount">0/60</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="api-small-payment-status-card" id="apiSmallPaymentStatusCard" style="display:none;">
-          <div class="api-small-payment-status-row" id="apiSmallPaymentStatusRow"></div>
-          <div class="api-small-payment-status-tips" id="apiSmallPaymentStatusTips"></div>
-        </div>
-
-        <div class="api-small-payment-permission" id="apiSmallPaymentPermission">无管理员权限？点击提交打款申请给店铺管理员</div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" type="button"
-          onclick="window.closeApiSmallPaymentModal ? window.closeApiSmallPaymentModal() : hideModal('modalApiSmallPayment')">取消</button>
-        <button class="btn btn-primary" type="button" id="btnApiSmallPaymentSubmit">确认</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modalApiImagePreview">
-    <div class="modal api-image-preview-modal">
-      <div class="modal-header">
-        <h3>查看图片</h3>
-        <button class="modal-close" type="button" onclick="hideApiImagePreview()">&times;</button>
-      </div>
-      <div class="modal-body api-image-preview-body">
-        <img class="api-image-preview-content" id="apiImagePreviewContent" alt="对话图片预览">
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modalApiGoodsSpec">
-    <div class="modal api-goods-spec-modal">
-      <!-- <div class="modal-header">
-        <h3>商品规格</h3>
-        <button class="modal-close" type="button" onclick="window.closeApiGoodsSpecModal ? window.closeApiGoodsSpecModal() : hideModal('modalApiGoodsSpec')">&times;</button>
-      </div> -->
-      <div class="modal-body">
-        <div class="api-goods-spec-summary" id="apiGoodsSpecSummary"></div>
-        <div class="api-goods-spec-loading" id="apiGoodsSpecLoading" style="display:none;">正在加载商品规格...</div>
-        <div class="api-goods-spec-error" id="apiGoodsSpecError" style="display:none;"></div>
-        <div class="api-goods-spec-empty" id="apiGoodsSpecEmpty" style="display:none;">暂未解析到可展示的商品规格</div>
-        <div class="api-goods-spec-table-wrap" id="apiGoodsSpecTableWrap">
-          <table class="api-goods-spec-table">
-            <thead>
-              <tr>
-                <th>规格</th>
-                <th>款式</th>
-                <th>价格</th>
-                <th>库存</th>
-              </tr>
-            </thead>
-            <tbody id="apiGoodsSpecTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary" type="button" onclick="window.closeApiGoodsSpecModal ? window.closeApiGoodsSpecModal() : hideModal('modalApiGoodsSpec')">我知道了</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="api-video-popover-backdrop" id="apiVideoLibraryBackdrop" onclick="hideApiVideoLibraryPopover()"></div>
-
-  <div class="api-video-popover" id="apiVideoLibraryPanel">
-    <div class="api-video-popover-header">
-      <div class="api-video-popover-title">请选择视频</div>
-      <div class="api-video-popover-actions">
-        <span class="api-video-popover-actions-text">视频添加请先在后台添加</span>
-        <button class="modal-close" type="button" onclick="hideApiVideoLibraryPopover()">&times;</button>
-      </div>
-    </div>
-    <div class="api-video-popover-content" id="apiVideoLibraryContent"></div>
-    <div class="api-video-popover-footer">
-      <button class="btn btn-secondary" type="button" onclick="hideApiVideoLibraryPopover()">取消</button>
-      <button class="btn btn-primary" id="btnApiVideoSend">发送</button>
-    </div>
-  </div>
-
   <!-- 日志已移至独立调试窗口 -->
 
   <div class="toast-msg" id="toastMsg"></div>
@@ -7747,11 +5998,6 @@
     let apiLastLoadedSessionScope = '';
     const apiGoodsCardCache = new Map();
     const apiGoodsCardPending = new Set();
-    let apiSyntheticRefundMessages = [];
-    let apiVideoLibrary = [];
-    let apiVideoLibraryLoading = false;
-    let apiVideoLibraryError = '';
-    let apiSelectedVideo = null;
     window.__chatApiModuleAccess = {
       getState() {
         return {
@@ -7775,9 +6021,6 @@
           apiHasUserSelectedSession,
           apiGoodsCardCache,
           apiGoodsCardPending,
-          apiSyntheticRefundMessages,
-          apiVideoLibrary,
-          apiSelectedVideo,
           API_ALL_SHOPS,
           API_EMOJI_MAP,
           API_EMOJIS,
@@ -7813,7 +6056,6 @@
       recordApiSyncState,
       clearApiPendingReplyState,
       appendApiLocalServiceMessage,
-      appendApiIncomingMessage,
       refreshApiAfterMessageSent,
       mergeApiSessionsForShop,
       renderApiStatus,
@@ -8069,25 +6311,10 @@
         shopDropdown.classList.remove('visible');
         shopSwitcherBtn.classList.remove('open');
       }
-      const videoButton = document.getElementById('btnApiVideoModal');
-      const videoPanel = document.getElementById('apiVideoLibraryPanel');
-      if (
-        videoButton
-        && videoPanel
-        && videoPanel.classList.contains('visible')
-        && !videoButton.contains(e.target)
-        && !videoPanel.contains(e.target)
-      ) {
-        hideApiVideoLibraryPopover();
-      }
     });
 
-    function isHeaderSelectableShop(shop) {
-      return !!shop?.id && shop.status === 'online';
-    }
-
     function renderShopDropdown() {
-      const visibleShops = shops.filter(isHeaderSelectableShop);
+      const visibleShops = shops.filter(shop => !(shop.loginMethod === 'token' && shop.status === 'expired'));
       if (visibleShops.length === 0) {
         shopDropdownList.innerHTML = '<div class="shop-no-items">暂无可切换店铺，请导入新 Token 或重新登录</div>';
         return;
@@ -8109,11 +6336,7 @@
             shopSwitcherBtn.classList.remove('open');
             return;
           }
-          const switched = await window.pddApi.switchShop(shopId);
-          if (!switched) {
-            showToast('只能切换到登录成功的店铺');
-            return;
-          }
+          await window.pddApi.switchShop(shopId);
           shopDropdown.classList.remove('visible');
           shopSwitcherBtn.classList.remove('open');
         });
@@ -8193,39 +6416,12 @@
         message?.raw?.content,
         message?.raw?.msg_content,
       ].filter(Boolean).join('\n');
-      const structuredSources = [
-        message?.extra,
-        message?.raw?.extra,
-        message?.raw?.info,
-        message?.raw?.biz_context,
-        message?.raw,
-        message,
-      ].filter(Boolean);
       const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
         || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
-      let url = match?.[0]
-        ? match[0].replace(/&amp;/gi, '&')
-        : pickApiGoodsText(structuredSources, ['url', 'share_url', 'shareUrl', 'goods_url', 'goodsUrl', 'jump_url', 'jumpUrl', 'link_url', 'linkUrl']);
-      if (url && !/^https?:\/\//i.test(url) && /(?:^|[?&])goods_id=\d+/i.test(url)) {
-        url = `https://mobile.yangkeduo.com/${String(url).replace(/^\/+/, '')}`;
-      }
-      if (url && /^\/(?:goods2?|goods)\.html\?/i.test(url)) {
-        url = `https://mobile.yangkeduo.com${url}`;
-      }
-      const isHttpGoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
-      const isH5GoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
-      if (url && !isHttpGoodsUrl && !isH5GoodsUrl) {
-        url = '';
-      }
-      const goodsIdMatch = url
-        ? (url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i))
-        : null;
-      const goodsId = goodsIdMatch?.[1]
-        || pickApiGoodsText(structuredSources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']);
-      if (goodsId) {
-        url = `https://mobile.yangkeduo.com/goods.html?goods_id=${goodsId}`;
-      }
-      if (!url && !goodsId) return null;
+      if (!match?.[0]) return null;
+      const url = match[0].replace(/&amp;/gi, '&');
+      const goodsIdMatch = url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i);
+      const goodsId = goodsIdMatch?.[1] || '';
       return {
         url,
         goodsId,
@@ -8314,34 +6510,9 @@
       return `¥${amount.toFixed(2)}`;
     }
 
-    function normalizeApiGoodsSpecItems(items = []) {
-      return (Array.isArray(items) ? items : [])
-        .map(item => ({
-          specLabel: String(item?.specLabel || '').trim(),
-          styleLabel: String(item?.styleLabel || '').trim(),
-          priceText: String(item?.priceText || '').trim(),
-          stockText: String(item?.stockText || '').trim(),
-          salesText: String(item?.salesText || '').trim(),
-        }))
-        .filter(item => item.specLabel || item.styleLabel || item.priceText || item.stockText || item.salesText);
-    }
-
-    function buildApiGoodsSpecFallbackItems(card = {}) {
-      const specText = String(card?.specText || '').trim();
-      if (!specText || specText === '查看商品规格') return [];
-      return [{
-        specLabel: specText,
-        styleLabel: '',
-        priceText: String(card?.priceText || '').trim(),
-        stockText: '',
-        salesText: '',
-      }];
-    }
-
     function normalizeApiGoodsCard(card = {}, fallback = {}) {
       const goodsId = String(card.goodsId || fallback.goodsId || '');
       return {
-        cacheKey: String(card.cacheKey || fallback.cacheKey || ''),
         goodsId,
         url: String(card.url || fallback.url || ''),
         title: String(card.title || fallback.title || '拼多多商品'),
@@ -8349,47 +6520,24 @@
         priceText: String(card.priceText || fallback.priceText || ''),
         groupText: String(card.groupText || fallback.groupText || '2人团'),
         specText: String(card.specText || fallback.specText || '查看商品规格'),
-        specItems: normalizeApiGoodsSpecItems(card.specItems || fallback.specItems || []),
-        stockText: String(card.stockText || fallback.stockText || ''),
-        salesText: String(card.salesText || fallback.salesText || ''),
-        pendingGroupText: String(card.pendingGroupText || fallback.pendingGroupText || ''),
       };
-    }
-
-    function isMeaningfulApiGoodsCard(card = {}) {
-      const title = String(card?.title || '').trim();
-      return !!(
-        String(card?.imageUrl || '').trim()
-        || String(card?.priceText || '').trim()
-        || (title && title !== '拼多多商品')
-      );
-    }
-
-    function describeApiGoodsCardResult(card = {}) {
-      const title = String(card?.title || '').trim() || '空标题';
-      const imageState = card?.imageUrl ? '有图' : '无图';
-      const priceState = card?.priceText ? `价格:${card.priceText}` : '无价';
-      return `${title}，${imageState}，${priceState}`;
     }
 
     function buildApiGoodsCardFallback(linkInfo, message = {}, session = {}) {
       const sources = [
         message?.extra,
         message?.raw?.extra,
-        message?.raw?.info,
-        message?.raw?.biz_context,
         message?.raw,
         session?.goodsInfo,
         session?.raw?.goods_info,
         session?.raw?.goods,
       ].filter(Boolean);
       const priceText = pickApiGoodsText(sources, ['priceText', 'price_text', 'price'])
-        || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['promotionPrice', 'promotion_price', 'couponPromoPrice', 'coupon_promo_price', 'group_price', 'min_group_price', 'price', 'min_price', 'goodsPrice']));
+        || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['group_price', 'min_group_price', 'price', 'min_price']));
       const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
-      const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'customerNumber', 'group_member_count', 'group_count']);
+      const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'group_member_count', 'group_count']);
       return normalizeApiGoodsCard({
-        cacheKey: String(linkInfo?.cacheKey || ''),
-        goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'id']),
+        goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'id']),
         url: linkInfo?.url || '',
         title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'share_title', 'name']) || '拼多多商品',
         imageUrl: pickApiGoodsText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url', 'top_gallery', 'gallery', 'images', 'imageList']),
@@ -8407,7 +6555,6 @@
       const priceHtml = card.priceText
         ? `<div class="api-goods-card-price-row"><span class="api-goods-card-price">${esc(card.priceText)}</span><span class="api-goods-card-group">${esc(card.groupText ? `/${card.groupText}` : '')}</span></div>`
         : (card.groupText ? `<div class="api-goods-card-price-row"><span class="api-goods-card-group">${esc(card.groupText)}</span></div>` : '');
-      const specItems = card.specItems?.length ? card.specItems : buildApiGoodsSpecFallbackItems(card);
       return `<div class="api-message-bubble api-goods-card-bubble">
         <div class="api-goods-card-top">
           <span class="api-goods-card-id">${esc(goodsIdLabel)}</span>
@@ -8422,255 +6569,27 @@
             <div class="api-goods-card-main">
               <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
               ${priceHtml}
-              <button
-                class="api-goods-card-spec"
-                type="button"
-                data-goods-cache-key="${esc(card.cacheKey || '')}"
-                data-goods-id="${esc(card.goodsId || '')}"
-                data-goods-url="${esc(card.url || '')}"
-                data-goods-title="${esc(card.title || '')}"
-                data-goods-image-url="${esc(card.imageUrl || '')}"
-                data-goods-price-text="${esc(card.priceText || '')}"
-                data-goods-group-text="${esc(card.groupText || '')}"
-                data-goods-spec-text="${esc(card.specText || '查看商品规格')}"
-                data-goods-stock-text="${esc(card.stockText || '')}"
-                data-goods-sales-text="${esc(card.salesText || '')}"
-                data-goods-pending-group-text="${esc(card.pendingGroupText || '')}"
-                data-goods-spec-items="${esc(JSON.stringify(specItems || []))}"
-              >${esc(card.specText || '查看商品规格')}</button>
             </div>
           </div>
+          <span class="api-goods-card-spec">${esc(card.specText || '查看商品规格')}</span>
         </div>
       </div>`;
-    }
-
-    function normalizeApiRefundCardAmountText(value) {
-      return String(value || '').trim().replace(/^¥\s+/, '¥');
-    }
-
-    function resolveApiRefundCardFooterText(state = {}, fallbackText = '') {
-      const statusValue = Number(state?.status);
-      if (statusValue === 0) return '等待消费者确认';
-      const normalizedFallback = String(fallbackText || '').trim();
-      if (!normalizedFallback || normalizedFallback === '已过期') {
-        return '等待消费者确认';
-      }
-      return normalizedFallback;
-    }
-
-    function getApiRefundStatusUpdateMeta(message = {}) {
-      const directMeta = message?.refundStatusUpdate && typeof message.refundStatusUpdate === 'object'
-        ? message.refundStatusUpdate
-        : null;
-      if (directMeta) {
-        const kind = String(directMeta.kind || '').trim();
-        if (kind) {
-          return {
-            kind,
-            targetMessageId: String(directMeta.targetMessageId || '').trim(),
-            status: Number(directMeta.status ?? ''),
-            displayText: String(directMeta.displayText || '').trim(),
-            footerText: kind === 'refund-pending' ? '消费者已同意' : '',
-          };
-        }
-      }
-      const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
-      const data = raw?.data && typeof raw.data === 'object' ? raw.data : {};
-      const messageType = Number(raw?.type ?? message?.type ?? -1);
-      if (messageType === 90) {
-        const targetMessageId = String(data?.msg_id || '').trim();
-        const statusValue = Number(data?.status);
-        if (targetMessageId && statusValue === 2) {
-          return {
-            kind: 'refund-pending',
-            targetMessageId,
-            status: statusValue,
-            displayText: '消费者已同意您发起的退款申请，请及时处理',
-            footerText: '消费者已同意',
-          };
-        }
-      }
-      const source = String(message?.content || raw?.content || '').trim();
-      if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) {
-        return {
-          kind: 'refund-pending',
-          targetMessageId: '',
-          status: 2,
-          displayText: '消费者已同意您发起的退款申请，请及时处理',
-          footerText: '消费者已同意',
-        };
-      }
-      if (/^退款成功(?:通知)?$/.test(source)) {
-        return {
-          kind: 'refund-success',
-          targetMessageId: '',
-          status: 3,
-          displayText: '退款成功',
-          footerText: '退款成功',
-        };
-      }
-      return null;
-    }
-
-    function extractApiRefundCard(message = {}) {
-      const card = message?.refundCard
-        || message?.extra?.refundCard
-        || message?.raw?.extra?.refundCard
-        || message?.raw?.ext?.refundCard;
-      const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
-      const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
-      const goodsInfo = info?.goods_info && typeof info.goods_info === 'object' ? info.goods_info : {};
-      const isRawRefundCard = Number(raw?.type ?? message?.type ?? -1) === 19 && String(info.card_id || '').trim() === 'ask_refund_apply';
-      const fallbackCard = !card && isRawRefundCard ? {
-        localKey: String(raw?.msg_id || raw?.message_id || '').trim(),
-        orderSn: String(goodsInfo?.order_sequence_no || '').trim(),
-        title: String(info?.title || message?.content || '商家想帮您申请快捷退款').replace(/^\[|\]$/g, '').trim(),
-        actionText: (() => {
-          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请类型'));
-          const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
-          return value || '退款';
-        })(),
-        goodsTitle: String(goodsInfo?.goods_name || '').trim(),
-        imageUrl: String(goodsInfo?.goods_thumb_url || '').trim(),
-        specText: [String(goodsInfo?.extra || '').trim(), goodsInfo?.count ? `x${goodsInfo.count}` : ''].filter(Boolean).join(' '),
-        reasonText: (() => {
-          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请原因'));
-          const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
-          return value || '其他原因';
-        })(),
-        amountText: (() => {
-          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('退款金额'));
-          const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
-          if (value) return value.includes('¥') ? value : `¥${value}`;
-          const amountFen = Number(goodsInfo?.total_amount || 0) || 0;
-          return amountFen > 0 ? `¥${(amountFen / 100).toFixed(2)}` : '';
-        })(),
-        noteText: (() => {
-          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('申请说明'));
-          const value = Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
-          return value || '商家代消费者填写售后单';
-        })(),
-        contactText: (() => {
-          const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('联系方式'));
-          return Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
-        })(),
-        footerText: resolveApiRefundCardFooterText(info?.state, info?.state?.expire_text),
-      } : null;
-      const normalizedCard = (card && typeof card === 'object') ? card : fallbackCard;
-      if (!normalizedCard || typeof normalizedCard !== 'object') return null;
-      const rawActionText = String(normalizedCard.actionText || '').trim();
-      const actionText = rawActionText === 'refund'
-        ? '退款'
-        : (rawActionText || '退款');
-      return {
-        localKey: String(normalizedCard.localKey || '').trim(),
-        orderSn: String(normalizedCard.orderSn || '').trim(),
-        title: String(normalizedCard.title || '商家想帮您申请快捷退款').trim(),
-        actionText,
-        goodsTitle: String(normalizedCard.goodsTitle || '订单商品').trim(),
-        imageUrl: String(normalizedCard.imageUrl || '').trim(),
-        specText: String(normalizedCard.specText || '').trim(),
-        reasonText: String(normalizedCard.reasonText || '其他原因').trim(),
-        amountText: normalizeApiRefundCardAmountText(normalizedCard.amountText || ''),
-        noteText: String(normalizedCard.noteText || '商家代消费者填写售后单').trim(),
-        contactText: String(normalizedCard.contactText || '').trim(),
-        footerText: String(normalizedCard.footerText || '等待消费者确认').trim(),
-      };
-    }
-
-    function renderApiRefundCardHtml(card = {}) {
-      const imageHtml = card.imageUrl
-        ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
-        : `<div class="api-refund-card-media-placeholder">商品</div>`;
-      const rows = [
-        { label: '申请类型', value: card.actionText || '退款' },
-        { label: '申请原因', value: card.reasonText || '其他原因' },
-        card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
-        { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
-        card.contactText ? { label: '联系方式', value: card.contactText } : null,
-      ].filter(Boolean);
-      return `<div class="api-message-bubble api-refund-card-bubble">
-        <div class="api-refund-card-header">${esc(card.title || '商家想帮您申请快捷退款')}</div>
-        <div class="api-refund-card-section">
-          <div class="api-refund-card-goods">
-            ${imageHtml}
-            <div class="api-refund-card-main">
-              <div class="api-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
-              <div class="api-refund-card-goods-meta">
-                ${card.specText ? `<span class="api-refund-card-goods-spec">${esc(card.specText)}</span>` : '<span class="api-refund-card-goods-spec"></span>'}
-                ${card.amountText ? `<span class="api-refund-card-goods-price">${esc(card.amountText)}</span>` : ''}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="api-refund-card-section api-refund-card-rows">
-          ${rows.map(row => `<div class="api-refund-card-row"><span class="api-refund-card-label">${esc(row.label)}</span><span class="api-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
-        </div>
-        <div class="api-refund-card-section api-refund-card-footer">${esc(card.footerText || '等待消费者确认')}</div>
-      </div>`;
-    }
-
-    function getApiDisplayMessages(activeSession = null) {
-      const sessionKey = getApiSessionKey(activeSession || {});
-      const displayMessages = apiMessages.slice();
-      apiSyntheticRefundMessages
-        .filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey)
-        .forEach(item => {
-          const syntheticKey = String(item?.syntheticKey || item?.refundCard?.localKey || item?.extra?.refundCard?.localKey || '');
-          const duplicated = syntheticKey && displayMessages.some(message => {
-            const messageKey = String(
-              message?.syntheticKey
-              || message?.refundCard?.localKey
-              || message?.extra?.refundCard?.localKey
-              || message?.raw?.extra?.refundCard?.localKey
-              || ''
-            );
-            return messageKey === syntheticKey;
-          });
-          if (!duplicated) {
-            displayMessages.push(item);
-          }
-        });
-      return displayMessages.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
     }
 
     async function ensureApiGoodsCardLoaded(linkInfo, fallbackCard) {
-      if (!linkInfo?.url || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
-      if (fallbackCard && isMeaningfulApiGoodsCard(fallbackCard)) {
-        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard(fallbackCard, fallbackCard));
-        return;
-      }
-      const cachedCard = apiGoodsCardCache.get(linkInfo.cacheKey);
-      if (cachedCard && isMeaningfulApiGoodsCard(cachedCard)) return;
-      if (cachedCard) {
-        apiGoodsCardCache.delete(linkInfo.cacheKey);
-      }
+      if (!linkInfo?.url || apiGoodsCardCache.has(linkInfo.cacheKey) || apiGoodsCardPending.has(linkInfo.cacheKey)) return;
       if (!window.pddApi?.apiGetGoodsCard) return;
       apiGoodsCardPending.add(linkInfo.cacheKey);
       try {
-        recordApiSyncState('商品卡片请求', `goodsId:${linkInfo.goodsId || '-'}，url:${linkInfo.url ? '有' : '无'}`);
         const result = await window.pddApi.apiGetGoodsCard({
           shopId: apiActiveSessionShopId,
           url: linkInfo.url,
           goodsId: linkInfo.goodsId,
           fallback: fallbackCard,
         });
-        if (result?.error) {
-          recordApiSyncState('商品卡片失败', result.error);
-          apiGoodsCardCache.delete(linkInfo.cacheKey);
-          return;
-        }
-        const normalized = normalizeApiGoodsCard(result, fallbackCard);
-        if (isMeaningfulApiGoodsCard(normalized)) {
-          apiGoodsCardCache.set(linkInfo.cacheKey, normalized);
-          recordApiSyncState('商品卡片成功', describeApiGoodsCardResult(normalized));
-        } else {
-          apiGoodsCardCache.delete(linkInfo.cacheKey);
-          recordApiSyncState('商品卡片占位', describeApiGoodsCardResult(normalized));
-        }
-      } catch (error) {
-        apiGoodsCardCache.delete(linkInfo.cacheKey);
-        recordApiSyncState('商品卡片失败', error?.message || '未知异常');
+        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard(result, fallbackCard));
+      } catch {
+        apiGoodsCardCache.set(linkInfo.cacheKey, normalizeApiGoodsCard({}, fallbackCard));
       } finally {
         apiGoodsCardPending.delete(linkInfo.cacheKey);
         if (apiHasUserSelectedSession) renderApiMessages();
@@ -8720,44 +6639,6 @@
       const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12);
       const left = Math.min(Math.max(12, rect.left - 8), maxLeft);
       const top = Math.max(12, rect.top - panel.offsetHeight - 14);
-      panel.style.left = `${left}px`;
-      panel.style.top = `${top}px`;
-    }
-
-    function isApiVideoLibraryVisible() {
-      return document.getElementById('apiVideoLibraryPanel')?.classList.contains('visible') || false;
-    }
-
-    function showApiVideoLibraryPopover() {
-      const backdrop = document.getElementById('apiVideoLibraryBackdrop');
-      const panel = document.getElementById('apiVideoLibraryPanel');
-      const button = document.getElementById('btnApiVideoModal');
-      if (!backdrop || !panel || !button) return false;
-      backdrop.classList.add('visible');
-      panel.classList.add('visible');
-      button.classList.add('active');
-      requestAnimationFrame(syncApiVideoLibraryPopoverPosition);
-      return true;
-    }
-
-    function hideApiVideoLibraryPopover() {
-      const backdrop = document.getElementById('apiVideoLibraryBackdrop');
-      const panel = document.getElementById('apiVideoLibraryPanel');
-      const button = document.getElementById('btnApiVideoModal');
-      if (!backdrop || !panel || !button) return false;
-      backdrop.classList.remove('visible');
-      panel.classList.remove('visible');
-      button.classList.remove('active');
-      return true;
-    }
-
-    function syncApiVideoLibraryPopoverPosition() {
-      const panel = document.getElementById('apiVideoLibraryPanel');
-      if (!panel || !panel.classList.contains('visible')) return;
-      const panelWidth = panel.offsetWidth || 560;
-      const panelHeight = panel.offsetHeight || 360;
-      const left = Math.max(12, Math.round((window.innerWidth - panelWidth) / 2));
-      const top = Math.max(12, Math.round((window.innerHeight - panelHeight) / 2));
       panel.style.left = `${left}px`;
       panel.style.top = `${top}px`;
     }
@@ -8820,161 +6701,6 @@
       return /机器人未找到对应(?:的)?回复/.test(getApiSystemNoticeText(message));
     }
 
-    function getApiRefundSystemNoticeKind(message = {}) {
-      const statusMeta = getApiRefundStatusUpdateMeta(message);
-      if (statusMeta?.kind) return statusMeta.kind;
-      const source = getApiSystemNoticeText(message);
-      if (!source) return '';
-      if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) return 'refund-pending';
-      if (/^退款成功(?:通知)?$/.test(source)) return 'refund-success';
-      return '';
-    }
-
-    function getApiRefundSystemNoticeDisplayText(message = {}) {
-      const statusMeta = getApiRefundStatusUpdateMeta(message);
-      if (statusMeta?.displayText) return statusMeta.displayText;
-      const source = getApiSystemNoticeText(message);
-      const kind = getApiRefundSystemNoticeKind(message);
-      if (kind === 'refund-pending') return '消费者已同意您发起的退款申请，请及时处理';
-      if (kind === 'refund-success') return '退款成功';
-      return source;
-    }
-
-    function findApiRefundStatusUpdateForCard(sortedMessages = [], options = {}) {
-      const targetMessageId = String(options?.targetMessageId || '').trim();
-      if (!Array.isArray(sortedMessages) || !sortedMessages.length) return null;
-      if (targetMessageId) {
-        for (const message of sortedMessages) {
-          const statusMeta = getApiRefundStatusUpdateMeta(message);
-          if (statusMeta && String(statusMeta.targetMessageId || '').trim() === targetMessageId) {
-            return statusMeta;
-          }
-        }
-      }
-      const cardIndex = Number.isInteger(options?.cardIndex) ? options.cardIndex : -1;
-      if (cardIndex < 0) return null;
-      for (let distance = 1; distance <= 6; distance++) {
-        const nextIndex = cardIndex + distance;
-        if (nextIndex >= sortedMessages.length) break;
-        const candidate = sortedMessages[nextIndex];
-        const statusMeta = getApiRefundStatusUpdateMeta(candidate);
-        if (statusMeta) return statusMeta;
-        const anotherCard = extractApiRefundCard(candidate);
-        if (anotherCard) break;
-      }
-      return null;
-    }
-
-    function applyApiRefundStatusToCard(card = {}, sortedMessages = [], options = {}) {
-      if (!card || typeof card !== 'object') return null;
-      const localKey = String(card.localKey || '').trim();
-      const statusMeta = findApiRefundStatusUpdateForCard(sortedMessages, {
-        targetMessageId: localKey,
-        cardIndex: options?.cardIndex,
-      });
-      if (statusMeta?.footerText) {
-        return {
-          ...card,
-          footerText: statusMeta.footerText,
-        };
-      }
-      return card;
-    }
-
-    function findApiNeighborRefundCard(sortedMessages = [], messageIndex = -1) {
-      if (!Array.isArray(sortedMessages) || !Number.isInteger(messageIndex) || messageIndex < 0) return null;
-      const statusMeta = getApiRefundStatusUpdateMeta(sortedMessages[messageIndex]);
-      const targetMessageId = String(statusMeta?.targetMessageId || '').trim();
-      if (targetMessageId) {
-        for (const candidate of sortedMessages) {
-          const card = extractApiRefundCard(candidate);
-          if (card && String(card.localKey || '').trim() === targetMessageId) return card;
-        }
-      }
-      for (let distance = 0; distance <= 6; distance++) {
-        const candidateIndexes = distance === 0
-          ? [messageIndex]
-          : [messageIndex - distance, messageIndex + distance];
-        for (const candidateIndex of candidateIndexes) {
-          if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= sortedMessages.length) continue;
-          const card = extractApiRefundCard(sortedMessages[candidateIndex]);
-          if (card) return card;
-        }
-      }
-      return null;
-    }
-
-    function renderApiRefundSystemNoticeCardHtml(message = {}, options = {}) {
-      const kind = getApiRefundSystemNoticeKind(message);
-      if (!kind) return '';
-      const card = findApiNeighborRefundCard(options.sortedMessages, options.messageIndex);
-      const displayText = getApiRefundSystemNoticeDisplayText(message);
-      if (!card) {
-        if (kind === 'refund-success') {
-          return `<div class="api-system-refund-card success">
-            <div class="api-system-refund-card-success-head">
-              <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
-              <span>${esc(displayText)}</span>
-            </div>
-          </div>`;
-        }
-        return `<div class="api-system-refund-card pending">
-          <div class="api-system-refund-card-header">${esc(displayText)}</div>
-        </div>`;
-      }
-      const imageHtml = card.imageUrl
-        ? `<img class="api-system-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
-        : `<div class="api-system-refund-card-media-placeholder">商品</div>`;
-      if (kind === 'refund-success') {
-        return `<div class="api-system-refund-card success">
-          <div class="api-system-refund-card-success-head">
-            <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
-            <span>退款成功</span>
-          </div>
-          <div class="api-system-refund-card-goods">
-            ${imageHtml}
-            <div class="api-system-refund-card-main">
-              <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
-              <div class="api-system-refund-card-success-meta">
-                <div class="api-system-refund-card-spec">${esc(card.specText || '')}</div>
-                <div class="api-system-refund-card-success-actual">实收： ${esc(card.amountText || '--')}</div>
-              </div>
-            </div>
-          </div>
-          <div class="api-system-refund-card-success-amount">
-            <span class="api-system-refund-card-success-amount-label">退款金额</span>
-            <span class="api-system-refund-card-success-amount-value">${esc(card.amountText || '--')}</span>
-          </div>
-        </div>`;
-      }
-      const rows = [
-        { label: '申请类型', value: card.actionText || '退款' },
-        { label: '申请原因', value: card.reasonText || '其他原因' },
-        card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
-        { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
-        card.contactText ? { label: '联系方式', value: card.contactText } : null,
-      ].filter(Boolean);
-      return `<div class="api-system-refund-card pending">
-        <div class="api-system-refund-card-header">${esc(displayText)}</div>
-        <div class="api-system-refund-card-goods">
-          <div class="api-system-refund-card-media-block">
-            ${imageHtml}
-            <div class="api-system-refund-card-media-title">${esc(card.goodsTitle || '订单商品')}</div>
-          </div>
-          <div class="api-system-refund-card-side">
-            <div class="api-system-refund-card-side-top">
-              <span class="api-system-refund-card-action">去处理</span>
-            </div>
-            ${card.amountText ? `<div class="api-system-refund-card-side-price">${esc(card.amountText)}</div>` : ''}
-          </div>
-          </div>
-          <div class="api-system-refund-card-rows">
-            ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
-          </div>
-        </div>
-      </div>`;
-    }
-
     function isApiSystemNoticeMessage(message = {}) {
       if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
       const source = getApiSystemNoticeText(message);
@@ -8989,9 +6715,6 @@
         /为避免抢答/,
         /当前用户来自/,
         /商品详情页/,
-        /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
-        /^退款成功通知$/,
-        /^退款成功$/,
       ].some(pattern => pattern.test(source));
     }
 
@@ -9056,10 +6779,6 @@
     function renderApiSystemMessageHtml(messageOrText = '', options = {}) {
       const source = getApiSystemNoticeText(messageOrText);
       if (!source) return '';
-      const refundNoticeKind = getApiRefundSystemNoticeKind(messageOrText);
-      if (refundNoticeKind) {
-        return renderApiRefundSystemNoticeCardHtml(messageOrText, options);
-      }
       const actionPattern = /(>>[^<>\n]+<<|点击(?:添加|【[^】\n]+】))/g;
       const normalizedSource = source.replace(/^(\s*>>[^<>\n]+<<\s*)+/, '').trim();
       const target = normalizedSource || source;
@@ -9163,78 +6882,6 @@
       return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket';
     }
 
-    function getEmbeddedViewPageId(view) {
-      if (view === 'chat') return 'viewChat';
-      if (view === 'mail') return 'viewMail';
-      if (view === 'invoice') return 'viewInvoice';
-      if (view === 'violation') return 'viewViolation';
-      if (view === 'ticket') return 'viewTicket';
-      return '';
-    }
-
-    function getEmbeddedPlaceholderCopy(view) {
-      if (view === 'chat') {
-        return {
-          title: '拼多多客服聊天页面加载中...',
-          detail: ''
-        };
-      }
-      if (view === 'mail') {
-        return {
-          title: '拼多多站内信页面加载中...',
-          detail: '进入列表后可切换未读、打开详情、翻页并观察抓包。'
-        };
-      }
-      if (view === 'invoice') {
-        return {
-          title: '拼多多待开票页面加载中...',
-          detail: '进入列表后可切换筛选、点击立即开票并观察抓包。'
-        };
-      }
-      if (view === 'violation') {
-        return {
-          title: '拼多多违规管理页面加载中...',
-          detail: '进入列表后可切换违规分类、打开详情并观察抓包。'
-        };
-      }
-      if (view === 'ticket') {
-        return {
-          title: '拼多多工单管理页面加载中...',
-          detail: '进入列表后可筛选工单、查看详情并观察抓包。'
-        };
-      }
-      return {
-        title: '页面加载中...',
-        detail: ''
-      };
-    }
-
-    function updateEmbeddedPlaceholder(view, options = {}) {
-      const pageId = getEmbeddedViewPageId(view);
-      if (!pageId) return;
-      const placeholder = document.querySelector(`#${pageId} .chat-placeholder`);
-      if (!placeholder) return;
-      const texts = getEmbeddedPlaceholderCopy(view);
-      const titleEl = placeholder.querySelector('p');
-      const detailEl = placeholder.querySelector('p:nth-of-type(2)');
-      const title = typeof options.title === 'string' ? options.title : texts.title;
-      const detail = typeof options.detail === 'string' ? options.detail : texts.detail;
-      if (titleEl) {
-        titleEl.textContent = title;
-      }
-      if (detailEl) {
-        detailEl.textContent = detail;
-        detailEl.style.display = detail ? '' : 'none';
-      }
-      placeholder.style.display = options.visible === false ? 'none' : 'flex';
-    }
-
-    function hideAllEmbeddedPlaceholders() {
-      ['chat', 'mail', 'invoice', 'violation', 'ticket'].forEach(view => {
-        updateEmbeddedPlaceholder(view, { visible: false });
-      });
-    }
-
     function isMailPageUrl(url) {
       return String(url || '').includes('/other/mail/');
     }
@@ -9278,52 +6925,6 @@
       return num < 1e12 ? num * 1000 : num;
     }
 
-    function getApiSessionLastMessageActor(session = {}) {
-      const actor = String(session.lastMessageActor || '').toLowerCase();
-      if (actor) return actor;
-      const raw = session?.raw && typeof session.raw === 'object' ? session.raw : null;
-      const context = {
-        customer_id: session.customerId || raw?.customer_id,
-        buyer_id: session.customerId || raw?.buyer_id,
-        user_info: raw?.user_info,
-        from: raw?.from,
-        to: raw?.to,
-      };
-      const candidates = [
-        raw?.last_msg,
-        raw?.last_message,
-        raw?.latest_msg,
-        raw?.content,
-        raw,
-      ];
-      for (const candidate of candidates) {
-        if (!candidate || typeof candidate !== 'object') continue;
-        const role = String(
-          candidate.role
-          || candidate.msg_from
-          || candidate.from_type
-          || candidate.sender_role
-          || candidate?.from?.role
-          || candidate?.sender?.role
-          || candidate?.to?.role
-          || ''
-        ).toLowerCase();
-        if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return 'buyer';
-        if (['system', 'robot', 'bot', 'notice', 'tips', '99'].includes(role)) return 'system';
-        if (['seller', 'service', 'kf', 'agent', 'mall_cs', '2', '3', '4'].includes(role)) return 'seller';
-        const merged = { ...context, ...candidate };
-        if (merged.is_buyer || merged.is_buyer === 1 || merged.sender_type === 1 || merged.sender_type === 0) return 'buyer';
-        if (merged.is_robot || merged.is_system) return 'system';
-        if (merged.is_seller) return 'seller';
-      }
-      return 'unknown';
-    }
-
-    function isApiSessionLastMessageFromBuyer(session = {}) {
-      if (session.lastMessageIsFromBuyer === true) return true;
-      return getApiSessionLastMessageActor(session) === 'buyer';
-    }
-
     function getApiPendingReplyElapsedMs(session = {}) {
       const lastMessageMs = getApiTimeMs(session.lastMessageTime);
       if (lastMessageMs > 0) {
@@ -9349,7 +6950,7 @@
     function getApiPendingReplyDisplayState(session = {}) {
       const unreadCount = Number(session.unreadCount || 0);
       const waitValue = Number(session.waitTime || 0);
-      const pending = isApiSessionLastMessageFromBuyer(session) && (unreadCount > 0 || waitValue > 0 || !!session.isTimeout);
+      const pending = unreadCount > 0 || waitValue > 0 || !!session.isTimeout;
       if (!pending) {
         return {
           pending: false,
@@ -9405,9 +7006,8 @@
     function getApiConversationFollowStatus(session = null) {
       if (!session) {
         return {
-          text: '',
+          text: '未选择会话',
           highlighted: false,
-          visible: false,
         };
       }
       const pendingReplyText = formatApiPendingReplyText(session);
@@ -9415,7 +7015,6 @@
         return {
           text: pendingReplyText,
           highlighted: true,
-          visible: true,
         };
       }
       const unreadCount = Number(session.unreadCount || 0);
@@ -9423,16 +7022,11 @@
         return {
           text: `未读 ${unreadCount}`,
           highlighted: true,
-          visible: true,
         };
       }
-      const isShopMember = typeof session.isShopMember === 'boolean'
-        ? session.isShopMember
-        : (typeof session.is_shop_member === 'boolean' ? session.is_shop_member : null);
       return {
-        text: isShopMember === true ? '已关注本店' : '',
+        text: '已关注本店',
         highlighted: false,
-        visible: isShopMember === true,
       };
     }
 
@@ -9440,10 +7034,7 @@
       const followStatusEl = document.getElementById('apiChatFollowStatus');
       if (!followStatusEl) return;
       const followStatus = getApiConversationFollowStatus(session);
-      const isVisible = followStatus.visible !== false;
-      followStatusEl.hidden = !isVisible;
-      followStatusEl.style.display = isVisible ? '' : 'none';
-      followStatusEl.textContent = followStatus.text || '';
+      followStatusEl.textContent = followStatus.text;
       followStatusEl.classList.toggle('is-unread', !!followStatus.highlighted);
     }
 
@@ -9455,7 +7046,7 @@
       const now = Date.now();
       const previewText = payload.text
         ? String(payload.text)
-        : (payload.imageUrl ? '[图片]' : (payload.videoUrl ? '[视频]' : ''));
+        : (payload.imageUrl ? '[图片]' : '');
       let changed = false;
       const patchSession = (session = {}) => {
         if (getApiSessionKey(session) !== sessionKey) return session;
@@ -9465,8 +7056,6 @@
           unreadCount: 0,
           isTimeout: false,
           waitTime: 0,
-          lastMessageActor: 'seller',
-          lastMessageIsFromBuyer: false,
           lastMessage: previewText || session.lastMessage,
           lastMessageTime: now,
           updatedAt: now,
@@ -9482,311 +7071,22 @@
       renderApiMessages();
     }
 
-    function formatApiVideoDuration(value) {
-      const totalSeconds = Math.max(0, Number(value || 0) || 0);
-      if (!totalSeconds) return '00:00';
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    }
-
-    function normalizeApiVideoItem(item = {}) {
-      if (!item || typeof item !== 'object') return null;
-      const normalized = {
-        id: Number(item.id || item.fileId || 0) || 0,
-        name: String(item.name || item.fileName || '').trim(),
-        extension: String(item.extension || '').trim(),
-        url: String(item.url || item.videoUrl || '').trim(),
-        coverUrl: String(item.coverUrl || item.videoCoverUrl || item.video_cover_url || '').trim(),
-        duration: Number(item.duration || item.videoDuration || 0) || 0,
-        width: Number(item.width || 0) || 0,
-        height: Number(item.height || 0) || 0,
-        size: Number(item.size || 0) || 0,
-        checkStatus: Number(item.checkStatus || item.check_status || 0) || 0,
-      };
-      if (!normalized.url && !normalized.id) return null;
-      return normalized;
-    }
-
-    function renderApiVideoMessageHtml(message = {}) {
-      const videoUrl = getApiVideoMessageUrl(message);
-      const coverUrl = getApiVideoMessageCoverUrl(message);
-      const durationText = formatApiVideoDuration(getApiVideoMessageDuration(message));
-      return `<div class="api-message-bubble">
-        <a class="api-message-video" href="${esc(videoUrl || '#')}" target="_blank" rel="noopener noreferrer">
-          ${coverUrl
-          ? `<img class="api-message-video-cover" src="${esc(coverUrl)}" alt="视频封面">`
-          : `<div class="api-message-video-fallback">▶</div>`}
-          <div class="api-message-video-mask"><span class="api-message-video-play"></span></div>
-          <div class="api-message-video-footer">
-            <span class="api-message-video-label">视频</span>
-            <span class="api-message-video-duration">${esc(durationText)}</span>
-          </div>
-        </a>
-      </div>`;
-    }
-
-    function renderApiVideoLibraryModal() {
-      const container = document.getElementById('apiVideoLibraryContent');
-      if (!container) return;
-      const footer = document.querySelector('#apiVideoLibraryPanel .api-video-popover-footer');
-      if (footer) footer.style.display = 'flex';
-      const syncPopover = () => {
-        if (isApiVideoLibraryVisible()) {
-          requestAnimationFrame(syncApiVideoLibraryPopoverPosition);
-        }
-      };
-      if (!apiActiveSessionId) {
-        container.innerHTML = '<div class="api-video-empty">请先选择一个接口会话，再发送视频</div>';
-        syncPopover();
-        return;
-      }
-      if (apiVideoLibraryLoading) {
-        container.innerHTML = '<div class="api-video-loading">正在加载视频列表...</div>';
-        syncPopover();
-        return;
-      }
-      if (apiVideoLibraryError) {
-        container.innerHTML = `<div class="api-video-error">${esc(apiVideoLibraryError)}</div>`;
-        syncPopover();
-        return;
-      }
-      if (!apiVideoLibrary.length) {
-        if (footer) footer.style.display = 'flex';
-        container.innerHTML = `<div class="api-video-empty">暂无视频，去 <button class="api-video-empty-action" id="btnApiVideoEmptyUpload" type="button">添加</button> 吧~</div>`;
-        document.getElementById('btnApiVideoEmptyUpload')?.addEventListener('click', () => {
-          document.getElementById('btnApiVideoUpload')?.click();
-        });
-        syncPopover();
-        return;
-      }
-      if (footer) footer.style.display = 'none';
-      container.innerHTML = `<div class="api-video-grid">
-        ${apiVideoLibrary.map(item => {
-        const selected = apiSelectedVideo && Number(apiSelectedVideo.id || 0) === Number(item.id || 0);
-        return `<div class="api-video-card${selected ? ' is-selected' : ''}" role="button" tabindex="0" data-video-id="${esc(item.id)}">
-            <div class="api-video-card-media">
-              <div class="api-video-card-cover-wrap">
-                ${item.coverUrl
-            ? `<img class="api-video-card-cover" src="${esc(item.coverUrl)}" alt="视频封面">`
-            : `<div class="api-video-card-fallback">▶</div>`}
-                <span class="api-video-card-duration">${esc(formatApiVideoDuration(item.duration))}</span>
-              </div>
-            </div>
-            <div class="api-video-card-body">
-              <div class="api-video-card-name">${esc(item.name || '未命名视频')}</div>
-              <button class="api-video-card-send" type="button" data-video-send-id="${esc(item.id)}">发送</button>
-            </div>
-          </div>`;
-      }).join('')}
-      </div>`;
-      container.querySelectorAll('[data-video-id]').forEach(button => {
-        button.addEventListener('click', () => {
-          const matched = apiVideoLibrary.find(item => String(item.id) === String(button.dataset.videoId));
-          if (!matched) return;
-          apiSelectedVideo = matched;
-          renderApiVideoLibraryModal();
-        });
-        button.addEventListener('keydown', event => {
-          if (event.key !== 'Enter' && event.key !== ' ') return;
-          event.preventDefault();
-          button.click();
-        });
-      });
-      container.querySelectorAll('[data-video-send-id]').forEach(button => {
-        button.addEventListener('click', async event => {
-          event.stopPropagation();
-          const matched = apiVideoLibrary.find(item => String(item.id) === String(button.dataset.videoSendId));
-          if (!matched) return;
-          apiSelectedVideo = matched;
-          renderApiVideoLibraryModal();
-          await sendSelectedApiVideo(matched);
-        });
-      });
-      syncPopover();
-    }
-
-    async function loadApiVideoLibrary(options = {}) {
-      apiVideoLibraryLoading = true;
-      apiVideoLibraryError = '';
-      if (!options.keepSelection) {
-        apiSelectedVideo = null;
-      }
-      renderApiVideoLibraryModal();
-      const result = await window.pddApi.apiGetVideoLibrary({
-        shopId: apiActiveSessionShopId,
-        includePending: false,
-      });
-      apiVideoLibraryLoading = false;
-      if (result?.error) {
-        apiVideoLibrary = [];
-        apiVideoLibraryError = result.error;
-        renderApiVideoLibraryModal();
-        return false;
-      }
-      apiVideoLibrary = Array.isArray(result?.list)
-        ? result.list.map(normalizeApiVideoItem).filter(Boolean)
-        : [];
-      if (!options.keepSelection || !apiSelectedVideo) {
-        apiSelectedVideo = apiVideoLibrary[0] || null;
-      } else {
-        apiSelectedVideo = apiVideoLibrary.find(item => Number(item.id || 0) === Number(apiSelectedVideo?.id || 0)) || apiVideoLibrary[0] || null;
-      }
-      renderApiVideoLibraryModal();
-      return true;
-    }
-
-    async function openApiVideoLibraryModal() {
-      toggleApiEmojiPanel(false);
-      apiVideoLibrary = [];
-      apiVideoLibraryError = '';
-      apiSelectedVideo = null;
-      showApiVideoLibraryPopover();
-      renderApiVideoLibraryModal();
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      await loadApiVideoLibrary();
-    }
-
-    async function sendSelectedApiVideo(video = apiSelectedVideo) {
-      if (!apiActiveSessionId) {
-        setApiHint('请先选择一个接口会话');
-        return;
-      }
-      if (!video?.url) {
-        setApiHint('请先选择一个可发送的视频');
-        return;
-      }
-      apiSelectedVideo = video;
-      const currentVideo = video;
-      recordApiSyncState('视频发送', `${currentVideo.name || '未命名视频'} → ${apiActiveSessionName || apiActiveSessionId}`);
-      setApiHint('正在发送视频，请稍候...');
-      const result = await window.pddApi.apiSendVideo({
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        session: getApiActiveSession() || undefined,
-        videoUrl: currentVideo.url,
-        coverUrl: currentVideo.coverUrl,
-        duration: currentVideo.duration,
-        videoName: currentVideo.name,
-        videoId: currentVideo.id,
-      });
-      if (result?.error) {
-        recordApiSyncState('视频失败', result.error || '视频发送失败');
-        setApiHint(`视频发送失败：${result.error || '未知错误'}`);
-        return;
-      }
-      const successPayload = {
-        shopId: apiActiveSessionShopId,
-        sessionId: apiActiveSessionId,
-        videoUrl: currentVideo.url,
-        videoCoverUrl: currentVideo.coverUrl,
-        videoDuration: currentVideo.duration,
-        videoName: currentVideo.name,
-        videoId: currentVideo.id,
-      };
-      clearApiPendingReplyState(successPayload);
-      appendApiLocalServiceMessage(successPayload);
-      hideApiVideoLibraryPopover();
-      setApiHint('视频已发送，正在同步最新消息');
-    }
-
-    function buildApiSyntheticRefundMessageKey(payload = {}) {
-      const refundCard = payload?.refundCard && typeof payload.refundCard === 'object' ? payload.refundCard : {};
-      return [
-        String(payload.shopId || ''),
-        String(payload.sessionId || ''),
-        String(refundCard.localKey || ''),
-        String(refundCard.orderSn || ''),
-        String(refundCard.actionText || ''),
-        String(refundCard.amountText || '')
-      ].join('::');
-    }
-
     function appendApiLocalServiceMessage(payload = {}) {
       const shopId = String(payload.shopId || apiActiveSessionShopId || '');
       const sessionId = String(payload.sessionId || apiActiveSessionId || '');
       const text = String(payload.text || '').trim();
-      const refundCard = payload?.refundCard && typeof payload.refundCard === 'object'
-        ? { ...payload.refundCard }
-        : null;
-      const videoMeta = normalizeApiVideoItem({
-        id: payload.videoId,
-        url: payload.videoUrl,
-        coverUrl: payload.videoCoverUrl,
-        duration: payload.videoDuration,
-        name: payload.videoName,
-      });
-      if (!shopId || !sessionId || (!text && !refundCard && !videoMeta)) return;
-      const timestamp = Number(payload.timestamp || Date.now()) || Date.now();
-      const localMessage = {
+      if (!shopId || !sessionId || !text) return;
+      if (shopId !== String(apiActiveSessionShopId || '') || sessionId !== String(apiActiveSessionId || '')) return;
+      apiMessages = apiMessages.concat([{
         sessionId,
-        shopId,
-        content: text || (videoMeta?.url || ''),
-        timestamp,
+        content: text,
+        timestamp: Date.now(),
         isFromBuyer: false,
         senderName: getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号',
         readState: '',
-        refundCard,
-        extra: refundCard ? { refundCard } : (videoMeta ? { video: videoMeta } : null),
         raw: {},
-      };
-      if (refundCard) {
-        const syntheticKey = buildApiSyntheticRefundMessageKey({
-          shopId,
-          sessionId,
-          refundCard,
-        });
-        localMessage.syntheticKey = syntheticKey;
-        apiSyntheticRefundMessages = apiSyntheticRefundMessages
-          .filter(item => String(item?.syntheticKey || '') !== syntheticKey)
-          .concat([{ ...localMessage }]);
-      }
-      if (shopId !== String(apiActiveSessionShopId || '') || sessionId !== String(apiActiveSessionId || '')) return;
-      apiMessages = apiMessages.concat([localMessage]);
-      renderApiMessages();
-    }
-
-    function appendApiIncomingMessage(payload = {}) {
-      const shopId = String(payload.shopId || apiActiveSessionShopId || '');
-      const sessionId = String(payload.sessionId || apiActiveSessionId || '');
-      const content = String(payload.content ?? payload.text ?? '').trim();
-      const refundCard = payload?.refundCard && typeof payload.refundCard === 'object'
-        ? { ...payload.refundCard }
-        : null;
-      const refundStatusUpdate = payload?.refundStatusUpdate && typeof payload.refundStatusUpdate === 'object'
-        ? { ...payload.refundStatusUpdate }
-        : null;
-      if (!shopId || !sessionId || (!content && !refundCard && !refundStatusUpdate)) return false;
-      if (shopId !== String(apiActiveSessionShopId || '') || sessionId !== String(apiActiveSessionId || '')) return false;
-      const messageId = String(payload.messageId || payload.msgId || payload?.raw?.msg_id || payload?.raw?.message_id || '').trim();
-      const duplicated = apiMessages.some(item => {
-        const itemMessageId = String(item?.messageId || item?.raw?.msg_id || item?.raw?.message_id || '').trim();
-        if (messageId && itemMessageId && itemMessageId === messageId) return true;
-        if (!refundCard) return false;
-        const currentKey = String(item?.refundCard?.localKey || item?.extra?.refundCard?.localKey || '');
-        return currentKey && currentKey === String(refundCard.localKey || '');
-      });
-      if (duplicated) return false;
-      apiMessages = apiMessages.concat([{
-        sessionId,
-        shopId,
-        messageId,
-        content,
-        timestamp: Number(payload.timestamp || Date.now()) || Date.now(),
-        isFromBuyer: payload.isFromBuyer === true,
-        senderName: String(payload.senderName || getApiActiveSession()?.shopName || apiTokenStatus?.mallName || '主账号'),
-        readState: String(payload.readState || '').trim(),
-        templateName: String(payload.templateName || '').trim(),
-        refundCard,
-        refundStatusUpdate,
-        extra: refundCard ? { refundCard } : null,
-        raw: payload?.raw && typeof payload.raw === 'object' ? payload.raw : {},
       }]);
       renderApiMessages();
-      return true;
     }
 
     function getApiSessionKey(sessionOrShopId, maybeSessionId = '') {
@@ -9822,156 +7122,15 @@
       apiSelectedShopId = defaultShopId || API_ALL_SHOPS;
     }
 
-    function isUnknownApiCustomerName(value = '') {
-      return ['未知客户', '未知', '客户', '未选择客户'].includes(String(value || '').trim());
-    }
-
-    function pickApiDisplayText(sources = [], keys = []) {
-      for (const source of sources) {
-        if (!source || typeof source !== 'object') continue;
-        for (const key of keys) {
-          const value = String(source[key] || '').trim();
-          if (!value) continue;
-          if (keys.includes('customerName') && isUnknownApiCustomerName(value)) continue;
-          return value;
-        }
-      }
-      return '';
-    }
-
-    function pickApiSessionCustomerName(session = {}) {
-      const raw = session.raw && typeof session.raw === 'object' ? session.raw : {};
-      const userInfo = raw.user_info && typeof raw.user_info === 'object' ? raw.user_info : {};
-      const buyerInfo = raw.buyer && typeof raw.buyer === 'object' ? raw.buyer : {};
-      const customerInfo = raw.customer && typeof raw.customer === 'object' ? raw.customer : {};
-      const fromObj = raw.from && typeof raw.from === 'object' ? raw.from : {};
-      const toObj = raw.to && typeof raw.to === 'object' ? raw.to : {};
-      const buyerUid = String(
-        session.customerId
-        || raw.customer_id
-        || raw.buyer_id
-        || userInfo.uid
-        || raw.uid
-        || ''
-      ).trim();
-      const participant = buyerUid && String(fromObj.uid || '').trim() === buyerUid
-        ? fromObj
-        : (buyerUid && String(toObj.uid || '').trim() === buyerUid ? toObj : (fromObj.uid ? fromObj : toObj));
-      return pickApiDisplayText(
-        [session, raw, userInfo, buyerInfo, customerInfo, participant, fromObj, toObj],
-        [
-          'customerName',
-          'displayName',
-          'nick',
-          'nickname',
-          'nick_name',
-          'buyer_name',
-          'buyer_nickname',
-          'buyer_nick_name',
-          'customer_name',
-          'customer_nickname',
-          'customer_nick_name',
-          'display_name',
-          'name',
-        ]
-      );
-    }
-
     function buildApiSession(session = {}) {
       const shop = shops.find(item => item.id === session.shopId) || null;
       const shopId = session.shopId || shop?.id || apiActiveSessionShopId || activeShopId || '';
-      const lastMessageActor = getApiSessionLastMessageActor(session);
-      const mallName = session.mallName || session.raw?.mallName || session.raw?.mall_name || '';
-      const preferredShopName = ['未命名店铺', '未知店铺'].includes(String(session.shopName || '').trim())
-        ? ''
-        : session.shopName;
-      const customerName = pickApiSessionCustomerName(session);
       return {
         ...session,
         shopId,
-        mallName,
-        customerName,
-        isShopMember: typeof session.isShopMember === 'boolean'
-          ? session.isShopMember
-          : (typeof session.is_shop_member === 'boolean'
-            ? session.is_shop_member
-            : (typeof session.raw?.is_shop_member === 'boolean'
-              ? session.raw.is_shop_member
-              : null)),
-        shopName: preferredShopName || mallName || shop?.name || '未命名店铺',
+        shopName: session.shopName || shop?.name || '未命名店铺',
         sessionKey: session.sessionKey || getApiSessionKey(shopId, session.sessionId),
-        lastMessageActor,
-        lastMessageIsFromBuyer: session.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer',
       };
-    }
-
-    function getApiSessionGroupNumber(session = {}) {
-      const rawValue = session.groupNumber
-        ?? session.group_number
-        ?? session.raw?.groupNumber
-        ?? session.raw?.group_number;
-      const numericValue = Number(rawValue);
-      return Number.isFinite(numericValue) ? numericValue : 0;
-    }
-
-    function getApiSessionGenderValue(session = {}) {
-      const candidates = [
-        session.gender,
-        session.raw?.gender,
-        session.sex,
-        session.raw?.sex,
-        session.raw?.buyer_gender,
-        session.raw?.buyerGender,
-        session.raw?.buyer_sex,
-        session.raw?.buyerSex,
-        session.raw?.user_info?.gender,
-        session.raw?.user_info?.sex,
-        session.raw?.user_info?.buyer_gender,
-        session.raw?.user_info?.buyerGender,
-        session.raw?.user_info?.buyer_sex,
-        session.raw?.user_info?.buyerSex,
-      ];
-      for (const candidate of candidates) {
-        if (candidate === null || candidate === undefined || candidate === '') continue;
-        const normalized = String(candidate).trim().toLowerCase();
-        if (normalized === '0' || normalized === 'female' || normalized === 'woman' || normalized === 'girl' || normalized === '女') {
-          return 'female';
-        }
-        if (normalized === '1' || normalized === 'male' || normalized === 'man' || normalized === 'boy' || normalized === '男') {
-          return 'male';
-        }
-      }
-      return 'unknown';
-    }
-
-    function applyApiConversationMeta(session = null) {
-      const orderCountEl = document.getElementById('apiChatOrderCount');
-      const genderEl = document.getElementById('apiChatGender');
-      if (orderCountEl) {
-        const orderCount = session ? Math.max(0, getApiSessionGroupNumber(session)) : 0;
-        if (orderCount >= 1) {
-          orderCountEl.textContent = `下单数 ${orderCount}`;
-          orderCountEl.hidden = false;
-        } else {
-          orderCountEl.hidden = true;
-        }
-      }
-      if (!genderEl) return;
-      const genderValue = session ? getApiSessionGenderValue(session) : 'unknown';
-      genderEl.classList.remove('is-female', 'is-male', 'is-unknown');
-      if (genderValue === 'female') {
-        genderEl.textContent = '女';
-        genderEl.classList.add('is-female');
-        genderEl.hidden = false;
-        return;
-      }
-      if (genderValue === 'male') {
-        genderEl.textContent = '男';
-        genderEl.classList.add('is-male');
-        genderEl.hidden = false;
-        return;
-      }
-      genderEl.hidden = true;
     }
 
     function setApiActiveSessionSnapshot(session = null) {
@@ -9992,44 +7151,12 @@
       return apiActiveSessionSnapshot;
     }
 
-    function backfillApiSessionCustomerName(sessionKey, customerName) {
-      const nextCustomerName = String(customerName || '').trim();
-      if (!sessionKey || !nextCustomerName || isUnknownApiCustomerName(nextCustomerName)) {
-        return false;
-      }
-      let changed = false;
-      const patchSession = (session = {}) => {
-        if (getApiSessionKey(session) !== sessionKey) return session;
-        const currentName = String(session.customerName || '').trim();
-        if (currentName && !isUnknownApiCustomerName(currentName)) return session;
-        changed = true;
-        return buildApiSession({
-          ...session,
-          customerName: nextCustomerName,
-        });
-      };
-      apiSessions = apiSessions.map(patchSession);
-      apiStarredSessions = apiStarredSessions.map(patchSession);
-      if (getApiSessionKey(apiActiveSessionSnapshot || {}) === sessionKey) {
-        apiActiveSessionSnapshot = patchSession(apiActiveSessionSnapshot);
-      }
-      if (getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId) === sessionKey) {
-        const currentName = String(apiActiveSessionName || '').trim();
-        if (!currentName || isUnknownApiCustomerName(currentName)) {
-          apiActiveSessionName = nextCustomerName;
-          changed = true;
-        }
-      }
-      return changed;
-    }
-
     function getApiSessionSyncSignature(session = {}) {
       const normalized = buildApiSession(session);
       return [
         normalized.shopId || '',
         normalized.sessionId || '',
         normalized.lastMessageTime || 0,
-        normalized.lastMessageActor || '',
         normalized.unreadCount || 0,
         normalized.waitTime || 0,
         normalized.lastMessage || '',
@@ -10094,9 +7221,9 @@
           result.push(buildApiSession({
             sessionId,
             shopId,
-            shopName: entry.shopName || shops.find(shop => shop.id === shopId)?.name || '',
+            shopName: entry.shopName || shops.find(shop => shop.id === shopId)?.name || '未命名店铺',
             customerId: String(item.customer_id || item.buyer_id || item?.from?.uid || item?.to?.uid || item?.user_info?.uid || ''),
-            customerName: pickApiSessionCustomerName({ raw: item }) || '未知客户',
+            customerName: item.nick || item.nickname || item.buyer_name || item.customer_name || item.name || item?.user_info?.nickname || '未知客户',
             customerAvatar: item.avatar || item.head_img || item.buyer_avatar || item?.user_info?.avatar || '',
             lastMessage: item.last_msg || item.last_message || item.latest_msg || item.content || '',
             lastMessageTime: item.last_msg_time || item.update_time || item.last_time || item.ts || 0,
@@ -10325,16 +7452,11 @@
     }
 
     function clearApiActiveSession() {
-      hideApiVideoLibraryPopover();
       apiActiveSessionId = '';
       apiActiveSessionName = '';
       apiActiveSessionShopId = '';
       apiActiveSessionSnapshot = null;
       apiMessages = [];
-      apiVideoLibrary = [];
-      apiVideoLibraryLoading = false;
-      apiVideoLibraryError = '';
-      apiSelectedVideo = null;
       apiHasUserSelectedSession = false;
       apiActiveSessionSyncSignature = '';
       apiOpenSessionRequestId += 1;
@@ -10414,10 +7536,6 @@
           const unread = Number(session.unreadCount || 0);
           const pendingReply = hasApiPendingReply(session);
           const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
-          const groupNumber = getApiSessionGroupNumber(session);
-          const orderTagHtml = groupNumber >= 1
-            ? `<span class="api-session-order-tag">订单 ${esc(String(groupNumber))}</span>`
-            : '';
           const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
           return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
             <div class="api-session-avatar">${avatarHtml}</div>
@@ -10426,15 +7544,14 @@
                 <div class="api-session-item-info-row">
                   <div class="api-session-item-name">
                     <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
-                    ${orderTagHtml}
                     ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
                   </div>
                   <div class="api-session-shop">
                     <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
                   </div>
-                  <div class="api-session-time-group">
-                    <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
-                  </div>
+                </div>
+                <div class="api-session-time-group">
+                  <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
                 </div>
               </div>
               <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
@@ -10504,62 +7621,6 @@
       return jsonMatch?.[1] || '';
     }
 
-    function isApiVideoMessage(message = {}) {
-      const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
-      if (['video', 'short_video', 'small_video'].includes(msgType)) return true;
-      const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
-      if (/(video_cover_url|f20_url|f30_url|transcode_f30_url|library_file)/.test(rawContent)) return true;
-      if (/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i.test(rawContent)) return true;
-      return !!getApiVideoMessageUrl(message);
-    }
-
-    function getApiVideoMessageUrl(message = {}) {
-      const candidates = [
-        message?.extra?.video?.url,
-        message?.extra?.url,
-        message?.extra?.video_url,
-        message?.extra?.f30_url,
-        message?.extra?.f20_url,
-        message?.raw?.extra?.video?.url,
-        message?.raw?.extra?.url,
-        message?.raw?.extra?.video_url,
-        message?.raw?.extra?.f30_url,
-        message?.raw?.extra?.f20_url,
-        message?.raw?.ext?.url,
-        message?.raw?.ext?.video_url,
-        message?.raw?.ext?.f30_url,
-        message?.raw?.ext?.f20_url,
-      ].filter(Boolean);
-      if (candidates.length) return String(candidates[0] || '');
-      const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
-      const urlMatch = rawText.match(/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i);
-      return urlMatch?.[0] || '';
-    }
-
-    function getApiVideoMessageCoverUrl(message = {}) {
-      return String(
-        message?.extra?.video?.coverUrl
-        || message?.extra?.coverUrl
-        || message?.extra?.video_cover_url
-        || message?.raw?.extra?.video?.coverUrl
-        || message?.raw?.extra?.coverUrl
-        || message?.raw?.extra?.video_cover_url
-        || message?.raw?.ext?.video_cover_url
-        || ''
-      );
-    }
-
-    function getApiVideoMessageDuration(message = {}) {
-      return Number(
-        message?.extra?.video?.duration
-        || message?.extra?.duration
-        || message?.raw?.extra?.video?.duration
-        || message?.raw?.extra?.duration
-        || message?.raw?.ext?.duration
-        || 0
-      ) || 0;
-    }
-
     function renderApiMessages() {
       try {
         const container = document.getElementById('apiMessageList');
@@ -10574,7 +7635,6 @@
         document.getElementById('apiChatCustomerName').textContent = apiActiveSessionName || '未选择客户';
         document.getElementById('btnApiStar').textContent = isApiSessionStarred(activeSession || {}) ? '取消收藏' : '收藏';
         applyApiChatFollowStatus(activeSession);
-        applyApiConversationMeta(activeSession);
         document.querySelector('.api-conversation-actions')?.classList.toggle('hidden', !hasActiveSession);
         mainInner?.classList.toggle('is-empty-session', !hasActiveSession);
 
@@ -10588,31 +7648,26 @@
           return;
         }
 
-        const displayMessages = getApiDisplayMessages(activeSession);
-        if (!displayMessages.length) {
+        if (!apiMessages.length) {
           container.innerHTML = `<div class="api-empty">${isLoadingCurrentSession ? '正在加载会话消息...' : '当前会话暂无消息，或尚未从接口拿到消息数据。'}</div>`;
           return;
         }
 
-        const sortedMessages = displayMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
+        const sortedMessages = apiMessages.slice().sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0));
         let previousTimestamp = 0;
         container.innerHTML = sortedMessages.map((message, index) => {
           const isSystem = isApiSystemNoticeMessage(message);
-          const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
           const isBuyer = !!message.isFromBuyer;
           const buyerAvatar = activeSession?.customerAvatar || '';
           const sellerText = (shopName || apiTokenStatus?.mallName || '主账号').slice(0, 4);
           if (isSystem) {
-            const systemVariantClass = [
-              isApiUnmatchedReplyNoticeMessage(message) ? 'unmatched-reply' : '',
-              refundSystemNoticeKind ? 'refund-notice' : '',
-            ].filter(Boolean).join(' ');
+            const systemVariantClass = isApiUnmatchedReplyNoticeMessage(message) ? ' unmatched-reply' : '';
             const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
               ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
               : '';
             previousTimestamp = message.timestamp;
-            return `${divider}<div class="api-message-item system${systemVariantClass ? ` ${systemVariantClass}` : ''}">
-              <div class="api-message-system-bubble${systemVariantClass ? ` ${systemVariantClass}` : ''}">${renderApiSystemMessageHtml(message, { message, messageIndex: index, sortedMessages })}</div>
+            return `${divider}<div class="api-message-item system${systemVariantClass}">
+              <div class="api-message-system-bubble${systemVariantClass}">${renderApiSystemMessageHtml(message, { message, messageIndex: index })}</div>
             </div>`;
           }
           const avatarHtml = isBuyer
@@ -10623,34 +7678,24 @@
           const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
           const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
           const imageUrl = getApiImageMessageUrl(message);
-          const videoMessage = isApiVideoMessage(message);
           const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
           const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
           const cachedGoodsCard = goodsLinkInfo ? apiGoodsCardCache.get(goodsLinkInfo.cacheKey) : null;
-          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
-            goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
-            goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
-          ) : null;
-          const refundCard = !isBuyer ? extractApiRefundCard(message) : null;
-          const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, { cardIndex: index }) : null;
+          const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(cachedGoodsCard || {}, fallbackGoodsCard || {}) : null;
           if (goodsLinkInfo && fallbackGoodsCard) {
             void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
           }
-          const imageMessage = !videoMessage && isApiImageMessage(message);
-          const bubbleHtml = resolvedRefundCard
-            ? renderApiRefundCardHtml(resolvedRefundCard)
-            : goodsLinkInfo
-              ? renderApiGoodsCardHtml(goodsCard)
-              : videoMessage
-                ? renderApiVideoMessageHtml(message)
-                : imageMessage
-                  ? `<div class="api-message-bubble">
-                <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息" data-preview-url="${esc(imageUrl)}">` : '[图片消息]'}</div>
+          const imageMessage = isApiImageMessage(message);
+          const bubbleHtml = goodsLinkInfo
+            ? renderApiGoodsCardHtml(goodsCard)
+            : imageMessage
+              ? `<div class="api-message-bubble">
+                <div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div>
               </div>`
-                  : `<div class="api-message-bubble">
+              : `<div class="api-message-bubble">
                 <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
               </div>`;
-          const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !imageMessage && !videoMessage && String(message.content || '').trim()
+          const copyButtonHtml = isBuyer && !goodsLinkInfo && !imageMessage && String(message.content || '').trim()
             ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
             : '';
           const footerHtml = !isBuyer
@@ -10660,9 +7705,6 @@
             ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
             : '';
           previousTimestamp = message.timestamp;
-          if (resolvedRefundCard) {
-            return `${divider}<div class="api-message-item platform-card">${bubbleHtml}</div>`;
-          }
           return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
             <div class="api-message-avatar">${avatarHtml}</div>
             <div class="api-message-body">
@@ -10687,13 +7729,6 @@
             }
           });
         });
-        container.querySelectorAll('.api-message-image[data-preview-url]').forEach(image => {
-          image.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            showApiImagePreview(image.dataset.previewUrl || image.getAttribute('src') || '');
-          });
-        });
         container.querySelectorAll('.api-message-system-action-button').forEach(button => {
           button.addEventListener('click', async (event) => {
             event.stopPropagation();
@@ -10708,35 +7743,10 @@
             if (!goodsId) return;
             try {
               await navigator.clipboard.writeText(goodsId);
-              showToast('已复制到剪切板！');
+              setApiHint('已复制商品ID');
             } catch {
-              showToast('复制失败，请稍后重试');
+              setApiHint('复制失败，请稍后重试');
             }
-          });
-        });
-        container.querySelectorAll('.api-goods-card-spec').forEach(button => {
-          button.addEventListener('click', (event) => {
-            event.stopPropagation();
-            let inlineSpecItems = [];
-            try {
-              inlineSpecItems = normalizeApiGoodsSpecItems(JSON.parse(button.dataset.goodsSpecItems || '[]'));
-            } catch {}
-            const cacheKey = String(button.dataset.goodsCacheKey || '');
-            const cachedCard = cacheKey ? apiGoodsCardCache.get(cacheKey) : null;
-            window.openApiGoodsSpecModal?.(normalizeApiGoodsCard(cachedCard || {}, {
-              cacheKey,
-              goodsId: button.dataset.goodsId || '',
-              url: button.dataset.goodsUrl || '',
-              title: button.dataset.goodsTitle || '',
-              imageUrl: button.dataset.goodsImageUrl || '',
-              priceText: button.dataset.goodsPriceText || '',
-              groupText: button.dataset.goodsGroupText || '',
-              specText: button.dataset.goodsSpecText || '查看商品规格',
-              specItems: inlineSpecItems,
-              stockText: button.dataset.goodsStockText || '',
-              salesText: button.dataset.goodsSalesText || '',
-              pendingGroupText: button.dataset.goodsPendingGroupText || '',
-            }));
           });
         });
         container.scrollTop = container.scrollHeight;
@@ -10980,19 +7990,7 @@
           return;
         }
         apiMessages = result;
-        const buyerMessage = apiMessages.find(item => item?.isFromBuyer && !isUnknownApiCustomerName(item?.senderName || ''));
-        const backfilled = backfillApiSessionCustomerName(targetSessionKey, buyerMessage?.senderName || '');
-        if (backfilled) {
-          setApiActiveSessionSnapshot({
-            ...(apiActiveSessionSnapshot || currentSession || {}),
-            customerName: apiActiveSessionName || buyerMessage?.senderName || '',
-          });
-        }
         renderApiMessages();
-        if (backfilled) {
-          renderApiSessions();
-          renderApiStatus();
-        }
         updateApiActiveSessionSyncSignature();
         if (!options.silentStatus) {
           recordApiSyncState(
@@ -11496,56 +8494,6 @@
         recordApiSyncState('图片发送', `${fileName}${result?.uploadBaseUrl ? `，上传域：${result.uploadBaseUrl}` : ''}`);
         setApiHint('图片已发送，正在同步最新消息');
       });
-      window.addEventListener('resize', syncApiVideoLibraryPopoverPosition);
-      window.addEventListener('scroll', syncApiVideoLibraryPopoverPosition, true);
-      document.getElementById('btnApiVideoUpload')?.addEventListener('click', async () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        recordApiSyncState('选择视频', `会话：${apiActiveSessionName || apiActiveSessionId}`);
-        const selected = await window.pddApi.apiSelectVideo();
-        if (selected?.canceled) {
-          recordApiSyncState('视频取消', '用户取消选择视频');
-          setApiHint('已取消选择视频');
-          return;
-        }
-        if (!selected?.filePath) {
-          recordApiSyncState('视频失败', '未拿到视频路径');
-          setApiHint('未选择视频文件');
-          return;
-        }
-        const fileName = String(selected.filePath).split(/[\\/]/).pop() || '视频';
-        apiVideoLibraryLoading = true;
-        apiVideoLibraryError = '';
-        renderApiVideoLibraryModal();
-        recordApiSyncState('视频上传', `文件：${fileName}`);
-        setApiHint('正在上传视频并等待审核，请稍候...');
-        const result = await window.pddApi.apiUploadVideo({
-          shopId: apiActiveSessionShopId,
-          filePath: selected.filePath,
-          timeoutMs: 120000,
-        });
-        if (result?.error) {
-          apiVideoLibraryLoading = false;
-          apiVideoLibraryError = result.error;
-          renderApiVideoLibraryModal();
-          recordApiSyncState('视频失败', result.error || '视频上传失败');
-          setApiHint(`视频上传失败：${result.error || '未知错误'}`);
-          return;
-        }
-        recordApiSyncState('视频完成', `${fileName} 已进入可发送列表`);
-        setApiHint('视频已上传完成，正在刷新素材列表');
-        await loadApiVideoLibrary({ keepSelection: false });
-        const uploadedVideo = normalizeApiVideoItem(result);
-        if (uploadedVideo?.id) {
-          apiSelectedVideo = apiVideoLibrary.find(item => Number(item.id || 0) === Number(uploadedVideo.id || 0)) || uploadedVideo;
-          renderApiVideoLibraryModal();
-        }
-      });
-      document.getElementById('btnApiVideoSend')?.addEventListener('click', async () => {
-        await sendSelectedApiVideo();
-      });
 
       document.getElementById('btnApiTransfer')?.addEventListener('click', async () => {
         if (!apiActiveSessionId) {
@@ -11557,33 +8505,17 @@
         setApiHint('已模拟执行会话处理动作，当前先复用已读链路。');
       });
 
-      document.getElementById('btnApiRisk').addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-        }
-      });
-      document.getElementById('btnApiRiskReport').addEventListener('click', () => {
+      document.getElementById('btnApiRisk').addEventListener('click', async () => {
         if (!apiActiveSessionId) {
           setApiHint('请先选择一个接口会话');
           return;
         }
-        setApiHint('举报功能开发中');
-      });
-      document.getElementById('btnApiRiskBlacklist').addEventListener('click', () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
+        try {
+          await navigator.clipboard.writeText(apiActiveSessionId);
+          setApiHint(`已复制会话ID：${apiActiveSessionId}`);
+        } catch {
+          setApiHint(`会话ID：${apiActiveSessionId}`);
         }
-        setApiHint('拉黑功能开发中');
-      });
-      document.getElementById('btnApiRiskManage').addEventListener('click', () => {
-        if (!apiActiveSessionId) {
-          setApiHint('请先选择一个接口会话');
-          return;
-        }
-        setApiHint('黑名单管理功能开发中');
       });
       document.getElementById('btnApiStar').addEventListener('click', async () => {
         if (!apiActiveSessionId) {
@@ -11637,18 +8569,9 @@
       window.pddApi.onApiNewMessage(async (payload) => {
         if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
         await loadApiTraffic(getApiStatusShopId(true));
-        const isCurrentSession = String(payload?.sessionId || '') === String(apiActiveSessionId)
-          && String(payload?.shopId || '') === String(apiActiveSessionShopId || '');
-        const incomingMessages = Array.isArray(payload?.messages) ? payload.messages : [];
-        if (isCurrentSession && incomingMessages.length) {
-          incomingMessages.forEach(message => {
-            appendApiIncomingMessage({
-              ...message,
-              shopId: payload.shopId || message?.shopId || apiActiveSessionShopId,
-              sessionId: payload.sessionId || message?.sessionId || apiActiveSessionId,
-            });
-          });
-        } else if (!isCurrentSession) {
+        if (String(payload?.sessionId || '') === String(apiActiveSessionId) && String(payload?.shopId || '') === String(apiActiveSessionShopId || '')) {
+          await openApiSession(apiActiveSessionId, apiActiveSessionName || payload.customer || '', apiActiveSessionShopId);
+        } else {
           await loadApiSessions({ keepCurrent: true });
         }
         setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
@@ -12222,37 +9145,16 @@
     });
 
     // PDD 页面事件
-    window.pddApi.onPddPageLoading((data) => {
-      if (isEmbeddedPddView(currentView)) {
-        updateEmbeddedPlaceholder(currentView, { visible: true });
-      }
-      document.getElementById('statusDot').className = 'status-dot loading';
-      document.getElementById('statusText').textContent =
-        data.url.replace('https://mms.pinduoduo.com', '') || '页面加载中...';
-    });
-
     window.pddApi.onPddPageLoaded((data) => {
-      hideAllEmbeddedPlaceholders();
       document.getElementById('statusDot').className = 'status-dot online';
       document.getElementById('statusText').textContent =
         data.url.replace('https://mms.pinduoduo.com', '') || '/';
-    });
-
-    window.pddApi.onPddPageFailed((data) => {
-      if (isEmbeddedPddView(currentView)) {
-        updateEmbeddedPlaceholder(currentView, {
-          visible: true,
-          title: '嵌入网页加载失败',
-          detail: data.errorDescription || '请刷新页面或重新切换店铺后重试。'
-        });
-      }
-      document.getElementById('statusDot').className = 'status-dot offline';
-      document.getElementById('statusText').textContent =
-        data.errorDescription || '嵌入网页加载失败';
-      addLog(`嵌入网页加载失败: ${data.errorDescription || data.url || '未知错误'}`, 'error');
+      const placeholder = document.querySelector('.chat-placeholder');
+      if (placeholder) placeholder.style.display = 'none';
     });
 
     window.pddApi.onPddNavigated((data) => {
+      document.getElementById('statusDot').className = 'status-dot loading';
       document.getElementById('statusText').textContent =
         data.url.replace('https://mms.pinduoduo.com', '') || '/';
       if (data.fromPopup) addLog(`拦截弹窗并加载: ${data.url}`, 'info');
@@ -12287,27 +9189,6 @@
     // ==================== 通用工具 ====================
     function showModal(id) { document.getElementById(id).classList.add('visible'); }
     function hideModal(id) { document.getElementById(id).classList.remove('visible'); }
-    window.showModal = showModal;
-    window.hideModal = hideModal;
-
-    function showApiImagePreview(url) {
-      const normalizedUrl = String(url || '').trim();
-      const previewImage = document.getElementById('apiImagePreviewContent');
-      if (!normalizedUrl || !previewImage) {
-        showToast('图片地址无效');
-        return;
-      }
-      previewImage.src = normalizedUrl;
-      showModal('modalApiImagePreview');
-    }
-
-    function hideApiImagePreview() {
-      hideModal('modalApiImagePreview');
-      const previewImage = document.getElementById('apiImagePreviewContent');
-      if (previewImage) {
-        previewImage.removeAttribute('src');
-      }
-    }
 
     let toastTimer = null;
 

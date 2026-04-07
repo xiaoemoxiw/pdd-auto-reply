@@ -4855,6 +4855,26 @@ class PddApiClient extends EventEmitter {
     };
   }
 
+  async submitInviteFollow(params = {}) {
+    const uid = this._resolveInviteOrderUid(params);
+    if (!uid) {
+      throw new Error('缺少买家 UID');
+    }
+    const payload = await this._requestGoodsPageApi('/latitude/message/sendFavMallCard', {
+      uid,
+    }, 'POST');
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      throw new Error(businessError.message || '发送邀请关注失败');
+    }
+    return {
+      success: true,
+      source: 'api',
+      uid,
+      message: '邀请关注已发送',
+    };
+  }
+
   _parseOrderPriceYuanToFen(value) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric) || numeric < 0) return 0;

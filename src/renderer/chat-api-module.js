@@ -44,6 +44,7 @@
     selectedSkuId: '',
     error: '',
   };
+  let apiInviteFollowSubmitting = false;
   let apiSideOrderSessionKey = '';
   let apiSideOrderCountdownTimer = null;
   let apiGoodsSpecModalState = {
@@ -4106,6 +4107,54 @@
     }
   }
 
+  async function handleApiInviteFollowClick() {
+    const session = getApiActiveSession();
+    if (!session) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    const followStatus = getApiConversationFollowStatus(session);
+    if (followStatus.visible && followStatus.text) {
+      setApiHint('当前买家已关注本店，无需再次邀请');
+      return;
+    }
+    if (apiInviteFollowSubmitting) {
+      setApiHint('邀请关注发送中，请稍候');
+      return;
+    }
+    if (!window.pddApi?.apiSubmitInviteFollow) {
+      setApiHint('当前版本缺少邀请关注能力');
+      return;
+    }
+    const state = getState();
+    apiInviteFollowSubmitting = true;
+    try {
+      recordApiSyncState(
+        '邀请关注',
+        `会话：${session.customerName || session.customerId || state.apiActiveSessionId}`,
+      );
+      const result = await window.pddApi.apiSubmitInviteFollow({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session,
+      });
+      if (!result || result.error) {
+        throw new Error(result?.error || '发送邀请关注失败');
+      }
+      await refreshApiAfterMessageSent({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+      });
+      setApiHint(result?.message || '邀请关注已发送，正在同步最新消息');
+      showApiSideOrderToast(result?.message || '邀请关注已发送');
+    } catch (error) {
+      setApiHint(error?.message || '发送邀请关注失败');
+      showApiSideOrderToast(error?.message || '发送邀请关注失败');
+    } finally {
+      apiInviteFollowSubmitting = false;
+    }
+  }
+
   function showApiRefundOrderEmptyHint() {
     const toastEl = document.getElementById('toastMsg');
     if (toastEl) {
@@ -6353,6 +6402,7 @@
     document.getElementById('btnApiRiskManage')?.addEventListener('click', () => handleApiRiskMenuAction('manage'));
     document.getElementById('btnApiStar')?.addEventListener('click', handleApiStar);
     document.getElementById('btnApiRefund')?.addEventListener('click', openApiRefundOrderSelector);
+    document.getElementById('btnApiInviteFollow')?.addEventListener('click', handleApiInviteFollowClick);
     document.getElementById('btnApiInviteOrder')?.addEventListener('click', openApiInviteOrderModal);
     document.getElementById('btnApiInviteOrderSearch')?.addEventListener('click', handleApiInviteOrderSearch);
     document.getElementById('apiInviteOrderKeyword')?.addEventListener('keydown', event => {

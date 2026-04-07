@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiAddInviteOrderItem: (params) => ipcRenderer.invoke('api-add-invite-order-item', params),
   apiClearInviteOrderItems: (params) => ipcRenderer.invoke('api-clear-invite-order-items', params),
   apiSubmitInviteOrder: (params) => ipcRenderer.invoke('api-submit-invite-order', params),
+  apiSubmitInviteFollow: (params) => ipcRenderer.invoke('api-submit-invite-follow', params),
   apiGetSmallPaymentInfo: (params) => ipcRenderer.invoke('api-get-small-payment-info', params),
   apiSubmitSmallPayment: (params) => ipcRenderer.invoke('api-submit-small-payment', params),
   apiGetOrderRemark: (params) => ipcRenderer.invoke('api-get-order-remark', params),

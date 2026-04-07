@@ -254,6 +254,17 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-submit-invite-follow', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!params.sessionId) return { error: '缺少 sessionId' };
+    try {
+      return await getApiClient(shopId).submitInviteFollow(params);
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
   ipcMain.handle('api-get-small-payment-info', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

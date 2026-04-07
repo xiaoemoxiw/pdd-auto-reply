@@ -4953,7 +4953,40 @@
     </div>`;
   }
 
-  function resolveApiGoodsSourceCard(message = {}, session = {}, goodsLinkInfo = null, cachedCard = null) {
+  function findApiGoodsSourceReferenceCard(sortedMessages = [], messageIndex = -1, session = {}, goodsLinkInfo = null) {
+    if (!Array.isArray(sortedMessages) || !sortedMessages.length || messageIndex < 0) return null;
+    const state = getState();
+    const expectedGoodsId = String(goodsLinkInfo?.goodsId || '').trim();
+    let nearestMeaningfulCard = null;
+    for (let distance = 1; distance <= 12; distance++) {
+      const candidateIndexes = [messageIndex - distance, messageIndex + distance];
+      for (const candidateIndex of candidateIndexes) {
+        if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= sortedMessages.length) continue;
+        const candidateMessage = sortedMessages[candidateIndex];
+        const candidateLinkInfo = extractApiGoodsLinkInfo(candidateMessage);
+        if (!candidateLinkInfo) continue;
+        const candidateFallbackCard = buildApiGoodsCardFallback(candidateLinkInfo, candidateMessage, session);
+        const candidateCachedCard = candidateLinkInfo.cacheKey
+          ? state.apiGoodsCardCache?.get(candidateLinkInfo.cacheKey)
+          : null;
+        const candidateCard = normalizeApiGoodsCard(
+          candidateLinkInfo?.cacheKey ? { ...(candidateCachedCard || {}), cacheKey: candidateLinkInfo.cacheKey } : (candidateCachedCard || {}),
+          candidateLinkInfo?.cacheKey ? { ...(candidateFallbackCard || {}), cacheKey: candidateLinkInfo.cacheKey } : (candidateFallbackCard || {})
+        );
+        if (!isMeaningfulApiGoodsCard(candidateCard)) continue;
+        const candidateGoodsId = String(candidateLinkInfo.goodsId || candidateCard.goodsId || '').trim();
+        if (expectedGoodsId && candidateGoodsId && candidateGoodsId === expectedGoodsId) {
+          return candidateCard;
+        }
+        if (!nearestMeaningfulCard) {
+          nearestMeaningfulCard = candidateCard;
+        }
+      }
+    }
+    return nearestMeaningfulCard;
+  }
+
+  function resolveApiGoodsSourceCard(message = {}, session = {}, goodsLinkInfo = null, cachedCard = null, options = {}) {
     const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
     const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
     const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
@@ -5070,12 +5103,33 @@
         'sku_name',
         'skuName',
       ], textExclusions),
-    }, buildApiGoodsCardFallback(goodsLinkInfo || {}, message, session));
+    }, {});
+    const nearbyReferenceCard = findApiGoodsSourceReferenceCard(
+      options.sortedMessages,
+      Number.isInteger(options.messageIndex) ? options.messageIndex : -1,
+      session,
+      goodsLinkInfo
+    );
+    const genericFallbackCard = buildApiGoodsCardFallback(goodsLinkInfo || {}, message, session);
     const normalized = normalizeApiGoodsCard(
       goodsLinkInfo?.cacheKey ? { ...(cachedCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedCard || {}),
       fallbackCard
     );
-    return isMeaningfulApiGoodsCard(normalized) ? normalized : null;
+    const resolved = normalizeApiGoodsCard(
+      normalized,
+      nearbyReferenceCard || genericFallbackCard || {}
+    );
+    const placeholderTitle = String(resolved.title || '').trim() === '拼多多商品';
+    const referenceTitle = String(nearbyReferenceCard?.title || genericFallbackCard?.title || '').trim();
+    if (placeholderTitle && referenceTitle && referenceTitle !== '拼多多商品') {
+      resolved.title = referenceTitle;
+    }
+    const placeholderSpec = !String(resolved.specText || '').trim() || String(resolved.specText || '').trim() === '查看商品规格';
+    const referenceSpec = String(nearbyReferenceCard?.specText || genericFallbackCard?.specText || '').trim();
+    if (placeholderSpec && referenceSpec && referenceSpec !== '查看商品规格') {
+      resolved.specText = referenceSpec;
+    }
+    return isMeaningfulApiGoodsCard(resolved) ? resolved : null;
   }
 
   function renderApiGoodsSourceNoticeCardHtml(message = {}, card = {}) {
@@ -5868,7 +5922,7 @@
         const isSystem = isApiSystemNoticeMessage(message);
         const isGoodsSourceNotice = isSystem && isApiGoodsSourceNoticeMessage(message);
         const goodsSourceCard = isGoodsSourceNotice
-          ? resolveApiGoodsSourceCard(message, activeSession, goodsLinkInfo, cachedGoodsCard)
+          ? resolveApiGoodsSourceCard(message, activeSession, goodsLinkInfo, cachedGoodsCard, { sortedMessages, messageIndex: index })
           : null;
         const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
         const buyerAvatar = activeSession?.customerAvatar || '';

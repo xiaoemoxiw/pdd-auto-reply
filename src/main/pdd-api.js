@@ -1140,6 +1140,7 @@ class PddApiClient extends EventEmitter {
   _isInviteOrderTemplateMessage(item = {}) {
     const templateName = String(item?.template_name || item?.templateName || '').trim();
     if (templateName === 'substitute_order_v2') return true;
+    if (templateName) return false;
     const messageType = Number(
       item?.type
       ?? item?.msg_type
@@ -1147,17 +1148,17 @@ class PddApiClient extends EventEmitter {
       ?? item?.content_type
       ?? -1
     );
+    const sourceText = this._extractMessageText(item);
+    if (this._isRefundPendingNoticeText(sourceText) || this._isRefundSuccessNoticeText(sourceText)) {
+      return false;
+    }
     const infoData = item?.info?.data;
+    const goodsInfoList = Array.isArray(infoData?.goods_info_list)
+      ? infoData.goods_info_list
+      : (Array.isArray(infoData?.goodsInfoList) ? infoData.goodsInfoList : []);
     return messageType === 64 && !!(
-      infoData
-      && typeof infoData === 'object'
-      && (
-        Array.isArray(infoData?.goods_info_list)
-        || Array.isArray(infoData?.goodsInfoList)
-        || infoData?.button
-        || infoData?.goods
-        || infoData?.title
-      )
+      goodsInfoList.length
+      && goodsInfoList.some(entry => entry && typeof entry === 'object')
     );
   }
 
@@ -1221,6 +1222,7 @@ class PddApiClient extends EventEmitter {
   _isSystemNoticeText(text = '') {
     const source = String(text || '').trim();
     if (!source) return false;
+    if (this._isRefundPendingNoticeText(source) || this._isRefundSuccessNoticeText(source)) return true;
     return [
       /您接待过此消费者/,
       /机器人已暂停接待/,
@@ -1233,9 +1235,6 @@ class PddApiClient extends EventEmitter {
       /商品详情页/,
       /订单已超承诺发货时间/,
       /请人工跟进/,
-      /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
-      /^退款成功通知$/,
-      /^退款成功$/,
     ].some(pattern => pattern.test(source));
   }
 
@@ -1247,6 +1246,23 @@ class PddApiClient extends EventEmitter {
       /帮您申请退货退款，您看可以吗.*点击下方卡片按钮/,
       /帮您申请补寄，您看可以吗.*点击下方卡片按钮/,
     ].some(pattern => pattern.test(source));
+  }
+
+  _normalizeSystemNoticeComparableText(text = '') {
+    return String(text || '')
+      .trim()
+      .replace(/^[\[【]\s*/, '')
+      .replace(/\s*[\]】]$/, '')
+      .trim();
+  }
+
+  _isRefundPendingNoticeText(text = '') {
+    return this._normalizeSystemNoticeComparableText(text) === '消费者已同意您发起的退款申请，请及时处理';
+  }
+
+  _isRefundSuccessNoticeText(text = '') {
+    const normalized = this._normalizeSystemNoticeComparableText(text);
+    return normalized === '退款成功通知' || normalized === '退款成功';
   }
 
   async _confirmSentTextMessage(sessionRef, text, options = {}) {
@@ -2302,6 +2318,59 @@ class PddApiClient extends EventEmitter {
         ].find(entry => typeof entry === 'string' && entry.trim());
         if (nestedText) return nestedText;
       }
+    }
+    const structuredText = this._extractStructuredMessageText(item);
+    if (structuredText) return structuredText;
+    return '';
+  }
+
+  _extractStructuredMessageEntryText(entry) {
+    if (!entry || typeof entry !== 'object') return '';
+    return this._pickGoodsText([
+      entry?.text,
+      entry?.content,
+      entry?.message,
+      entry?.msg,
+      entry?.title,
+      entry?.label,
+      entry?.name,
+      entry?.desc,
+      entry?.value,
+    ]);
+  }
+
+  _extractStructuredMessageText(item = {}) {
+    const info = item?.info && typeof item.info === 'object' ? item.info : {};
+    const systemInfo = item?.system && typeof item.system === 'object' ? item.system : {};
+    const pushBizContext = item?.push_biz_context && typeof item.push_biz_context === 'object' ? item.push_biz_context : {};
+    const directText = this._pickGoodsText([
+      info?.mall_content,
+      info?.merchant_content,
+      info?.content,
+      info?.text,
+      info?.title,
+      info?.label,
+      info?.desc,
+      info?.tip,
+      info?.message,
+      systemInfo?.text,
+      systemInfo?.content,
+      pushBizContext?.replace_content,
+      pushBizContext?.replaceContent,
+    ]);
+    if (directText) return directText;
+    const entryLists = [
+      Array.isArray(info?.item_content) ? info.item_content : [],
+      Array.isArray(info?.mall_item_content) ? info.mall_item_content : [],
+      Array.isArray(info?.items) ? info.items : [],
+    ];
+    for (const list of entryLists) {
+      const entryText = list
+        .map(entry => this._extractStructuredMessageEntryText(entry))
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      if (entryText) return entryText;
     }
     return '';
   }

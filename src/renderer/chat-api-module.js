@@ -1966,6 +1966,21 @@
   }
 
   function normalizeApiRefundCardAmountText(value) {
+    if (value === undefined || value === null || value === '') return '';
+    const text = String(value).trim();
+    if (!text) return '';
+    if (/^¥/.test(text)) return text.replace(/^¥\s+/, '¥');
+    const numericText = text.replace(/[^\d.-]/g, '');
+    if (/^\d+$/.test(numericText)) {
+      const fenValue = Number(numericText);
+      if (Number.isFinite(fenValue) && fenValue > 0) {
+        return `¥${(fenValue / 100).toFixed(2)}`;
+      }
+    }
+    const numeric = Number(numericText);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return `¥${numeric.toFixed(2)}`;
+    }
     const amountText = normalizeApiRefundAmountText(value);
     return amountText.replace(/^¥\s+/, '¥');
   }
@@ -1999,6 +2014,23 @@
     if (kind === 'refund-rejected') return normalizedDisplay || '消费者已拒绝';
     if (kind === 'refund-success') return normalizedDisplay || '退款成功';
     return normalizedDisplay;
+  }
+
+  function normalizeApiSystemComparableText(text = '') {
+    return String(text || '')
+      .trim()
+      .replace(/^[\[【]\s*/, '')
+      .replace(/\s*[\]】]$/, '')
+      .trim();
+  }
+
+  function isApiRefundPendingNoticeText(text = '') {
+    return normalizeApiSystemComparableText(text) === '消费者已同意您发起的退款申请，请及时处理';
+  }
+
+  function isApiRefundSuccessNoticeText(text = '') {
+    const normalized = normalizeApiSystemComparableText(text);
+    return normalized === '退款成功通知' || normalized === '退款成功';
   }
 
   function getApiRefundStatusUpdateMeta(message = {}) {
@@ -2049,8 +2081,8 @@
         };
       }
     }
-    const source = String(message?.content || raw?.content || '').trim();
-    if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) {
+    const source = getApiSystemNoticeText(message) || String(message?.content || raw?.content || '').trim();
+    if (isApiRefundPendingNoticeText(source)) {
       return {
         kind: 'refund-pending',
         targetMessageId: '',
@@ -2059,7 +2091,7 @@
         footerText: '消费者已同意',
       };
     }
-    if (/^退款成功(?:通知)?$/.test(source)) {
+    if (isApiRefundSuccessNoticeText(source)) {
       return {
         kind: 'refund-success',
         targetMessageId: '',
@@ -2071,18 +2103,65 @@
     return null;
   }
 
+  function extractApiStructuredNoticeEntryText(entry = {}) {
+    if (!entry || typeof entry !== 'object') return '';
+    return String(
+      entry?.text
+      || entry?.content
+      || entry?.message
+      || entry?.msg
+      || entry?.title
+      || entry?.label
+      || entry?.name
+      || entry?.desc
+      || entry?.value
+      || ''
+    ).trim();
+  }
+
   function getApiSystemNoticeText(messageOrText = '') {
     if (typeof messageOrText === 'string') return messageOrText.trim();
+    const raw = messageOrText?.raw && typeof messageOrText.raw === 'object' ? messageOrText.raw : {};
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const directText = [
+      messageOrText?.content,
+      raw?.content,
+      raw?.msg_content,
+      raw?.text,
+      raw?.message,
+      info?.mall_content,
+      info?.merchant_content,
+      info?.content,
+      info?.text,
+      info?.title,
+      info?.label,
+      info?.desc,
+      info?.tip,
+      info?.message,
+      messageOrText?.extra?.text,
+      raw?.extra?.text,
+      raw?.ext?.text,
+    ].filter(Boolean).map(item => String(item || '').trim()).find(Boolean);
+    if (directText) return directText;
+    const entryLists = [
+      Array.isArray(info?.item_content) ? info.item_content : [],
+      Array.isArray(info?.mall_item_content) ? info.mall_item_content : [],
+      Array.isArray(info?.items) ? info.items : [],
+    ];
+    for (const list of entryLists) {
+      const entryText = list.map(entry => extractApiStructuredNoticeEntryText(entry)).filter(Boolean).join(' ').trim();
+      if (entryText) return entryText;
+    }
     return [
       messageOrText?.content,
-      messageOrText?.raw?.content,
-      messageOrText?.raw?.msg_content,
-      messageOrText?.raw?.text,
-      messageOrText?.raw?.message,
-      messageOrText?.raw?.info?.mall_content,
+      raw?.content,
+      raw?.msg_content,
+      raw?.text,
+      raw?.message,
+      info?.mall_content,
       messageOrText?.extra?.text,
-      messageOrText?.raw?.extra?.text,
-      messageOrText?.raw?.ext?.text,
+      raw?.extra?.text,
+      raw?.ext?.text,
     ].filter(Boolean).map(item => String(item || '').trim()).find(Boolean) || '';
   }
 
@@ -2103,8 +2182,8 @@
     if (statusMeta?.kind && statusMeta.kind !== 'refund-rejected') return statusMeta.kind;
     const source = getApiSystemNoticeText(message);
     if (!source) return '';
-    if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) return 'refund-pending';
-    if (/^退款成功(?:通知)?$/.test(source)) return 'refund-success';
+    if (isApiRefundPendingNoticeText(source)) return 'refund-pending';
+    if (isApiRefundSuccessNoticeText(source)) return 'refund-success';
     return '';
   }
 
@@ -2124,6 +2203,7 @@
       : (message && typeof message === 'object' ? message : {});
     const templateName = String(raw?.template_name || raw?.templateName || message?.template_name || message?.templateName || '').trim();
     if (templateName === 'substitute_order_v2') return true;
+    if (templateName) return false;
     const messageType = Number(
       raw?.type
       ?? raw?.msg_type
@@ -2133,17 +2213,17 @@
       ?? message?.msgType
       ?? -1
     );
+    const sourceText = getApiSystemNoticeText({ ...message, raw });
+    if (isApiRefundPendingNoticeText(sourceText) || isApiRefundSuccessNoticeText(sourceText)) {
+      return false;
+    }
     const infoData = raw?.info?.data;
+    const goodsInfoList = Array.isArray(infoData?.goods_info_list)
+      ? infoData.goods_info_list
+      : (Array.isArray(infoData?.goodsInfoList) ? infoData.goodsInfoList : []);
     return messageType === 64 && !!(
-      infoData
-      && typeof infoData === 'object'
-      && (
-        Array.isArray(infoData?.goods_info_list)
-        || Array.isArray(infoData?.goodsInfoList)
-        || infoData?.button
-        || infoData?.goods
-        || infoData?.title
-      )
+      goodsInfoList.length
+      && goodsInfoList.some(entry => entry && typeof entry === 'object')
     );
   }
 
@@ -2183,14 +2263,17 @@
           <div class="api-system-refund-card-main">
             <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
             <div class="api-system-refund-card-success-meta">
-              <div class="api-system-refund-card-spec">${esc(card.specText || '')}</div>
-              <div class="api-system-refund-card-success-actual">实收： ${esc(card.amountText || '--')}</div>
+              ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
+              <div class="api-system-refund-card-success-actual">实收：${esc(card.amountText || '--')}</div>
             </div>
           </div>
         </div>
-        <div class="api-system-refund-card-success-amount">
-          <span class="api-system-refund-card-success-amount-label">退款金额</span>
-          <span class="api-system-refund-card-success-amount-value">${esc(card.amountText || '--')}</span>
+        <div class="api-system-refund-card-success-footer">
+          <div class="api-system-refund-card-success-amount">
+            <span class="api-system-refund-card-success-amount-label">退款金额</span>
+            <span class="api-system-refund-card-success-amount-value">${esc(card.amountText || '--')}</span>
+          </div>
+          <span class="api-system-refund-card-success-button">查看订单售后详情</span>
         </div>
       </div>`;
     }
@@ -2233,6 +2316,7 @@
     if (String(raw?.template_name || raw?.templateName || '').trim()) return true;
     if (raw?.system && typeof raw.system === 'object' && Object.keys(raw.system).length) return true;
     if (!source) return false;
+    if (isApiRefundPendingNoticeText(source) || isApiRefundSuccessNoticeText(source)) return true;
     return [
       /您接待过此消费者/,
       /机器人已暂停接待/,
@@ -2245,9 +2329,6 @@
       /商品详情页/,
       /订单已超承诺发货时间/,
       /请人工跟进/,
-      /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
-      /^退款成功通知$/,
-      /^退款成功$/,
     ].some(pattern => pattern.test(source));
   }
 
@@ -2421,6 +2502,14 @@
     });
     const displayText = statusMeta.displayText || '消费者已同意您发起的退款申请，请及时处理';
     if (!card) {
+      if (statusMeta.kind === 'refund-success') {
+        return `<div class="api-system-refund-card success">
+          <div class="api-system-refund-card-success-head">
+            <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+            <span>退款成功</span>
+          </div>
+        </div>`;
+      }
       return `<div class="api-system-refund-card pending">
         <div class="api-system-refund-card-header">${esc(displayText)}</div>
       </div>`;
@@ -2428,6 +2517,31 @@
     const imageHtml = card.imageUrl
       ? `<img class="api-system-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
       : `<div class="api-system-refund-card-media-placeholder">商品</div>`;
+    if (statusMeta.kind === 'refund-success') {
+      return `<div class="api-system-refund-card success">
+        <div class="api-system-refund-card-success-head">
+          <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+          <span>退款成功</span>
+        </div>
+        <div class="api-system-refund-card-goods">
+          ${imageHtml}
+          <div class="api-system-refund-card-main">
+            <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+            <div class="api-system-refund-card-success-meta">
+              ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
+              <div class="api-system-refund-card-success-actual">实收：${esc(card.amountText || '--')}</div>
+            </div>
+          </div>
+        </div>
+        <div class="api-system-refund-card-success-footer">
+          <div class="api-system-refund-card-success-amount">
+            <span class="api-system-refund-card-success-amount-label">退款金额</span>
+            <span class="api-system-refund-card-success-amount-value">${esc(card.amountText || '--')}</span>
+          </div>
+          <span class="api-system-refund-card-success-button">查看订单售后详情</span>
+        </div>
+      </div>`;
+    }
     const rows = [
       { label: '申请类型', value: card.actionText || '退款' },
       { label: '申请原因', value: card.reasonText || '其他原因' },
@@ -4845,6 +4959,8 @@
     const raw = message?.raw && typeof message.raw === 'object'
       ? message.raw
       : (message && typeof message === 'object' ? message : {});
+    const sourceText = getApiSystemNoticeText({ ...message, raw });
+    if (isApiRefundPendingNoticeText(sourceText) || isApiRefundSuccessNoticeText(sourceText)) return null;
     if (!isApiInviteOrderTemplateMessage({ ...message, raw })) return null;
     const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
     const infoData = info?.data && typeof info.data === 'object' ? info.data : {};

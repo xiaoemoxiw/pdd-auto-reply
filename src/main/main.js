@@ -650,6 +650,57 @@ function normalizeTrafficNotifyText(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function extractTrafficNotifyEntryText(entry = {}) {
+  if (!entry || typeof entry !== 'object') return '';
+  return normalizeTrafficNotifyText(
+    entry?.text
+    || entry?.content
+    || entry?.message
+    || entry?.msg
+    || entry?.title
+    || entry?.label
+    || entry?.name
+    || entry?.desc
+    || entry?.value
+    || ''
+  );
+}
+
+function extractTrafficStructuredMessageText(rawMessage = {}) {
+  const info = rawMessage?.info && typeof rawMessage.info === 'object' ? rawMessage.info : {};
+  const systemInfo = rawMessage?.system && typeof rawMessage.system === 'object' ? rawMessage.system : {};
+  const pushBizContext = rawMessage?.push_biz_context && typeof rawMessage.push_biz_context === 'object'
+    ? rawMessage.push_biz_context
+    : {};
+  const directText = normalizeTrafficNotifyText(
+    info?.mall_content
+    || info?.merchant_content
+    || info?.content
+    || info?.text
+    || info?.title
+    || info?.label
+    || info?.desc
+    || info?.tip
+    || info?.message
+    || systemInfo?.text
+    || systemInfo?.content
+    || pushBizContext?.replace_content
+    || pushBizContext?.replaceContent
+    || ''
+  );
+  if (directText) return directText;
+  const entryLists = [
+    Array.isArray(info?.item_content) ? info.item_content : [],
+    Array.isArray(info?.mall_item_content) ? info.mall_item_content : [],
+    Array.isArray(info?.items) ? info.items : [],
+  ];
+  for (const list of entryLists) {
+    const entryText = list.map(entry => extractTrafficNotifyEntryText(entry)).filter(Boolean).join(' ').trim();
+    if (entryText) return entryText;
+  }
+  return '';
+}
+
 function buildRefundCardStateDebugPayload(message = {}) {
   const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
   const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
@@ -786,6 +837,7 @@ function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {})
     : '';
   const content = normalizeTrafficNotifyText(
     rawMessage?.content
+    || extractTrafficStructuredMessageText(rawMessage)
     || rawMessage?.push_biz_context?.replace_content
     || rawMessage?.push_biz_context?.replaceContent
     || rawMessage?.data?.content

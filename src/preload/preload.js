@@ -182,5 +182,6 @@ contextBridge.exposeInMainWorld('pddApi', {
   onApiSessionUpdated: (cb) => ipcRenderer.on('api-session-updated', (_, d) => cb(d)),
   onApiNewMessage: (cb) => ipcRenderer.on('api-new-message', (_, d) => cb(d)),
   onApiBootstrapInspect: (cb) => ipcRenderer.on('api-bootstrap-inspect', (_, d) => cb(d)),
-  onApiMessageSent: (cb) => ipcRenderer.on('api-message-sent', (_, d) => cb(d))
+  onApiMessageSent: (cb) => ipcRenderer.on('api-message-sent', (_, d) => cb(d)),
+  onApiReadMarkUpdated: (cb) => ipcRenderer.on('api-read-mark-updated', (_, d) => cb(d))
 });

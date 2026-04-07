@@ -1539,6 +1539,10 @@
     return callRuntime('refreshApiAfterMessageSent', payload);
   }
 
+  function applyApiReadMarkUpdate(payload = {}) {
+    return callRuntime('applyApiReadMarkUpdate', payload);
+  }
+
   function mergeApiSessionsForShop(shopId, sessions = []) {
     return callRuntime('mergeApiSessionsForShop', shopId, sessions);
   }
@@ -4537,22 +4541,6 @@
     const normalized = String(message?.readState || '').toLowerCase();
     if (normalized === 'read') return 'read';
     if (normalized === 'unread') return 'unread';
-    const candidates = [
-      message?.raw?.is_read,
-      message?.raw?.isRead,
-      message?.raw?.read_status,
-      message?.raw?.readStatus,
-      message?.raw?.read_state,
-      message?.raw?.readState,
-    ];
-    for (const value of candidates) {
-      if (value === undefined || value === null || value === '') continue;
-      if (typeof value === 'boolean') return value ? 'read' : 'unread';
-      if (typeof value === 'number') return value > 0 ? 'read' : 'unread';
-      const text = String(value).trim().toLowerCase();
-      if (['1', 'true', 'read', '已读'].includes(text)) return 'read';
-      if (['0', 'false', 'unread', '未读'].includes(text)) return 'unread';
-    }
     return '';
   }
 
@@ -5584,10 +5572,18 @@
           : imageMessage
             ? `<div class="api-message-bubble"><div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div></div>`
             : `<div class="api-message-bubble"><div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div></div>`;
+        const isPlainTextSellerMessage = !isBuyer
+          && !goodsLinkInfo
+          && !resolvedRefundCard
+          && !inviteOrderCard
+          && !refundStatusUpdate
+          && !imageMessage
+          && !videoMessage
+          && String(message.content || '').trim();
         const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !inviteOrderCard && !refundStatusUpdate && !imageMessage && !videoMessage && String(message.content || '').trim()
           ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
           : '';
-        const footerHtml = !isBuyer
+        const footerHtml = isPlainTextSellerMessage
           ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
           : '';
         const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
@@ -5926,7 +5922,6 @@
                 <div class="api-session-item-name">
                   <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
                   ${orderTagHtml}
-                  ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
                 </div>
                 <div class="api-session-shop">
                   <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
@@ -6203,6 +6198,12 @@
 
   async function handleApiMessageSent(payload) {
     await refreshApiAfterMessageSent(payload);
+  }
+
+  function handleApiReadMarkUpdated(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    applyApiReadMarkUpdate(payload);
   }
 
   function handleApiAutoReplySent(payload) {
@@ -6522,6 +6523,7 @@
     window.pddApi.onApiNewMessage(handleApiNewMessage);
     window.pddApi.onApiBootstrapInspect?.(handleApiBootstrapInspect);
     window.pddApi.onApiMessageSent(handleApiMessageSent);
+    window.pddApi.onApiReadMarkUpdated?.(handleApiReadMarkUpdated);
     window.pddApi.onAutoReplySent(handleApiAutoReplySent);
     window.pddApi.onAutoReplyError?.(handleApiAutoReplyError);
     window.pddApi.onUnmatchedMessage(handleApiUnmatchedMessage);

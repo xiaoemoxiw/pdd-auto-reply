@@ -468,6 +468,80 @@ class PddApiClient extends EventEmitter {
     return null;
   }
 
+  _findConversationReadMark(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    const queue = [payload];
+    const visited = new Set();
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || visited.has(current)) continue;
+      visited.add(current);
+      if (Array.isArray(current)) {
+        current.forEach(item => {
+          if (item && typeof item === 'object') queue.push(item);
+        });
+        continue;
+      }
+      const directMark = current.read_mark || current.readMark;
+      if (directMark && typeof directMark === 'object') {
+        const userLastRead = directMark.user_last_read ?? directMark.userLastRead;
+        const minSupportedMsgId = directMark.min_supported_msg_id ?? directMark.minSupportedMsgId;
+        if (userLastRead || minSupportedMsgId) {
+          return this._cloneJson(directMark);
+        }
+      }
+      Object.keys(current).forEach(key => {
+        const value = current[key];
+        if (value && typeof value === 'object') {
+          queue.push(value);
+        }
+      });
+    }
+    return null;
+  }
+
+  _getLatestConversationReadMark(sessionRef, payload = null) {
+    const payloadMark = this._findConversationReadMark(payload);
+    if (payloadMark) return payloadMark;
+    if (!sessionRef) return null;
+    const { ids } = this._getSessionIdentityCandidates(sessionRef);
+    const uidSet = new Set(ids.map(value => String(value || '').trim()).filter(Boolean));
+    if (!uidSet.size) return null;
+    const wsEntry = this._findLatestTrafficEntry((entry) => {
+      if (String(entry?.direction || '') !== 'received') return false;
+      if (String(entry?.transport || '') !== 'websocket') return false;
+      const notifyPayload = entry?.decodedFrame?.notifyPayload;
+      if (String(notifyPayload?.response || '') !== 'mall_system_msg') return false;
+      if (Number(notifyPayload?.message?.type) !== 20) return false;
+      const data = notifyPayload?.message?.data;
+      if (!data || typeof data !== 'object') return false;
+      const uid = String(data?.uid || data?.user_id || '').trim();
+      return !!uid && uidSet.has(uid);
+    });
+    const data = wsEntry?.decodedFrame?.notifyPayload?.message?.data;
+    if (!data || typeof data !== 'object') return null;
+    if (!data.user_last_read && !data.userLastRead && !data.min_supported_msg_id && !data.minSupportedMsgId) {
+      return null;
+    }
+    return this._cloneJson(data);
+  }
+
+  _extractMessageBuyerReadState(item = {}, options = {}) {
+    if (this._getMessageActor(item) !== 'seller') return '';
+    const userLastReadMs = this._normalizeTimestampMs(
+      options?.user_last_read
+      ?? options?.userLastRead
+      ?? options?.readMark?.user_last_read
+      ?? options?.readMark?.userLastRead
+    );
+    if (!userLastReadMs) return '';
+    const messageTsMs = this._normalizeTimestampMs(
+      item?.send_time || item?.time || item?.ts || item?.timestamp || item?.created_at
+    );
+    if (!messageTsMs) return '';
+    return messageTsMs <= userLastReadMs ? 'read' : 'unread';
+  }
+
   async _queryTrusteeshipState(sessionRef) {
     const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
     const uid = String(sessionMeta?.userUid || sessionMeta?.customerId || '').trim();
@@ -733,7 +807,7 @@ class PddApiClient extends EventEmitter {
     const { ids } = this._getSessionIdentityCandidates(sessionRef);
     const entry = this._getLatestSessionTraffic('/plateau/chat/list', ids);
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
-    const messages = this._parseMessages(payload);
+    const messages = this._parseMessages(payload, sessionRef);
     const buyerMessage = [...messages].reverse().find(item => item.isFromBuyer && item?.raw && typeof item.raw === 'object');
     if (buyerMessage?.raw?.user_info) {
       return this._cloneJson(buyerMessage.raw.user_info);
@@ -752,7 +826,7 @@ class PddApiClient extends EventEmitter {
     const identitySet = new Set(ids);
     const entry = this._getLatestSessionTraffic('/plateau/chat/list', ids);
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
-    const messages = this._parseMessages(payload);
+    const messages = this._parseMessages(payload, sessionRef);
     const sellerMessage = [...messages].reverse().find(item => item.actor === 'seller' && item?.raw && typeof item.raw === 'object');
     if (sellerMessage?.raw) {
       return this._cloneJson(sellerMessage.raw);
@@ -3155,8 +3229,9 @@ class PddApiClient extends EventEmitter {
     return directCandidates.find(Array.isArray) || [];
   }
 
-  _parseMessages(payload) {
+  _parseMessages(payload, sessionRef = null) {
     const list = this._findMessageArray(payload);
+    const readMark = this._getLatestConversationReadMark(sessionRef, payload);
 
     return list.map(item => ({
       actor: this._getMessageActor(item),
@@ -3169,7 +3244,7 @@ class PddApiClient extends EventEmitter {
       senderName: this._extractMessageSenderName(item),
       senderId: item.from_uid || item.sender_id || item.from_id || item?.from?.uid || '',
       timestamp: item.send_time || item.time || item.ts || item.timestamp || item.created_at || 0,
-      readState: this._extractMessageReadState(item),
+      readState: this._extractMessageBuyerReadState(item, { readMark }) || '',
       extra: item.extra || item.ext || null,
       raw: item,
     }));
@@ -7371,7 +7446,7 @@ class PddApiClient extends EventEmitter {
       const requestBody = buildRequestBody(candidate, useSessionWindow);
       try {
         const payload = await this._post('/plateau/chat/list', requestBody);
-        const messages = this._parseMessages(payload);
+        const messages = this._parseMessages(payload, sessionMeta);
         this._log('[API] chat/list 候选响应', {
           candidateId: candidate.id,
           candidateRole: candidate.role,
@@ -7395,7 +7470,7 @@ class PddApiClient extends EventEmitter {
     for (const entry of cachedEntries) {
       const cachedPayload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
       if (!cachedPayload) continue;
-      const cachedMessages = this._parseMessages(cachedPayload);
+      const cachedMessages = this._parseMessages(cachedPayload, sessionMeta);
       if (cachedMessages.length > 0) {
         this._log('[API] chat/list 回退页面抓取缓存', {
           sessionId: String(sessionMeta.sessionId || ''),

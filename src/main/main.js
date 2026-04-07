@@ -855,7 +855,7 @@ function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {})
     timestamp: Number(rawMessage?.ts || 0) * 1000 || Date.now(),
     isFromBuyer,
     senderName: isFromBuyer ? '买家' : getShopDisplayName(shopId),
-    readState: String(rawMessage?.status || '').trim().toLowerCase() === 'read' ? 'read' : '',
+    readState: '',
     content: normalizedContent,
     templateName,
     refundCard,
@@ -863,6 +863,26 @@ function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {})
     trafficSourceType: String(options?.sourceType || '').trim(),
     notifyRequestId: String(options?.requestId || '').trim(),
     raw: rawMessage,
+  };
+}
+
+function extractApiTrafficReadMarkUpdate(shopId, entry) {
+  if (!shopId || !entry) return null;
+  const notifyPayload = getTrafficNotifyPayload(entry);
+  if (!notifyPayload || String(notifyPayload?.response || '') !== 'mall_system_msg') return null;
+  if (Number(notifyPayload?.message?.type) !== 20) return null;
+  const data = notifyPayload?.message?.data;
+  if (!data || typeof data !== 'object') return null;
+  const sessionId = String(data?.user_id || data?.uid || '').trim();
+  const userLastRead = String(data?.user_last_read || data?.userLastRead || '').trim();
+  if (!sessionId || !userLastRead) return null;
+  return {
+    shopId,
+    sessionId,
+    userLastRead,
+    minSupportedMsgId: String(data?.min_supported_msg_id || data?.minSupportedMsgId || '').trim(),
+    source: 'traffic-notify',
+    requestId: String(notifyPayload?.request_id || '').trim(),
   };
 }
 
@@ -889,6 +909,11 @@ function updateApiSessionSnapshotWithMessages(shopId, messages = []) {
 
 function pushApiMessagesFromTraffic(shopId, entry) {
   if (!shopId || !entry) return;
+  const readMarkUpdate = extractApiTrafficReadMarkUpdate(shopId, entry);
+  if (readMarkUpdate) {
+    mainWindow?.webContents.send('api-read-mark-updated', readMarkUpdate);
+    sendToDebug('api-read-mark-updated', readMarkUpdate);
+  }
   const notifyPayload = getTrafficNotifyPayload(entry);
   const notifyMessages = extractTrafficNotifyMessages(notifyPayload);
   if (!notifyMessages.length) return;

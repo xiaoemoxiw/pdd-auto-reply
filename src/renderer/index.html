@@ -2922,7 +2922,7 @@
     }
 
     .api-session-order-tag {
-      background: #b91212;
+      background: #6488ff;
       color: #ffffff;
     }
 
@@ -3849,6 +3849,12 @@
       gap: 6px;
       color: #999;
       flex-shrink: 0;
+    }
+
+    .api-message-item.service .api-message-row-meta {
+      align-self: flex-end;
+      margin-right: 2px;
+      padding-bottom: 2px;
     }
 
     .api-message-copy {
@@ -4869,19 +4875,22 @@
     }
 
     .api-message-status {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
       padding: 0;
-      color: #98a0ac;
-      font-size: 12px;
+      font-size: 11px;
       line-height: 1;
+      font-weight: 400;
+      letter-spacing: 0;
+      white-space: nowrap;
     }
 
     .api-message-status.read {
-      color: #98a0ac;
+      color: #b8bfc9;
     }
 
     .api-message-status.unread {
-      color: #4f73ef;
+      color: #6488ff;
     }
 
     .api-message-divider {
@@ -8602,6 +8611,7 @@
       clearApiPendingReplyState,
       appendApiLocalServiceMessage,
       appendApiIncomingMessage,
+      applyApiReadMarkUpdate,
       refreshApiAfterMessageSent,
       mergeApiSessionsForShop,
       renderApiStatus,
@@ -8970,22 +8980,6 @@
       const normalized = String(message?.readState || '').toLowerCase();
       if (normalized === 'read') return 'read';
       if (normalized === 'unread') return 'unread';
-      const candidates = [
-        message?.raw?.is_read,
-        message?.raw?.isRead,
-        message?.raw?.read_status,
-        message?.raw?.readStatus,
-        message?.raw?.read_state,
-        message?.raw?.readState,
-      ];
-      for (const value of candidates) {
-        if (value === undefined || value === null || value === '') continue;
-        if (typeof value === 'boolean') return value ? 'read' : 'unread';
-        if (typeof value === 'number') return value > 0 ? 'read' : 'unread';
-        const text = String(value).trim().toLowerCase();
-        if (['1', 'true', 'read', '已读'].includes(text)) return 'read';
-        if (['0', 'false', 'unread', '未读'].includes(text)) return 'unread';
-      }
       return '';
     }
 
@@ -10653,14 +10647,6 @@
           visible: true,
         };
       }
-      const unreadCount = Number(session.unreadCount || 0);
-      if (unreadCount > 0) {
-        return {
-          text: `未读 ${unreadCount}`,
-          highlighted: true,
-          visible: true,
-        };
-      }
       const isShopMember = typeof session.isShopMember === 'boolean'
         ? session.isShopMember
         : (typeof session.is_shop_member === 'boolean' ? session.is_shop_member : null);
@@ -11041,6 +11027,28 @@
       }]);
       renderApiMessages();
       return true;
+    }
+
+    function applyApiReadMarkUpdate(payload = {}) {
+      const shopId = String(payload.shopId || '').trim();
+      const sessionId = String(payload.sessionId || '').trim();
+      const userLastReadMs = getApiTimeMs(payload.userLastRead || payload.user_last_read || 0);
+      if (!shopId || !sessionId || !userLastReadMs) return false;
+      if (shopId !== String(apiActiveSessionShopId || '') || sessionId !== String(apiActiveSessionId || '')) return false;
+      let changed = false;
+      apiMessages = apiMessages.map(message => {
+        if (!message || message.isFromBuyer || message.isSystem) return message;
+        const messageTsMs = getApiTimeMs(message.timestamp);
+        if (!messageTsMs) return message;
+        const nextReadState = messageTsMs <= userLastReadMs ? 'read' : 'unread';
+        if (String(message.readState || '') === nextReadState) return message;
+        changed = true;
+        return { ...message, readState: nextReadState };
+      });
+      if (changed) {
+        renderApiMessages();
+      }
+      return changed;
     }
 
     function getApiSessionKey(sessionOrShopId, maybeSessionId = '') {
@@ -11689,7 +11697,6 @@
                   <div class="api-session-item-name">
                     <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
                     ${orderTagHtml}
-                    ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
                   </div>
                   <div class="api-session-shop">
                     <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
@@ -11915,10 +11922,17 @@
                   : `<div class="api-message-bubble">
                 <div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div>
               </div>`;
+          const isPlainTextSellerMessage = !isBuyer
+            && !goodsLinkInfo
+            && !resolvedRefundCard
+            && !inviteOrderCard
+            && !imageMessage
+            && !videoMessage
+            && String(message.content || '').trim();
           const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !inviteOrderCard && !imageMessage && !videoMessage && String(message.content || '').trim()
             ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
             : '';
-          const footerHtml = !isBuyer
+          const footerHtml = isPlainTextSellerMessage
             ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
             : '';
           const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)

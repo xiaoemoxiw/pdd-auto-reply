@@ -1162,7 +1162,8 @@ class PddApiClient extends EventEmitter {
   }
 
   _isSystemNoticeMessage(item = {}) {
-    if (this._isInviteOrderTemplateMessage(item)) return false;
+    const sourceText = this._extractMessageText(item);
+    if (this._isRefundDefaultSellerNoteText(sourceText)) return false;
     const messageType = Number(
       item?.type
       ?? item?.msg_type
@@ -1170,12 +1171,15 @@ class PddApiClient extends EventEmitter {
       ?? item?.content_type
       ?? -1
     );
+    const cardId = String(item?.info?.card_id || '').trim();
+    if (messageType === 19 && cardId === 'ask_refund_apply') return false;
+    if (this._isInviteOrderTemplateMessage(item)) return false;
     if (messageType === 31 || messageType === 90) return true;
     const templateName = String(item?.template_name || item?.templateName || '').trim();
     if (templateName) return true;
     const systemInfo = item?.system;
     if (systemInfo && typeof systemInfo === 'object' && Object.keys(systemInfo).length) return true;
-    return this._isSystemNoticeText(this._extractMessageText(item));
+    return this._isSystemNoticeText(sourceText);
   }
 
   _getMessageActor(item = {}) {
@@ -1232,6 +1236,16 @@ class PddApiClient extends EventEmitter {
       /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
       /^退款成功通知$/,
       /^退款成功$/,
+    ].some(pattern => pattern.test(source));
+  }
+
+  _isRefundDefaultSellerNoteText(text = '') {
+    const source = String(text || '').trim();
+    if (!source) return false;
+    return [
+      /帮您申请退款，您看可以吗.*点击下方卡片按钮/,
+      /帮您申请退货退款，您看可以吗.*点击下方卡片按钮/,
+      /帮您申请补寄，您看可以吗.*点击下方卡片按钮/,
     ].some(pattern => pattern.test(source));
   }
 

@@ -1972,12 +1972,33 @@
 
   function resolveApiRefundCardFooterText(state = {}, fallbackText = '') {
     const statusValue = Number(state?.status);
-    if (statusValue === 0) return '等待消费者确认';
-    const normalizedFallback = String(fallbackText || '').trim();
-    if (!normalizedFallback || normalizedFallback === '已过期') {
+    const normalizedFallback = String(
+      fallbackText
+      || state?.text
+      || state?.desc
+      || state?.label
+      || state?.expire_text
+      || ''
+    ).trim();
+    if (normalizedFallback && normalizedFallback !== '已过期') {
+      return normalizedFallback;
+    }
+    if (statusValue === 2) return '消费者已同意';
+    if (statusValue === 3) return '消费者已拒绝';
+    if (statusValue === 0 || statusValue === 1) {
       return '等待消费者确认';
     }
-    return normalizedFallback;
+    return normalizedFallback || '等待消费者确认';
+  }
+
+  function resolveApiRefundStatusFooterText(kind = '', displayText = '', fallbackText = '') {
+    const normalizedFallback = String(fallbackText || '').trim();
+    const normalizedDisplay = String(displayText || '').trim();
+    if (normalizedFallback) return normalizedFallback;
+    if (kind === 'refund-pending') return '消费者已同意';
+    if (kind === 'refund-rejected') return normalizedDisplay || '消费者已拒绝';
+    if (kind === 'refund-success') return normalizedDisplay || '退款成功';
+    return normalizedDisplay;
   }
 
   function getApiRefundStatusUpdateMeta(message = {}) {
@@ -1987,12 +2008,18 @@
     if (directMeta) {
       const kind = String(directMeta.kind || '').trim();
       if (kind) {
+        const displayText = String(directMeta.displayText || '').trim();
+        const footerText = resolveApiRefundStatusFooterText(
+          kind,
+          displayText,
+          directMeta.footerText
+        );
         return {
           kind,
           targetMessageId: String(directMeta.targetMessageId || '').trim(),
           status: Number(directMeta.status ?? ''),
-          displayText: String(directMeta.displayText || '').trim(),
-          footerText: kind === 'refund-pending' ? '消费者已同意' : '',
+          displayText,
+          footerText,
         };
       }
     }
@@ -2002,13 +2029,23 @@
     if (messageType === 90) {
       const targetMessageId = String(data?.msg_id || '').trim();
       const statusValue = Number(data?.status);
+      const statusText = String(data?.text || '').trim();
       if (targetMessageId && statusValue === 2) {
         return {
           kind: 'refund-pending',
           targetMessageId,
           status: statusValue,
           displayText: '消费者已同意您发起的退款申请，请及时处理',
-          footerText: '消费者已同意',
+          footerText: resolveApiRefundStatusFooterText('refund-pending', '消费者已同意您发起的退款申请，请及时处理', statusText),
+        };
+      }
+      if (targetMessageId && statusValue === 3) {
+        return {
+          kind: 'refund-rejected',
+          targetMessageId,
+          status: statusValue,
+          displayText: statusText || '消费者已拒绝',
+          footerText: resolveApiRefundStatusFooterText('refund-rejected', statusText || '消费者已拒绝', statusText),
         };
       }
     }
@@ -2063,7 +2100,7 @@
 
   function getApiRefundSystemNoticeKind(message = {}) {
     const statusMeta = getApiRefundStatusUpdateMeta(message);
-    if (statusMeta?.kind) return statusMeta.kind;
+    if (statusMeta?.kind && statusMeta.kind !== 'refund-rejected') return statusMeta.kind;
     const source = getApiSystemNoticeText(message);
     if (!source) return '';
     if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) return 'refund-pending';
@@ -2185,6 +2222,9 @@
   }
 
   function isApiSystemNoticeMessage(message = {}) {
+    const source = getApiSystemNoticeText(message);
+    if (isApiRefundDefaultSellerNoteText(source)) return false;
+    if (extractApiRefundCard(message)) return false;
     if (isApiInviteOrderTemplateMessage(message)) return false;
     if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
     const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
@@ -2192,7 +2232,6 @@
     if (messageType === 31 || messageType === 90) return true;
     if (String(raw?.template_name || raw?.templateName || '').trim()) return true;
     if (raw?.system && typeof raw.system === 'object' && Object.keys(raw.system).length) return true;
-    const source = getApiSystemNoticeText(message);
     if (!source) return false;
     return [
       /您接待过此消费者/,
@@ -2209,6 +2248,16 @@
       /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
       /^退款成功通知$/,
       /^退款成功$/,
+    ].some(pattern => pattern.test(source));
+  }
+
+  function isApiRefundDefaultSellerNoteText(text = '') {
+    const source = String(text || '').trim();
+    if (!source) return false;
+    return [
+      /帮您申请退款，您看可以吗.*点击下方卡片按钮/,
+      /帮您申请退货退款，您看可以吗.*点击下方卡片按钮/,
+      /帮您申请补寄，您看可以吗.*点击下方卡片按钮/,
     ].some(pattern => pattern.test(source));
   }
 
@@ -2518,9 +2567,11 @@
     const noteText = pickApiRefundText(sources, ['noteText', 'note_text', 'applyNote', 'apply_note', 'description', 'desc'])
       || String(fallback?.noteText || '').trim()
       || '商家代消费者填写售后单';
+    const cardState = card?.mstate || card?.mState || card?.state || card?.status || fallback?.mstate || fallback?.mState || fallback?.state || {};
     const footerText = resolveApiRefundCardFooterText(
-      card?.state || card?.status || fallback?.state || {},
+      cardState,
       pickApiRefundText(sources, ['footerText', 'footer_text', 'statusText', 'status_text', 'statusDesc', 'status_desc'])
+      || pickApiRefundText([card?.mstate, card?.mState, card?.state, fallback?.mstate, fallback?.mState, fallback?.state], ['text', 'desc', 'label', 'expire_text'])
       || String(fallback?.footerText || '').trim()
     );
     const actionTypeRaw = pickApiRefundText(sources, ['actionText', 'action_text', 'applyTypeText', 'apply_type_text', 'afterSalesTypeDesc', 'after_sales_type_desc', 'type'])
@@ -2596,7 +2647,10 @@
             const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('联系方式'));
             return Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
           })(),
-          footerText: resolveApiRefundCardFooterText(info?.state, info?.state?.expire_text),
+          footerText: resolveApiRefundCardFooterText(
+            info?.mstate || info?.state,
+            info?.mstate?.text || info?.state?.text || info?.mstate?.expire_text || info?.state?.expire_text
+          ),
         }
       : null;
     const sourceCard = (directCard && typeof directCard === 'object') ? directCard : rawRefundCard;

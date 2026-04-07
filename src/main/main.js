@@ -694,6 +694,9 @@ function buildRefundCardFromNotify(rawMessage = {}) {
   const info = rawMessage?.info && typeof rawMessage.info === 'object' ? rawMessage.info : {};
   if (String(info.card_id || '').trim() !== 'ask_refund_apply') return null;
   const goodsInfo = info?.goods_info && typeof info.goods_info === 'object' ? info.goods_info : {};
+  const displayState = info?.mstate && typeof info.mstate === 'object'
+    ? info.mstate
+    : (info?.state && typeof info.state === 'object' ? info.state : {});
   const itemList = Array.isArray(info?.item_list) ? info.item_list : [];
   const rows = itemList.map(item => {
     const label = normalizeTrafficNotifyText(item?.left || item?.label || item?.name || '');
@@ -705,6 +708,16 @@ function buildRefundCardFromNotify(rawMessage = {}) {
   const findRowValue = (...keywords) => {
     const row = rows.find(item => keywords.some(keyword => item.label.includes(keyword)));
     return row?.value || '';
+  };
+  const resolveFooterText = () => {
+    const explicitText = normalizeTrafficNotifyText(
+      displayState?.text || displayState?.desc || displayState?.label || displayState?.expire_text || ''
+    );
+    if (explicitText && explicitText !== '已过期') return explicitText;
+    const statusValue = Number(displayState?.status);
+    if (statusValue === 2) return '消费者已同意';
+    if (statusValue === 3) return '消费者已拒绝';
+    return '等待消费者确认';
   };
   const amountFen = Number(goodsInfo?.total_amount || 0) || 0;
   return {
@@ -719,7 +732,7 @@ function buildRefundCardFromNotify(rawMessage = {}) {
     amountText: findRowValue('退款金额') || (amountFen > 0 ? `¥${(amountFen / 100).toFixed(2)}` : ''),
     noteText: findRowValue('申请说明') || '商家代消费者填写售后单',
     contactText: findRowValue('联系方式'),
-    footerText: normalizeTrafficNotifyText(info?.state?.expire_text || '') || '等待消费者确认',
+    footerText: resolveFooterText(),
   };
 }
 
@@ -729,6 +742,7 @@ function buildRefundStatusUpdateFromNotify(rawMessage = {}) {
   if (messageType !== 90) return null;
   const targetMessageId = String(data?.msg_id || '').trim();
   const statusValue = Number(data?.status);
+  const statusText = normalizeTrafficNotifyText(data?.text || '');
   if (!targetMessageId || !Number.isFinite(statusValue)) return null;
   if (statusValue === 2) {
     return {
@@ -736,6 +750,14 @@ function buildRefundStatusUpdateFromNotify(rawMessage = {}) {
       targetMessageId,
       status: statusValue,
       displayText: '消费者已同意您发起的退款申请，请及时处理',
+    };
+  }
+  if (statusValue === 3) {
+    return {
+      kind: 'refund-rejected',
+      targetMessageId,
+      status: statusValue,
+      displayText: statusText || '消费者已拒绝',
     };
   }
   return null;

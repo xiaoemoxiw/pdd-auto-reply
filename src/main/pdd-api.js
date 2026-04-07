@@ -1137,7 +1137,32 @@ class PddApiClient extends EventEmitter {
     return String(text || '').replace(/\s+/g, ' ').trim();
   }
 
+  _isInviteOrderTemplateMessage(item = {}) {
+    const templateName = String(item?.template_name || item?.templateName || '').trim();
+    if (templateName === 'substitute_order_v2') return true;
+    const messageType = Number(
+      item?.type
+      ?? item?.msg_type
+      ?? item?.message_type
+      ?? item?.content_type
+      ?? -1
+    );
+    const infoData = item?.info?.data;
+    return messageType === 64 && !!(
+      infoData
+      && typeof infoData === 'object'
+      && (
+        Array.isArray(infoData?.goods_info_list)
+        || Array.isArray(infoData?.goodsInfoList)
+        || infoData?.button
+        || infoData?.goods
+        || infoData?.title
+      )
+    );
+  }
+
   _isSystemNoticeMessage(item = {}) {
+    if (this._isInviteOrderTemplateMessage(item)) return false;
     const messageType = Number(
       item?.type
       ?? item?.msg_type

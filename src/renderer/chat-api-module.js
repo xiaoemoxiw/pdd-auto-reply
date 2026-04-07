@@ -2081,6 +2081,35 @@
     return source;
   }
 
+  function isApiInviteOrderTemplateMessage(message = {}) {
+    const raw = message?.raw && typeof message.raw === 'object'
+      ? message.raw
+      : (message && typeof message === 'object' ? message : {});
+    const templateName = String(raw?.template_name || raw?.templateName || message?.template_name || message?.templateName || '').trim();
+    if (templateName === 'substitute_order_v2') return true;
+    const messageType = Number(
+      raw?.type
+      ?? raw?.msg_type
+      ?? raw?.message_type
+      ?? raw?.content_type
+      ?? message?.type
+      ?? message?.msgType
+      ?? -1
+    );
+    const infoData = raw?.info?.data;
+    return messageType === 64 && !!(
+      infoData
+      && typeof infoData === 'object'
+      && (
+        Array.isArray(infoData?.goods_info_list)
+        || Array.isArray(infoData?.goodsInfoList)
+        || infoData?.button
+        || infoData?.goods
+        || infoData?.title
+      )
+    );
+  }
+
   function renderApiRefundSystemNoticeCardHtml(message = {}, options = {}) {
     const kind = getApiRefundSystemNoticeKind(message);
     if (!kind) return '';
@@ -2156,6 +2185,7 @@
   }
 
   function isApiSystemNoticeMessage(message = {}) {
+    if (isApiInviteOrderTemplateMessage(message)) return false;
     if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
     const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
     const messageType = Number(raw?.type ?? message?.type ?? -1);
@@ -4753,11 +4783,208 @@
     const directCard = message?.inviteOrderCard && typeof message.inviteOrderCard === 'object'
       ? message.inviteOrderCard
       : null;
-    if (directCard) return directCard;
+    if (directCard) return normalizeApiInviteOrderCard(directCard, directCard);
     const extraCard = message?.extra?.inviteOrderCard && typeof message.extra.inviteOrderCard === 'object'
       ? message.extra.inviteOrderCard
       : null;
-    return extraCard || null;
+    if (extraCard) return normalizeApiInviteOrderCard(extraCard, extraCard);
+    const raw = message?.raw && typeof message.raw === 'object'
+      ? message.raw
+      : (message && typeof message === 'object' ? message : {});
+    if (!isApiInviteOrderTemplateMessage({ ...message, raw })) return null;
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const goodsList = [
+      infoData?.goods_info_list,
+      infoData?.goodsInfoList,
+      info?.goods_info_list,
+      info?.goodsInfoList,
+      infoData?.goods,
+      info?.goods,
+    ].find(Array.isArray) || [];
+    const goodsItem = goodsList.find(item => item && typeof item === 'object') || {};
+    const sources = [
+      infoData,
+      info,
+      raw?.extra,
+      raw?.biz_context,
+      raw?.bizContext,
+      raw,
+      goodsItem,
+    ].filter(Boolean);
+    const messageText = [
+      message?.content,
+      raw?.content,
+      raw?.msg_content,
+      raw?.text,
+      raw?.message,
+      info?.mall_content,
+      infoData?.mall_content,
+      infoData?.content,
+      infoData?.text,
+      infoData?.msg_content,
+    ].map(item => String(item || '').trim()).find(Boolean) || '';
+    const priceText = pickApiGoodsText([goodsItem, ...sources], [
+      'priceText',
+      'price_text',
+      'price',
+      'promotion_price',
+      'promotionPrice',
+      'goods_price',
+      'goodsPrice',
+      'amount',
+      'amountText',
+      'sku_price',
+      'skuPrice',
+      'group_price',
+      'unit_price',
+      'pay_price',
+      'final_price',
+    ]) || formatApiGoodsPrice(pickApiGoodsNumber([goodsItem, ...sources], [
+      'promotion_price',
+      'promotionPrice',
+      'goods_price',
+      'goodsPrice',
+      'price',
+      'amount',
+      'sku_price',
+      'skuPrice',
+      'group_price',
+      'unit_price',
+      'pay_price',
+      'final_price',
+    ]));
+    const totalText = pickApiGoodsText(sources, [
+      'totalText',
+      'total_text',
+      'payAmountText',
+      'pay_amount_text',
+      'totalAmountText',
+      'total_amount_text',
+      'amountText',
+      'orderAmountText',
+      'order_amount_text',
+      'orderPriceText',
+      'order_price_text',
+      'priceText',
+      'price_text',
+    ]) || formatApiGoodsPrice(pickApiGoodsNumber(sources, [
+      'pay_amount',
+      'payAmount',
+      'total_amount',
+      'totalAmount',
+      'order_amount',
+      'orderAmount',
+      'total_price',
+      'totalPrice',
+      'amount',
+      'price',
+    ]));
+    const count = goodsList.reduce((sum, item) => {
+      const quantity = pickApiGoodsNumber([item], [
+        'goodsNumber',
+        'goods_number',
+        'quantity',
+        'num',
+        'count',
+        'buy_num',
+        'buyNum',
+        'goodsCount',
+        'goods_count',
+      ]);
+      return sum + (quantity || 1);
+    }, 0) || pickApiGoodsNumber(sources, [
+      'goodsNumber',
+      'goods_number',
+      'quantity',
+      'num',
+      'count',
+      'buy_num',
+      'buyNum',
+      'goodsCount',
+      'goods_count',
+    ]) || 1;
+    return normalizeApiInviteOrderCard({
+      messageText,
+      title: pickApiGoodsText([goodsItem, ...sources], [
+        'goods_name',
+        'goodsName',
+        'goods_title',
+        'goodsTitle',
+        'item_title',
+        'itemTitle',
+        'title',
+        'name',
+      ]) || '已选商品',
+      specText: pickApiGoodsText([goodsItem, ...sources], [
+        'specText',
+        'spec_text',
+        'spec',
+        'sku_spec',
+        'skuSpec',
+        'spec_desc',
+        'specDesc',
+        'sub_name',
+        'subName',
+        'sku_name',
+        'skuName',
+      ]),
+      imageUrl: pickApiGoodsText([goodsItem, ...sources], [
+        'imageUrl',
+        'image_url',
+        'sku_thumb_url',
+        'skuThumbUrl',
+        'thumb_url',
+        'hd_thumb_url',
+        'goods_thumb_url',
+        'thumbUrl',
+        'hdThumbUrl',
+        'goodsThumbUrl',
+        'pic_url',
+        'picUrl',
+        'goods_img_url',
+        'goodsImgUrl',
+        'hd_url',
+        'hdUrl',
+      ]),
+      priceText,
+      totalText: totalText || priceText,
+      count,
+    }, {
+      messageText,
+      priceText,
+      totalText: totalText || priceText,
+      count,
+    });
+  }
+
+  function normalizeApiInviteOrderCard(card = {}, fallback = {}) {
+    return {
+      messageText: String(card?.messageText || fallback?.messageText || '').trim(),
+      title: String(card?.title || fallback?.title || '已选商品').trim() || '已选商品',
+      specText: String(card?.specText || fallback?.specText || '').trim(),
+      imageUrl: String(card?.imageUrl || fallback?.imageUrl || '').trim(),
+      priceText: String(card?.priceText || fallback?.priceText || '').trim(),
+      totalText: String(card?.totalText || fallback?.totalText || card?.priceText || fallback?.priceText || '').trim(),
+      count: Math.max(1, Number(card?.count || fallback?.count || 1) || 1),
+    };
+  }
+
+  function normalizeApiInviteOrderComparableText(text = '') {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isSameApiInviteOrderCard(left = {}, right = {}) {
+    const normalizedLeft = normalizeApiInviteOrderCard(left, left);
+    const normalizedRight = normalizeApiInviteOrderCard(right, right);
+    return (
+      normalizeApiInviteOrderComparableText(normalizedLeft.messageText) === normalizeApiInviteOrderComparableText(normalizedRight.messageText)
+      && normalizeApiInviteOrderComparableText(normalizedLeft.title) === normalizeApiInviteOrderComparableText(normalizedRight.title)
+      && normalizeApiInviteOrderComparableText(normalizedLeft.specText) === normalizeApiInviteOrderComparableText(normalizedRight.specText)
+      && normalizeApiInviteOrderComparableText(normalizedLeft.priceText) === normalizeApiInviteOrderComparableText(normalizedRight.priceText)
+      && normalizeApiInviteOrderComparableText(normalizedLeft.totalText) === normalizeApiInviteOrderComparableText(normalizedRight.totalText)
+      && Number(normalizedLeft.count || 1) === Number(normalizedRight.count || 1)
+    );
   }
 
   function buildApiInviteOrderPreviewCard() {
@@ -4816,11 +5043,27 @@
     const mergedMessages = remoteMessages.slice();
     syntheticMessages.forEach(item => {
       const syntheticKey = String(item?.syntheticKey || item?.refundCard?.localKey || '');
-      const duplicated = syntheticKey && remoteMessages.some(remote => {
+      let duplicated = syntheticKey && remoteMessages.some(remote => {
         const refundKey = String(extractApiRefundCard(remote, activeSession)?.localKey || '');
         const remoteSyntheticKey = String(remote?.syntheticKey || '');
         return refundKey === syntheticKey || remoteSyntheticKey === syntheticKey;
       });
+      if (!duplicated) {
+        const syntheticInviteOrderCard = extractApiInviteOrderCard(item);
+        if (syntheticInviteOrderCard) {
+          duplicated = remoteMessages.some(remote => {
+            if (remote?.isFromBuyer) return false;
+            const remoteInviteOrderCard = extractApiInviteOrderCard(remote);
+            if (!remoteInviteOrderCard || !isSameApiInviteOrderCard(remoteInviteOrderCard, syntheticInviteOrderCard)) return false;
+            const remoteTimestamp = getApiTimeMs(remote?.timestamp);
+            const syntheticTimestamp = getApiTimeMs(item?.timestamp);
+            if (remoteTimestamp && syntheticTimestamp && Math.abs(remoteTimestamp - syntheticTimestamp) > 2 * 60 * 1000) {
+              return false;
+            }
+            return true;
+          });
+        }
+      }
       if (!duplicated) {
         mergedMessages.push(item);
       }

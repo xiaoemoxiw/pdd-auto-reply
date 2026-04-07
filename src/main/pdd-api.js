@@ -2477,6 +2477,215 @@ class PddApiClient extends EventEmitter {
     }
   }
 
+  _normalizeOrderSn(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  _matchSessionByOrderSn(session = {}, orderSn = '') {
+    const targetOrderSn = this._normalizeOrderSn(orderSn);
+    if (!targetOrderSn) return false;
+    const candidates = [
+      session?.orderId,
+      session?.orderSn,
+      session?.order_sn,
+      session?.raw?.order_id,
+      session?.raw?.orderId,
+      session?.raw?.order_sn,
+      session?.raw?.orderSn,
+    ].map(value => this._normalizeOrderSn(value)).filter(Boolean);
+    return candidates.includes(targetOrderSn);
+  }
+
+  _findCachedSessionByOrderSn(orderSn = '', sessions = []) {
+    const list = Array.isArray(sessions) ? sessions : [];
+    const matched = list.find(item => this._matchSessionByOrderSn(item, orderSn));
+    return matched ? this._cloneJson(matched) : null;
+  }
+
+  _findCachedSessionByUid(uid = '') {
+    const normalizedUid = String(uid || '').trim();
+    if (!normalizedUid) return null;
+    const cachedSessions = [
+      ...this._sessionCache,
+      ...this._parseSessionList(this._getLatestResponseBody('/plateau/chat/latest_conversations')),
+    ];
+    const matched = cachedSessions.find(item => {
+      const candidates = [
+        item?.sessionId,
+        item?.explicitSessionId,
+        item?.conversationId,
+        item?.chatId,
+        item?.rawId,
+        item?.customerId,
+        item?.userUid,
+        item?.raw?.session_id,
+        item?.raw?.conversation_id,
+        item?.raw?.chat_id,
+        item?.raw?.id,
+        item?.raw?.customer_id,
+        item?.raw?.buyer_id,
+        item?.raw?.uid,
+        item?.raw?.to?.uid,
+        item?.raw?.user_info?.uid,
+      ].map(value => String(value || '').trim()).filter(Boolean);
+      return candidates.includes(normalizedUid);
+    });
+    return matched ? this._cloneJson(matched) : null;
+  }
+
+  _parseOrderHistoryMessageItem(item) {
+    if (!item) return null;
+    if (typeof item === 'string') {
+      const parsed = this._safeParseJson(item);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    }
+    return item && typeof item === 'object' ? item : null;
+  }
+
+  async getHistoryMessagesByOrderSn(orderSn, options = {}) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单号');
+    }
+    const payload = await this._post('/latitude/message/getHistoryMessage', {
+      orderSn: normalizedOrderSn,
+      startTime: Math.max(0, Number(options?.startTime || 0) || 0),
+      endTime: Math.max(0, Number(options?.endTime || Math.floor(Date.now() / 1000)) || Math.floor(Date.now() / 1000)),
+      pageNum: Math.max(0, Number(options?.pageNum || 0) || 0),
+      pageSize: Math.max(1, Math.min(Number(options?.pageSize || 20) || 20, 100)),
+    });
+    const normalizedList = (Array.isArray(payload?.result?.messageList) ? payload.result.messageList : [])
+      .map(item => this._parseOrderHistoryMessageItem(item))
+      .filter(Boolean);
+    const messages = this._parseMessages({
+      result: {
+        messages: normalizedList,
+      },
+    });
+    return {
+      payload,
+      messages,
+      userInfo: payload?.result?.userInfo && typeof payload.result.userInfo === 'object'
+        ? payload.result.userInfo
+        : {},
+      mallInfo: payload?.result?.mallInfo && typeof payload.result.mallInfo === 'object'
+        ? payload.result.mallInfo
+        : {},
+    };
+  }
+
+  _buildSyntheticSessionFromOrderHistory(orderSn = '', history = {}) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    const payload = history?.payload && typeof history.payload === 'object' ? history.payload : {};
+    const userInfo = history?.userInfo && typeof history.userInfo === 'object' ? history.userInfo : {};
+    const mallInfo = history?.mallInfo && typeof history.mallInfo === 'object' ? history.mallInfo : {};
+    const messages = Array.isArray(history?.messages) ? history.messages : [];
+    const buyerMessage = messages.find(item => item?.isFromBuyer && String(item?.senderId || '').trim());
+    const latestMessage = messages.length ? messages[messages.length - 1] : null;
+    const uid = String(
+      userInfo?.uid
+      || buyerMessage?.senderId
+      || buyerMessage?.raw?.from?.uid
+      || ''
+    ).trim();
+    if (!uid) return null;
+    const cachedSession = this._findCachedSessionByUid(uid);
+    if (cachedSession) {
+      return {
+        ...cachedSession,
+        orderId: cachedSession.orderId || normalizedOrderSn,
+        customerName: cachedSession.customerName || String(userInfo?.nickName || userInfo?.nickname || '').trim(),
+        customerAvatar: cachedSession.customerAvatar || String(userInfo?.avatar || '').trim(),
+      };
+    }
+    const customerName = String(userInfo?.nickName || userInfo?.nickname || buyerMessage?.senderName || '').trim();
+    const customerAvatar = String(userInfo?.avatar || '').trim();
+    return {
+      sessionId: uid,
+      explicitSessionId: '',
+      conversationId: '',
+      chatId: '',
+      rawId: '',
+      customerId: uid,
+      userUid: uid,
+      customerName,
+      customerAvatar,
+      lastMessage: String(latestMessage?.content || '').trim(),
+      lastMessageTime: Number(latestMessage?.timestamp || 0) || 0,
+      lastMessageActor: String(latestMessage?.actor || 'unknown'),
+      lastMessageIsFromBuyer: latestMessage?.isFromBuyer === true,
+      createdAt: Number(messages[0]?.timestamp || latestMessage?.timestamp || 0) || 0,
+      unreadCount: 0,
+      isTimeout: false,
+      waitTime: 0,
+      groupNumber: 0,
+      group_number: 0,
+      orderId: normalizedOrderSn,
+      goodsInfo: null,
+      csUid: '',
+      mallId: String(mallInfo?.mallId || ''),
+      mallName: String(mallInfo?.mallName || ''),
+      isShopMember: null,
+      raw: {
+        ...(payload?.result || {}),
+        user_info: {
+          uid,
+          nickname: customerName,
+          avatar: customerAvatar,
+        },
+        uid,
+        customer_id: uid,
+        buyer_id: uid,
+        order_id: normalizedOrderSn,
+        order_sn: normalizedOrderSn,
+      },
+    };
+  }
+
+  async findSessionByOrderSn(orderSn, options = {}) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单号');
+    }
+    if (!this._sessionInited) {
+      await this.initSession();
+    }
+
+    let matchedSession = this._findCachedSessionByOrderSn(normalizedOrderSn, this._sessionCache);
+    if (matchedSession) {
+      return matchedSession;
+    }
+
+    const pageLimit = Math.max(1, Math.min(Number(options?.pageLimit || 4) || 4, 10));
+    const pageSize = Math.max(20, Math.min(Number(options?.pageSize || 50) || 50, 100));
+    for (let page = 1; page <= pageLimit; page += 1) {
+      const sessions = await this.getSessionList(page, pageSize);
+      matchedSession = this._findCachedSessionByOrderSn(normalizedOrderSn, sessions);
+      if (matchedSession) {
+        return matchedSession;
+      }
+      if (!Array.isArray(sessions) || sessions.length < pageSize) {
+        break;
+      }
+    }
+    try {
+      const history = await this.getHistoryMessagesByOrderSn(normalizedOrderSn, {
+        pageSize: Math.max(10, Math.min(Number(options?.historyPageSize || 20) || 20, 100)),
+      });
+      const syntheticSession = this._buildSyntheticSessionFromOrderHistory(normalizedOrderSn, history);
+      if (!syntheticSession?.sessionId) {
+        throw new Error('未找到对应订单会话');
+      }
+      return syntheticSession;
+    } catch (error) {
+      this._log('[API] 按订单号查找会话失败', {
+        orderSn: normalizedOrderSn,
+        message: error.message,
+      });
+      throw new Error('未找到对应订单会话');
+    }
+  }
+
   _isBuyerMessage(item) {
     return this._getMessageActor(item) === 'buyer';
   }
@@ -3356,7 +3565,7 @@ class PddApiClient extends EventEmitter {
       messageId: item.msg_id || item.message_id || item.id || '',
       sessionId: item.session_id || item.conversation_id || item.chat_id || item?.to?.uid || item?.from?.uid || '',
       content: this._extractMessageText(item),
-      msgType: item.msg_type || item.message_type || item.content_type || 1,
+      msgType: item.msg_type || item.message_type || item.content_type || item.type || 1,
       isFromBuyer: this._isBuyerMessage(item),
       isSystem: this._getMessageActor(item) === 'system',
       senderName: this._extractMessageSenderName(item),

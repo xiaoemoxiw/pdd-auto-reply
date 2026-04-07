@@ -1438,6 +1438,69 @@
     return callRuntime('loadApiSessions', options);
   }
 
+  function findLocalApiSessionByKeyword(keyword = '') {
+    const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+    if (!normalizedKeyword) return null;
+    return getLatestApiSessionsForDisplay().find(session => {
+      const orderText = String(session?.orderId || session?.orderSn || '').trim().toLowerCase();
+      return orderText === normalizedKeyword
+        || String(session?.sessionId || '').trim().toLowerCase() === normalizedKeyword
+        || String(session?.customerId || '').trim().toLowerCase() === normalizedKeyword
+        || String(session?.customerName || '').trim().toLowerCase().includes(normalizedKeyword);
+    }) || null;
+  }
+
+  function prependApiSearchSession(session = {}) {
+    const shopId = String(session?.shopId || '').trim();
+    const sessionId = String(session?.sessionId || '').trim();
+    if (!shopId || !sessionId) return;
+    const state = getState();
+    const preservedSessions = Array.isArray(state.apiSessions)
+      ? state.apiSessions.filter(item => !(String(item?.shopId || '') === shopId && String(item?.sessionId || '') === sessionId))
+      : [];
+    mergeApiSessionsForShop(shopId, [session, ...preservedSessions.filter(item => String(item?.shopId || '') === shopId)]);
+    setApiPinnedSearchSession(session);
+  }
+
+  async function handleApiSessionSearchSubmit() {
+    const state = getState();
+    const rawKeyword = String(state.apiSessionKeyword || '').trim();
+    const normalizedKeyword = rawKeyword.toLowerCase();
+    if (!rawKeyword) {
+      setApiHint('请输入订单号、客户名或会话关键词');
+      return;
+    }
+    const localTarget = findLocalApiSessionByKeyword(rawKeyword);
+    if (localTarget) {
+      setApiPinnedSearchSession(localTarget);
+      setApiSessionTab('latest');
+      await openApiSession(localTarget.sessionId, localTarget.customerName, localTarget.shopId);
+      setApiHint(`已定位会话：${localTarget.customerName || localTarget.customerId || localTarget.sessionId}`);
+      return;
+    }
+    const scopeShopId = state.apiSelectedShopId || state.apiActiveSessionShopId || state.activeShopId || state.API_ALL_SHOPS;
+    const result = await window.pddApi.apiFindSessionByOrderSn({
+      shopId: scopeShopId,
+      orderSn: rawKeyword,
+      pageSize: 50,
+      pageLimit: 4,
+    });
+    if (!result?.sessionId) {
+      if (result?.error) {
+        setApiHint(result.error);
+        return;
+      }
+      setApiHint(normalizedKeyword ? '未找到对应订单会话，可先刷新会话再尝试搜索' : '请输入订单号');
+      return;
+    }
+    prependApiSearchSession(result);
+    setApiSessionTab('latest');
+    await openApiSession(result.sessionId, result.customerName, result.shopId, {
+      forceRefresh: true,
+    });
+    setApiHint(`已按订单号打开会话：${result.customerName || result.customerId || result.sessionId}`);
+  }
+
   function loadApiTraffic(shopId) {
     return callRuntime('loadApiTraffic', shopId);
   }
@@ -1547,6 +1610,10 @@
 
   function mergeApiSessionsForShop(shopId, sessions = []) {
     return callRuntime('mergeApiSessionsForShop', shopId, sessions);
+  }
+
+  function setApiPinnedSearchSession(session = null) {
+    return callRuntime('setApiPinnedSearchSession', session);
   }
 
   function renderApiStatus() {
@@ -5769,7 +5836,9 @@
       html += esc(source.slice(lastIndex, offset));
       const item = emojiMap.get(name);
       html += item
-        ? `<span class="api-inline-emoji" title="${esc(match)}">${esc(item.preview)}</span>`
+        ? (item.previewImage
+          ? `<img class="api-inline-emoji-image" src="${esc(item.previewImage)}" alt="${esc(name)}" title="${esc(match)}">`
+          : `<span class="api-inline-emoji" title="${esc(match)}">${esc(item.preview)}</span>`)
         : esc(match);
       lastIndex = offset + match.length;
       return match;
@@ -5998,7 +6067,7 @@
           : videoMessage
           ? renderApiVideoMessageHtml(message)
           : imageMessage
-            ? `<div class="api-message-bubble"><div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div></div>`
+            ? `<div class="api-message-bubble"><div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息" data-preview-url="${esc(imageUrl)}">` : '[图片消息]'}</div></div>`
             : `<div class="api-message-bubble"><div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div></div>`;
         const isPlainTextSellerMessage = !isBuyer
           && !goodsLinkInfo
@@ -6052,6 +6121,18 @@
           } catch {
             showApiSideOrderToast('复制失败，请稍后重试');
           }
+        });
+      });
+      container.querySelectorAll('.api-message-image[data-preview-url]').forEach(image => {
+        image.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const url = image.dataset.previewUrl || image.getAttribute('src') || '';
+          if (typeof window.showApiImagePreview === 'function') {
+            window.showApiImagePreview(url);
+            return;
+          }
+          if (url) window.open(url, '_blank', 'noopener,noreferrer');
         });
       });
       container.querySelectorAll('.api-message-system-action-button').forEach(button => {
@@ -6114,37 +6195,85 @@
   }
 
   function isApiImageMessage(message = {}) {
-    const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
+    const msgTypeSource = message?.msgType ?? message?.raw?.msg_type ?? message?.raw?.message_type ?? message?.raw?.content_type ?? message?.raw?.type ?? message?.type ?? '';
+    const msgType = String(msgTypeSource || '').toLowerCase();
     if (['2', 'image', 'img', 'pic', 'picture'].includes(msgType)) return true;
     const extraType = String(message?.extra?.type || message?.raw?.extra?.type || message?.raw?.ext?.type || '').toLowerCase();
     if (['image', 'img', 'pic', 'picture'].includes(extraType)) return true;
+    if (['emoji', 'sticker', 'emoticon', 'expression', 'face'].includes(extraType)) {
+      return !!getApiImageMessageUrl(message);
+    }
     const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
-    if (/\[(图片|image)\]/.test(rawContent)) return true;
-    if (/picture_url/.test(rawContent)) return true;
+    if (/\[(图片|image|表情|贴纸|emoji|sticker)\]/.test(rawContent)) return true;
+    if (/(picture_url|image_url|img_url|emoji_url|sticker_url)/.test(rawContent)) return true;
     if (/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/.test(rawContent)) return true;
-    return false;
+    return !!getApiImageMessageUrl(message);
   }
 
   function getApiImageMessageUrl(message = {}) {
+    const isLikelyImageUrl = value => {
+      const text = String(value || '').trim();
+      if (!text) return false;
+      if (text.startsWith('data:image/')) return true;
+      return /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(text);
+    };
     const candidates = [
       message?.extra?.url,
       message?.extra?.picture_url,
+      message?.extra?.image_url,
+      message?.extra?.img_url,
+      message?.extra?.emoji_url,
+      message?.extra?.sticker_url,
+      message?.extra?.expression_url,
+      message?.extra?.emoticon_url,
+      message?.extra?.face_url,
+      message?.extra?.preview_url,
+      message?.extra?.previewUrl,
+      message?.extra?.image?.url,
+      message?.extra?.emoji?.url,
+      message?.extra?.sticker?.url,
       message?.raw?.extra?.url,
       message?.raw?.extra?.picture_url,
+      message?.raw?.extra?.image_url,
+      message?.raw?.extra?.img_url,
+      message?.raw?.extra?.emoji_url,
+      message?.raw?.extra?.sticker_url,
+      message?.raw?.extra?.expression_url,
+      message?.raw?.extra?.emoticon_url,
+      message?.raw?.extra?.face_url,
       message?.raw?.ext?.url,
       message?.raw?.ext?.picture_url,
+      message?.raw?.ext?.image_url,
+      message?.raw?.ext?.img_url,
+      message?.raw?.ext?.emoji_url,
+      message?.raw?.ext?.sticker_url,
+      message?.raw?.ext?.expression_url,
+      message?.raw?.ext?.emoticon_url,
+      message?.raw?.ext?.face_url,
+      message?.raw?.info?.url,
+      message?.raw?.info?.picture_url,
+      message?.raw?.info?.image_url,
+      message?.raw?.info?.img_url,
+      message?.raw?.info?.emoji_url,
+      message?.raw?.info?.sticker_url,
+      message?.raw?.info?.expression_url,
+      message?.raw?.info?.emoticon_url,
+      message?.raw?.info?.face_url,
+      message?.raw?.info?.preview?.url,
     ].filter(Boolean);
-    if (candidates.length) return candidates[0];
+    const firstCandidate = candidates.find(isLikelyImageUrl) || candidates[0];
+    if (firstCandidate && isLikelyImageUrl(firstCandidate)) return String(firstCandidate);
     const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
     const urlMatch = rawText.match(/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/i);
     if (urlMatch) return urlMatch[0];
-    const jsonMatch = rawText.match(/\{[^{}]*"picture_url"\s*:\s*"([^"]+)"[^{}]*\}/);
-    return jsonMatch?.[1] || '';
+    const jsonMatch = rawText.match(/\{[^{}]*"(picture_url|image_url|img_url|emoji_url|sticker_url)"\s*:\s*"([^"]+)"[^{}]*\}/);
+    return jsonMatch?.[2] || '';
   }
 
   function isApiVideoMessage(message = {}) {
-    const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
-    if (['video', 'short_video', 'small_video'].includes(msgType)) return true;
+    const msgTypeSource = message?.msgType ?? message?.raw?.msg_type ?? message?.raw?.message_type ?? message?.raw?.content_type ?? message?.raw?.type ?? message?.type ?? '';
+    const msgType = String(msgTypeSource || '').toLowerCase();
+    if (['14', 'video', 'short_video', 'small_video'].includes(msgType)) return true;
     const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
     if (/(video_cover_url|f20_url|f30_url|transcode_f30_url|library_file)/.test(rawContent)) return true;
     if (/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i.test(rawContent)) return true;
@@ -6167,6 +6296,9 @@
       message?.raw?.ext?.video_url,
       message?.raw?.ext?.f30_url,
       message?.raw?.ext?.f20_url,
+      message?.raw?.info?.download_url,
+      message?.raw?.info?.downloadUrl,
+      message?.raw?.info?.url,
     ].filter(Boolean);
     if (candidates.length) return String(candidates[0] || '');
     const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
@@ -6183,6 +6315,7 @@
       || message?.raw?.extra?.coverUrl
       || message?.raw?.extra?.video_cover_url
       || message?.raw?.ext?.video_cover_url
+      || message?.raw?.info?.preview?.url
       || ''
     );
   }
@@ -6795,25 +6928,7 @@
     document.getElementById('apiSideOrderList')?.addEventListener('change', handleApiSideOrderListChange);
 
     document.getElementById('btnApiPlus')?.addEventListener('click', async () => {
-      const keyword = String(getState().apiSessionKeyword || '').trim().toLowerCase();
-      if (!keyword) {
-        setApiHint('请输入订单号、客户名或会话关键词');
-        return;
-      }
-      const target = getLatestApiSessionsForDisplay().find(session => {
-        const orderText = String(session.orderId || '').toLowerCase();
-        return orderText === keyword
-          || String(session.sessionId || '').toLowerCase() === keyword
-          || String(session.customerId || '').toLowerCase() === keyword
-          || String(session.customerName || '').toLowerCase().includes(keyword);
-      });
-      if (!target) {
-        setApiHint('当前列表未找到匹配会话，可先刷新会话再尝试搜索');
-        return;
-      }
-      setApiSessionTab('latest');
-      await openApiSession(target.sessionId, target.customerName, target.shopId);
-      setApiHint(`已定位会话：${target.customerName || target.customerId || target.sessionId}`);
+      await handleApiSessionSearchSubmit();
     });
 
     document.getElementById('apiLoadMoreSessions')?.addEventListener('click', async () => {

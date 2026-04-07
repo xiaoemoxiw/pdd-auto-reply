@@ -138,6 +138,44 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('api-find-session-by-order-sn', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    const orderSn = String(params.orderSn || params.order_sn || '').trim();
+    if (!shopId) return { error: '没有可用店铺' };
+    if (!orderSn) return { error: '缺少订单号' };
+    const targetShops = getApiShopList(shopId, { apiReadyOnly: shopId === API_ALL_SHOPS });
+    if (!targetShops.length) {
+      return { error: '没有可用店铺' };
+    }
+    const failures = [];
+    for (const shop of targetShops) {
+      try {
+        const session = await getApiClient(shop.id).findSessionByOrderSn(orderSn, {
+          pageLimit: params.pageLimit,
+          pageSize: params.pageSize,
+        });
+        if (session?.sessionId) {
+          return {
+            ...session,
+            shopId: shop.id,
+            shopName: session.shopName || shop.name || '未知店铺',
+            shopStatus: shop.status || '',
+          };
+        }
+      } catch (error) {
+        failures.push({
+          shopId: shop.id,
+          shopName: shop.name || shop.id,
+          message: error.message || '查找失败',
+        });
+      }
+    }
+    if (failures.length && shopId !== API_ALL_SHOPS) {
+      return { error: failures[0]?.message || '未找到对应订单会话' };
+    }
+    return { error: '未找到对应订单会话' };
+  });
+
   ipcMain.handle('api-get-messages', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

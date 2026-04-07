@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiInitSession: () => ipcRenderer.invoke('api-init-session'),
   apiTestConnection: (params) => ipcRenderer.invoke('api-test-connection', params),
   apiGetSessions: (params) => ipcRenderer.invoke('api-get-sessions', params),
+  apiFindSessionByOrderSn: (params) => ipcRenderer.invoke('api-find-session-by-order-sn', params),
   apiGetMessages: (params) => ipcRenderer.invoke('api-get-messages', params),
   apiGetGoodsCard: (params) => ipcRenderer.invoke('api-get-goods-card', params),
   apiGetRefundOrders: (params) => ipcRenderer.invoke('api-get-refund-orders', params),

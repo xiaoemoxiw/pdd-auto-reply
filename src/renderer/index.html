@@ -13,7 +13,7 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
       background: #f0f2f5;
       overflow: hidden;
       height: 100vh;
@@ -5130,6 +5130,15 @@
       vertical-align: text-bottom;
     }
 
+    .api-inline-emoji-image {
+      display: inline-block;
+      width: 22px;
+      height: 22px;
+      object-fit: contain;
+      vertical-align: text-bottom;
+      user-select: none;
+    }
+
     .api-message-time {
       font-size: 11px;
       color: #999;
@@ -7064,7 +7073,7 @@
                   <span id="btnApiRefund">退</span>
                   <span class="api-composer-action-link" id="btnApiInviteFollow" style="margin-left:auto;">邀请关注</span>
                   <span class="api-composer-action-link" id="btnApiInviteOrder">邀请下单</span>
-                  <span class="api-composer-action-link" id="btnApiSmallPayment">小额打款</span>
+                  <!-- <span class="api-composer-action-link" id="btnApiSmallPayment">小额打款</span> -->
                 </div>
                 <div class="api-compose-inputbar">
                   <textarea id="apiMessageInput" placeholder="输入要发送的消息..."></textarea>
@@ -8734,32 +8743,62 @@
           { name: '汗', preview: '😅' },
           { name: '大笑', preview: '😄' },
           { name: 'skr', preview: '😎' },
-          { name: '奋斗', preview: '😤' },
-          { name: '疑问', preview: '😕' },
+          // { name: '发怒', preview: '😤' },
+          { name: '疑问', preview: '❓' },
           { name: '嘘', preview: '🤫' },
           { name: '晕', preview: '🌀' },
-          { name: '衰', preview: '😵' },
+          { name: '衰', preview: '🤕' },
           { name: '生病', preview: '😷' },
-          { name: '再见', preview: '😔' },
+          { name: '再见', preview: '👋' },
           { name: '擦汗', preview: '😓' },
           { name: '抠鼻', preview: '🤔' },
           { name: '鼓掌', preview: '👏' },
           { name: '坏笑', preview: '😏' },
-          { name: '左哼哼', preview: '😤' },
-          { name: '右哼哼', preview: '😤' },
-          { name: '皱眉', preview: '😣' },
+          { name: '左哼哼', preview: '😕' },
+          { name: '右哼哼', preview: '😕' },
+          { name: '皱眉', preview: '🙍' },
           { name: '委屈', preview: '🥺' },
           { name: '哭了', preview: '😢' },
-          { name: '阴险', preview: '😼' },
+          { name: '阴险', preview: '😏' },
           { name: '亲亲', preview: '😘' },
           { name: '可怜', preview: '🥹' },
           { name: '笑哭', preview: '😂' },
           { name: '捂脸', preview: '🤦' },
           { name: '吐舌头', preview: '😝' },
+          { name: '吐', preview: '🤮' },
           { name: '头疼', preview: '😣' },
           { name: '吃手', preview: '🤭' },
           { name: '吃手手', preview: '🫣' },
-          { name: '小心心', preview: '🥰' }
+          { name: '小心心', preview: '🥰' },
+          { name: '可爱', preview: '😊' },
+          { name: '色', preview: '😍' },
+          { name: '鄙视', preview: '😒' },
+          { name: '憨笑', preview: '😄' },
+          { name: '奸笑', preview: '😏' },
+          { name: '飞吻', preview: '😘' },
+          { name: '剁手手', preview: '🛒' },
+          { name: '柠檬', preview: '🍋' },
+          { name: '心烦', preview: '😠' },
+          { name: '吃西瓜', preview: '🍉' },
+          { name: '流口水', preview: '🤤' },
+          { name: '比个耶', preview: '✌🏻' },
+          { name: '拍手', preview: '👏🏻' },
+          { name: '好可爱', preview: '😊' },
+          { name: '微笑', preview: '😊' },
+          { name: '闭嘴', preview: '🤐' },
+          { name: '发怒', preview: '😠' },
+          { name: '上火了', preview: '🔥' },
+          { name: '奋斗', preview: '💪' },
+          { name: '白眼', preview: '🙄' },
+          { name: '超级凶', preview: '' },
+          { name: '太难了', preview: '😩' },
+          { name: '平静', preview: '😐' },
+          { name: '胡思乱想', preview: '🤔' },
+          { name: '心里苦', preview: '😧' },
+          { name: '弱', preview: '👎' },
+          { name: '阿黄', preview: '🐕' },
+          { name: '二哈', preview: '🐶' },
+          { name: '睡', preview: '😴' }
         ]
       },
       {
@@ -8772,12 +8811,24 @@
           { name: '握手', preview: '🤝' },
           { name: '强壮', preview: '💪' },
           { name: '拥抱', preview: '🤗' },
-          { name: '玫瑰', preview: '🌹', previewImage: './assets/pdd-emoji/rose.svg' },
-          { name: '凋谢', preview: '🥀', previewImage: './assets/pdd-emoji/wilted-rose.svg' },
+          { name: '抱拳', preview: '🙏' },
+          { name: '玫瑰', preview: '🌹' },
+          { name: '凋谢', preview: '🥀' },
           { name: '爱心', preview: '❤️' },
           { name: '心碎', preview: '💔' },
-          { name: '买买买', preview: '🛍️' },
+          { name: '买买买', preview: '买' },
           { name: '加油', preview: '⛽' },
+          { name: '拜拜', preview: '👋' },
+          { name: '胜利', preview: '✌️' },
+          { name: '拳头', preview: '👊' },
+          { name: '敲打', preview: '👊' },
+          { name: '蛋糕', preview: '🍰' },
+          { name: '灯泡', preview: '💡' },
+          { name: '咖啡', preview: '☕' },
+          { name: '太阳', preview: '☀️' },
+          { name: '饼干', preview: '🍪' },
+          { name: '啤酒', preview: '🍺' },
+          { name: 'OK', preview: '🆗' },
           { name: '好有钱', preview: '🤑' }
         ]
       }
@@ -8785,6 +8836,16 @@
     const API_EMOJI_MAP = new Map(
       API_EMOJI_GROUPS.flatMap(group => group.items.map(item => [item.name, item]))
     );
+    const API_EMOJI_ALIASES = new Map([
+      ['威打', '敲打'],
+      ['吐舌', '吐舌头'],
+      ['再见', '拜拜'],
+    ]);
+    API_EMOJI_ALIASES.forEach((target, alias) => {
+      if (API_EMOJI_MAP.has(alias)) return;
+      if (!API_EMOJI_MAP.has(target)) return;
+      API_EMOJI_MAP.set(alias, API_EMOJI_MAP.get(target));
+    });
     const API_EMOJIS = API_EMOJI_GROUPS.flatMap(group => group.items);
     let activeShopId = null;
     let apiSelectedShopId = API_ALL_SHOPS;
@@ -8814,6 +8875,7 @@
     let apiSessionTab = 'latest';
     let apiSideTab = 'sync';
     let apiSessionKeyword = '';
+    let apiPinnedSearchSessionKey = '';
     let apiStarredSessions = [];
     let apiLastSessionSelection = undefined;
     let apiLastLoadedSessionScope = '';
@@ -8840,6 +8902,7 @@
           apiSessionTab,
           apiSideTab,
           apiSessionKeyword,
+          apiPinnedSearchSessionKey,
           apiStarredSessions,
           apiTokenStatus,
           apiSessionLoadError,
@@ -8893,6 +8956,11 @@
       applyApiReadMarkUpdate,
       refreshApiAfterMessageSent,
       mergeApiSessionsForShop,
+      setApiPinnedSearchSession(session = null) {
+        const normalized = session ? buildApiSession(session) : null;
+        apiPinnedSearchSessionKey = normalized?.sessionKey || '';
+        return apiPinnedSearchSessionKey;
+      },
       renderApiStatus,
       getApiAuthHintText() {
         return apiTokenStatus?.authHint || '';
@@ -9958,7 +10026,9 @@
         html += esc(source.slice(lastIndex, offset));
         const item = API_EMOJI_MAP.get(name);
         html += item
-          ? `<span class="api-inline-emoji" title="${esc(match)}">${esc(item.preview)}</span>`
+          ? (item.previewImage
+            ? `<img class="api-inline-emoji-image" src="${esc(item.previewImage)}" alt="${esc(name)}" title="${esc(match)}">`
+            : `<span class="api-inline-emoji" title="${esc(match)}">${esc(item.preview)}</span>`)
           : esc(match);
         lastIndex = offset + match.length;
         return match;
@@ -11285,10 +11355,13 @@
         apiActiveSessionSnapshot = null;
         return null;
       }
+      const nextKey = getApiSessionKey(normalized);
+      const previousKey = getApiSessionKey(apiActiveSessionSnapshot || {});
+      const shouldMerge = !!previousKey && previousKey === nextKey;
       apiActiveSessionSnapshot = {
-        ...(apiActiveSessionSnapshot || {}),
+        ...(shouldMerge ? (apiActiveSessionSnapshot || {}) : {}),
         ...normalized,
-        customerName: normalized.customerName || apiActiveSessionName || apiActiveSessionSnapshot?.customerName || '',
+        customerName: normalized.customerName || apiActiveSessionName || (shouldMerge ? (apiActiveSessionSnapshot?.customerName || '') : ''),
       };
       return apiActiveSessionSnapshot;
     }
@@ -11479,6 +11552,27 @@
       return list;
     }
 
+    function sortLatestApiSessions(list = []) {
+      const pinnedKey = apiPinnedSearchSessionKey;
+      return list.slice().sort((a, b) => {
+        const aPinned = !!pinnedKey && a.sessionKey === pinnedKey;
+        const bPinned = !!pinnedKey && b.sessionKey === pinnedKey;
+        if (aPinned !== bPinned) return aPinned ? -1 : 1;
+        const unreadDiff = Number(b.unreadCount || 0) - Number(a.unreadCount || 0);
+        if (unreadDiff !== 0) return unreadDiff;
+        return Number(b.lastMessageTime || 0) - Number(a.lastMessageTime || 0);
+      });
+    }
+
+    function getApiPinnedSearchSession() {
+      if (!apiPinnedSearchSessionKey) return null;
+      return apiSessions.find(item => item.sessionKey === apiPinnedSearchSessionKey)
+        || (getApiSessionKey(apiActiveSessionSnapshot || {}) === apiPinnedSearchSessionKey
+          ? buildApiSession(apiActiveSessionSnapshot)
+          : null)
+        || null;
+    }
+
     function matchApiSessionKeyword(session, keyword) {
       if (!keyword) return true;
       const text = [
@@ -11493,18 +11587,12 @@
     }
 
     function getLatestApiSessionsForDisplay() {
-      const keyword = apiSessionKeyword.trim().toLowerCase();
-      return getApiScopedSessions()
-        .filter(item => matchApiSessionKeyword(item, keyword))
-        .sort((a, b) => {
-          const unreadDiff = Number(b.unreadCount || 0) - Number(a.unreadCount || 0);
-          if (unreadDiff !== 0) return unreadDiff;
-          return Number(b.lastMessageTime || 0) - Number(a.lastMessageTime || 0);
-        });
+      return sortLatestApiSessions(
+        getApiScopedSessions()
+      );
     }
 
     function getStarredApiSessionsForDisplay() {
-      const keyword = apiSessionKeyword.trim().toLowerCase();
       const starredMap = new Map(apiStarredSessions.map(item => [item.sessionKey, buildApiSession(item)]));
       apiSessions.forEach(item => {
         const normalized = buildApiSession(item);
@@ -11520,7 +11608,6 @@
         list = list.filter(item => item.shopId === apiSelectedShopId);
       }
       return list
-        .filter(item => matchApiSessionKeyword(item, keyword))
         .sort((a, b) => Number(b.updatedAt || b.lastMessageTime || 0) - Number(a.updatedAt || a.lastMessageTime || 0));
     }
 
@@ -11784,37 +11871,85 @@
     }
 
     function isApiImageMessage(message = {}) {
-      const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
+      const msgTypeSource = message?.msgType ?? message?.raw?.msg_type ?? message?.raw?.message_type ?? message?.raw?.content_type ?? message?.raw?.type ?? message?.type ?? '';
+      const msgType = String(msgTypeSource || '').toLowerCase();
       if (['2', 'image', 'img', 'pic', 'picture'].includes(msgType)) return true;
       const extraType = String(message?.extra?.type || message?.raw?.extra?.type || message?.raw?.ext?.type || '').toLowerCase();
       if (['image', 'img', 'pic', 'picture'].includes(extraType)) return true;
+      if (['emoji', 'sticker', 'emoticon', 'expression', 'face'].includes(extraType)) {
+        return !!getApiImageMessageUrl(message);
+      }
       const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
-      if (/\[(图片|image)\]/.test(rawContent)) return true;
-      if (/picture_url/.test(rawContent)) return true;
+      if (/\[(图片|image|表情|贴纸|emoji|sticker)\]/.test(rawContent)) return true;
+      if (/(picture_url|image_url|img_url|emoji_url|sticker_url)/.test(rawContent)) return true;
       if (/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/.test(rawContent)) return true;
-      return false;
+      return !!getApiImageMessageUrl(message);
     }
 
     function getApiImageMessageUrl(message = {}) {
+      const isLikelyImageUrl = value => {
+        const text = String(value || '').trim();
+        if (!text) return false;
+        if (text.startsWith('data:image/')) return true;
+        return /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(text);
+      };
       const candidates = [
         message?.extra?.url,
         message?.extra?.picture_url,
+        message?.extra?.image_url,
+        message?.extra?.img_url,
+        message?.extra?.emoji_url,
+        message?.extra?.sticker_url,
+        message?.extra?.expression_url,
+        message?.extra?.emoticon_url,
+        message?.extra?.face_url,
+        message?.extra?.preview_url,
+        message?.extra?.previewUrl,
+        message?.extra?.image?.url,
+        message?.extra?.emoji?.url,
+        message?.extra?.sticker?.url,
         message?.raw?.extra?.url,
         message?.raw?.extra?.picture_url,
+        message?.raw?.extra?.image_url,
+        message?.raw?.extra?.img_url,
+        message?.raw?.extra?.emoji_url,
+        message?.raw?.extra?.sticker_url,
+        message?.raw?.extra?.expression_url,
+        message?.raw?.extra?.emoticon_url,
+        message?.raw?.extra?.face_url,
         message?.raw?.ext?.url,
         message?.raw?.ext?.picture_url,
+        message?.raw?.ext?.image_url,
+        message?.raw?.ext?.img_url,
+        message?.raw?.ext?.emoji_url,
+        message?.raw?.ext?.sticker_url,
+        message?.raw?.ext?.expression_url,
+        message?.raw?.ext?.emoticon_url,
+        message?.raw?.ext?.face_url,
+        message?.raw?.info?.url,
+        message?.raw?.info?.picture_url,
+        message?.raw?.info?.image_url,
+        message?.raw?.info?.img_url,
+        message?.raw?.info?.emoji_url,
+        message?.raw?.info?.sticker_url,
+        message?.raw?.info?.expression_url,
+        message?.raw?.info?.emoticon_url,
+        message?.raw?.info?.face_url,
+        message?.raw?.info?.preview?.url,
       ].filter(Boolean);
-      if (candidates.length) return candidates[0];
+      const firstCandidate = candidates.find(isLikelyImageUrl) || candidates[0];
+      if (firstCandidate && isLikelyImageUrl(firstCandidate)) return String(firstCandidate);
       const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
       const urlMatch = rawText.match(/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/i);
       if (urlMatch) return urlMatch[0];
-      const jsonMatch = rawText.match(/\{[^{}]*"picture_url"\s*:\s*"([^"]+)"[^{}]*\}/);
-      return jsonMatch?.[1] || '';
+      const jsonMatch = rawText.match(/\{[^{}]*"(picture_url|image_url|img_url|emoji_url|sticker_url)"\s*:\s*"([^"]+)"[^{}]*\}/);
+      return jsonMatch?.[2] || '';
     }
 
     function isApiVideoMessage(message = {}) {
-      const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
-      if (['video', 'short_video', 'small_video'].includes(msgType)) return true;
+      const msgTypeSource = message?.msgType ?? message?.raw?.msg_type ?? message?.raw?.message_type ?? message?.raw?.content_type ?? message?.raw?.type ?? message?.type ?? '';
+      const msgType = String(msgTypeSource || '').toLowerCase();
+      if (['14', 'video', 'short_video', 'small_video'].includes(msgType)) return true;
       const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
       if (/(video_cover_url|f20_url|f30_url|transcode_f30_url|library_file)/.test(rawContent)) return true;
       if (/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i.test(rawContent)) return true;
@@ -11837,6 +11972,9 @@
         message?.raw?.ext?.video_url,
         message?.raw?.ext?.f30_url,
         message?.raw?.ext?.f20_url,
+        message?.raw?.info?.download_url,
+        message?.raw?.info?.downloadUrl,
+        message?.raw?.info?.url,
       ].filter(Boolean);
       if (candidates.length) return String(candidates[0] || '');
       const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
@@ -11853,6 +11991,7 @@
         || message?.raw?.extra?.coverUrl
         || message?.raw?.extra?.video_cover_url
         || message?.raw?.ext?.video_cover_url
+        || message?.raw?.info?.preview?.url
         || ''
       );
     }
@@ -12197,8 +12336,6 @@
         const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 50 });
         if (!Array.isArray(result)) {
           apiSessionLoadError = result?.error || '获取接口会话失败';
-          apiSessions = [];
-          clearApiActiveSession();
           renderApiSessions();
           renderApiMessages();
           if (!options.silentStatus) {
@@ -12234,8 +12371,22 @@
           recordApiSyncState('拉取完成', `会话数：${result.length || fallbackTrafficSessions.length}`);
         }
         apiSessionLoadError = '';
-        apiSessions = (result.length ? result : fallbackTrafficSessions).map(item => buildApiSession(item));
-        apiLastLoadedSessionScope = getApiScopeShopId();
+        const nextScopeShopId = getApiScopeShopId();
+        const pinnedSearchSession = getApiPinnedSearchSession();
+        const nextSessions = (result.length ? result : fallbackTrafficSessions).map(item => buildApiSession(item));
+        const shouldPreserveExisting = !nextSessions.length
+          && apiSessions.length > 0
+          && (
+            options.keepCurrent
+            || !!apiPinnedSearchSessionKey
+            || apiLastLoadedSessionScope === nextScopeShopId
+            || !apiLastLoadedSessionScope
+          );
+        apiSessions = shouldPreserveExisting ? apiSessions : nextSessions;
+        if (pinnedSearchSession && !apiSessions.some(item => item.sessionKey === pinnedSearchSession.sessionKey)) {
+          apiSessions = [pinnedSearchSession].concat(apiSessions);
+        }
+        apiLastLoadedSessionScope = nextScopeShopId;
         const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
         const currentSession = currentKey !== '::'
           ? apiSessions.find(item => item.sessionKey === currentKey)
@@ -12264,8 +12415,6 @@
         return result;
       } catch (error) {
         apiSessionLoadError = error.message || '获取接口会话失败';
-        apiSessions = [];
-        clearApiActiveSession();
         renderApiSessions();
         renderApiMessages();
         if (!options.silentStatus) {

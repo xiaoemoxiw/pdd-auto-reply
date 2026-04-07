@@ -55,6 +55,7 @@
     card: null,
     specItems: [],
   };
+  const apiGoodsSourceDebugPrintedKeys = new Set();
   const apiSideOrderStore = {
     personal: { cacheKey: '', loading: false, stale: false, error: '', items: [] },
     aftersale: { cacheKey: '', loading: false, stale: false, error: '', items: [] },
@@ -2181,6 +2182,111 @@
 
   function isApiUnmatchedReplyNoticeMessage(message = {}) {
     return /机器人未找到对应(?:的)?回复/.test(getApiSystemNoticeText(message));
+  }
+
+  function isApiGoodsSourceNoticeMessage(message = {}) {
+    const source = getApiSystemNoticeText(message);
+    return /当前用户来自/.test(source) && /商品详情页/.test(source);
+  }
+
+  function debugApiGoodsSourceMessage(message = {}, session = {}, extra = {}) {
+    const sourceText = getApiSystemNoticeText(message);
+    if (!isApiGoodsSourceNoticeMessage(message)) return;
+    const sessionKey = getApiSessionKey(session || {});
+    const messageId = String(
+      message?.messageId
+      || message?.msgId
+      || message?.msg_id
+      || message?.id
+      || message?.raw?.msg_id
+      || message?.raw?.message_id
+      || ''
+    ).trim();
+    const signature = [
+      sessionKey,
+      messageId,
+      String(message?.timestamp || ''),
+      sourceText,
+    ].join('::');
+    if (apiGoodsSourceDebugPrintedKeys.has(signature)) return;
+    apiGoodsSourceDebugPrintedKeys.add(signature);
+    if (apiGoodsSourceDebugPrintedKeys.size > 50) {
+      const firstKey = apiGoodsSourceDebugPrintedKeys.values().next().value;
+      if (firstKey) apiGoodsSourceDebugPrintedKeys.delete(firstKey);
+    }
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const payload = {
+      sessionKey,
+      customer: String(session?.customerName || session?.displayName || '').trim(),
+      sourceText,
+      messageMeta: {
+        messageId,
+        timestamp: Number(message?.timestamp || 0) || 0,
+        type: Number(raw?.type ?? message?.type ?? -1),
+        templateName: String(raw?.template_name || raw?.templateName || message?.templateName || '').trim(),
+        content: String(message?.content || raw?.content || raw?.msg_content || '').trim(),
+      },
+      goodsLinkInfo: extra?.goodsLinkInfo || null,
+      resolvedCard: extra?.goodsCard || null,
+      messageExtra: message?.extra || null,
+      rawInfo: info,
+      rawInfoData: infoData,
+      rawExtra: raw?.extra || null,
+      rawBizContext: raw?.biz_context || raw?.bizContext || null,
+      sessionGoodsInfo: session?.goodsInfo || null,
+      sessionRawGoodsInfo: session?.raw?.goods_info || null,
+      sessionRawGoods: session?.raw?.goods || null,
+    };
+    emitRendererDebug('chat-api', 'goods-source-message-debug', payload);
+    recordApiSyncState('商品来源调试', `${payload.customer || sessionKey || '未知会话'} 已输出原始数据`);
+  }
+
+  function pickApiGoodsTextWithExclusions(sources = [], keys = [], exclusions = []) {
+    const isExcluded = text => {
+      const normalized = String(text || '').trim();
+      if (!normalized) return true;
+      return exclusions.some(rule => {
+        if (!rule) return false;
+        if (rule instanceof RegExp) return rule.test(normalized);
+        return normalized === String(rule).trim();
+      });
+    };
+    const extractText = (value, preferredKeys = [], seen = new Set()) => {
+      if (typeof value === 'string' && value.trim()) {
+        return isExcluded(value) ? '' : value.trim();
+      }
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+      if (!value || typeof value !== 'object' || seen.has(value)) return '';
+      seen.add(value);
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const matched = extractText(item, preferredKeys, seen);
+          if (matched) return matched;
+        }
+        return '';
+      }
+      for (const key of preferredKeys) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        const matched = extractText(value[key], preferredKeys, seen);
+        if (matched) return matched;
+      }
+      for (const item of Object.values(value)) {
+        const matched = extractText(item, preferredKeys, seen);
+        if (matched) return matched;
+      }
+      return '';
+    };
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+        const matched = extractText(source[key], ['title', 'name', 'text', 'content', 'url', 'src', 'imageUrl', 'image_url']);
+        if (matched) return matched;
+      }
+    }
+    return '';
   }
 
   function getApiRefundSystemNoticeKind(message = {}) {
@@ -4847,6 +4953,150 @@
     </div>`;
   }
 
+  function resolveApiGoodsSourceCard(message = {}, session = {}, goodsLinkInfo = null, cachedCard = null) {
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const goodsList = [
+      infoData?.goods_info_list,
+      infoData?.goodsInfoList,
+      infoData?.goods_list,
+      infoData?.goodsList,
+      info?.goods_info_list,
+      info?.goodsInfoList,
+      info?.goods_list,
+      info?.goodsList,
+      infoData?.goods,
+      info?.goods,
+    ].find(Array.isArray) || [];
+    const goodsItem = goodsList.find(item => item && typeof item === 'object') || {};
+    const sourceNoticeText = getApiSystemNoticeText(message).replace(/^\[|\]$/g, '').trim();
+    const textExclusions = [
+      sourceNoticeText,
+      /当前用户来自/,
+      /商品详情页/,
+    ];
+    const sources = [
+      goodsItem,
+      session?.goodsInfo,
+      session?.raw?.goods_info,
+      session?.raw?.goods,
+      infoData,
+      info,
+      message?.extra,
+      raw?.extra,
+      raw?.biz_context,
+      raw?.bizContext,
+      raw,
+      message,
+    ].filter(Boolean);
+    const fallbackCard = normalizeApiGoodsCard({
+      cacheKey: String(goodsLinkInfo?.cacheKey || ''),
+      goodsId: goodsLinkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']),
+      url: goodsLinkInfo?.url || '',
+      title: pickApiGoodsTextWithExclusions(sources, [
+        'goods_name',
+        'goodsName',
+        'goods_title',
+        'goodsTitle',
+        'item_title',
+        'itemTitle',
+        'share_title',
+        'shareTitle',
+        'name',
+        'title',
+      ], textExclusions) || '',
+      imageUrl: pickApiGoodsText(sources, [
+        'imageUrl',
+        'image_url',
+        'thumb_url',
+        'hd_thumb_url',
+        'goods_thumb_url',
+        'thumbUrl',
+        'hdThumbUrl',
+        'goodsThumbUrl',
+        'pic_url',
+        'sku_thumb_url',
+        'skuThumbUrl',
+        'cover_url',
+        'coverUrl',
+        'hd_url',
+        'hdUrl',
+        'top_gallery',
+        'gallery',
+        'images',
+        'imageList',
+      ]),
+      priceText: pickApiGoodsText(sources, [
+        'priceText',
+        'price_text',
+        'price',
+        'promotion_price',
+        'promotionPrice',
+        'goods_price',
+        'goodsPrice',
+        'amount',
+        'amountText',
+        'sku_price',
+        'skuPrice',
+        'group_price',
+        'unit_price',
+        'pay_price',
+        'final_price',
+      ]) || formatApiGoodsPrice(pickApiGoodsNumber(sources, [
+        'promotion_price',
+        'promotionPrice',
+        'goods_price',
+        'goodsPrice',
+        'price',
+        'amount',
+        'sku_price',
+        'skuPrice',
+        'group_price',
+        'unit_price',
+        'pay_price',
+        'final_price',
+      ])),
+      specText: pickApiGoodsTextWithExclusions(sources, [
+        'specText',
+        'spec_text',
+        'spec',
+        'sku_spec',
+        'skuSpec',
+        'spec_desc',
+        'specDesc',
+        'sub_name',
+        'subName',
+        'sku_name',
+        'skuName',
+      ], textExclusions),
+    }, buildApiGoodsCardFallback(goodsLinkInfo || {}, message, session));
+    const normalized = normalizeApiGoodsCard(
+      goodsLinkInfo?.cacheKey ? { ...(cachedCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedCard || {}),
+      fallbackCard
+    );
+    return isMeaningfulApiGoodsCard(normalized) ? normalized : null;
+  }
+
+  function renderApiGoodsSourceNoticeCardHtml(message = {}, card = {}) {
+    const sourceText = getApiSystemNoticeText(message).replace(/^\[|\]$/g, '').trim() || '当前用户来自 商品详情页';
+    const imageHtml = card.imageUrl
+      ? `<img class="api-source-goods-card-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">`
+      : '<div class="api-source-goods-card-image placeholder">商品</div>';
+    const specText = String(card.specText || '').trim();
+    return `<div class="api-source-goods-card">
+      <div class="api-source-goods-card-header">${esc(sourceText)}</div>
+      <div class="api-source-goods-card-body">
+        ${imageHtml}
+        <div class="api-source-goods-card-main">
+          <div class="api-source-goods-card-title">${esc(card.title || '拼多多商品')}</div>
+          ${specText && specText !== '查看商品规格' ? `<div class="api-source-goods-card-spec">${esc(specText)}</div>` : ''}
+        </div>
+        ${card.priceText ? `<div class="api-source-goods-card-price">${esc(card.priceText)}</div>` : ''}
+      </div>
+    </div>`;
+  }
+
   function showApiGoodsSpecModalOverlay() {
     const modal = document.getElementById('modalApiGoodsSpec');
     if (!modal) return;
@@ -5616,6 +5866,10 @@
         ) : null;
         const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
         const isSystem = isApiSystemNoticeMessage(message);
+        const isGoodsSourceNotice = isSystem && isApiGoodsSourceNoticeMessage(message);
+        const goodsSourceCard = isGoodsSourceNotice
+          ? resolveApiGoodsSourceCard(message, activeSession, goodsLinkInfo, cachedGoodsCard)
+          : null;
         const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
         const buyerAvatar = activeSession?.customerAvatar || '';
         const buyerAvatarHtml = buyerAvatar
@@ -5632,6 +5886,18 @@
         }
         if (goodsLinkInfo && fallbackGoodsCard) {
           void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
+        }
+        if (isGoodsSourceNotice) {
+          debugApiGoodsSourceMessage(message, activeSession, {
+            goodsLinkInfo,
+            goodsCard: goodsSourceCard,
+          });
+        }
+        if (isGoodsSourceNotice && goodsSourceCard) {
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item platform-card source-goods-card">
+            ${renderApiGoodsSourceNoticeCardHtml(message, goodsSourceCard)}
+          </div>`;
         }
         if (isSystem && goodsLinkInfo) {
           previousTimestamp = message.timestamp;
@@ -6660,11 +6926,25 @@
   window.insertApiMessageText = insertApiMessageText;
   window.__chatApiModuleFns = {
     renderApiPddEmojiHtml,
+    extractApiGoodsLinkInfo,
+    pickApiGoodsText,
+    pickApiGoodsNumber,
+    formatApiGoodsPrice,
+    normalizeApiGoodsSpecItems,
+    buildApiGoodsSpecFallbackItems,
+    normalizeApiGoodsCard,
+    isMeaningfulApiGoodsCard,
+    describeApiGoodsCardResult,
+    buildApiGoodsCardFallback,
     getApiSystemNoticeText,
     isApiUnmatchedReplyNoticeMessage,
     getApiRefundSystemNoticeKind,
     getApiRefundSystemNoticeDisplayText,
     isApiSystemNoticeMessage,
+    isApiGoodsSourceNoticeMessage,
+    debugApiGoodsSourceMessage,
+    resolveApiGoodsSourceCard,
+    renderApiGoodsSourceNoticeCardHtml,
     renderApiEmojiPanel,
     renderApiShopHeader,
     renderApiSessions,
@@ -6673,6 +6953,7 @@
     renderApiSideOrders,
     renderApiGoodsCardHtml,
     renderApiRefundCardHtml,
+    getApiRefundStatusUpdateMeta,
     extractApiInviteOrderCard,
     isApiInviteOrderTemplateMessage,
     renderApiInviteOrderCardHtml,
@@ -6681,7 +6962,7 @@
     renderApiRefundSystemNoticeCardHtml,
     renderApiRefundStatusUpdateCardHtml,
     ensureApiGoodsCardLoaded,
-    getApiRefundStatusUpdateMeta,
+    getApiSellerDisplayName,
   };
   window.renderApiPddEmojiHtml = renderApiPddEmojiHtml;
   window.renderApiEmojiPanel = renderApiEmojiPanel;

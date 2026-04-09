@@ -1803,6 +1803,18 @@ function getInvoiceApiClient(shopId) {
     },
     getInvoiceUrl() {
       return getPddInvoiceUrl();
+    },
+    getSubmitConfig() {
+      const all = store.get('invoiceSubmitApiConfig') || {};
+      return all[shopId] || all.__global || null;
+    },
+    setSubmitConfig(config) {
+      const all = store.get('invoiceSubmitApiConfig') || {};
+      all[shopId] = config || null;
+      if (config) {
+        all.__global = config;
+      }
+      store.set('invoiceSubmitApiConfig', all);
     }
   });
   invoiceApiClients.set(shopId, client);
@@ -2055,8 +2067,13 @@ function createMainWindow() {
   mainWindow.on('resize', () => {
     const [w, h] = mainWindow.getSize();
     store.set('windowBounds', { width: w, height: h });
-    if (isEmbeddedPddView(currentView) && shopManager) {
-      shopManager.resizeActiveView();
+    if (shopManager) {
+      if (isEmbeddedPddView(currentView)) {
+        shopManager.resizeActiveView();
+      }
+      if (typeof shopManager.isOverlayVisible === 'function' && shopManager.isOverlayVisible()) {
+        shopManager.resizeActiveViewOverlay();
+      }
     }
   });
 

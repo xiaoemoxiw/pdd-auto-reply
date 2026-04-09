@@ -3,6 +3,9 @@
   let invoiceApiEntries = [];
   let invoiceApiOverview = null;
   let invoiceApiList = [];
+  let invoiceApiPageNo = 1;
+  let invoiceApiPageSize = 20;
+  let invoiceApiTotal = 0;
   let invoiceApiKeyword = '';
   let invoiceApiQuickFilter = 'all';
   let invoiceApiOrderStatus = '';
@@ -15,6 +18,10 @@
   let invoiceApiActiveDetail = null;
   const invoiceApiSelectedSerialNos = new Set();
   let invoiceApiEntryDialogState = createInvoiceApiEntryDialogState();
+  let invoiceApiEntryPreviewUrl = '';
+  let invoiceApiEntrySubmitting = false;
+  let invoiceApiEmbeddedOverlayVisible = false;
+  let invoiceApiEmbeddedOverlayOrderSn = '';
 
   function getEl(id) {
     return document.getElementById(id);
@@ -24,6 +31,9 @@
     return {
       serialNo: '',
       orderSn: '',
+      shopId: '',
+      shopName: '',
+      businessType: 1,
       orderStatus: '',
       afterSalesStatus: '',
       applyTime: 0,
@@ -32,10 +42,12 @@
       invoiceMode: '',
       invoiceType: '',
       invoiceKind: '',
+      invoiceKindValue: 0,
       letterheadType: '',
       letterhead: '',
       goodsName: '',
       goodsSpec: '',
+      goodsThumb: '',
       receiveName: '',
       receiveMobile: '',
       shippingAddress: '',
@@ -46,20 +58,79 @@
       canSubmit: null,
       fileName: '',
       invoiceNumber: '',
+      autoInvoiceNumberFromFile: '',
       invoiceCode: '',
+      invoicePdfUrl: '',
+      warnConfirmed: false,
       loading: false,
       statusType: '',
       statusText: ''
     };
   }
 
+  function extractInvoiceNumberFromFileName(fileName) {
+    const name = String(fileName || '').trim();
+    if (!name) return '';
+    const baseName = name.replace(/\.[^.]+$/, '').trim();
+    const match = baseName.match(/(\d+)\s*$/);
+    return match?.[1] || '';
+  }
+
   function showInvoiceApiEntryStatus(type, text) {
     invoiceApiEntryDialogState.statusType = text ? type : '';
     invoiceApiEntryDialogState.statusText = text || '';
+    if (invoiceApiEntryDialogState.statusText) {
+      if (typeof showToast === 'function') {
+        showToast(invoiceApiEntryDialogState.statusText);
+      } else {
+        addLog(invoiceApiEntryDialogState.statusText, invoiceApiEntryDialogState.statusType || 'info');
+      }
+    }
     renderInvoiceApiEntryDialog();
   }
 
+  function hideInvoiceApiFilePreview() {
+    const frame = getEl('invoiceApiFilePreviewFrame');
+    if (frame) frame.removeAttribute('src');
+    if (invoiceApiEntryPreviewUrl) {
+      URL.revokeObjectURL(invoiceApiEntryPreviewUrl);
+      invoiceApiEntryPreviewUrl = '';
+    }
+    const modal = document.getElementById('modalInvoiceApiFilePreview');
+    if (typeof hideModal === 'function') {
+      hideModal('modalInvoiceApiFilePreview');
+    } else {
+      modal?.classList.remove('visible');
+    }
+  }
+
+  function showInvoiceApiFilePreview() {
+    const file = getEl('invoiceApiEntryFile')?.files?.[0];
+    if (!file) {
+      showInvoiceApiEntryStatus('error', '请先上传发票文件。');
+      return;
+    }
+    if (!/\.pdf$/i.test(file.name)) {
+      showInvoiceApiEntryStatus('warn', '当前仅支持预览 PDF 发票文件。');
+      return;
+    }
+    if (invoiceApiEntryPreviewUrl) {
+      URL.revokeObjectURL(invoiceApiEntryPreviewUrl);
+      invoiceApiEntryPreviewUrl = '';
+    }
+    invoiceApiEntryPreviewUrl = URL.createObjectURL(file);
+    const frame = getEl('invoiceApiFilePreviewFrame');
+    if (frame) frame.src = invoiceApiEntryPreviewUrl;
+    const modal = document.getElementById('modalInvoiceApiFilePreview');
+    if (typeof showModal === 'function') {
+      showModal('modalInvoiceApiFilePreview');
+    } else {
+      modal?.classList.add('visible');
+    }
+  }
+
   function resetInvoiceApiEntryDialogState() {
+    hideInvoiceApiFilePreview();
     invoiceApiEntryDialogState = createInvoiceApiEntryDialogState();
     const fileInput = getEl('invoiceApiEntryFile');
     if (fileInput) fileInput.value = '';
@@ -75,7 +146,7 @@
     if (invoiceApiEntryDialogState.canSubmit === false) return '当前店铺接口校验未开放录入发票提交能力';
     if (!invoiceApiEntryDialogState.fileName) return '请先上传发票文件';
     if (!invoiceApiEntryDialogState.invoiceNumber.trim()) return '请填写发票号码';
-    return '当前版本先完成弹窗与表单录入，提交接口待补充';
+    return '若提示未识别到上传接口，请先到【待开票（嵌入网页）】完成一次录入发票提交以便抓包识别';
   }
 
   function formatInvoiceApiPromiseTime(value) {
@@ -93,16 +164,106 @@
     return `剩余${minutes}分钟`;
   }
 
+  function formatInvoiceApiDateTime(value) {
+    const num = Number(value);
+    if (!num) return '-';
+    const ms = num < 1e12 ? num * 1000 : num;
+    const date = new Date(ms);
+    if (Number.isNaN(date.getTime())) return '-';
+    const y = String(date.getFullYear());
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d} ${hh}:${mm}`;
+  }
+
+  function formatInvoiceApiOrderSnDate(orderSn) {
+    const sn = String(orderSn || '').trim();
+    if (!sn) return '';
+    const match = sn.match(/^(\d{2})(\d{2})(\d{2})(?:-|$)/);
+    if (!match) return '';
+    const year = 2000 + Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!Number.isFinite(year) || year < 2000 || year > 2099) return '';
+    if (!Number.isFinite(month) || month < 1 || month > 12) return '';
+    if (!Number.isFinite(day) || day < 1 || day > 31) return '';
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
   function renderInvoiceApiEntryDialog() {
-    const status = getEl('invoiceApiEntryStatus');
-    if (status) {
-      status.className = `invoice-api-entry-status${invoiceApiEntryDialogState.statusText ? ` visible ${invoiceApiEntryDialogState.statusType || 'info'}` : ''}`;
-      status.textContent = invoiceApiEntryDialogState.statusText;
+    const thumb = getEl('invoiceApiEntryThumb');
+    const thumbButton = getEl('invoiceApiEntryThumbBtn');
+    const thumbPlaceholder = getEl('invoiceApiEntryThumbPlaceholder');
+    if (thumb) {
+      const url = String(invoiceApiEntryDialogState.goodsThumb || '').trim();
+      if (url) {
+        thumb.hidden = false;
+        thumb.src = url;
+        if (thumbPlaceholder) thumbPlaceholder.hidden = true;
+        if (thumbButton) thumbButton.disabled = false;
+      } else {
+        thumb.hidden = true;
+        thumb.removeAttribute('src');
+        if (thumbPlaceholder) thumbPlaceholder.hidden = false;
+        if (thumbButton) thumbButton.disabled = true;
+      }
     }
+
+    const orderSnEl = getEl('invoiceApiEntryOrderSn');
+    if (orderSnEl) orderSnEl.textContent = invoiceApiEntryDialogState.orderSn || '-';
+
+    const orderSnDateEl = getEl('invoiceApiEntryOrderSnDate');
+    if (orderSnDateEl) {
+      const dateText = formatInvoiceApiOrderSnDate(invoiceApiEntryDialogState.orderSn);
+      orderSnDateEl.textContent = dateText ? `订单号日期：${dateText}` : '';
+      orderSnDateEl.hidden = !dateText;
+    }
+
+    const orderStatusEl = getEl('invoiceApiEntryOrderStatus');
+    if (orderStatusEl) orderStatusEl.textContent = invoiceApiEntryDialogState.orderStatus || '-';
+
+    const goodsTitleEl = getEl('invoiceApiEntryGoodsTitle');
+    if (goodsTitleEl) goodsTitleEl.textContent = invoiceApiEntryDialogState.goodsName || '-';
+
+    const goodsSpecEl = getEl('invoiceApiEntryGoodsSpec');
+    if (goodsSpecEl) goodsSpecEl.textContent = invoiceApiEntryDialogState.goodsSpec || '-';
+
+    const invoiceAmountEl = getEl('invoiceApiEntryInvoiceAmount');
+    if (invoiceAmountEl) {
+      const amountValue = Number(invoiceApiEntryDialogState.invoiceAmount);
+      invoiceAmountEl.textContent = Number.isFinite(amountValue) ? formatApiAmount(amountValue) : '-';
+    }
+
+    const letterheadTypeEl = getEl('invoiceApiEntryLetterheadType');
+    if (letterheadTypeEl) letterheadTypeEl.textContent = invoiceApiEntryDialogState.letterheadType || '-';
+
+    const letterheadEl = getEl('invoiceApiEntryLetterhead');
+    if (letterheadEl) letterheadEl.textContent = invoiceApiEntryDialogState.letterhead || '-';
+
+    const taxNoEl = getEl('invoiceApiEntryTaxNo');
+    if (taxNoEl) taxNoEl.textContent = invoiceApiEntryDialogState.taxNo || '-';
+
     const fileName = getEl('invoiceApiEntryFileName');
     if (fileName) {
-      fileName.textContent = invoiceApiEntryDialogState.fileName || '上传文件';
+      fileName.textContent = '上传文件';
+      fileName.hidden = !!invoiceApiEntryDialogState.fileName;
     }
+    const uploadBox = getEl('invoiceApiEntryUploadBox');
+    if (uploadBox) {
+      const hasFile = !!invoiceApiEntryDialogState.fileName;
+      const canPreview = hasFile && /\.pdf$/i.test(invoiceApiEntryDialogState.fileName || '');
+      uploadBox.dataset.hasFile = hasFile ? '1' : '';
+      uploadBox.dataset.canPreview = canPreview ? '1' : '';
+    }
+    const uploadDefaultIcon = getEl('invoiceApiEntryUploadIconDefault');
+    if (uploadDefaultIcon) uploadDefaultIcon.hidden = !!invoiceApiEntryDialogState.fileName;
+    const uploadFileIcon = getEl('invoiceApiEntryUploadIconFile');
+    if (uploadFileIcon) uploadFileIcon.hidden = !invoiceApiEntryDialogState.fileName;
+    const warning = getEl('invoiceApiEntryUploadWarning');
+    if (warning) warning.hidden = !invoiceApiEntryDialogState.fileName;
+
     const numberInput = getEl('invoiceApiEntryNumber');
     if (numberInput && numberInput.value !== invoiceApiEntryDialogState.invoiceNumber) {
       numberInput.value = invoiceApiEntryDialogState.invoiceNumber;
@@ -111,71 +272,11 @@
     if (codeInput && codeInput.value !== invoiceApiEntryDialogState.invoiceCode) {
       codeInput.value = invoiceApiEntryDialogState.invoiceCode;
     }
-    const card = getEl('invoiceApiEntryCard');
-    if (card) {
-      if (!invoiceApiEntryDialogState.orderSn) {
-        card.innerHTML = '<div class="invoice-api-entry-card-empty">请选择一条待开票记录后再录入发票。</div>';
-      } else {
-        const detailItems = [
-          ['抬头类型', invoiceApiEntryDialogState.letterheadType || '-'],
-          ['发票抬头', invoiceApiEntryDialogState.letterhead || '-'],
-          ['企业税号', invoiceApiEntryDialogState.taxNo || '-'],
-          ['开票方式', invoiceApiEntryDialogState.invoiceMode || '-'],
-          ['发票类型', invoiceApiEntryDialogState.invoiceKind || '-']
-        ];
-        const subtitleParts = [
-          invoiceApiEntryDialogState.goodsName || invoiceApiEntryDialogState.orderStatus || '',
-          invoiceApiEntryDialogState.goodsSpec || '',
-          invoiceApiEntryDialogState.invoiceApplyStatus || ''
-        ].filter(Boolean);
-        card.innerHTML = `
-          <div class="invoice-api-entry-card-head">
-            <div>
-              <div class="invoice-api-entry-card-title">${esc(invoiceApiEntryDialogState.orderSn)}</div>
-              <div class="invoice-api-entry-card-subtitle">${esc(subtitleParts.join(' · ') || '待录入发票记录')}</div>
-            </div>
-            <div class="invoice-api-entry-card-amount">${esc(formatApiAmount(invoiceApiEntryDialogState.invoiceAmount || 0))}</div>
-          </div>
-          <div class="invoice-api-entry-card-grid">
-            ${detailItems.map(([label, value]) => `
-              <div class="invoice-api-entry-card-item">
-                <div class="invoice-api-entry-card-label">${esc(label)}</div>
-                <div class="invoice-api-entry-card-value">${esc(value)}</div>
-              </div>
-            `).join('')}
-          </div>
-        `;
-      }
-    }
-    const detailGrid = getEl('invoiceApiEntryDetailGrid');
-    if (detailGrid) {
-      const detailItems = [
-        ['流水号', invoiceApiEntryDialogState.serialNo || '-'],
-        ['申请时间', formatApiDateTime(invoiceApiEntryDialogState.applyTime)],
-        ['订单状态', invoiceApiEntryDialogState.orderStatus || '-'],
-        ['售后状态', invoiceApiEntryDialogState.afterSalesStatus || '-'],
-        ['收件人', invoiceApiEntryDialogState.receiveName || '-'],
-        ['联系电话', invoiceApiEntryDialogState.receiveMobile || '-'],
-        ['配送方式', invoiceApiEntryDialogState.shippingName || '-'],
-        ['运单号', invoiceApiEntryDialogState.trackingNumber || '-'],
-        ['收货地址', invoiceApiEntryDialogState.shippingAddress || '-'],
-        ['发票种类', invoiceApiEntryDialogState.invoiceType || '-'],
-        ['发票类型', invoiceApiEntryDialogState.invoiceKind || '-']
-      ];
-      detailGrid.innerHTML = detailItems.map(([label, value]) => `
-        <div class="invoice-api-entry-detail-item">
-          <div class="invoice-api-entry-detail-label">${esc(label)}</div>
-          <div class="invoice-api-entry-detail-value">${esc(value)}</div>
-        </div>
-      `).join('');
-    }
-    const footerMeta = getEl('invoiceApiEntryFooterMeta');
-    if (footerMeta) {
-      footerMeta.textContent = getInvoiceApiEntrySubmitHint();
-    }
+
     const submitButton = getEl('btnInvoiceApiEntrySubmit');
     if (submitButton) {
       submitButton.disabled = !!invoiceApiEntryDialogState.loading || invoiceApiEntryDialogState.canSubmit === false;
+      submitButton.textContent = invoiceApiEntryDialogState.warnConfirmed ? '再次确认' : '确认';
     }
   }
 
@@ -184,10 +285,16 @@
     if (!item) return;
     await openInvoiceApiDetail(serialNo, { skipTraffic: true });
     resetInvoiceApiEntryDialogState();
+    const shopId = String(item.shopId || activeShopId || '').trim();
+    const businessType = Number(item.raw?.business_type ?? 1);
+    const invoiceKindValue = Number(item.raw?.invoice_kind ?? 0);
     invoiceApiEntryDialogState = {
       ...invoiceApiEntryDialogState,
       serialNo: String(item.serialNo || ''),
       orderSn: String(item.orderSn || ''),
+      shopId,
+      shopName: String(item.shopName || ''),
+      businessType: Number.isFinite(businessType) ? businessType : 1,
       orderStatus: String(item.orderStatus || ''),
       afterSalesStatus: String(item.afterSalesStatus || ''),
       applyTime: Number(item.applyTime || 0),
@@ -196,55 +303,70 @@
       invoiceMode: String(item.invoiceMode || ''),
       invoiceType: String(item.invoiceType || ''),
       invoiceKind: String(item.invoiceKind || ''),
+      invoiceKindValue: Number.isFinite(invoiceKindValue) ? invoiceKindValue : 0,
       letterheadType: String(item.letterheadType || ''),
       letterhead: String(item.letterhead || ''),
-      loading: true
+      goodsName: String(item.goodsName || ''),
+      goodsSpec: String(item.goodsSpec || ''),
+      goodsThumb: String(item.goodsThumb || ''),
+      taxNo: String(item.taxNo || ''),
+      loading: false
     };
+    if (activeShopId && shopId && shopId !== activeShopId) {
+      showInvoiceApiEntryStatus('warn', `当前记录所属店铺与右上角当前店铺不一致（记录店铺：${invoiceApiEntryDialogState.shopName || shopId}）。若提示未识别提交接口，请先切换到该店铺在【待开票（嵌入网页）】完成一次录入发票提交。`);
+    } else {
+      showInvoiceApiEntryStatus('', '');
+    }
     renderInvoiceApiEntryDialog();
     if (typeof showModal === 'function') {
       showModal('modalInvoiceApiEntry');
     }
-    if (!activeShopId || !item.orderSn) {
+    loadInvoiceApiEntrySubmitDetail();
+  }
+
+  async function loadInvoiceApiEntrySubmitDetail() {
+    const shopId = String(invoiceApiEntryDialogState.shopId || '').trim();
+    const orderSn = String(invoiceApiEntryDialogState.orderSn || '').trim();
+    if (!shopId || !orderSn) return;
+    invoiceApiEntryDialogState.loading = true;
+    showInvoiceApiEntryStatus('info', '正在加载录入发票校验信息...');
+    try {
+      const result = await window.pddApi.invoiceGetDetail({ shopId, orderSn });
+      if (!result || result.error) {
+        invoiceApiEntryDialogState.canSubmit = null;
+        showInvoiceApiEntryStatus('warn', result?.error || '加载录入发票校验信息失败');
+        return;
+      }
+      const detail = result.detail || {};
+      invoiceApiEntryDialogState.canSubmit = result.canSubmit;
+      invoiceApiEntryDialogState.receiveName = detail.receiveName || '';
+      invoiceApiEntryDialogState.receiveMobile = detail.receiveMobile || '';
+      invoiceApiEntryDialogState.shippingAddress = detail.shippingAddress || '';
+      invoiceApiEntryDialogState.shippingName = detail.shippingName || '';
+      invoiceApiEntryDialogState.trackingNumber = detail.trackingNumber || '';
+      invoiceApiEntryDialogState.invoiceApplyStatus = detail.invoiceApplyStatus || '';
+      invoiceApiEntryDialogState.taxNo = detail.taxNo || invoiceApiEntryDialogState.taxNo || '';
+      if (invoiceApiEntryDialogState.canSubmit === false) {
+        showInvoiceApiEntryStatus('warn', '接口校验未开放录入发票提交能力');
+      } else {
+        showInvoiceApiEntryStatus('', '');
+      }
+    } catch (error) {
+      invoiceApiEntryDialogState.canSubmit = null;
+      showInvoiceApiEntryStatus('error', error?.message || '加载录入发票校验信息失败');
+    } finally {
       invoiceApiEntryDialogState.loading = false;
-      showInvoiceApiEntryStatus('warn', '当前记录缺少订单号，暂时无法补充录入发票详情。');
-      return;
+      renderInvoiceApiEntryDialog();
     }
-    const result = await window.pddApi.invoiceGetDetail({
-      shopId: activeShopId,
-      serialNo: item.serialNo,
-      orderSn: item.orderSn
-    });
-    invoiceApiEntryDialogState.loading = false;
-    if (!result || result.error) {
-      showInvoiceApiEntryStatus('error', result?.error || '加载录入发票详情失败');
-      return;
-    }
-    const detail = result.detail || {};
-    invoiceApiEntryDialogState = {
-      ...invoiceApiEntryDialogState,
-      orderStatus: detail.orderStatus || invoiceApiEntryDialogState.orderStatus,
-      goodsName: detail.goodsName || '',
-      goodsSpec: detail.goodsSpec || '',
-      receiveName: detail.receiveName || '',
-      receiveMobile: detail.receiveMobile || '',
-      shippingAddress: detail.shippingAddress || '',
-      shippingName: detail.shippingName || '',
-      trackingNumber: detail.trackingNumber || '',
-      invoiceApplyStatus: detail.invoiceApplyStatus || '',
-      taxNo: detail.taxNo || '',
-      canSubmit: typeof result.canSubmit === 'boolean' ? result.canSubmit : null
-    };
-    if (result.canSubmit === false) {
-      showInvoiceApiEntryStatus('warn', '当前店铺接口校验未开放提交能力，先支持弹窗查看与表单录入。');
-      return;
-    }
-    renderInvoiceApiEntryDialog();
   }
 
   function handleInvoiceApiEntryFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) {
       invoiceApiEntryDialogState.fileName = '';
+      invoiceApiEntryDialogState.autoInvoiceNumberFromFile = '';
+      invoiceApiEntryDialogState.invoicePdfUrl = '';
+      invoiceApiEntryDialogState.warnConfirmed = false;
       renderInvoiceApiEntryDialog();
       return;
     }
@@ -262,6 +384,16 @@
       return;
     }
     invoiceApiEntryDialogState.fileName = file.name;
+    invoiceApiEntryDialogState.invoicePdfUrl = '';
+    invoiceApiEntryDialogState.warnConfirmed = false;
+    const extracted = extractInvoiceNumberFromFileName(file.name);
+    if (extracted) {
+      const currentNumber = String(getEl('invoiceApiEntryNumber')?.value || invoiceApiEntryDialogState.invoiceNumber || '').trim();
+      if (!currentNumber || currentNumber === invoiceApiEntryDialogState.autoInvoiceNumberFromFile) {
+        invoiceApiEntryDialogState.invoiceNumber = extracted;
+      }
+    }
+    invoiceApiEntryDialogState.autoInvoiceNumberFromFile = extracted || '';
     if (invoiceApiEntryDialogState.statusType === 'error') {
       invoiceApiEntryDialogState.statusType = '';
       invoiceApiEntryDialogState.statusText = '';
@@ -269,9 +401,10 @@
     renderInvoiceApiEntryDialog();
   }
 
-  function submitInvoiceApiEntryDraft() {
+  async function submitInvoiceApiEntry() {
     invoiceApiEntryDialogState.invoiceNumber = getEl('invoiceApiEntryNumber')?.value || '';
     invoiceApiEntryDialogState.invoiceCode = getEl('invoiceApiEntryCode')?.value || '';
+    const file = getEl('invoiceApiEntryFile')?.files?.[0];
     if (!invoiceApiEntryDialogState.fileName) {
       showInvoiceApiEntryStatus('error', '请先上传发票文件。');
       return;
@@ -280,8 +413,76 @@
       showInvoiceApiEntryStatus('error', '请填写发票号码。');
       return;
     }
-    showInvoiceApiEntryStatus('info', '已收集录入发票表单，当前版本先完成弹窗交互，提交接口待补充。');
-    addLog(`已打开录入发票弹窗：${invoiceApiEntryDialogState.orderSn || invoiceApiEntryDialogState.serialNo}`, 'info');
+    if (!file) {
+      showInvoiceApiEntryStatus('error', '请先上传发票文件。');
+      return;
+    }
+    if (invoiceApiEntrySubmitting) return;
+    if (invoiceApiEntryDialogState.loading) return;
+    if (invoiceApiEntryDialogState.canSubmit === false) {
+      showInvoiceApiEntryStatus('warn', '接口校验未开放录入发票提交能力');
+      return;
+    }
+    invoiceApiEntrySubmitting = true;
+    invoiceApiEntryDialogState.loading = true;
+    renderInvoiceApiEntryDialog();
+    showInvoiceApiEntryStatus('info', invoiceApiEntryDialogState.warnConfirmed ? '正在确认并提交录入发票...' : '正在提交录入发票...');
+    try {
+      const fileData = await file.arrayBuffer();
+      const result = await window.pddApi.invoiceSubmitRecord({
+        shopId: invoiceApiEntryDialogState.shopId,
+        serialNo: invoiceApiEntryDialogState.serialNo,
+        orderSn: invoiceApiEntryDialogState.orderSn,
+        invoiceNumber: invoiceApiEntryDialogState.invoiceNumber,
+        invoiceCode: invoiceApiEntryDialogState.invoiceCode,
+        fileName: file.name,
+        fileData,
+        invoicePdfUrl: invoiceApiEntryDialogState.invoicePdfUrl,
+        payerName: invoiceApiEntryDialogState.letterhead,
+        payerRegisterNo: invoiceApiEntryDialogState.taxNo,
+        invoiceKind: invoiceApiEntryDialogState.invoiceKindValue,
+        businessType: invoiceApiEntryDialogState.businessType,
+        force: invoiceApiEntryDialogState.warnConfirmed
+      });
+      if (!result || result.error) {
+        showInvoiceApiEntryStatus('error', result?.error || '录入发票提交失败');
+        addLog(result?.error || '录入发票提交失败', 'error');
+        return;
+      }
+      if (result.warn) {
+        invoiceApiEntryDialogState.warnConfirmed = true;
+        invoiceApiEntryDialogState.invoicePdfUrl = result.invoicePdfUrl || invoiceApiEntryDialogState.invoicePdfUrl || '';
+        if (result.invoiceNumber) {
+          invoiceApiEntryDialogState.invoiceNumber = result.invoiceNumber;
+        }
+        if (result.invoiceCode !== undefined && result.invoiceCode !== null) {
+          invoiceApiEntryDialogState.invoiceCode = result.invoiceCode;
+        }
+        showInvoiceApiEntryStatus('warn', result.message || '发票解析提示风险，请确认后再次点击确认提交');
+        return;
+      }
+      const successKey = invoiceApiEntryDialogState.orderSn || invoiceApiEntryDialogState.serialNo;
+      if (typeof hideModal === 'function') {
+        hideModal('modalInvoiceApiEntry');
+      } else {
+        document.getElementById('modalInvoiceApiEntry')?.classList.remove('visible');
+      }
+      resetInvoiceApiEntryDialogState();
+      if (typeof showToast === 'function') {
+        showToast('录入发票成功');
+      } else {
+        addLog('录入发票成功', 'info');
+      }
+      addLog(`录入发票提交成功：${successKey}`, 'info');
+      await loadInvoiceApiList({ keepCurrent: true });
+    } catch (error) {
+      showInvoiceApiEntryStatus('error', error?.message || '录入发票提交失败');
+      addLog(error?.message || '录入发票提交失败', 'error');
+    } finally {
+      invoiceApiEntrySubmitting = false;
+      invoiceApiEntryDialogState.loading = false;
+      renderInvoiceApiEntryDialog();
+    }
   }
 
   function getInvoiceTrafficType(entry) {
@@ -310,6 +511,8 @@
     invoiceApiEntries = [];
     invoiceApiActiveSerialNo = '';
     invoiceApiActiveDetail = null;
+    invoiceApiPageNo = 1;
+    invoiceApiTotal = 0;
     invoiceApiKeyword = '';
     invoiceApiQuickFilter = 'all';
     invoiceApiOrderStatus = '';
@@ -319,6 +522,12 @@
     invoiceApiLetterheadKeyword = '';
     invoiceApiFiltersExpanded = false;
     invoiceApiSelectedSerialNos.clear();
+    if (invoiceApiEmbeddedOverlayVisible) {
+      invoiceApiEmbeddedOverlayVisible = false;
+      invoiceApiEmbeddedOverlayOrderSn = '';
+      renderInvoiceApiEmbeddedOverlayBar();
+      window.pddApi.closeEmbeddedOverlay();
+    }
     const keywordInput = getEl('invoiceApiKeyword');
     if (keywordInput) keywordInput.value = '';
     const letterheadInput = getEl('invoiceApiLetterheadKeyword');
@@ -393,12 +602,18 @@
   }
 
   function renderInvoiceApiOverview() {
-    getEl('invoiceApiPendingNum').textContent = invoiceApiOverview ? String(invoiceApiOverview.pendingNum || 0) : '-';
-    getEl('invoiceApiInvoicedNum').textContent = invoiceApiOverview ? String(invoiceApiOverview.invoicedNum || 0) : '-';
-    getEl('invoiceApiApplyingNum').textContent = invoiceApiOverview ? String(invoiceApiOverview.applyingNum || 0) : '-';
-    getEl('invoiceApiAmount').textContent = invoiceApiOverview ? formatApiAmount(invoiceApiOverview.invoiceAmount || 0) : '-';
-    getEl('invoiceApiQualityTotal').textContent = invoiceApiOverview ? String(invoiceApiOverview.qualityPendingTotal || 0) : '-';
-    getEl('invoiceApiNormalTotal').textContent = invoiceApiOverview ? String(invoiceApiOverview.normalPendingTotal || 0) : '-';
+    const pendingNum = getEl('invoiceApiPendingNum');
+    if (pendingNum) pendingNum.textContent = invoiceApiOverview ? String(invoiceApiOverview.pendingNum || 0) : '-';
+    const invoicedNum = getEl('invoiceApiInvoicedNum');
+    if (invoicedNum) invoicedNum.textContent = invoiceApiOverview ? String(invoiceApiOverview.invoicedNum || 0) : '-';
+    const applyingNum = getEl('invoiceApiApplyingNum');
+    if (applyingNum) applyingNum.textContent = invoiceApiOverview ? String(invoiceApiOverview.applyingNum || 0) : '-';
+    const amount = getEl('invoiceApiAmount');
+    if (amount) amount.textContent = invoiceApiOverview ? formatApiAmount(invoiceApiOverview.invoiceAmount || 0) : '-';
+    const qualityTotal = getEl('invoiceApiQualityTotal');
+    if (qualityTotal) qualityTotal.textContent = invoiceApiOverview ? String(invoiceApiOverview.qualityPendingTotal || 0) : '-';
+    const normalTotal = getEl('invoiceApiNormalTotal');
+    if (normalTotal) normalTotal.textContent = invoiceApiOverview ? String(invoiceApiOverview.normalPendingTotal || 0) : '-';
     const quickSummary = getEl('invoiceApiQuickSummary');
     if (quickSummary) {
       quickSummary.value = invoiceApiOverview
@@ -413,15 +628,19 @@
     }
   }
 
+  function renderInvoiceApiPager() {
+    const pageNoEl = getEl('invoiceApiPageNo');
+    if (pageNoEl) pageNoEl.textContent = String(invoiceApiPageNo || 1);
+    const prevBtn = getEl('btnInvoiceApiPagePrev');
+    if (prevBtn) prevBtn.disabled = invoiceApiPageNo <= 1;
+    const nextBtn = getEl('btnInvoiceApiPageNext');
+    if (nextBtn) nextBtn.disabled = invoiceApiTotal ? invoiceApiPageNo * invoiceApiPageSize >= invoiceApiTotal : invoiceApiList.length < invoiceApiPageSize;
+  }
+
   function renderInvoiceApiSummary() {
     const quickCounts = getInvoiceQuickCounts();
-    getEl('invoiceApiQuickAllCount').textContent = String(quickCounts.all || 0);
-    getEl('invoiceApiQuickQualityCount').textContent = String(quickCounts.quality || 0);
-    getEl('invoiceApiQuickNormalCount').textContent = String(quickCounts.normal || 0);
-    getEl('invoiceApiPendingTabCount').textContent = String(invoiceApiOverview?.pendingNum || quickCounts.all || 0);
-    getEl('invoiceApiInvoicedTabCount').textContent = String(invoiceApiOverview?.invoicedNum || 0);
-    getEl('invoiceApiFailTabCount').textContent = '0';
-    getEl('invoiceApiHoldTabCount').textContent = String(invoiceApiOverview?.applyingNum || 0);
+    const pendingTabCount = getEl('invoiceApiPendingTabCount');
+    if (pendingTabCount) pendingTabCount.textContent = String(invoiceApiOverview?.pendingNum || invoiceApiTotal || quickCounts.all || 0);
     document.querySelectorAll('[data-invoice-quick]').forEach(button => {
       button.classList.toggle('active', button.dataset.invoiceQuick === invoiceApiQuickFilter);
     });
@@ -430,6 +649,7 @@
     if (advancedFilters) advancedFilters.classList.toggle('hidden', !invoiceApiFiltersExpanded);
     if (toggleButton) toggleButton.textContent = invoiceApiFiltersExpanded ? '收起' : '展开';
     renderInvoiceApiFilterOptions();
+    renderInvoiceApiPager();
   }
 
   function syncInvoiceApiSelectAllState(visibleList = getInvoiceVisibleList()) {
@@ -442,11 +662,16 @@
       element.checked = allSelected;
       element.indeterminate = partialSelected;
     });
-    getEl('invoiceApiSelectionSummary').textContent = invoiceApiSelectedSerialNos.size
-      ? `已选择 ${invoiceApiSelectedSerialNos.size} 条记录`
-      : '未选择记录';
-    getEl('invoiceApiFooterTotal').textContent = `共 ${visibleList.length} 条`;
-    getEl('btnInvoiceApiBatchAction').disabled = invoiceApiSelectedSerialNos.size === 0;
+    const selectionSummary = getEl('invoiceApiSelectionSummary');
+    if (selectionSummary) {
+      selectionSummary.textContent = invoiceApiSelectedSerialNos.size
+        ? `已选择 ${invoiceApiSelectedSerialNos.size} 条记录`
+        : '未选择记录';
+    }
+    const footerTotal = getEl('invoiceApiFooterTotal');
+    if (footerTotal) footerTotal.textContent = `共 ${visibleList.length} 条`;
+    const batchButton = getEl('btnInvoiceApiBatchAction');
+    if (batchButton) batchButton.disabled = invoiceApiSelectedSerialNos.size === 0;
   }
 
   async function syncInvoiceApiDetailWithVisible() {
@@ -469,90 +694,157 @@
   function renderInvoiceApiList() {
     const container = getEl('invoiceApiList');
     const visibleList = getInvoiceVisibleList();
-    getEl('invoiceApiListMeta').textContent = `${visibleList.length} / ${invoiceApiList.length} 条记录`;
-    const filterLabels = [];
-    if (invoiceApiQuickFilter === 'quality') filterLabels.push('正品发票');
-    if (invoiceApiQuickFilter === 'normal') filterLabels.push('普通发票');
-    if (invoiceApiOrderStatus) filterLabels.push(`订单状态：${invoiceApiOrderStatus}`);
-    if (invoiceApiModeFilter) filterLabels.push(`开票方式：${invoiceApiModeFilter}`);
-    if (invoiceApiTypeFilter) filterLabels.push(`发票种类：${invoiceApiTypeFilter}`);
-    if (invoiceApiLetterheadTypeFilter) filterLabels.push(`抬头类型：${invoiceApiLetterheadTypeFilter}`);
-    if (invoiceApiKeyword) filterLabels.push(`订单号：${invoiceApiKeyword}`);
-    if (invoiceApiLetterheadKeyword) filterLabels.push(`买家抬头：${invoiceApiLetterheadKeyword}`);
-    getEl('invoiceApiListStatus').textContent = filterLabels.length ? filterLabels.join(' · ') : '默认拉取待开票列表';
+    if (!container) return;
     if (!visibleList.length) {
-      container.innerHTML = '<tr><td colspan="12"><div class="mail-api-list-empty">当前没有待开票记录，或没有匹配到搜索结果。</div></td></tr>';
-      syncInvoiceApiSelectAllState(visibleList);
+      container.innerHTML = '<tr><td colspan="15"><div class="invoice-api-pdd-empty">当前没有待开票记录。</div></td></tr>';
+      renderInvoiceApiPager();
       return;
     }
-    container.innerHTML = visibleList.map(item => {
+    container.innerHTML = visibleList.map((item, idx) => {
       const serialNo = String(item.serialNo || '');
-      const active = serialNo === String(invoiceApiActiveSerialNo);
-      const selected = invoiceApiSelectedSerialNos.has(serialNo);
+      const applyTimeText = formatInvoiceApiDateTime(item.applyTime);
+      const otherInfo = String(item.otherInfo || item.raw?.other_info || '').trim();
+      const paperReceiverName = String(item.paperReceiverName || item.raw?.paper_receiver_name || '').trim();
+      const paperReceiverMobile = String(item.paperReceiverMobile || item.raw?.paper_receiver_mobile || '').trim();
+      const paperReceiverAddress = String(item.paperReceiverAddress || item.raw?.paper_receiver_address || '').trim();
+      const mailAddressText = [paperReceiverName, paperReceiverMobile, paperReceiverAddress].filter(Boolean).join(' ') || '-';
       return `
-        <tr class="${active ? 'active' : ''} ${selected ? 'selected' : ''}" data-invoice-serial-no="${esc(serialNo)}">
-          <td><input type="checkbox" class="invoice-api-row-check" data-invoice-check="${esc(serialNo)}" ${selected ? 'checked' : ''}></td>
-          <td class="invoice-api-cell-em" title="${esc(item.orderSn || serialNo || '-')}">${esc(item.orderSn || serialNo || '-')}</td>
+        <tr data-invoice-serial-no="${esc(serialNo)}">
+          <td class="invoice-api-sticky-left invoice-api-sticky-left-0" title="${esc(item.orderSn || serialNo || '-')}"><a class="invoice-api-pdd-order">${esc(item.orderSn || serialNo || '-')}</a></td>
+          <td title="${esc(item.shopName || '-')}">${esc(item.shopName || '-')}</td>
           <td title="${esc(item.orderStatus || '-')}">${esc(item.orderStatus || '-')}</td>
           <td title="${esc(item.afterSalesStatus || '-')}">${esc(item.afterSalesStatus || '-')}</td>
-          <td>${esc(formatApiDateTime(item.applyTime))}</td>
-          <td title="${esc(formatInvoiceApiPromiseTime(item.promiseInvoiceTime))}">${esc(formatInvoiceApiPromiseTime(item.promiseInvoiceTime))}</td>
-          <td class="invoice-api-amount">${esc(formatApiAmount(item.invoiceAmount))}</td>
+          <td title="${esc(applyTimeText)}">${esc(applyTimeText)}</td>
+          <td class="invoice-api-pdd-amount">${esc(formatApiAmount(item.invoiceAmount))}</td>
           <td title="${esc(item.invoiceMode || '-')}">${esc(item.invoiceMode || '-')}</td>
           <td title="${esc(item.invoiceType || '-')}">${esc(item.invoiceType || '-')}</td>
           <td title="${esc(item.invoiceKind || '-')}">${esc(item.invoiceKind || '-')}</td>
           <td title="${esc(item.letterheadType || '-')}">${esc(item.letterheadType || '-')}</td>
-          <td><button class="btn btn-secondary btn-sm invoice-api-op-btn" data-invoice-entry="${esc(serialNo)}">录入发票</button></td>
+          <td class="invoice-api-pdd-cell-wrap" title="${esc(item.letterhead || '-')}">${esc(item.letterhead || '-')}</td>
+          <td title="${esc(item.taxNo || '-')}">${esc(item.taxNo || '-')}</td>
+          <td class="invoice-api-pdd-cell-wrap" title="${esc(otherInfo || '-')}">${esc(otherInfo || '-')}</td>
+          <td class="invoice-api-pdd-cell-wrap" title="${esc(mailAddressText)}">${esc(mailAddressText)}</td>
+          <td class="invoice-api-sticky-right">
+            <div class="invoice-api-pdd-actions">
+              <button class="invoice-api-pdd-action-link" data-invoice-action="issue" data-invoice-serial="${esc(serialNo)}">立即开票</button>
+              <button class="invoice-api-pdd-action-link" data-invoice-action="hold" data-invoice-serial="${esc(serialNo)}">暂不开票</button>
+            </div>
+          </td>
         </tr>
       `;
     }).join('');
-    container.querySelectorAll('tr[data-invoice-serial-no]').forEach(row => {
-      row.addEventListener('click', async event => {
-        if (event.target.closest('button') || event.target.closest('input')) return;
-        await openInvoiceApiDetail(row.dataset.invoiceSerialNo, { skipTraffic: true });
-      });
-    });
-    container.querySelectorAll('[data-invoice-entry]').forEach(button => {
+    container.querySelectorAll('[data-invoice-action]').forEach(button => {
       button.addEventListener('click', async event => {
+        event.preventDefault();
         event.stopPropagation();
-        await openInvoiceApiEntryDialog(button.dataset.invoiceEntry);
-      });
-    });
-    container.querySelectorAll('[data-invoice-check]').forEach(input => {
-      input.addEventListener('click', event => event.stopPropagation());
-      input.addEventListener('change', event => {
-        const serialNo = String(event.target.dataset.invoiceCheck || '');
+        if (button.disabled) return;
+        const action = String(button.dataset.invoiceAction || '');
+        const serialNo = String(button.dataset.invoiceSerial || '');
         if (!serialNo) return;
-        if (event.target.checked) {
-          invoiceApiSelectedSerialNos.add(serialNo);
-        } else {
-          invoiceApiSelectedSerialNos.delete(serialNo);
+        if (action === 'issue') {
+          const originalText = button.textContent || '';
+          button.disabled = true;
+          if (originalText) button.textContent = '加载中';
+          try {
+            await openInvoiceApiEntryDialog(serialNo);
+          } finally {
+            button.disabled = false;
+            if (originalText) button.textContent = originalText;
+          }
+          return;
         }
-        const row = event.target.closest('tr');
-        if (row) row.classList.toggle('selected', event.target.checked);
-        syncInvoiceApiSelectAllState(visibleList);
+        addLog('暂不开票操作接口尚未采集到真实请求路径，待补齐抓包后接入。', 'info');
       });
     });
-    syncInvoiceApiSelectAllState(visibleList);
+    container.querySelectorAll('.invoice-api-pdd-order').forEach(link => {
+      link.addEventListener('click', async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const tr = link.closest('tr');
+        const serialNo = String(tr?.dataset?.invoiceSerialNo || '');
+        const item = invoiceApiList.find(entry => String(entry.serialNo) === serialNo);
+        const orderSn = String(item?.orderSn || item?.raw?.order_sn || serialNo || '').trim();
+        await openInvoiceApiOrderInEmbedded(orderSn, serialNo);
+      });
+    });
+    renderInvoiceApiPager();
+  }
+
+  function ensureInvoiceApiEmbeddedOverlayBar() {
+    if (document.getElementById('invoiceApiEmbeddedOverlayBar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'invoiceApiEmbeddedOverlayBar';
+    bar.style.cssText = 'position:fixed;top:48px;left:180px;right:0;height:42px;display:none;align-items:center;gap:10px;padding:0 12px;background:#fff;border-bottom:1px solid #e8e8e8;z-index:9999;';
+    bar.innerHTML = `
+      <button type="button" id="btnInvoiceApiEmbeddedBack" style="height:28px;padding:0 10px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;">返回待开票列表</button>
+      <div id="invoiceApiEmbeddedTitle" style="font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+    `;
+    document.body.appendChild(bar);
+    const back = document.getElementById('btnInvoiceApiEmbeddedBack');
+    back?.addEventListener('click', async () => {
+      await closeInvoiceApiEmbeddedOverlay();
+    });
+  }
+
+  function renderInvoiceApiEmbeddedOverlayBar() {
+    ensureInvoiceApiEmbeddedOverlayBar();
+    const bar = document.getElementById('invoiceApiEmbeddedOverlayBar');
+    const title = document.getElementById('invoiceApiEmbeddedTitle');
+    if (!bar || !title) return;
+    bar.style.display = invoiceApiEmbeddedOverlayVisible ? 'flex' : 'none';
+    title.textContent = invoiceApiEmbeddedOverlayVisible
+      ? `订单开票页：${invoiceApiEmbeddedOverlayOrderSn || '-'}`
+      : '';
+  }
+
+  async function openInvoiceApiOrderInEmbedded(orderSn, serialNo) {
+    ensureInvoiceApiEmbeddedOverlayBar();
+    invoiceApiEmbeddedOverlayVisible = true;
+    invoiceApiEmbeddedOverlayOrderSn = String(orderSn || serialNo || '').trim();
+    renderInvoiceApiEmbeddedOverlayBar();
+    const result = await window.pddApi.openInvoiceOrderOverlay({
+      orderSn: invoiceApiEmbeddedOverlayOrderSn,
+      serialNo: String(serialNo || '').trim(),
+      topOffset: 42
+    });
+    if (result && result.error) {
+      invoiceApiEmbeddedOverlayVisible = false;
+      invoiceApiEmbeddedOverlayOrderSn = '';
+      renderInvoiceApiEmbeddedOverlayBar();
+      if (typeof showToast === 'function') {
+        showToast(result.error);
+      } else {
+        addLog(result.error, 'error');
+      }
+    }
+  }
+
+  async function closeInvoiceApiEmbeddedOverlay() {
+    invoiceApiEmbeddedOverlayVisible = false;
+    invoiceApiEmbeddedOverlayOrderSn = '';
+    renderInvoiceApiEmbeddedOverlayBar();
+    await window.pddApi.closeEmbeddedOverlay();
   }
 
   function renderInvoiceApiDetail() {
     const head = getEl('invoiceApiDetailHead');
     const panel = getEl('invoiceApiDetailPanel');
+    if (!head || !panel) return;
     if (!invoiceApiActiveDetail?.serialNo) {
       head.innerHTML = `
         <div class="mail-api-detail-title">请选择一条待开票记录</div>
         <div class="mail-api-detail-meta"><span>订单号：-</span><span>申请时间：-</span></div>
       `;
       panel.innerHTML = '<div class="invoice-api-detail-empty">请选择一条待开票记录查看详情</div>';
-      getEl('invoiceApiDetailMeta').textContent = '点击行查看详情，点击“录入发票”弹出对话框';
+      const meta = getEl('invoiceApiDetailMeta');
+      if (meta) meta.textContent = '点击行查看详情，点击“录入发票”弹出对话框';
       return;
     }
     head.innerHTML = `
       <div class="mail-api-detail-title">${esc(invoiceApiActiveDetail.orderSn || invoiceApiActiveDetail.serialNo || '待开票记录')}</div>
       <div class="mail-api-detail-meta">
         <span>流水号：${esc(invoiceApiActiveDetail.serialNo || '-')}</span>
-        <span>申请时间：${esc(formatApiDateTime(invoiceApiActiveDetail.applyTime))}</span>
+        <span>申请时间：${esc(formatInvoiceApiDateTime(invoiceApiActiveDetail.applyTime))}</span>
       </div>
     `;
     const detailItems = [
@@ -578,12 +870,15 @@
         `).join('')}
       </div>
     `;
-    getEl('invoiceApiDetailMeta').textContent = `已打开记录：${invoiceApiActiveDetail.serialNo || invoiceApiActiveDetail.orderSn}`;
+    const meta = getEl('invoiceApiDetailMeta');
+    if (meta) meta.textContent = `已打开记录：${invoiceApiActiveDetail.serialNo || invoiceApiActiveDetail.orderSn}`;
   }
 
   function renderInvoiceApiTraffic() {
     const container = getEl('invoiceApiTrafficList');
-    getEl('invoiceApiTrafficSummary').textContent = `${invoiceApiEntries.length} 条抓包记录`;
+    if (!container) return;
+    const summary = getEl('invoiceApiTrafficSummary');
+    if (summary) summary.textContent = `${invoiceApiEntries.length} 条抓包记录`;
     if (!invoiceApiEntries.length) {
       container.innerHTML = '<span class="mail-api-traffic-chip">暂无抓包</span>';
       return;
@@ -595,7 +890,7 @@
     }).join('');
   }
 
-  async function loadInvoiceApiTraffic(shopId = activeShopId) {
+  async function loadInvoiceApiTraffic(shopId = API_ALL_SHOPS) {
     if (!shopId) {
       invoiceApiEntries = [];
       renderInvoiceApiTraffic();
@@ -612,13 +907,15 @@
       invoiceApiOverview = null;
       renderInvoiceApiOverview();
       renderInvoiceApiSummary();
-      getEl('invoiceApiHeaderMeta').textContent = result?.error || '加载待开票统计失败';
+      const headerMeta = getEl('invoiceApiHeaderMeta');
+      if (headerMeta) headerMeta.textContent = result?.error || '加载待开票统计失败';
       return false;
     }
     invoiceApiOverview = result;
     renderInvoiceApiOverview();
     renderInvoiceApiSummary();
-    getEl('invoiceApiHeaderMeta').textContent = `统计口径：当前接口返回 · 待开票 ${result.pendingNum || 0} 条，已开票 ${result.invoicedNum || 0} 条`;
+    const headerMeta = getEl('invoiceApiHeaderMeta');
+    if (headerMeta) headerMeta.textContent = `统计口径：当前接口返回 · 待开票 ${result.pendingNum || 0} 条，已开票 ${result.invoicedNum || 0} 条`;
     return true;
   }
 
@@ -634,62 +931,47 @@
   }
 
   async function loadInvoiceApiList(options = {}) {
-    if (!activeShopId) {
+    const shopId = API_ALL_SHOPS;
+    if (!shopId) {
       invoiceApiList = [];
       invoiceApiActiveSerialNo = '';
       invoiceApiActiveDetail = null;
+      invoiceApiPageNo = 1;
+      invoiceApiTotal = 0;
       renderInvoiceApiFilterOptions();
       renderInvoiceApiSummary();
       renderInvoiceApiList();
-      renderInvoiceApiDetail();
       return false;
     }
     const result = await window.pddApi.invoiceGetList({
-      shopId: activeShopId,
-      pageNo: 1,
-      pageSize: 20,
+      shopId,
+      pageNo: invoiceApiPageNo,
+      pageSize: invoiceApiPageSize,
       keyword: invoiceApiKeyword
     });
     if (!result || result.error) {
       invoiceApiList = [];
       invoiceApiActiveSerialNo = '';
       invoiceApiActiveDetail = null;
+      invoiceApiTotal = 0;
       renderInvoiceApiFilterOptions();
       renderInvoiceApiSummary();
       renderInvoiceApiList();
-      renderInvoiceApiDetail();
       addLog(result?.error || '加载待开票列表失败', 'error');
       return false;
     }
     invoiceApiList = Array.isArray(result.list) ? result.list : [];
+    invoiceApiTotal = Number(result.total || 0);
     renderInvoiceApiFilterOptions();
     renderInvoiceApiSummary();
     renderInvoiceApiList();
-    const visibleList = getInvoiceVisibleList();
-    const keepCurrent = options.keepCurrent && visibleList.some(item => String(item.serialNo) === String(invoiceApiActiveSerialNo));
-    if (keepCurrent && invoiceApiActiveSerialNo) {
-      await openInvoiceApiDetail(invoiceApiActiveSerialNo, { skipTraffic: true });
-    } else if (visibleList[0]?.serialNo) {
-      await openInvoiceApiDetail(visibleList[0].serialNo, { skipTraffic: true });
-    } else {
-      invoiceApiActiveSerialNo = '';
-      invoiceApiActiveDetail = null;
-      renderInvoiceApiDetail();
-    }
     return true;
   }
 
   async function loadInvoiceApiView(options = {}) {
     await refreshShopContext();
-    const shopId = activeShopId;
-    if (!shopId) {
-      getEl('invoiceApiHeaderMeta').textContent = '当前没有活跃店铺';
-      resetInvoiceApiState();
-      return;
-    }
-    await loadInvoiceApiOverview(shopId);
+    resetInvoiceApiState();
     await loadInvoiceApiList({ keepCurrent: options.keepCurrent });
-    await loadInvoiceApiTraffic(shopId);
   }
 
   function bindInvoiceApiModule() {
@@ -698,11 +980,38 @@
 
     getEl('btnInvoiceApiOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
     getEl('btnInvoiceApiRefreshPage')?.addEventListener('click', () => window.pddApi.reloadPdd());
-    getEl('btnInvoiceApiRefreshList')?.addEventListener('click', async () => {
-      await loadInvoiceApiOverview();
-      await loadInvoiceApiList({ keepCurrent: true });
-      await loadInvoiceApiTraffic();
-      addLog('已刷新待开票列表', 'info');
+    getEl('btnInvoiceApiRefreshList')?.addEventListener('click', async event => {
+      const refreshButton = event?.currentTarget;
+      const originalText = refreshButton?.textContent || '刷新';
+      if (refreshButton) {
+        refreshButton.disabled = true;
+        refreshButton.textContent = '刷新中';
+      }
+      invoiceApiPageNo = 1;
+      invoiceApiKeyword = '';
+      invoiceApiList = [];
+      invoiceApiTotal = 0;
+      renderInvoiceApiSummary();
+      renderInvoiceApiList();
+      try {
+        await loadInvoiceApiList();
+        addLog('已刷新待开票列表', 'info');
+      } finally {
+        if (refreshButton) {
+          refreshButton.disabled = false;
+          refreshButton.textContent = originalText;
+        }
+      }
+    });
+    getEl('btnInvoiceApiPagePrev')?.addEventListener('click', async () => {
+      if (invoiceApiPageNo <= 1) return;
+      invoiceApiPageNo = Math.max(1, invoiceApiPageNo - 1);
+      await loadInvoiceApiList();
+    });
+    getEl('btnInvoiceApiPageNext')?.addEventListener('click', async () => {
+      if (invoiceApiTotal && invoiceApiPageNo * invoiceApiPageSize >= invoiceApiTotal) return;
+      invoiceApiPageNo = Math.max(1, invoiceApiPageNo + 1);
+      await loadInvoiceApiList();
     });
     getEl('btnInvoiceApiReloadTraffic')?.addEventListener('click', async () => {
       await loadInvoiceApiTraffic();
@@ -715,6 +1024,24 @@
       addLog('已清空当前范围的待开票抓包记录', 'info');
     });
     getEl('invoiceApiEntryFile')?.addEventListener('change', handleInvoiceApiEntryFileChange);
+    getEl('invoiceApiEntryPreviewBtn')?.addEventListener('click', event => {
+      event?.preventDefault();
+      event?.stopPropagation();
+      showInvoiceApiFilePreview();
+    });
+    getEl('invoiceApiEntryThumbBtn')?.addEventListener('click', () => {
+      const url = String(invoiceApiEntryDialogState.goodsThumb || '').trim();
+      if (!url) return;
+      const previewImage = document.getElementById('apiImagePreviewContent');
+      const modal = document.getElementById('modalApiImagePreview');
+      if (!previewImage || !modal) return;
+      previewImage.src = url;
+      if (typeof showModal === 'function') {
+        showModal('modalApiImagePreview');
+      } else {
+        modal.classList.add('visible');
+      }
+    });
     getEl('invoiceApiEntryNumber')?.addEventListener('input', event => {
       invoiceApiEntryDialogState.invoiceNumber = event.target.value || '';
       renderInvoiceApiEntryDialog();
@@ -723,7 +1050,7 @@
       invoiceApiEntryDialogState.invoiceCode = event.target.value || '';
       renderInvoiceApiEntryDialog();
     });
-    getEl('btnInvoiceApiEntrySubmit')?.addEventListener('click', submitInvoiceApiEntryDraft);
+    getEl('btnInvoiceApiEntrySubmit')?.addEventListener('click', submitInvoiceApiEntry);
     getEl('btnInvoiceApiBackToInvoice')?.addEventListener('click', () => switchView('invoice'));
     getEl('btnInvoiceApiApplyFilters')?.addEventListener('click', async () => {
       invoiceApiKeyword = getEl('invoiceApiKeyword').value || '';
@@ -812,6 +1139,7 @@
   }
 
   window.loadInvoiceApiView = loadInvoiceApiView;
+  window.hideInvoiceApiFilePreview = hideInvoiceApiFilePreview;
 
   if (typeof window.registerRendererModule === 'function') {
     window.registerRendererModule('invoice-api-module', bindInvoiceApiModule);

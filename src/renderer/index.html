@@ -641,7 +641,7 @@
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.45);
-      z-index: 1000;
+      z-index: 5000;
       justify-content: center;
       align-items: center;
     }
@@ -7186,255 +7186,128 @@
         </div>
       </div>
       <div class="view-page" id="viewInvoiceApi">
-        <div class="invoice-api-page">
-          <div class="invoice-api-tutorial-bar">
-            <span class="invoice-api-tutorial-title">发票教程</span>
-            <span class="invoice-api-tutorial-step"><strong>1</strong>自动开票系统入驻流程</span>
-            <span class="invoice-api-tutorial-step"><strong>2</strong>正品发票操作指南</span>
-            <span class="invoice-api-tutorial-step"><strong>3</strong>普通订单开票</span>
-            <span class="invoice-api-tutorial-step"><strong>4</strong>发票违规课程</span>
-            <span class="invoice-api-more-link">更多</span>
-          </div>
-
-          <div class="invoice-api-section">
-            <div class="invoice-api-section-header">
-              <div class="invoice-api-section-heading">
-                <div class="invoice-api-section-title">店铺开票数据</div>
-                <div class="invoice-api-section-meta" id="invoiceApiHeaderMeta">统计时间：--</div>
-              </div>
-              <div class="invoice-api-toolbar">
-                <button class="btn btn-secondary" id="btnInvoiceApiRefreshList">刷新列表</button>
-                <button class="btn btn-secondary" id="btnInvoiceApiRefreshPage">刷新待开票页</button>
-                <button class="btn btn-secondary" id="btnInvoiceApiReloadTraffic" style="display:none;">刷新抓包</button>
-                <button class="btn btn-secondary" id="btnInvoiceApiOpenDebug">调试窗口</button>
-                <button class="btn btn-secondary" id="btnInvoiceApiClearTraffic" style="display:none;">清空记录</button>
-              </div>
-            </div>
-            <div class="invoice-api-metrics">
-              <div class="invoice-api-metric">
-                <div class="invoice-api-metric-label">待开票订单数</div>
-                <div class="invoice-api-metric-value" id="invoiceApiPendingNum">-</div>
-              </div>
-              <div class="invoice-api-metric">
-                <div class="invoice-api-metric-label">已开票订单数</div>
-                <div class="invoice-api-metric-value" id="invoiceApiInvoicedNum">-</div>
-              </div>
-              <div class="invoice-api-metric">
-                <div class="invoice-api-metric-label">申请中订单数</div>
-                <div class="invoice-api-metric-value" id="invoiceApiApplyingNum">-</div>
-              </div>
-              <div class="invoice-api-metric">
-                <div class="invoice-api-metric-label">待开票总金额</div>
-                <div class="invoice-api-metric-value" id="invoiceApiAmount">-</div>
-              </div>
-              <div class="invoice-api-metric">
-                <div class="invoice-api-metric-label">正品发票待处理</div>
-                <div class="invoice-api-metric-value" id="invoiceApiQualityTotal">-</div>
-              </div>
-              <div class="invoice-api-metric">
-                <div class="invoice-api-metric-label">普通发票待处理</div>
-                <div class="invoice-api-metric-value" id="invoiceApiNormalTotal">-</div>
-              </div>
-            </div>
-            <div class="invoice-api-tip">ⓘ 发票指标是品牌黑标店铺的重要考量，请及时处理避免影响店铺流量</div>
-          </div>
-
-          <div class="invoice-api-section">
-            <div class="invoice-api-section-header">
-              <div class="invoice-api-section-heading">
-                <div class="invoice-api-section-title">开票列表</div>
-                <div class="invoice-api-section-extra">
-                  <span id="invoiceApiListMeta">0 条记录</span>
-                  <span id="invoiceApiListStatus">默认拉取待开票列表</span>
-                </div>
-              </div>
-            </div>
-            <div class="invoice-api-quick-row">
-              <span class="invoice-api-quick-label">快速筛选发票</span>
-              <div class="invoice-api-quick-tabs">
-                <button class="invoice-api-quick-tab active" data-invoice-quick="all">全部 <span
-                    id="invoiceApiQuickAllCount">0</span></button>
-                <button class="invoice-api-quick-tab" data-invoice-quick="quality">正品发票 <span
-                    id="invoiceApiQuickQualityCount">0</span></button>
-                <button class="invoice-api-quick-tab" data-invoice-quick="normal">普通发票 <span
-                    id="invoiceApiQuickNormalCount">0</span></button>
-              </div>
-            </div>
-            <div class="invoice-api-filter-panel">
-              <div class="invoice-api-filter-grid">
-                <div class="invoice-api-filter-item">
-                  <label class="invoice-api-filter-label" for="invoiceApiKeyword">订单号</label>
-                  <input class="form-input" id="invoiceApiKeyword" placeholder="请输入订单编号">
-                </div>
-                <div class="invoice-api-filter-item">
-                  <label class="invoice-api-filter-label" for="invoiceApiOrderStatus">订单状态</label>
-                  <select class="form-select" id="invoiceApiOrderStatus">
-                    <option value="">全部</option>
-                  </select>
-                </div>
-                <div class="invoice-api-filter-item">
-                  <label class="invoice-api-filter-label" for="invoiceApiLetterheadKeyword">买家抬头</label>
-                  <input class="form-input" id="invoiceApiLetterheadKeyword" placeholder="请输入买家抬头">
-                </div>
-                <div class="invoice-api-filter-item">
-                  <label class="invoice-api-filter-label" for="invoiceApiModeFilter">开票方式</label>
-                  <select class="form-select" id="invoiceApiModeFilter">
-                    <option value="">全部</option>
-                  </select>
-                </div>
-                <div class="invoice-api-filter-item">
-                  <label class="invoice-api-filter-label" for="invoiceApiTypeFilter">发票种类</label>
-                  <select class="form-select" id="invoiceApiTypeFilter">
-                    <option value="">全部</option>
-                  </select>
-                </div>
-                <div class="invoice-api-filter-actions">
-                  <button class="btn btn-primary" id="btnInvoiceApiApplyFilters">查询</button>
-                  <button class="btn btn-secondary" id="btnInvoiceApiResetFilters">重置</button>
-                  <button class="invoice-api-link-btn" id="btnInvoiceApiToggleMore">展开</button>
-                </div>
-              </div>
-              <div class="invoice-api-advanced-row hidden" id="invoiceApiAdvancedFilters">
-                <div class="invoice-api-filter-grid">
-                  <div class="invoice-api-filter-item">
-                    <label class="invoice-api-filter-label" for="invoiceApiLetterheadTypeFilter">抬头类型</label>
-                    <select class="form-select" id="invoiceApiLetterheadTypeFilter">
-                      <option value="">全部</option>
-                    </select>
-                  </div>
-                  <div class="invoice-api-filter-item">
-                    <label class="invoice-api-filter-label">快捷概览</label>
-                    <input class="form-input" id="invoiceApiQuickSummary" value="待加载统计概览" readonly>
-                  </div>
-                  <div class="invoice-api-filter-item">
-                    <label class="invoice-api-filter-label">接口范围</label>
-                    <input class="form-input" id="invoiceApiScopeHint" value="当前仅展示待开票接口返回结果" readonly>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="invoice-api-section-header invoice-api-table-toolbar">
-              <div class="invoice-api-status-tabs">
-                <button class="invoice-api-status-tab active" id="invoiceApiPendingTab">待开票 <span
-                    id="invoiceApiPendingTabCount">0</span></button>
-                <button class="invoice-api-status-tab" id="invoiceApiInvoicedTab" disabled>开票成功 <span
-                    id="invoiceApiInvoicedTabCount">0</span></button>
-                <button class="invoice-api-status-tab" id="invoiceApiFailTab" disabled>开票失败 <span
-                    id="invoiceApiFailTabCount">0</span></button>
-                <button class="invoice-api-status-tab" id="invoiceApiHoldTab" disabled>暂不开票 <span
-                    id="invoiceApiHoldTabCount">0</span></button>
-              </div>
-              <div class="invoice-api-toolbar">
-                <button class="btn btn-secondary" disabled>批量导出</button>
-                <button class="btn btn-secondary" disabled>自动开票</button>
-                <button class="btn btn-secondary" disabled>更多</button>
-              </div>
-            </div>
-            <div class="invoice-api-table-wrap">
-              <table class="data-table invoice-api-table">
-                <thead>
-                  <tr>
-                    <th style="width:36px"><input type="checkbox" id="invoiceApiSelectAllHead"></th>
-                    <th>订单号</th>
-                    <th>订单状态</th>
-                    <th>售后状态</th>
-                    <th>申请时间</th>
-                    <th>承诺开票时间</th>
-                    <th>发票金额</th>
-                    <th>开票方式</th>
-                    <th>发票种类</th>
-                    <th>发票类型</th>
-                    <th>抬头类型</th>
-                    <th style="width:132px">操作</th>
-                  </tr>
-                </thead>
-                <tbody id="invoiceApiList"></tbody>
-              </table>
-            </div>
-            <div class="invoice-api-table-footer">
-              <label class="invoice-api-check-all">
-                <input type="checkbox" id="invoiceApiSelectAll">
-                <span>全选</span>
-              </label>
-              <button class="btn btn-secondary" id="btnInvoiceApiBatchAction" disabled>批量自动开票</button>
-              <span class="invoice-api-selection-summary" id="invoiceApiSelectionSummary">未选择记录</span>
-              <span class="spacer"></span>
-              <span class="invoice-api-selection-summary" id="invoiceApiFooterTotal">共 0 条</span>
+        <div class="invoice-api-page invoice-api-page--pdd">
+          <div class="invoice-api-pdd-toolbar">
+            <span class="invoice-api-pdd-tab">待开票 <span id="invoiceApiPendingTabCount">0</span></span>
+            <button class="invoice-api-pdd-refresh" id="btnInvoiceApiRefreshList">刷新</button>
+            <span class="spacer"></span>
+            <div class="invoice-api-pdd-pager" id="invoiceApiPager">
+              <button class="invoice-api-pdd-page-btn" id="btnInvoiceApiPagePrev" disabled>&lt;</button>
+              <span class="invoice-api-pdd-page-current" id="invoiceApiPageNo">1</span>
+              <button class="invoice-api-pdd-page-btn" id="btnInvoiceApiPageNext" disabled>&gt;</button>
             </div>
           </div>
 
-          <div class="invoice-api-section">
-            <div class="invoice-api-detail-shell">
-              <div class="invoice-api-detail-main">
-                <div class="invoice-api-detail-header">
-                  <div class="invoice-api-section-heading">
-                    <div class="invoice-api-section-title">记录详情</div>
-                    <div class="invoice-api-section-meta" id="invoiceApiDetailMeta">点击行查看详情，点击“录入发票”弹出对话框</div>
-                  </div>
-                  <button class="btn btn-secondary" id="btnInvoiceApiBackToInvoice">切回待开票页</button>
-                </div>
-                <div class="invoice-api-detail-head" id="invoiceApiDetailHead">
-                  <div class="mail-api-detail-title">请选择一条待开票记录</div>
-                  <div class="mail-api-detail-meta">
-                    <span>订单号：-</span>
-                    <span>申请时间：-</span>
-                  </div>
-                </div>
-                <div class="invoice-api-detail-panel" id="invoiceApiDetailPanel">
-                  <div class="invoice-api-detail-empty">请选择一条待开票记录查看详情</div>
-                </div>
-              </div>
-              <div class="invoice-api-detail-side" style="display:none;">
-                <div class="invoice-api-detail-header">
-                  <div class="invoice-api-section-heading">
-                    <div class="invoice-api-section-title">接口抓包</div>
-                    <div class="invoice-api-section-meta" id="invoiceApiTrafficSummary">0 条抓包记录</div>
-                  </div>
-                </div>
-                <div class="invoice-api-traffic-panel">
-                  <div class="mail-api-traffic-list invoice-api-traffic-list" id="invoiceApiTrafficList">
-                    <span class="mail-api-traffic-chip">暂无抓包</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div class="invoice-api-pdd-table-wrap">
+            <table class="invoice-api-pdd-table">
+              <thead>
+                <tr>
+                  <th class="invoice-api-sticky-left invoice-api-sticky-left-0" style="width:220px">订单号</th>
+                  <th style="width:180px">店铺名称</th>
+                  <th style="width:120px">订单状态</th>
+                  <th style="width:120px">售后状态</th>
+                  <th style="width:180px">申请时间</th>
+                  <th style="width:120px">发票金额</th>
+                  <th style="width:120px">开票方式</th>
+                  <th style="width:120px">发票种类</th>
+                  <th style="width:120px">发票类型</th>
+                  <th style="width:120px">抬头类型</th>
+                  <th style="width:220px">发票抬头</th>
+                  <th style="width:180px">企业税号</th>
+                  <th style="width:360px">其他信息</th>
+                  <th style="width:320px">发票邮寄地址</th>
+                  <th class="invoice-api-sticky-right" style="width:120px">操作</th>
+                </tr>
+              </thead>
+              <tbody id="invoiceApiList"></tbody>
+            </table>
           </div>
         </div>
       </div>
       <div class="modal-overlay" id="modalInvoiceApiEntry">
-        <div class="modal wide invoice-api-entry-modal">
-          <div class="modal-header">
-            <h3>录入发票</h3>
-            <button class="modal-close" onclick="hideModal('modalInvoiceApiEntry')">&times;</button>
+        <div class="modal invoice-api-entry-modal">
+          <div class="invoice-api-entry-head">
+            <div class="invoice-api-entry-title">录入发票</div>
+            <button class="invoice-api-entry-close" onclick="hideModal('modalInvoiceApiEntry')" aria-label="关闭">×</button>
           </div>
-          <div class="modal-body invoice-api-entry-body">
-            <div class="invoice-api-entry-status" id="invoiceApiEntryStatus"></div>
-            <div class="invoice-api-entry-card" id="invoiceApiEntryCard"></div>
-            <div class="invoice-api-entry-form">
-              <div class="invoice-api-entry-field">
-                <label class="invoice-api-entry-label">发票文件</label>
-                <label class="invoice-api-entry-upload" for="invoiceApiEntryFile">
-                  <input id="invoiceApiEntryFile" type="file" accept=".pdf,.ofd,application/pdf,application/octet-stream">
-                  <span class="invoice-api-entry-upload-title" id="invoiceApiEntryFileName">上传文件</span>
-                  <span class="invoice-api-entry-upload-hint">支持上传 PDF 和 OFD 文件，大小不超过 5M</span>
-                </label>
+          <div class="invoice-api-entry-body">
+            <div class="invoice-api-entry-order">
+              <div class="invoice-api-entry-order-sn-row">
+                <span class="invoice-api-entry-order-sn-label">订单号：</span>
+                <a class="invoice-api-entry-order-sn" id="invoiceApiEntryOrderSn" href="javascript:void(0)"></a>
+                <span class="invoice-api-entry-order-status" id="invoiceApiEntryOrderStatus"></span>
               </div>
-              <div class="invoice-api-entry-field">
-                <label class="invoice-api-entry-label" for="invoiceApiEntryNumber">发票号码</label>
-                <input class="form-input" id="invoiceApiEntryNumber" placeholder="请输入">
-              </div>
-              <div class="invoice-api-entry-field">
-                <label class="invoice-api-entry-label" for="invoiceApiEntryCode">发票代码</label>
-                <input class="form-input" id="invoiceApiEntryCode" placeholder="如果开具的发票无“发票代码”，可不填写">
+              <div class="invoice-api-entry-order-goods">
+                <button class="invoice-api-entry-thumb-btn" id="invoiceApiEntryThumbBtn" type="button" aria-label="查看商品图片">
+                  <img class="invoice-api-entry-thumb" id="invoiceApiEntryThumb" alt="" />
+                  <div class="invoice-api-entry-thumb-placeholder" id="invoiceApiEntryThumbPlaceholder">暂无图片</div>
+                </button>
+                <div class="invoice-api-entry-goods-main">
+                  <div class="invoice-api-entry-goods-title" id="invoiceApiEntryGoodsTitle">-</div>
+                  <div class="invoice-api-entry-goods-spec">
+                    <span id="invoiceApiEntryGoodsSpec">-</span>
+                    <span class="invoice-api-entry-goods-spec-date" id="invoiceApiEntryOrderSnDate" hidden></span>
+                  </div>
+                  <div class="invoice-api-entry-goods-amount">发票金额：<span id="invoiceApiEntryInvoiceAmount">-</span></div>
+                </div>
               </div>
             </div>
-            <div class="invoice-api-entry-detail-grid" id="invoiceApiEntryDetailGrid"></div>
+
+            <div class="invoice-api-entry-meta">
+              <div class="invoice-api-entry-meta-row">
+                <span class="invoice-api-entry-meta-label">抬头类型：</span><span id="invoiceApiEntryLetterheadType">-</span>
+              </div>
+              <div class="invoice-api-entry-meta-row">
+                <span class="invoice-api-entry-meta-label">发票抬头：</span><span id="invoiceApiEntryLetterhead">-</span>
+              </div>
+              <div class="invoice-api-entry-meta-row">
+                <span class="invoice-api-entry-meta-label">企业税号：</span><span id="invoiceApiEntryTaxNo">-</span>
+              </div>
+            </div>
+
+            <div class="invoice-api-entry-form">
+              <div class="invoice-api-entry-field invoice-api-entry-field--file">
+                <div class="invoice-api-entry-field-head">
+                  <label class="invoice-api-entry-required">发票文件</label>
+                </div>
+                <div class="invoice-api-entry-file-layout">
+                  <div class="invoice-api-entry-file-left">
+                    <label class="invoice-api-entry-upload-box" id="invoiceApiEntryUploadBox" for="invoiceApiEntryFile">
+                      <input id="invoiceApiEntryFile" type="file" accept=".pdf,.ofd,application/pdf,application/octet-stream">
+                      <svg class="invoice-api-entry-upload-icon" id="invoiceApiEntryUploadIconDefault" viewBox="0 0 24 24"
+                        width="34" height="34" aria-hidden="true">
+                        <path d="M4 6.5C4 5.12 5.12 4 6.5 4h4.8c.53 0 1.04.21 1.41.59l1.2 1.2c.19.19.44.3.71.3h2.89C18.88 6.09 20 7.21 20 8.59v8.91C20 18.88 18.88 20 17.5 20h-11C5.12 20 4 18.88 4 17.5V6.5zm2.5-.5c-.28 0-.5.22-.5.5v11c0 .28.22.5.5.5h11c.28 0 .5-.22.5-.5V8.59c0-.28-.22-.5-.5-.5h-3.1c-.8 0-1.57-.32-2.13-.88l-1.03-1.03a.5.5 0 0 0-.35-.15H6.5z" fill="currentColor"></path>
+                      </svg>
+                      <div class="invoice-api-entry-upload-file-icon" id="invoiceApiEntryUploadIconFile" hidden aria-hidden="true">
+                        <span>PDF</span>
+                      </div>
+                      <div class="invoice-api-entry-upload-text" id="invoiceApiEntryFileName">上传文件</div>
+                      <button class="invoice-api-entry-upload-preview" id="invoiceApiEntryPreviewBtn" type="button">预览</button>
+                    </label>
+                  </div>
+                  <div class="invoice-api-entry-file-right">
+                    <div class="invoice-api-entry-hint invoice-api-entry-hint--file">支持上传PDF和OFD文件，大小不超过5M</div>
+                    <div class="invoice-api-entry-upload-warning" id="invoiceApiEntryUploadWarning" hidden>
+                      请再次核实上传发票的抬头，若开具或提供的发票抬头与消费者申请不一致的，平台有权依据平台协议、《拼多多商家发票管理细则》及相关规定对店铺采取处理措施。如确认无误请继续提交。
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="invoice-api-entry-field-row">
+                <div class="invoice-api-entry-field invoice-api-entry-field--number">
+                  <label class="invoice-api-entry-required" for="invoiceApiEntryNumber">发票号码</label>
+                  <input class="form-input" id="invoiceApiEntryNumber" placeholder="请输入">
+                </div>
+                <div class="invoice-api-entry-field invoice-api-entry-field--code">
+                  <label class="invoice-api-entry-label" for="invoiceApiEntryCode">发票代码</label>
+                  <input class="form-input" id="invoiceApiEntryCode" placeholder="如果开具的发票无“发票代码”，可不填写">
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="modal-footer">
-            <span class="invoice-api-entry-footer-meta" id="invoiceApiEntryFooterMeta">请先选择一条待开票记录</span>
-            <span class="spacer"></span>
-            <button class="btn btn-secondary" onclick="hideModal('modalInvoiceApiEntry')">取消</button>
+          <div class="invoice-api-entry-footer">
             <button class="btn btn-primary" id="btnInvoiceApiEntrySubmit">确认</button>
+            <button class="btn btn-secondary" onclick="hideModal('modalInvoiceApiEntry')">取消</button>
           </div>
         </div>
       </div>
@@ -8598,6 +8471,19 @@
       </div>
       <div class="modal-body api-image-preview-body">
         <img class="api-image-preview-content" id="apiImagePreviewContent" alt="对话图片预览">
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalInvoiceApiFilePreview">
+    <div class="modal invoice-api-file-preview-modal">
+      <div class="modal-header">
+        <h3>预览发票</h3>
+        <button class="modal-close" type="button"
+          onclick="window.hideInvoiceApiFilePreview ? window.hideInvoiceApiFilePreview() : hideModal('modalInvoiceApiFilePreview')">&times;</button>
+      </div>
+      <div class="modal-body invoice-api-file-preview-body">
+        <iframe class="invoice-api-file-preview-frame" id="invoiceApiFilePreviewFrame" title="发票预览"></iframe>
       </div>
     </div>
   </div>
@@ -12834,7 +12720,7 @@
     window.pddApi.onShopSwitched(async (data) => {
       updateShopSwitcherDisplay(data.shop);
       addLog(`已切换到: ${data.shop?.name || '未知店铺'}`, 'info');
-      if (currentView === 'mail' || currentView === 'mail-api' || currentView === 'invoice' || currentView === 'invoice-api' || currentView === 'violation' || currentView === 'violation-api' || currentView === 'ticket' || currentView === 'ticket-api') {
+      if (currentView === 'mail' || currentView === 'mail-api' || currentView === 'invoice' || currentView === 'violation' || currentView === 'violation-api' || currentView === 'ticket' || currentView === 'ticket-api') {
         await window.pddApi.reloadPdd();
       }
       if (currentView === 'chat-api') {
@@ -12842,9 +12728,6 @@
       }
       if (currentView === 'mail-api') {
         loadMailApiView();
-      }
-      if (currentView === 'invoice-api') {
-        loadInvoiceApiView();
       }
       if (currentView === 'violation-api') {
         loadViolationApiView();
@@ -12880,9 +12763,6 @@
       }
       if (currentView === 'mail-api') {
         loadMailApiView();
-      }
-      if (currentView === 'invoice-api') {
-        loadInvoiceApiView();
       }
       if (currentView === 'violation-api') {
         loadViolationApiView();

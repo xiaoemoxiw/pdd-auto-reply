@@ -30,6 +30,11 @@ class NetworkMonitor {
       '/latitude/',   // 订单、改价、待支付等接口
       '/mercury/',    // 售后与订单辅助接口
       '/pizza/order/', // 订单备注等页面接口
+      '/omaisms/invoice/',
+      '/orderinvoice/',
+      '/voice/api/mms/invoice/',
+      '/cambridge/api/',
+      '/invoice/',
       '/chats/',
       '/get_signature',
       '/store_image',
@@ -48,6 +53,7 @@ class NetworkMonitor {
       'galerie-api.pdd.net',
       'galerie-api.htj.pdd.net',
       'pddugc.com',
+      'pddpic.com',
       'store_image',
       'general_file',
       'get_signature',

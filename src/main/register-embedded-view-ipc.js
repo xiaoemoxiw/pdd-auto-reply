@@ -134,6 +134,36 @@ function registerEmbeddedViewIpc({
   });
 
   ipcMain.handle('get-current-view', () => getCurrentView());
+
+  ipcMain.handle('open-invoice-order-overlay', async (event, params = {}) => {
+    const orderSn = String(params.orderSn || params.order_sn || '').trim();
+    const serialNo = String(params.serialNo || params.serial_no || '').trim();
+    const topOffset = Math.max(0, Number(params.topOffset || 0));
+    const { shopManager, activeView } = ensureActiveView('invoice');
+    if (!shopManager || !activeView) return { error: '当前店铺嵌入页未初始化' };
+    const base = getPddInvoiceUrl();
+    let targetUrl = base;
+    try {
+      const url = new URL(base);
+      if (orderSn) url.searchParams.set('order_sn', orderSn);
+      if (serialNo) url.searchParams.set('serial_no', serialNo);
+      url.searchParams.set('msfrom', url.searchParams.get('msfrom') || 'mms_sidenav');
+      targetUrl = url.toString();
+    } catch {}
+    if (typeof shopManager.showActiveViewOverlay === 'function') {
+      shopManager.showActiveViewOverlay(topOffset);
+    } else {
+      shopManager.showActiveView();
+    }
+    activeView.webContents.loadURL(targetUrl);
+    return { ok: true };
+  });
+
+  ipcMain.handle('close-embedded-overlay', () => {
+    const shopManager = getShopManager();
+    if (shopManager) shopManager.hideActiveView();
+    return true;
+  });
 }
 
 module.exports = {

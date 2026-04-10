@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   setViolationUrl: (url) => ipcRenderer.invoke('set-violation-url', url),
   getTicketUrl: () => ipcRenderer.invoke('get-ticket-url'),
   setTicketUrl: (url) => ipcRenderer.invoke('set-ticket-url', url),
+  getAfterSaleUrl: () => ipcRenderer.invoke('get-aftersale-url'),
+  setAfterSaleUrl: (url) => ipcRenderer.invoke('set-aftersale-url', url),
   getCurrentUrl: () => ipcRenderer.invoke('get-current-url'),
 
   // Cookie 注入
@@ -114,6 +116,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   invoiceGetList: (params) => ipcRenderer.invoke('invoice-get-list', params),
   invoiceGetDetail: (params) => ipcRenderer.invoke('invoice-get-detail', params),
   invoiceSubmitRecord: (params) => ipcRenderer.invoke('invoice-submit-record', params),
+  aftersaleGetOverview: (params) => ipcRenderer.invoke('aftersale-get-overview', params),
+  aftersaleGetList: (params) => ipcRenderer.invoke('aftersale-get-list', params),
   ticketGetList: (params) => ipcRenderer.invoke('ticket-get-list', params),
   ticketGetDetail: (params) => ipcRenderer.invoke('ticket-get-detail', params),
   violationGetList: (params) => ipcRenderer.invoke('violation-get-list', params),

@@ -29,7 +29,7 @@
       align-items: center;
       padding: 0 16px;
       gap: 12px;
-      -webkit-app-region: drag;
+      -webkit-app-region: no-drag;
       user-select: none;
     }
 
@@ -192,18 +192,24 @@
       flex: 1;
       overflow: hidden;
       position: relative;
+      min-height: 0;
+      height: 100%;
     }
 
     .view-page {
       display: none;
-      height: 100%;
-      overflow-y: auto;
+      position: absolute;
+      inset: 0;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
       background: #f0f2f5;
     }
 
     .view-page.active {
       display: flex;
       flex-direction: column;
+      min-height: 0;
     }
 
     #viewChatApi {
@@ -230,6 +236,7 @@
       flex: 1;
       padding: 16px 20px;
       overflow-y: auto;
+      min-height: 0;
     }
 
     .ops-center-grid {
@@ -6644,6 +6651,7 @@
   <link rel="stylesheet" href="./ticket-api-module.css">
   <link rel="stylesheet" href="./qa-module.css">
   <link rel="stylesheet" href="./test-flow-module.css">
+  <link rel="stylesheet" href="./ops-center-aftersale.css">
 </head>
 
 <body>
@@ -6827,12 +6835,19 @@
           </svg>
           <span>数据中心</span>
         </div>
+        <div class="nav-item" data-view="aftersale">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 11 12 14 22 4"></polyline>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          <span>售后中心（嵌入网页）</span>
+        </div>
         <div class="nav-item" data-view="sub-aftersale">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="9 11 12 14 22 4"></polyline>
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
           </svg>
-          <span>售后中心</span>
+          <span>售后中心（接口对接）</span>
         </div>
       </div>
       <div class="nav-bottom">
@@ -6899,7 +6914,7 @@
         <div class="chat-bar">
           <button class="chat-bar-btn" id="btnInvoiceListTip">待开票列表</button>
           <button class="chat-bar-btn" id="btnInvoiceActionTip">立即开票</button>
-          <button class="chat-bar-btn" id="btnInvoiceSkipTip">暂不开票</button>
+          <!-- <button class="chat-bar-btn" id="btnInvoiceSkipTip">暂不开票</button> -->
           <div class="chat-bar-sep"></div>
           <button class="chat-bar-btn" id="btnInvoiceOpenDebug">调试窗口</button>
           <div style="flex:1"></div>
@@ -6943,6 +6958,23 @@
           <div class="chat-placeholder">
             <p>拼多多工单管理页面加载中...</p>
             <p style="margin-top:8px;color:#999;">进入列表后可筛选工单、查看详情并观察抓包。</p>
+          </div>
+        </div>
+      </div>
+      <div class="view-page" id="viewAfterSale">
+        <div class="chat-bar">
+          <button class="chat-bar-btn" id="btnAfterSaleListTip">售后列表</button>
+          <button class="chat-bar-btn" id="btnAfterSaleDetailTip">售后详情</button>
+          <button class="chat-bar-btn" id="btnAfterSaleRefundTip">退款处理</button>
+          <div class="chat-bar-sep"></div>
+          <button class="chat-bar-btn" id="btnAfterSaleOpenDebug">调试窗口</button>
+          <div style="flex:1"></div>
+          <span class="api-panel-subtitle" id="aftersaleCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开售后中心后台</span>
+        </div>
+        <div style="position:relative;flex:1;">
+          <div class="chat-placeholder">
+            <p>拼多多售后中心页面加载中...</p>
+            <p style="margin-top:8px;color:#999;">进入列表后可筛选售后订单、打开详情并观察抓包。</p>
           </div>
         </div>
       </div>
@@ -9054,6 +9086,7 @@
         invoice: 'viewInvoice',
         violation: 'viewViolation',
         ticket: 'viewTicket',
+        aftersale: 'viewAfterSale',
         'chat-api': 'viewChatApi',
         'mail-api': 'viewMailApi',
         'invoice-api': 'viewInvoiceApi',
@@ -9124,6 +9157,7 @@
       currentView = nextView;
       setActiveNavItem(nextView);
       activateViewPage(nextView);
+      await updateAfterSaleBackendHint(nextView);
       await loadViewContent(nextView, { keepCurrent: true });
     }
 
@@ -9134,6 +9168,7 @@
 
       setActiveNavItem(view);
       activateViewPage(view);
+      await updateAfterSaleBackendHint(view);
 
       try {
         await window.pddApi.switchView(view);
@@ -10389,7 +10424,7 @@
     }
 
     function isEmbeddedPddView(view) {
-      return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket';
+      return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket' || view === 'aftersale';
     }
 
     function getEmbeddedViewPageId(view) {
@@ -10398,6 +10433,7 @@
       if (view === 'invoice') return 'viewInvoice';
       if (view === 'violation') return 'viewViolation';
       if (view === 'ticket') return 'viewTicket';
+      if (view === 'aftersale') return 'viewAfterSale';
       return '';
     }
 
@@ -10432,6 +10468,12 @@
           detail: '进入列表后可筛选工单、查看详情并观察抓包。'
         };
       }
+      if (view === 'aftersale') {
+        return {
+          title: '拼多多售后中心页面加载中...',
+          detail: '进入列表后可筛选售后订单、打开详情并观察抓包。'
+        };
+      }
       return {
         title: '页面加载中...',
         detail: ''
@@ -10459,7 +10501,7 @@
     }
 
     function hideAllEmbeddedPlaceholders() {
-      ['chat', 'mail', 'invoice', 'violation', 'ticket'].forEach(view => {
+      ['chat', 'mail', 'invoice', 'violation', 'ticket', 'aftersale'].forEach(view => {
         updateEmbeddedPlaceholder(view, { visible: false });
       });
     }
@@ -10484,6 +10526,34 @@
     function isTicketPageUrl(url) {
       const text = String(url || '');
       return text.includes('/aftersales/work_order/') || text.includes('/work_order/');
+    }
+
+    function isAfterSalePageUrl(url) {
+      const text = String(url || '');
+      if (text.includes('/aftersales/work_order/') || text.includes('/work_order/')) return false;
+      return text.includes('/aftersale/') || text.includes('/aftersales/');
+    }
+
+    function getUrlOrigin(url) {
+      try {
+        return new URL(url).origin;
+      } catch {
+        return '';
+      }
+    }
+
+    async function updateAfterSaleBackendHint(view = currentView) {
+      if (view !== 'aftersale') return;
+      const hint = document.getElementById('aftersaleCurrentUrlHint');
+      if (!hint) return;
+      let violationUrl = '';
+      try {
+        violationUrl = await window.pddApi.getViolationUrl();
+      } catch {}
+      const origin = getUrlOrigin(violationUrl);
+      hint.textContent = origin
+        ? `拼多多商家后台：${origin}（从“违规管理”识别）`
+        : '当前将复用店铺已登录的嵌入网页打开售后中心后台';
     }
 
     function formatApiListTime(value) {
@@ -13300,10 +13370,23 @@
         addLog('已打开当前嵌入页的 DevTools', 'info');
       }
     });
-    document.getElementById('btnMailOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
-    document.getElementById('btnInvoiceOpenDebug').addEventListener('click', () => window.pddApi.openDebugWindow());
-    document.getElementById('btnViolationOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
-    document.getElementById('btnTicketOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
+    const openDebugWindow = async () => {
+      try {
+        const result = await window.pddApi.openDebugWindow();
+        if (result?.error) {
+          addLog(`打开调试面板失败: ${result.error}`, 'error');
+        } else if (result?.ok) {
+          addLog('调试面板已打开', 'info');
+        }
+      } catch (err) {
+        addLog(`打开调试面板异常: ${err?.message || String(err)}`, 'error');
+      }
+    };
+    document.getElementById('btnMailOpenDebug').addEventListener('click', openDebugWindow);
+    document.getElementById('btnInvoiceOpenDebug').addEventListener('click', openDebugWindow);
+    document.getElementById('btnViolationOpenDebug')?.addEventListener('click', openDebugWindow);
+    document.getElementById('btnTicketOpenDebug')?.addEventListener('click', openDebugWindow);
+    document.getElementById('btnAfterSaleOpenDebug')?.addEventListener('click', openDebugWindow);
     document.getElementById('btnInvoiceListTip').addEventListener('click', () => addLog('请在嵌入网页中查看待开票列表并观察抓包', 'info'));
     document.getElementById('btnInvoiceActionTip').addEventListener('click', () => addLog('请在嵌入网页中点击“立即开票”，当前接口版先完成列表与统计对接', 'info'));
     document.getElementById('btnInvoiceSkipTip').addEventListener('click', () => addLog('请在嵌入网页中处理“暂不开票”动作，当前接口版保留抓包观察能力', 'info'));
@@ -13313,6 +13396,9 @@
     document.getElementById('btnTicketListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看工单列表并观察抓包', 'info'));
     document.getElementById('btnTicketDispatchTip')?.addEventListener('click', () => addLog('请在嵌入网页中尝试批量派发或切换筛选条件并观察抓包', 'info'));
     document.getElementById('btnTicketDetailTip')?.addEventListener('click', () => addLog('请在嵌入网页中打开工单详情并观察抓包', 'info'));
+    document.getElementById('btnAfterSaleListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看售后列表并观察抓包', 'info'));
+    document.getElementById('btnAfterSaleDetailTip')?.addEventListener('click', () => addLog('请在嵌入网页中打开售后详情并观察抓包', 'info'));
+    document.getElementById('btnAfterSaleRefundTip')?.addEventListener('click', () => addLog('请在嵌入网页中处理退款/退货退款并观察抓包', 'info'));
 
     document.getElementById('btnTestReply').addEventListener('click', async () => {
       const btn = document.getElementById('btnTestReply');
@@ -13367,6 +13453,13 @@
           }
           await window.pddApi.setTicketUrl(url);
           addLog(`已保存工单管理入口: ${url}`, 'info');
+        } else if (currentView === 'aftersale') {
+          if (!isAfterSalePageUrl(url)) {
+            addLog('当前不是售后中心页面，未保存入口', 'error');
+            return;
+          }
+          await window.pddApi.setAfterSaleUrl(url);
+          addLog(`已保存售后中心入口: ${url}`, 'info');
         } else {
           if (!isChatPageUrl(url)) {
             addLog('当前不是客户对话页面，未保存入口', 'error');
@@ -13384,8 +13477,21 @@
     });
 
     // 调试窗口（独立窗口）
-    document.getElementById('btnLog').addEventListener('click', () => {
-      window.pddApi.openDebugWindow();
+    document.getElementById('btnLog').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const originalText = btn.textContent;
+      btn.textContent = '打开中...';
+      btn.disabled = true;
+      try {
+        await openDebugWindow();
+        btn.textContent = originalText;
+      } catch (err) {
+        btn.textContent = '打开失败';
+      }
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }, 800);
     });
 
     // PDD 页面事件

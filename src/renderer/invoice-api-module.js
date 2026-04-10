@@ -978,7 +978,10 @@
     if (initialized) return;
     initialized = true;
 
-    getEl('btnInvoiceApiOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
+    getEl('btnInvoiceApiOpenDebug')?.addEventListener('click', async () => {
+      const result = await window.pddApi.openDebugWindow();
+      if (result?.error) addLog(`打开调试面板失败: ${result.error}`, 'error');
+    });
     getEl('btnInvoiceApiRefreshPage')?.addEventListener('click', () => window.pddApi.reloadPdd());
     getEl('btnInvoiceApiRefreshList')?.addEventListener('click', async event => {
       const refreshButton = event?.currentTarget;

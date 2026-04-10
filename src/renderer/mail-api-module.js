@@ -303,7 +303,10 @@
     if (initialized) return;
     initialized = true;
 
-    getEl('btnMailApiOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
+    getEl('btnMailApiOpenDebug')?.addEventListener('click', async () => {
+      const result = await window.pddApi.openDebugWindow();
+      if (result?.error) addLog(`打开调试面板失败: ${result.error}`, 'error');
+    });
     getEl('btnMailApiRefreshPage')?.addEventListener('click', () => window.pddApi.reloadPdd());
     getEl('btnMailApiRefreshList')?.addEventListener('click', async () => {
       await loadMailApiOverview();

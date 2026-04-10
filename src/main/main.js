@@ -99,6 +99,7 @@ const store = new Store({
     invoiceUrl: '',
     violationUrl: '',
     ticketUrl: '',
+    aftersaleUrl: '',
     shops: [],
     activeShopId: '',
     shopGroups: [],
@@ -136,6 +137,7 @@ const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=4
 const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav';
 const PDD_VIOLATION_URL = 'https://mms.pinduoduo.com/pg/violation_list/mall_manage?msfrom=mms_sidenav';
 const PDD_TICKET_URL = 'https://mms.pinduoduo.com/aftersales/work_order/list?msfrom=mms_sidenav';
+const PDD_AFTERSALE_URL = 'https://mms.pinduoduo.com/aftersales/refund/list?msfrom=mms_sidenav';
 
 const MOCK_SHOPS = [
   { id: 'shop_1', name: '环球优品旗舰店', account: 'huanqiu_001', mallId: '', group: 'group_1', remark: '主力店铺', status: 'online', loginMethod: 'token', userAgent: '', bindTime: '2025-10-15', category: '日用百货', balance: 15280.50 },
@@ -382,8 +384,35 @@ function getPddTicketUrl() {
   return store.get('ticketUrl') || PDD_TICKET_URL;
 }
 
+function getPddAfterSaleUrl() {
+  let backendOrigin = '';
+  try {
+    backendOrigin = new URL(getPddViolationUrl()).origin;
+  } catch {}
+  const stored = store.get('aftersaleUrl');
+  if (stored) {
+    if (!backendOrigin) return stored;
+    try {
+      const storedOrigin = new URL(stored).origin;
+      const templateOrigin = new URL(PDD_AFTERSALE_URL).origin;
+      if (storedOrigin !== backendOrigin && storedOrigin === templateOrigin) {
+        const template = new URL(PDD_AFTERSALE_URL);
+        return `${backendOrigin}${template.pathname}${template.search}${template.hash}`;
+      }
+    } catch {}
+    return stored;
+  }
+  if (!backendOrigin) return PDD_AFTERSALE_URL;
+  try {
+    const template = new URL(PDD_AFTERSALE_URL);
+    return `${backendOrigin}${template.pathname}${template.search}${template.hash}`;
+  } catch {
+    return PDD_AFTERSALE_URL;
+  }
+}
+
 function isEmbeddedPddView(view) {
-  return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket';
+  return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket' || view === 'aftersale';
 }
 
 function isMailRelatedView(view) {
@@ -407,6 +436,7 @@ function getEmbeddedViewUrl(view) {
   if (isInvoiceRelatedView(view)) return getPddInvoiceUrl();
   if (isViolationRelatedView(view)) return getPddViolationUrl();
   if (isTicketRelatedView(view)) return getPddTicketUrl();
+  if (view === 'aftersale') return getPddAfterSaleUrl();
   return getPddChatUrl();
 }
 
@@ -436,26 +466,36 @@ function isTicketPageUrl(url) {
   return text.includes('/aftersales/work_order/') || text.includes('/work_order/');
 }
 
+function isAfterSalePageUrl(url) {
+  const text = String(url || '');
+  if (text.includes('/aftersales/work_order/') || text.includes('/work_order/')) return false;
+  return text.includes('/aftersale/') || text.includes('/aftersales/');
+}
+
 function normalizeStoredPddUrls() {
   const storedChatUrl = store.get('chatUrl');
-  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl) || isViolationPageUrl(storedChatUrl) || isTicketPageUrl(storedChatUrl)) {
+  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl) || isViolationPageUrl(storedChatUrl) || isTicketPageUrl(storedChatUrl) || isAfterSalePageUrl(storedChatUrl)) {
     store.set('chatUrl', PDD_CHAT_URL);
   }
   const storedMailUrl = store.get('mailUrl');
-  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl) || isViolationPageUrl(storedMailUrl) || isTicketPageUrl(storedMailUrl)) {
+  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl) || isViolationPageUrl(storedMailUrl) || isTicketPageUrl(storedMailUrl) || isAfterSalePageUrl(storedMailUrl)) {
     store.set('mailUrl', PDD_MAIL_URL);
   }
   const storedInvoiceUrl = store.get('invoiceUrl');
-  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl) || isViolationPageUrl(storedInvoiceUrl) || isTicketPageUrl(storedInvoiceUrl)) {
+  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl) || isViolationPageUrl(storedInvoiceUrl) || isTicketPageUrl(storedInvoiceUrl) || isAfterSalePageUrl(storedInvoiceUrl)) {
     store.set('invoiceUrl', PDD_INVOICE_URL);
   }
   const storedViolationUrl = store.get('violationUrl');
-  if (!storedViolationUrl || isChatPageUrl(storedViolationUrl) || isMailPageUrl(storedViolationUrl) || isInvoicePageUrl(storedViolationUrl) || isTicketPageUrl(storedViolationUrl)) {
+  if (!storedViolationUrl || isChatPageUrl(storedViolationUrl) || isMailPageUrl(storedViolationUrl) || isInvoicePageUrl(storedViolationUrl) || isTicketPageUrl(storedViolationUrl) || isAfterSalePageUrl(storedViolationUrl)) {
     store.set('violationUrl', PDD_VIOLATION_URL);
   }
   const storedTicketUrl = store.get('ticketUrl');
-  if (!storedTicketUrl || isChatPageUrl(storedTicketUrl) || isMailPageUrl(storedTicketUrl) || isInvoicePageUrl(storedTicketUrl) || isViolationPageUrl(storedTicketUrl)) {
+  if (!storedTicketUrl || isChatPageUrl(storedTicketUrl) || isMailPageUrl(storedTicketUrl) || isInvoicePageUrl(storedTicketUrl) || isViolationPageUrl(storedTicketUrl) || isAfterSalePageUrl(storedTicketUrl)) {
     store.set('ticketUrl', PDD_TICKET_URL);
+  }
+  const storedAfterSaleUrl = store.get('aftersaleUrl');
+  if (!storedAfterSaleUrl || isChatPageUrl(storedAfterSaleUrl) || isMailPageUrl(storedAfterSaleUrl) || isInvoicePageUrl(storedAfterSaleUrl) || isViolationPageUrl(storedAfterSaleUrl) || isTicketPageUrl(storedAfterSaleUrl)) {
+    store.set('aftersaleUrl', getPddAfterSaleUrl());
   }
 }
 
@@ -495,6 +535,10 @@ function detectChatPage(view, shopId) {
   if (isTicketPageUrl(currentUrl) && currentUrl !== store.get('ticketUrl')) {
     store.set('ticketUrl', currentUrl);
     console.log('[PDD助手] 自动检测到工单管理页面，已保存:', currentUrl);
+  }
+  if (isAfterSalePageUrl(currentUrl) && currentUrl !== store.get('aftersaleUrl')) {
+    store.set('aftersaleUrl', currentUrl);
+    console.log('[PDD助手] 自动检测到售后中心页面，已保存:', currentUrl);
   }
 
   view.webContents.executeJavaScript(`
@@ -1843,7 +1887,10 @@ function getTicketApiClient(shopId) {
     },
     getTicketUrl() {
       return getPddTicketUrl();
-    }
+    },
+    requestInPddPage(request) {
+      return requestViaPddPage(shopId, request);
+    },
   });
   ticketApiClients.set(shopId, client);
   return client;
@@ -1922,6 +1969,7 @@ function hasRecoveredApiToken(shopId) {
 
 function isApiReadyShop(shop) {
   if (!shop?.id) return false;
+  if (shop.status === 'expired' || shop.status === 'invalid') return false;
   if (shop.loginMethod !== 'token') return true;
   return hasRecoveredApiToken(shop.id);
 }
@@ -2231,11 +2279,13 @@ registerEmbeddedViewIpc({
   isInvoicePageUrl,
   isViolationPageUrl,
   isTicketPageUrl,
+  isAfterSalePageUrl,
   isChatPageUrl,
   getPddMailUrl,
   getPddInvoiceUrl,
   getPddViolationUrl,
   getPddTicketUrl,
+  getPddAfterSaleUrl,
   getPddChatUrl,
   getEmbeddedViewUrl
 });
@@ -2958,6 +3008,44 @@ function setupAppMenu() {
         { role: 'copy', label: '复制' },
         { role: 'paste', label: '粘贴' },
         { role: 'selectAll', label: '全选' }
+      ]
+    },
+    {
+      label: '调试',
+      submenu: [
+        {
+          label: '打开调试面板',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => {
+            const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+            Promise.resolve(createDebugWindow(parent))
+              .then(win => {
+                if (!win || win.isDestroyed()) return;
+                if (win.isMinimized()) win.restore();
+                win.show();
+                win.focus();
+              })
+              .catch(err => console.error('[PDD助手] 打开调试面板失败:', err?.message || String(err)));
+          }
+        },
+        {
+          label: '打开 DevTools',
+          accelerator: 'CmdOrCtrl+Alt+I',
+          click: () => {
+            try {
+              if (isEmbeddedPddView(currentView)) {
+                const view = shopManager?.getActiveView();
+                if (!view) return;
+                view.webContents.openDevTools({ mode: 'detach' });
+                return;
+              }
+              if (!mainWindow || mainWindow.isDestroyed()) return;
+              mainWindow.webContents.openDevTools({ mode: 'detach' });
+            } catch (err) {
+              console.error('[PDD助手] 打开 DevTools 失败:', err?.message || String(err));
+            }
+          }
+        }
       ]
     },
     {

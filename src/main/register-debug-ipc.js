@@ -101,8 +101,21 @@ function registerDebugIpc({
     })()`);
   });
 
-  ipcMain.handle('open-debug-window', () => {
-    createDebugWindow(getMainWindow());
+  ipcMain.handle('open-debug-window', async () => {
+    try {
+      const mainWindow = getMainWindow();
+      const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+      const win = await createDebugWindow(parent);
+      if (!win || win.isDestroyed()) {
+        return { error: '调试窗口创建失败' };
+      }
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+      return { ok: true };
+    } catch (err) {
+      return { error: err?.message || String(err) };
+    }
   });
 
   ipcMain.on('renderer-debug-log', (event, payload = {}) => {

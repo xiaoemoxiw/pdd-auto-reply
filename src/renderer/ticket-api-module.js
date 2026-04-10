@@ -1589,7 +1589,10 @@
     if (initialized) return;
     initialized = true;
     updateDateRangeText();
-    getEl('btnTicketApiOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
+    getEl('btnTicketApiOpenDebug')?.addEventListener('click', async () => {
+      const result = await window.pddApi.openDebugWindow();
+      if (result?.error) addLog(`打开调试面板失败: ${result.error}`, 'error');
+    });
     getEl('btnTicketApiRefreshPage')?.addEventListener('click', () => window.pddApi.reloadPdd());
     getEl('btnTicketApiReloadTraffic')?.addEventListener('click', async () => {
       await loadTicketApiTraffic();

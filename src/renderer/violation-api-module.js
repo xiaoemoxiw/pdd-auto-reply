@@ -1226,7 +1226,10 @@
   function bindViolationApiModule() {
     if (initialized) return;
     initialized = true;
-    getEl('btnViolationApiOpenDebug')?.addEventListener('click', () => window.pddApi.openDebugWindow());
+    getEl('btnViolationApiOpenDebug')?.addEventListener('click', async () => {
+      const result = await window.pddApi.openDebugWindow();
+      if (result?.error) addLog(`打开调试面板失败: ${result.error}`, 'error');
+    });
     getEl('btnViolationApiRefreshPage')?.addEventListener('click', () => window.pddApi.reloadPdd());
     getEl('btnViolationApiReloadTraffic')?.addEventListener('click', async () => {
       await loadViolationApiTraffic();

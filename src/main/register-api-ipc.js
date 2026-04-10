@@ -669,6 +669,207 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('aftersale-get-list', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) {
+      const targetShops = getApiShopList(API_ALL_SHOPS, { apiReadyOnly: true });
+      const allShops = getApiShopList(API_ALL_SHOPS);
+      const skippedShops = allShops.filter(shop => !targetShops.some(target => target.id === shop.id));
+      if (!targetShops.length) {
+        const failures = skippedShops.map(shop => ({
+          shopId: shop.id,
+          shopName: shop.name || '未命名店铺',
+          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+        }));
+        const pageNo = Math.max(1, Number(params.pageNo || params.page_no || 1));
+        const pageSize = Math.max(1, Number(params.pageSize || params.page_size || 50));
+        return { pageNo, pageSize, total: 0, list: [], failures };
+      }
+      const failures = [];
+      const pageNo = Math.max(1, Number(params.pageNo || params.page_no || 1));
+      const pageSize = Math.max(1, Number(params.pageSize || params.page_size || 50));
+      const debug = params?.debug === true;
+
+      const parseTimeToMs = (value) => {
+        if (value === undefined || value === null || value === '') return 0;
+        const num = Number(value);
+        if (Number.isFinite(num) && num > 0) return num < 10_000_000_000 ? num * 1000 : num;
+        const date = new Date(String(value));
+        const ms = date.getTime();
+        return Number.isNaN(ms) ? 0 : ms;
+      };
+
+      const pickSortTime = (item) => parseTimeToMs(
+        item?.updatedAt
+        ?? item?.updated_at
+        ?? item?.updateTime
+        ?? item?.update_time
+        ?? item?.modifyTime
+        ?? item?.modify_time
+        ?? item?.applyTime
+        ?? item?.apply_time
+        ?? item?.createdAt
+        ?? item?.created_at
+        ?? item?.createTime
+        ?? item?.create_time
+      );
+
+      try {
+        const resultGroups = await Promise.all(targetShops.map(async shop => {
+          try {
+            const forwardedParams = { ...params };
+            if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+            const result = await invokePageApiWithRetry(shop.id, () => getTicketApiClient(shop.id).getRefundList({
+              ...forwardedParams,
+              pageNo,
+              pageSize,
+            }));
+            const list = Array.isArray(result?.list) ? result.list : [];
+            const decorated = list.map(item => ({
+              ...item,
+              shopId: shop.id,
+              shopName: item.shopName || shop.name || '未知店铺',
+            }));
+            return { total: Number(result?.total || 0), list: decorated, payloadMeta: result?.payloadMeta || null, requestBody: result?.requestBody || null };
+          } catch (error) {
+            failures.push({
+              shopId: shop.id,
+              shopName: shop.name || '未命名店铺',
+              message: buildApiErrorMessage(error),
+            });
+            return { total: 0, list: [] };
+          }
+        }));
+        skippedShops.forEach(shop => {
+          failures.push({
+            shopId: shop.id,
+            shopName: shop.name || '未命名店铺',
+            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          });
+        });
+
+        const merged = resultGroups
+          .flatMap(group => group.list)
+          .sort((a, b) => pickSortTime(b) - pickSortTime(a));
+
+        const response = {
+          pageNo,
+          pageSize,
+          total: resultGroups.reduce((sum, group) => sum + Number(group.total || 0), 0),
+          list: merged,
+          failures,
+        };
+        if (debug) {
+          const samples = resultGroups
+            .map((group, idx) => ({ group, shop: targetShops[idx] }))
+            .slice(0, 6)
+            .map(item => ({
+              shopId: item.shop?.id,
+              shopName: item.shop?.name || '未命名店铺',
+              total: Number(item.group?.total || 0),
+              listLen: Array.isArray(item.group?.list) ? item.group.list.length : 0,
+              requestBodyKeys: item.group?.requestBody && typeof item.group.requestBody === 'object' ? Object.keys(item.group.requestBody) : [],
+              payloadMeta: item.group?.payloadMeta || null,
+            }));
+          response.debug = {
+            shopCount: targetShops.length,
+            failuresCount: failures.length,
+            samples,
+          };
+        }
+        return response;
+      } catch (error) {
+        return { pageNo, pageSize, total: 0, list: [], failures, error: buildApiErrorMessage(error) };
+      }
+    }
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRefundList(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-get-overview', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    const statusLabels = {
+      waitSellerHandle: '待商家处理',
+      platformHandling: '平台处理中',
+      waitBuyerHandle: '待买家处理',
+      returnedWaitHandle: '退货待处理',
+      expireIn24HoursWaitHandle: '即将逾期',
+    };
+
+    const mergeCounts = (target, countsObj) => {
+      const next = { ...(target || {}) };
+      if (!countsObj || typeof countsObj !== 'object') return next;
+      Object.keys(countsObj).forEach(key => {
+        const count = Number(countsObj[key] || 0);
+        if (Number.isFinite(count)) {
+          next[key] = Number(next[key] || 0) + count;
+        }
+      });
+      return next;
+    };
+
+    if (shopId === API_ALL_SHOPS) {
+      const targetShops = getApiShopList(API_ALL_SHOPS, { apiReadyOnly: true });
+      const allShops = getApiShopList(API_ALL_SHOPS);
+      const skippedShops = allShops.filter(shop => !targetShops.some(target => target.id === shop.id));
+      
+      if (!targetShops.length) {
+        const failures = skippedShops.map(shop => ({
+          shopId: shop.id,
+          shopName: shop.name || '未命名店铺',
+          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+        }));
+        return { shopId, counts: {}, total: 0, statusLabels, failures };
+      }
+      const failures = [];
+      try {
+        const results = await Promise.all(targetShops.map(async shop => {
+          try {
+            const result = await invokePageApiWithRetry(shop.id, () => getTicketApiClient(shop.id).getRefundCount());
+            return { shopId: shop.id, shopName: shop.name || '未命名店铺', countsObj: result?.counts || {} };
+          } catch (error) {
+            failures.push({
+              shopId: shop.id,
+              shopName: shop.name || '未命名店铺',
+              message: buildApiErrorMessage(error),
+            });
+            return { shopId: shop.id, shopName: shop.name || '未命名店铺', countsObj: {} };
+          }
+        }));
+
+        skippedShops.forEach(shop => {
+          failures.push({
+            shopId: shop.id,
+            shopName: shop.name || '未命名店铺',
+            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          });
+        });
+
+        const counts = results.reduce((acc, item) => mergeCounts(acc, item.countsObj), {});
+        const total = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+        return { shopId, counts, total, statusLabels, failures };
+      } catch (error) {
+        return { shopId, counts: {}, total: 0, statusLabels, failures, error: buildApiErrorMessage(error) };
+      }
+    }
+    
+    try {
+      const result = await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRefundCount());
+      const counts = result?.counts || {};
+      const total = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+      return { shopId, counts, total, statusLabels, failures: [] };
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
   ipcMain.handle('ticket-get-detail', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

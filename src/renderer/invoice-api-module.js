@@ -212,7 +212,24 @@
     }
 
     const orderSnEl = getEl('invoiceApiEntryOrderSn');
-    if (orderSnEl) orderSnEl.textContent = invoiceApiEntryDialogState.orderSn || '-';
+    if (orderSnEl) {
+      const orderSn = String(invoiceApiEntryDialogState.orderSn || '').trim();
+      orderSnEl.textContent = orderSn || '-';
+      orderSnEl.onclick = null;
+      if (orderSn && window.pddApi && typeof window.pddApi.openInvoiceOrderDetailWindow === 'function') {
+        const shopId = String(invoiceApiEntryDialogState.shopId || activeShopId || '').trim();
+        const serialNo = String(invoiceApiEntryDialogState.serialNo || '').trim();
+        orderSnEl.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          window.pddApi.openInvoiceOrderDetailWindow({
+            shopId,
+            orderSn,
+            serialNo
+          });
+        };
+      }
+    }
 
     const orderSnDateEl = getEl('invoiceApiEntryOrderSnDate');
     if (orderSnDateEl) {
@@ -727,7 +744,6 @@
           <td class="invoice-api-sticky-right">
             <div class="invoice-api-pdd-actions">
               <button class="invoice-api-pdd-action-link" data-invoice-action="issue" data-invoice-serial="${esc(serialNo)}">立即开票</button>
-              <button class="invoice-api-pdd-action-link" data-invoice-action="hold" data-invoice-serial="${esc(serialNo)}">暂不开票</button>
             </div>
           </td>
         </tr>
@@ -764,7 +780,8 @@
         const serialNo = String(tr?.dataset?.invoiceSerialNo || '');
         const item = invoiceApiList.find(entry => String(entry.serialNo) === serialNo);
         const orderSn = String(item?.orderSn || item?.raw?.order_sn || serialNo || '').trim();
-        await openInvoiceApiOrderInEmbedded(orderSn, serialNo);
+        const shopId = String(item?.shopId || activeShopId || '').trim();
+        await openInvoiceApiOrderInEmbedded({ orderSn, serialNo, shopId });
       });
     });
     renderInvoiceApiPager();
@@ -797,20 +814,22 @@
       : '';
   }
 
-  async function openInvoiceApiOrderInEmbedded(orderSn, serialNo) {
-    ensureInvoiceApiEmbeddedOverlayBar();
-    invoiceApiEmbeddedOverlayVisible = true;
-    invoiceApiEmbeddedOverlayOrderSn = String(orderSn || serialNo || '').trim();
-    renderInvoiceApiEmbeddedOverlayBar();
-    const result = await window.pddApi.openInvoiceOrderOverlay({
-      orderSn: invoiceApiEmbeddedOverlayOrderSn,
-      serialNo: String(serialNo || '').trim(),
-      topOffset: 42
+  async function openInvoiceApiOrderInEmbedded(params = {}) {
+    const orderSn = String(params.orderSn || params.order_sn || '').trim();
+    const serialNo = String(params.serialNo || params.serial_no || '').trim();
+    const shopId = String(params.shopId || '').trim();
+    const targetOrderSn = orderSn || serialNo;
+    if (!targetOrderSn) return;
+    if (!window.pddApi || typeof window.pddApi.openInvoiceOrderDetailWindow !== 'function') {
+      addLog('订单开票窗口能力未就绪', 'error');
+      return;
+    }
+    const result = await window.pddApi.openInvoiceOrderDetailWindow({
+      shopId,
+      orderSn: targetOrderSn,
+      serialNo
     });
     if (result && result.error) {
-      invoiceApiEmbeddedOverlayVisible = false;
-      invoiceApiEmbeddedOverlayOrderSn = '';
-      renderInvoiceApiEmbeddedOverlayBar();
       if (typeof showToast === 'function') {
         showToast(result.error);
       } else {

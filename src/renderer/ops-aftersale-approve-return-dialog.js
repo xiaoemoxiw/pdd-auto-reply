@@ -2,11 +2,16 @@
   const MODAL_ID = 'modalOpsAfterSaleApproveReturnGoods';
   const DEFAULT_MESSAGE = '请确保商品不影响二次销售（质量问题除外）\n寄回商品，不要邮寄到付，并快递单保留';
   const MUNICIPALITIES = ['北京市', '上海市', '天津市', '重庆市'];
+  const ADDRESS_LIKE_RE = /(路|街|道|巷|号|栋|单元|室|楼|村|镇|乡|小区|园|大厦|广场|门口|屯|组|开发区)/;
   let mounted = false;
   let state = {
     mode: 'common',
     context: null,
     commonAddresses: [],
+    contactDrafts: {
+      common: { receiver: '', phone: '' },
+      temp: { receiver: '', phone: '' },
+    },
   };
   const regionCache = new Map();
   const refundAddressCache = new Map();
@@ -134,9 +139,20 @@
       if (!selected) return;
       const receiverEl = getEl('opsAftersaleReturnReceiver');
       const phoneEl = getEl('opsAftersaleReturnPhone');
-      if (receiverEl) receiverEl.value = String(selected?.refundName || '').trim();
-      if (phoneEl) phoneEl.value = String(selected?.refundPhone || '').trim();
+      const receiver = String(selected?.refundName || '').trim();
+      const phone = String(selected?.refundPhone || '').trim();
+      if (receiverEl) receiverEl.value = receiver;
+      if (phoneEl) phoneEl.value = phone;
+      ensureContactDrafts();
+      state.contactDrafts.common = { receiver, phone };
       setInvalid('opsAftersaleReturnCommonSelect', false, 'opsAftersaleReturnCommonError');
+    });
+
+    overlay.querySelector('#opsAftersaleReturnReceiver')?.addEventListener('input', () => {
+      persistCurrentContactDraft();
+    });
+    overlay.querySelector('#opsAftersaleReturnPhone')?.addEventListener('input', () => {
+      persistCurrentContactDraft();
     });
 
     overlay.querySelector('#btnOpsAftersaleReturnConfirm')?.addEventListener('click', () => {
@@ -162,9 +178,51 @@
     document.body.appendChild(overlay);
   }
 
+  function ensureContactDrafts() {
+    if (!state || typeof state !== 'object') return;
+    if (!state.contactDrafts || typeof state.contactDrafts !== 'object') {
+      state.contactDrafts = {
+        common: { receiver: '', phone: '' },
+        temp: { receiver: '', phone: '' },
+      };
+      return;
+    }
+    if (!state.contactDrafts.common || typeof state.contactDrafts.common !== 'object') {
+      state.contactDrafts.common = { receiver: '', phone: '' };
+    }
+    if (!state.contactDrafts.temp || typeof state.contactDrafts.temp !== 'object') {
+      state.contactDrafts.temp = { receiver: '', phone: '' };
+    }
+  }
+
+  function persistCurrentContactDraft() {
+    const overlay = getEl(MODAL_ID);
+    if (!overlay) return;
+    ensureContactDrafts();
+    const mode = state.mode === 'common' ? 'common' : 'temp';
+    state.contactDrafts[mode] = {
+      receiver: readValue('opsAftersaleReturnReceiver'),
+      phone: readValue('opsAftersaleReturnPhone'),
+    };
+  }
+
+  function applyContactDraft(mode) {
+    const overlay = getEl(MODAL_ID);
+    if (!overlay) return;
+    ensureContactDrafts();
+    const pickedMode = mode === 'common' ? 'common' : 'temp';
+    const draft = state.contactDrafts[pickedMode] || { receiver: '', phone: '' };
+    const receiverEl = getEl('opsAftersaleReturnReceiver');
+    const phoneEl = getEl('opsAftersaleReturnPhone');
+    if (receiverEl) receiverEl.value = String(draft.receiver || '').trim();
+    if (phoneEl) phoneEl.value = String(draft.phone || '').trim();
+  }
+
   function setMode(mode) {
+    persistCurrentContactDraft();
     state.mode = mode === 'temp' ? 'temp' : 'common';
     syncModeVisibility();
+    applyContactDraft(state.mode);
     if (state.mode === 'common') {
       ensureCommonAddresses();
     }
@@ -287,7 +345,6 @@
   function extractDetailAddressFromText(text) {
     const raw = normalizeDigits(text).replace(/\u00A0/g, ' ');
     const lines = raw.split(/\r?\n/).map(s => String(s || '').trim()).filter(Boolean);
-    const addressLike = /(路|街|道|巷|号|栋|单元|室|楼|村|镇|乡|小区|园|大厦|广场|门口|屯|组|开发区)/;
     for (const line of lines) {
       const m = line.match(/(?:详细地址)\s*[:：]?\s*(.+)$/);
       const v = String(m?.[1] || '').trim();
@@ -298,15 +355,17 @@
       if (!line.includes('地址')) continue;
       if (line.includes('商家地址')) continue;
       const m = line.match(/(?:地址)\s*[:：]?\s*(.+)$/);
-      const v = String(m?.[1] || '').trim();
+      let v = String(m?.[1] || '').trim();
       if (!v) continue;
       const hasPhoneLike = /(?:\+?86[-\s]?)?(1[3-9]\d[-\s]?\d{4}[-\s]?\d{4})/.test(v);
-      if (hasPhoneLike && !addressLike.test(v)) continue;
+      if (hasPhoneLike && !ADDRESS_LIKE_RE.test(v)) continue;
+      const contactCut = v.search(/(?:电话|手机|联系电话|手机号码)\s*[:：]?\s*(?:\+?86[-\s]?)?(?:1[3-9]\d[-\s]?\d{4}[-\s]?\d{4}|0\d{2,3}[-\s]?\d{7,8})/);
+      if (contactCut > 0) v = v.slice(0, contactCut).trim();
       if (v) return v;
     }
     for (let i = lines.length - 1; i >= 0; i -= 1) {
       const line = lines[i];
-      if (!addressLike.test(line)) continue;
+      if (!ADDRESS_LIKE_RE.test(line)) continue;
       if (/(收件人|收货人|联系人|姓名|手机|电话|号码|所在地区)/.test(line)) continue;
       return line;
     }
@@ -365,18 +424,40 @@
     if (phoneDigits) {
       const idx = s.indexOf(phoneDigits);
       if (idx >= 0 && idx < 80) {
-        s = s.slice(idx + phoneDigits.length).trim();
+        const before = s.slice(0, idx);
+        const after = s.slice(idx + phoneDigits.length);
+        const beforeHasAddr = ADDRESS_LIKE_RE.test(before);
+        const afterHasAddr = ADDRESS_LIKE_RE.test(after);
+        if (!beforeHasAddr && afterHasAddr) {
+          s = after.trim();
+        } else {
+          s = `${before} ${after}`.replace(/\s+/g, ' ').trim();
+        }
       } else {
         const m = s.match(/(?:\+?86[-\s]?)?(1[3-9]\d[-\s]?\d{4}[-\s]?\d{4})/);
         if (m && typeof m.index === 'number' && m.index < 80) {
-          s = s.slice(m.index + String(m[0]).length).trim();
+          const before = s.slice(0, m.index);
+          const after = s.slice(m.index + String(m[0]).length);
+          const beforeHasAddr = ADDRESS_LIKE_RE.test(before);
+          const afterHasAddr = ADDRESS_LIKE_RE.test(after);
+          if (!beforeHasAddr && afterHasAddr) {
+            s = after.trim();
+          } else {
+            s = `${before} ${after}`.replace(/\s+/g, ' ').trim();
+          }
         }
       }
     }
 
+    s = s.replace(/(?:手机号码|手机号|手机|电话|联系电话)\s*[:：]?\s*/g, ' ').replace(/\s+/g, ' ').trim();
+
     const receiverClean = cleanupReceiverName(receiver);
     if (receiverClean && s.startsWith(receiverClean)) {
       s = s.slice(receiverClean.length).trim();
+    }
+    if (receiverClean) {
+      const esc = String(receiverClean).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      s = s.replace(new RegExp(`(?:[\\s,，;；:：。-]+)${esc}$`), '').trim();
     }
 
     s = s.replace(/^[\s,，:：;；。-]+/g, '').trim();
@@ -403,7 +484,7 @@
       .sort((a, b) => b.score - a.score)
       .slice(0, 8);
 
-    const candidates = scoredProvinces.length ? scoredProvinces.map(x => x.p) : provinces.slice(0, 8);
+    const candidates = scoredProvinces.length ? scoredProvinces.map(x => x.p) : provinces;
     let best = null;
     let bestScore = -1;
 
@@ -468,6 +549,11 @@
           district: district?.id ? { id: String(district.id), name: String(district.name || '') } : null
         };
       }
+      if (!scoredProvinces.length && best?.city?.id && best?.district?.id) {
+        const cityLen = Number(city?.matchLen || 0);
+        const distLen = Number(district?.matchLen || 0);
+        if (cityLen >= 2 && distLen >= 2) return best;
+      }
     }
 
     return best;
@@ -475,6 +561,7 @@
 
   function parsePastedContact(text) {
     const raw = normalizeDigits(text).replace(/\u00A0/g, ' ');
+    const lines = raw.split(/\r?\n/).map(s => String(s || '').trim()).filter(Boolean);
     const t = raw.replace(/[\r\n]+/g, ' ').trim();
     if (!t) return { receiver: '', phone: '' };
 
@@ -482,9 +569,30 @@
     const phoneRaw = phoneMatch?.[1] ? String(phoneMatch[1]) : '';
     const phone = phoneRaw ? phoneRaw.replace(/[^\d]/g, '') : '';
 
+    const isNameCandidate = (value) => {
+      const v = cleanupReceiverName(value);
+      if (!v) return false;
+      if (v.length > 20) return false;
+      if (/\d/.test(v)) return false;
+      if (/(地址|所在地区|详细地址|收货|收件|联系人|姓名|手机|电话|号码)/.test(v)) return false;
+      if (ADDRESS_LIKE_RE.test(v)) return false;
+      if (/(省|市|区|县|旗|镇|乡|村|街|路|道|巷|号|栋|单元|室|楼)$/.test(v)) return false;
+      return true;
+    };
+
     let receiver = '';
     const labelNameMatch = t.match(/(?:收件人|收货人|联系人|姓名)\s*[:：]?\s*([^\s,，;；:：]{1,20})/);
     if (labelNameMatch?.[1]) receiver = String(labelNameMatch[1]).trim();
+    if (!receiver) {
+      for (const line of lines) {
+        const m = line.match(/^(?:收件人|收货人|联系人|姓名)\s*[:：]?\s*(.+)$/);
+        const v = String(m?.[1] || '').trim();
+        if (isNameCandidate(v)) {
+          receiver = v;
+          break;
+        }
+      }
+    }
     if (!receiver) {
       const adjacentMatch = t.match(/([^\s,，;；:：]{2,20})\s*(?:\+?86[-\s]?)?1[3-9]\d[-\s]?\d{4}[-\s]?\d{4}/);
       if (adjacentMatch?.[1]) receiver = String(adjacentMatch[1]).trim();
@@ -496,6 +604,40 @@
       if (tokens.length) {
         const last = cleanupReceiverName(tokens[tokens.length - 1]);
         if (last.length >= 1 && last.length <= 20) receiver = last;
+      }
+    }
+
+    if (!receiver && phoneMatch && typeof phoneMatch.index === 'number') {
+      const after = t.slice(phoneMatch.index + String(phoneMatch[0] || '').length).trim();
+      const tokens = after.split(/[\s,，;；|丨/\\]+/).map(s => String(s || '').trim()).filter(Boolean);
+      for (const token of tokens) {
+        if (isNameCandidate(token)) {
+          receiver = token;
+          break;
+        }
+      }
+      if (!receiver) {
+        for (let i = tokens.length - 1; i >= 0; i -= 1) {
+          if (isNameCandidate(tokens[i])) {
+            receiver = tokens[i];
+            break;
+          }
+        }
+      }
+    }
+
+    if (!receiver && lines.length) {
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const line = String(lines[i] || '').trim();
+        if (!line) continue;
+        if (/\d/.test(line)) continue;
+        if (ADDRESS_LIKE_RE.test(line)) continue;
+        if (/(地址|所在地区|详细地址|手机|电话|号码)/.test(line)) continue;
+        const v = cleanupReceiverName(line);
+        if (isNameCandidate(v)) {
+          receiver = v;
+          break;
+        }
       }
     }
 
@@ -663,17 +805,24 @@
 
   function openDialog(context) {
     ensureMounted();
-    state = { mode: 'common', context: context || null, commonAddresses: [] };
+    state = {
+      mode: 'temp',
+      context: context || null,
+      commonAddresses: [],
+      contactDrafts: {
+        common: { receiver: '', phone: '' },
+        temp: { receiver: '', phone: '' },
+      },
+    };
     const overlay = getEl(MODAL_ID);
     if (!overlay) return;
-    overlay.querySelectorAll('input[name="opsAftersaleReturnAddrMode"]').forEach(input => {
-      input.checked = String(input.value) === state.mode;
-    });
-    syncModeVisibility();
     clearInputs();
     const messageEl = getEl('opsAftersaleReturnMessage');
     if (messageEl) messageEl.value = DEFAULT_MESSAGE;
-    ensureCommonAddresses();
+    setMode('temp');
+    overlay.querySelectorAll('input[name="opsAftersaleReturnAddrMode"]').forEach(input => {
+      input.checked = String(input.value) === state.mode;
+    });
     if (typeof window.showModal === 'function') {
       window.showModal(MODAL_ID);
     } else {

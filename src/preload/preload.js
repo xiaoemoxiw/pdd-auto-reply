@@ -153,6 +153,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   // 调试窗口
   openDebugWindow: () => ipcRenderer.invoke('open-debug-window'),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  openAfterSaleDetailWindow: (params) => ipcRenderer.invoke('aftersale-open-detail-window', params),
+  openInvoiceOrderDetailWindow: (params) => ipcRenderer.invoke('invoice-open-order-detail-window', params),
   debugLog: (payload) => ipcRenderer.send('renderer-debug-log', payload),
   toggleNetworkMonitor: (enabled) => ipcRenderer.invoke('toggle-network-monitor', enabled),
   getNetworkMonitorStatus: () => ipcRenderer.invoke('get-network-monitor-status'),

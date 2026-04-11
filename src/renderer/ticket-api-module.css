@@ -214,6 +214,74 @@
   flex-wrap: wrap;
 }
 
+.ticket-api-table-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ticket-api-status-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px 14px;
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.ticket-api-status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+  color: #555;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ticket-api-status-tab.active {
+  border-color: #4f7cff;
+  color: #4f7cff;
+  background: #f4f7ff;
+  font-weight: 600;
+}
+
+.ticket-api-status-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(79, 124, 255, 0.12);
+  color: #4f7cff;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.ticket-api-copy-link {
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: #409eff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.ticket-api-copy-link:hover {
+  text-decoration: underline;
+}
+
 .ticket-api-list-head {
   display: grid;
   grid-template-columns: minmax(0, 2.6fr) minmax(180px, 1.4fr) 140px 96px;
@@ -227,11 +295,95 @@
 }
 
 .ticket-api-list-head > div {
-  padding: 12px 14px;
+  padding: 12px 10px;
 }
 
 .ticket-api-list-wrap {
   background: #fff;
+  overflow-x: auto;
+  position: relative;
+}
+
+.ticket-api-data-table {
+  width: 100%;
+  margin: 0;
+  min-width: 1400px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: visible;
+  border-radius: 0;
+}
+
+.ticket-api-data-table td,
+.ticket-api-data-table th {
+  vertical-align: middle;
+}
+
+.ticket-api-data-table th {
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.ticket-api-data-table td {
+  font-size: 10px;
+  padding: 8px 5px;
+}
+
+.ticket-api-data-table tbody tr.ticket-api-row:hover td,
+.ticket-api-data-table tbody tr.ticket-api-row.active td {
+  background: #f8fbff;
+}
+
+.ticket-api-data-table th:nth-child(1),
+.ticket-api-data-table td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.ticket-api-data-table th:nth-child(2),
+.ticket-api-data-table td:nth-child(2) {
+  position: sticky;
+  left: 68px;
+  z-index: 2;
+  background: #fff;
+  box-shadow: 1px 0 0 #f0f0f0;
+}
+
+.ticket-api-data-table th:nth-child(11),
+.ticket-api-data-table td:nth-child(11) {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: -1px 0 0 #f0f0f0;
+}
+
+.ticket-api-data-table thead th:nth-child(1),
+.ticket-api-data-table thead th:nth-child(2),
+.ticket-api-data-table thead th:nth-child(11) {
+  background: #fafafa;
+}
+
+.ticket-api-data-table thead th:nth-child(1),
+.ticket-api-data-table thead th:nth-child(2),
+.ticket-api-data-table thead th:nth-child(11) {
+  z-index: 3;
+}
+
+.ticket-api-data-table tbody tr.ticket-api-row:hover td:nth-child(1),
+.ticket-api-data-table tbody tr.ticket-api-row.active td:nth-child(1),
+.ticket-api-data-table tbody tr.ticket-api-row:hover td:nth-child(2),
+.ticket-api-data-table tbody tr.ticket-api-row.active td:nth-child(2),
+.ticket-api-data-table tbody tr.ticket-api-row:hover td:nth-child(11),
+.ticket-api-data-table tbody tr.ticket-api-row.active td:nth-child(11) {
+  background: #f8fbff;
+}
+
+.ticket-api-cell-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .ticket-api-list-empty {
@@ -416,6 +568,41 @@
   padding: 12px 18px;
   border-top: 1px solid #f0f0f0;
   background: #fff;
+}
+
+.ticket-api-response-panel {
+  border-top: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+.ticket-api-response-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px;
+  background: #f8fafc;
+}
+
+.ticket-api-response-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #333;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ticket-api-response-pre {
+  margin: 0;
+  padding: 12px 18px 16px;
+  max-height: 260px;
+  overflow: auto;
+  background: #fff;
+  color: #111827;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .ticket-api-detail-shell {

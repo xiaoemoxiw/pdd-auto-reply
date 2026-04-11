@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   navigatePdd: (url) => ipcRenderer.invoke('navigate-pdd', url),
 
   readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
+  writeClipboardText: (text) => ipcRenderer.invoke('write-clipboard-text', text),
 
   // 客服页面 URL 管理
   getChatUrl: () => ipcRenderer.invoke('get-chat-url'),
@@ -155,6 +156,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   openAfterSaleDetailWindow: (params) => ipcRenderer.invoke('aftersale-open-detail-window', params),
   openInvoiceOrderDetailWindow: (params) => ipcRenderer.invoke('invoice-open-order-detail-window', params),
+  openTicketTodoDetailWindow: (params) => ipcRenderer.invoke('ticket-open-todo-detail-window', params),
   debugLog: (payload) => ipcRenderer.send('renderer-debug-log', payload),
   toggleNetworkMonitor: (enabled) => ipcRenderer.invoke('toggle-network-monitor', enabled),
   getNetworkMonitorStatus: () => ipcRenderer.invoke('get-network-monitor-status'),

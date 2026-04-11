@@ -29,6 +29,7 @@ const { registerDebugIpc } = require('./register-debug-ipc');
 const { registerEmbeddedViewIpc } = require('./register-embedded-view-ipc');
 const { registerAfterSaleDetailWindowIpc } = require('./register-aftersale-detail-window-ipc');
 const { registerInvoiceOrderDetailWindowIpc } = require('./register-invoice-order-detail-window-ipc');
+const { registerTicketTodoDetailWindowIpc } = require('./register-ticket-todo-detail-window-ipc');
 const Store = require('electron-store');
 
 app.disableHardwareAcceleration();
@@ -2220,6 +2221,11 @@ ipcMain.handle('read-clipboard-text', () => {
   return clipboard.readText();
 });
 
+ipcMain.handle('write-clipboard-text', (event, text) => {
+  clipboard.writeText(String(text || ''));
+  return true;
+});
+
 registerShopIpc({
   ipcMain,
   store,
@@ -2317,6 +2323,12 @@ registerInvoiceOrderDetailWindowIpc({
   store,
   getMainWindow: () => mainWindow,
   getPddInvoiceUrl
+});
+
+registerTicketTodoDetailWindowIpc({
+  ipcMain,
+  store,
+  getMainWindow: () => mainWindow
 });
 
 registerAiIpc({

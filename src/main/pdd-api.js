@@ -35,8 +35,10 @@ class PddApiClient extends EventEmitter {
     this._orderRemarkTagOptionsCache = null;
     this._orderRemarkCache = new Map();
     this._seenMessageIds = new Set();
+    this._pollBootstrapDone = false;
     this._sessionCache = [];
     this._bootstrapTraffic = [];
+    this._inviteOrderStateByUid = new Map();
     this._onLog = options.onLog || (() => {});
     this._getShopInfo = options.getShopInfo || (() => null);
     this._getApiTraffic = options.getApiTraffic || (() => []);
@@ -184,6 +186,10 @@ class PddApiClient extends EventEmitter {
     return this._safeParseJson(this._findLatestTraffic(urlPart)?.requestBody);
   }
 
+  _getLatestRawRequestBody(urlPart) {
+    return this._findLatestTraffic(urlPart)?.requestBody;
+  }
+
   _collectObjectKeyPaths(value, prefix = '', depth = 0) {
     if (!value || typeof value !== 'object' || depth > 3) return [];
     const result = [];
@@ -208,6 +214,22 @@ class PddApiClient extends EventEmitter {
       current = current[segment];
     }
     return current;
+  }
+
+  _writeObjectPath(value, path, nextValue) {
+    if (!value || typeof value !== 'object' || !path) return false;
+    const segments = String(path).split('.').filter(Boolean);
+    if (!segments.length) return false;
+    let current = value;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const segment = segments[i];
+      if (!current[segment] || typeof current[segment] !== 'object' || Array.isArray(current[segment])) {
+        current[segment] = {};
+      }
+      current = current[segment];
+    }
+    current[segments[segments.length - 1]] = nextValue;
+    return true;
   }
 
   _findObjectPathByCandidates(value, candidates = []) {
@@ -238,12 +260,14 @@ class PddApiClient extends EventEmitter {
     const amountField = this._findObjectPathByCandidates(templateBody, ['playMoneyAmount', 'play_money_amount', 'amount', 'transferAmount', 'transfer_amount']);
     const typeField = this._findObjectPathByCandidates(templateBody, ['refundType', 'refund_type', 'payType', 'pay_type', 'transferType', 'transfer_type']);
     const noteField = this._findObjectPathByCandidates(templateBody, ['remarks', 'remark', 'leaveMessage', 'leave_message', 'message']);
+    const chargeField = this._findObjectPathByCandidates(templateBody, ['chargeType', 'charge_type']);
     const mobileField = this._findObjectPathByCandidates(templateBody, ['mobile', 'userinfo.mobile', 'currentUserInfo.mobile']);
     const recognizedFields = {
       orderField,
       amountField,
       typeField,
       noteField,
+      chargeField,
       mobileField,
     };
     const recognizedCount = Object.values(recognizedFields).filter(Boolean).length;
@@ -258,6 +282,7 @@ class PddApiClient extends EventEmitter {
         amount: amountField ? this._readObjectPath(templateBody, amountField) : undefined,
         type: typeField ? this._readObjectPath(templateBody, typeField) : undefined,
         note: noteField ? this._readObjectPath(templateBody, noteField) : undefined,
+        chargeType: chargeField ? this._readObjectPath(templateBody, chargeField) : undefined,
       }),
     };
   }
@@ -279,38 +304,124 @@ class PddApiClient extends EventEmitter {
     ].some(value => value !== undefined && value !== null && value !== '');
   }
 
-  _getLatestSmallPaymentSubmitTemplate(orderSn = '') {
+  _normalizeSmallPaymentTemplateLabel(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return '';
+    if (['shipping', '补运费'].includes(normalized)) return 'shipping';
+    if (['difference', '补差价'].includes(normalized)) return 'difference';
+    if (['other', '其他', '2'].includes(normalized)) return 'other';
+    return '';
+  }
+
+  _inferSmallPaymentTemplateLabelFromBody(body = {}) {
+    const directMatch = [
+      body?.transferTypeDesc,
+      body?.transfer_type_desc,
+      body?.remarks,
+      body?.remark,
+      body?.leaveMessage,
+      body?.leave_message,
+    ].map(item => this._inferSmallPaymentTypeLabel(item)).find(Boolean);
+    if (directMatch) {
+      return directMatch;
+    }
+    const refundType = body?.refundType ?? body?.refund_type;
+    if (Number(refundType) === 2) {
+      return 'other';
+    }
+    return '';
+  }
+
+  _normalizeSmallPaymentTemplateEntry(template) {
+    if (!template || typeof template !== 'object') {
+      return null;
+    }
+    const parsedBody = this._safeParseJson(template?.requestBody);
+    if (!parsedBody || typeof parsedBody !== 'object') {
+      return null;
+    }
+    return {
+      url: template.url || `${PDD_BASE}/mercury/unknown_small_payment_submit`,
+      method: template.method || 'POST',
+      requestBody: JSON.stringify(parsedBody),
+    };
+  }
+
+  _collectPersistedSmallPaymentSubmitTemplates(desiredType = '') {
+    const persistedTemplate = this._getSmallPaymentSubmitTemplate();
+    if (!persistedTemplate || typeof persistedTemplate !== 'object') {
+      return [];
+    }
+    const normalizedDesired = this._normalizeSmallPaymentTemplateLabel(desiredType);
+    const candidates = [];
+    const seen = new Set();
+    const pushCandidate = (template) => {
+      const normalizedTemplate = this._normalizeSmallPaymentTemplateEntry(template);
+      if (!normalizedTemplate) return;
+      const key = `${normalizedTemplate.method}:${normalizedTemplate.url}:${normalizedTemplate.requestBody}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      candidates.push(normalizedTemplate);
+    };
+    if (persistedTemplate.latest || persistedTemplate.byLabel || persistedTemplate.byRefundType) {
+      if (normalizedDesired) {
+        pushCandidate(persistedTemplate.byLabel?.[normalizedDesired]);
+      }
+      pushCandidate(persistedTemplate.latest);
+      Object.values(persistedTemplate.byLabel || {}).forEach(pushCandidate);
+      Object.values(persistedTemplate.byRefundType || {}).forEach(pushCandidate);
+      return candidates;
+    }
+    pushCandidate(persistedTemplate);
+    return candidates;
+  }
+
+  _getLatestSmallPaymentSubmitTemplate(orderSn = '', options = {}) {
     const normalizedOrderSn = String(orderSn || '').trim();
-    const latestTrafficTemplate = this._findLatestTrafficEntry((entry) => {
-      if (String(entry?.method || 'GET').toUpperCase() !== 'POST') return false;
+    const desiredType = this._normalizeSmallPaymentTemplateLabel(options?.desiredType);
+    const trafficEntries = this._getApiTrafficEntries();
+    let fallbackTrafficTemplate = null;
+    for (let i = trafficEntries.length - 1; i >= 0; i--) {
+      const entry = trafficEntries[i];
+      if (String(entry?.method || 'GET').toUpperCase() !== 'POST') continue;
       const url = String(entry?.url || '');
-      if (!url.includes('/mercury/')) return false;
+      if (!url.includes('/mercury/')) continue;
       if ([
         '/mercury/micro_transfer/detail',
         '/mercury/micro_transfer/queryTips',
         '/mercury/play_money/check',
       ].some(part => url.includes(part))) {
-        return false;
+        continue;
       }
       const body = this._safeParseJson(entry?.requestBody);
-      return this._isSmallPaymentSubmitBody(body, normalizedOrderSn);
-    });
-    if (latestTrafficTemplate) {
-      return latestTrafficTemplate;
+      if (!this._isSmallPaymentSubmitBody(body, normalizedOrderSn)) {
+        continue;
+      }
+      if (!fallbackTrafficTemplate) {
+        fallbackTrafficTemplate = entry;
+      }
+      if (!desiredType || this._inferSmallPaymentTemplateLabelFromBody(body) === desiredType) {
+        return entry;
+      }
     }
-    const persistedTemplate = this._getSmallPaymentSubmitTemplate();
-    if (!persistedTemplate || typeof persistedTemplate !== 'object') {
-      return null;
+    if (fallbackTrafficTemplate) {
+      return fallbackTrafficTemplate;
     }
-    const persistedBody = this._safeParseJson(persistedTemplate?.requestBody);
-    if (!this._isSmallPaymentSubmitBody(persistedBody, normalizedOrderSn)) {
-      return null;
+    const persistedCandidates = this._collectPersistedSmallPaymentSubmitTemplates(desiredType);
+    let fallbackPersistedTemplate = null;
+    for (const template of persistedCandidates) {
+      const persistedBody = this._safeParseJson(template?.requestBody);
+      if (!this._isSmallPaymentSubmitBody(persistedBody, normalizedOrderSn)) {
+        continue;
+      }
+      if (!fallbackPersistedTemplate) {
+        fallbackPersistedTemplate = template;
+      }
+      if (!desiredType || this._inferSmallPaymentTemplateLabelFromBody(persistedBody) === desiredType) {
+        return template;
+      }
     }
-    return {
-      url: persistedTemplate.url || `${PDD_BASE}/mercury/unknown_small_payment_submit`,
-      method: persistedTemplate.method || 'POST',
-      requestBody: JSON.stringify(persistedBody),
-    };
+    return fallbackPersistedTemplate;
   }
 
   _getLatestConversationTrafficEntry() {
@@ -385,6 +496,298 @@ class PddApiClient extends EventEmitter {
       ].map(value => String(value || '')).filter(Boolean);
       return targetIds.some(targetId => ids.includes(targetId));
     });
+  }
+
+  _getLatestSendMessagePreCheck(sessionRef) {
+    const { sessionMeta, ids } = this._getSessionIdentityCandidates(sessionRef);
+    const uidSet = new Set(ids.map(value => String(value || '').trim()).filter(Boolean));
+
+    const updateEntry = this._findLatestTrafficEntry((entry) => {
+      if (!String(entry?.url || '').includes('/detroit/chatDetail/updateChatBizInfo')) return false;
+      const body = this._safeParseJson(entry?.requestBody);
+      const customerUid = String(body?.customerUid || '').trim();
+      return !!customerUid && uidSet.has(customerUid);
+    });
+    const updatePayload = updateEntry?.responseBody && typeof updateEntry.responseBody === 'object'
+      ? updateEntry.responseBody
+      : null;
+    const updateInfo = updatePayload?.result?.sendMessageCheckData?.preCheckInfo;
+    if (updateInfo && typeof updateInfo === 'object') {
+      return this._cloneJson(updateInfo);
+    }
+
+    const wsEntry = this._findLatestTrafficEntry((entry) => {
+      if (String(entry?.direction || '') !== 'received') return false;
+      if (String(entry?.transport || '') !== 'websocket') return false;
+      const payload = entry?.decodedFrame?.notifyPayload;
+      const data = payload?.message?.data;
+      if (!data || typeof data !== 'object') return false;
+      if (String(payload?.response || '') !== 'mall_system_msg') return false;
+      if (Number(payload?.message?.type) !== 67) return false;
+      const uid = String(data?.uid || data?.user_id || '').trim();
+      return !!uid && uidSet.has(uid);
+    });
+    const wsPayload = wsEntry?.decodedFrame?.notifyPayload;
+    const wsInfo = wsPayload?.message?.data;
+    if (wsInfo && typeof wsInfo === 'object') {
+      return this._cloneJson(wsInfo);
+    }
+
+    return null;
+  }
+
+  _getLatestTrusteeshipStateInfo(sessionRef) {
+    const { sessionMeta, ids } = this._getSessionIdentityCandidates(sessionRef);
+    const uidSet = new Set(ids.map(value => String(value || '').trim()).filter(Boolean));
+
+    const queryEntry = this._findLatestTrafficEntry((entry) => {
+      if (!String(entry?.url || '').includes('/refraction/robot/mall/trusteeshipState/queryTrusteeshipState')) return false;
+      const body = this._safeParseJson(entry?.requestBody);
+      const uid = String(body?.uid || '').trim();
+      return !!uid && uidSet.has(uid);
+    });
+    const queryPayload = queryEntry?.responseBody && typeof queryEntry.responseBody === 'object'
+      ? queryEntry.responseBody
+      : null;
+    if (queryPayload?.result && typeof queryPayload.result === 'object') {
+      return this._cloneJson(queryPayload.result);
+    }
+
+    const wsEntry = this._findLatestTrafficEntry((entry) => {
+      if (String(entry?.direction || '') !== 'received') return false;
+      if (String(entry?.transport || '') !== 'websocket') return false;
+      const payload = entry?.decodedFrame?.notifyPayload;
+      const body = payload?.body || payload?.message?.data;
+      if (!body || typeof body !== 'object') return false;
+      const bizType = String(payload?.bizType || '').trim();
+      const subType = String(payload?.subType || '').trim();
+      const uid = String(body?.uid || body?.user_id || '').trim();
+      return bizType === 'merchant-robot' && subType === 'trusteeshipState' && !!uid && uidSet.has(uid);
+    });
+    const wsPayload = wsEntry?.decodedFrame?.notifyPayload;
+    const wsBody = wsPayload?.body || wsPayload?.message?.data;
+    if (wsBody && typeof wsBody === 'object') {
+      return this._cloneJson(wsBody);
+    }
+
+    return null;
+  }
+
+  _findConversationReadMark(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    const queue = [payload];
+    const visited = new Set();
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current || typeof current !== 'object' || visited.has(current)) continue;
+      visited.add(current);
+      if (Array.isArray(current)) {
+        current.forEach(item => {
+          if (item && typeof item === 'object') queue.push(item);
+        });
+        continue;
+      }
+      const directMark = current.read_mark || current.readMark;
+      if (directMark && typeof directMark === 'object') {
+        const userLastRead = directMark.user_last_read ?? directMark.userLastRead;
+        const minSupportedMsgId = directMark.min_supported_msg_id ?? directMark.minSupportedMsgId;
+        if (userLastRead || minSupportedMsgId) {
+          return this._cloneJson(directMark);
+        }
+      }
+      Object.keys(current).forEach(key => {
+        const value = current[key];
+        if (value && typeof value === 'object') {
+          queue.push(value);
+        }
+      });
+    }
+    return null;
+  }
+
+  _getLatestConversationReadMark(sessionRef, payload = null) {
+    const payloadMark = this._findConversationReadMark(payload);
+    if (payloadMark) return payloadMark;
+    if (!sessionRef) return null;
+    const { ids } = this._getSessionIdentityCandidates(sessionRef);
+    const uidSet = new Set(ids.map(value => String(value || '').trim()).filter(Boolean));
+    if (!uidSet.size) return null;
+    const wsEntry = this._findLatestTrafficEntry((entry) => {
+      if (String(entry?.direction || '') !== 'received') return false;
+      if (String(entry?.transport || '') !== 'websocket') return false;
+      const notifyPayload = entry?.decodedFrame?.notifyPayload;
+      if (String(notifyPayload?.response || '') !== 'mall_system_msg') return false;
+      if (Number(notifyPayload?.message?.type) !== 20) return false;
+      const data = notifyPayload?.message?.data;
+      if (!data || typeof data !== 'object') return false;
+      const uid = String(data?.uid || data?.user_id || '').trim();
+      return !!uid && uidSet.has(uid);
+    });
+    const data = wsEntry?.decodedFrame?.notifyPayload?.message?.data;
+    if (!data || typeof data !== 'object') return null;
+    if (!data.user_last_read && !data.userLastRead && !data.min_supported_msg_id && !data.minSupportedMsgId) {
+      return null;
+    }
+    return this._cloneJson(data);
+  }
+
+  _extractMessageBuyerReadState(item = {}, options = {}) {
+    if (this._getMessageActor(item) !== 'seller') return '';
+    const userLastReadMs = this._normalizeTimestampMs(
+      options?.user_last_read
+      ?? options?.userLastRead
+      ?? options?.readMark?.user_last_read
+      ?? options?.readMark?.userLastRead
+    );
+    if (!userLastReadMs) return '';
+    const messageTsMs = this._normalizeTimestampMs(
+      item?.send_time || item?.time || item?.ts || item?.timestamp || item?.created_at
+    );
+    if (!messageTsMs) return '';
+    return messageTsMs <= userLastReadMs ? 'read' : 'unread';
+  }
+
+  async _queryTrusteeshipState(sessionRef) {
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const uid = String(sessionMeta?.userUid || sessionMeta?.customerId || '').trim();
+    if (!uid) return null;
+    return this._post('/refraction/robot/mall/trusteeshipState/queryTrusteeshipState', { uid }, {
+      'content-type': 'application/json;charset=UTF-8',
+    });
+  }
+
+  async _queryReplyState(sessionRef) {
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const uid = String(sessionMeta?.userUid || sessionMeta?.customerId || '').trim();
+    if (!uid) return null;
+    return this._post('/refraction/robot/mall/trusteeshipState/queryReplyState', { uid }, {
+      'content-type': 'application/json;charset=UTF-8',
+    });
+  }
+
+  async _updateChatBizInfo(sessionRef) {
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const customerUid = String(sessionMeta?.userUid || sessionMeta?.customerId || '').trim();
+    if (!customerUid) return null;
+    return this._post('/detroit/chatDetail/updateChatBizInfo', { customerUid }, {
+      'content-type': 'application/json;charset=UTF-8',
+    });
+  }
+
+  async _notifyTyping(sessionRef) {
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const uid = String(sessionMeta?.userUid || sessionMeta?.customerId || '').trim();
+    if (!uid) return null;
+    return this._post('/plateau/conv/typing', { uid }, {
+      'content-type': 'application/json;charset=UTF-8',
+    });
+  }
+
+  async _sendPendingConfirmData(sessionRef, pendingConfirmData = {}, options = {}) {
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const uid = String(sessionMeta?.userUid || sessionMeta?.customerId || '').trim();
+    const referenceConsumerMessageId = Number(
+      pendingConfirmData?.referenceConsumerMessageId
+      || pendingConfirmData?.refConsumerMessageId
+      || 0
+    );
+    const type = Number(pendingConfirmData?.type || 2) || 2;
+    const needChangeTrusteeship = options.needChangeTrusteeship === true;
+    if (!uid || !referenceConsumerMessageId) return null;
+    return this._post('/refraction/robot/mall/trusteeshipState/sendPendingConfirmDataNew', {
+      uid,
+      type,
+      referenceConsumerMessageId,
+      needChangeTrusteeship,
+    }, {
+      'content-type': 'application/json;charset=UTF-8',
+    });
+  }
+
+  async _refreshManualSendAntiContent() {
+    const rawBody = this._getLatestRawRequestBody('/xg/pfb/a2');
+    if (!rawBody) return null;
+    const body = typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody);
+    return this._requestRaw('POST', 'https://xg.pinduoduo.com/xg/pfb/a2', body, {
+      'content-type': 'application/json',
+      Referer: `${PDD_BASE}/`,
+    });
+  }
+
+  async _prepareManualSendContext(sessionRef) {
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const sessionId = String(sessionMeta?.sessionId || '');
+    const uid = String(sessionMeta?.userUid || sessionMeta?.customerId || '').trim();
+    this._log('[API] 发送前准备人工发送上下文', { sessionId, uid });
+
+    let trusteeshipPayload = null;
+    try {
+      trusteeshipPayload = await this._queryTrusteeshipState(sessionMeta);
+    } catch (error) {
+      this._log('[API] queryTrusteeshipState 失败', { sessionId, uid, message: error?.message || '未知异常' });
+    }
+    const initialTrusteeshipInfo = trusteeshipPayload?.result || null;
+    const latestTrusteeshipInfo = this._getLatestTrusteeshipStateInfo(sessionMeta);
+    const pendingConfirmData = initialTrusteeshipInfo?.pendingConfirmData
+      || latestTrusteeshipInfo?.pendingConfirmData
+      || null;
+    const canRestoreTrusteeship = initialTrusteeshipInfo?.trusteeshipMode === 2
+      && initialTrusteeshipInfo?.canActiveManually === true;
+    let pendingConfirmExecuted = false;
+    if (pendingConfirmData?.referenceConsumerMessageId && (pendingConfirmData?.hasOnlySend || canRestoreTrusteeship)) {
+      try {
+        await this._sendPendingConfirmData(sessionMeta, pendingConfirmData, {
+          needChangeTrusteeship: canRestoreTrusteeship,
+        });
+        pendingConfirmExecuted = true;
+        this._log('[API] sendPendingConfirmDataNew 成功', {
+          sessionId,
+          uid,
+          type: Number(pendingConfirmData?.type || 2) || 2,
+          referenceConsumerMessageId: Number(pendingConfirmData?.referenceConsumerMessageId || 0) || 0,
+          needChangeTrusteeship: canRestoreTrusteeship,
+        });
+        await new Promise(resolve => setTimeout(resolve, 350));
+        trusteeshipPayload = await this._queryTrusteeshipState(sessionMeta);
+      } catch (error) {
+        this._log('[API] sendPendingConfirmDataNew 失败', {
+          sessionId,
+          uid,
+          message: error?.message || '未知异常',
+        });
+      }
+    }
+    try {
+      await this._queryReplyState(sessionMeta);
+    } catch (error) {
+      this._log('[API] queryReplyState 失败', { sessionId, uid, message: error?.message || '未知异常' });
+    }
+    let bizPayload = null;
+    try {
+      bizPayload = await this._updateChatBizInfo(sessionMeta);
+    } catch (error) {
+      this._log('[API] updateChatBizInfo 失败', { sessionId, uid, message: error?.message || '未知异常' });
+    }
+    try {
+      await this._notifyTyping(sessionMeta);
+    } catch (error) {
+      this._log('[API] conv/typing 失败', { sessionId, uid, message: error?.message || '未知异常' });
+    }
+    try {
+      await this._refreshManualSendAntiContent();
+    } catch (error) {
+      this._log('[API] xg/pfb/a2 刷新失败', { sessionId, uid, message: error?.message || '未知异常' });
+    }
+
+    const preCheckInfo = bizPayload?.result?.sendMessageCheckData?.preCheckInfo || null;
+    const trusteeshipInfo = trusteeshipPayload?.result || null;
+    return {
+      checked: true,
+      trusteeshipInfo: trusteeshipInfo ? this._cloneJson(trusteeshipInfo) : null,
+      preCheckInfo: preCheckInfo ? this._cloneJson(preCheckInfo) : null,
+      pendingConfirmData: pendingConfirmData ? this._cloneJson(pendingConfirmData) : null,
+      pendingConfirmExecuted,
+    };
   }
 
   _normalizeSessionMeta(sessionRef) {
@@ -509,7 +912,7 @@ class PddApiClient extends EventEmitter {
     const { ids } = this._getSessionIdentityCandidates(sessionRef);
     const entry = this._getLatestSessionTraffic('/plateau/chat/list', ids);
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
-    const messages = this._parseMessages(payload);
+    const messages = this._parseMessages(payload, sessionRef);
     const buyerMessage = [...messages].reverse().find(item => item.isFromBuyer && item?.raw && typeof item.raw === 'object');
     if (buyerMessage?.raw?.user_info) {
       return this._cloneJson(buyerMessage.raw.user_info);
@@ -528,7 +931,7 @@ class PddApiClient extends EventEmitter {
     const identitySet = new Set(ids);
     const entry = this._getLatestSessionTraffic('/plateau/chat/list', ids);
     const payload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
-    const messages = this._parseMessages(payload);
+    const messages = this._parseMessages(payload, sessionRef);
     const sellerMessage = [...messages].reverse().find(item => item.actor === 'seller' && item?.raw && typeof item.raw === 'object');
     if (sellerMessage?.raw) {
       return this._cloneJson(sellerMessage.raw);
@@ -561,12 +964,35 @@ class PddApiClient extends EventEmitter {
   }
 
   _buildSendMessageTemplate(sessionRef, text, ts, hash) {
-    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const { sessionMeta, ids } = this._getSessionIdentityCandidates(sessionRef);
     const shop = this._getShopInfo();
     const mallId = this._getMallId();
+    const hasSendMessageTemplate = !!this._getLatestSessionTraffic('/plateau/chat/send_message', ids);
     const template = this._getLatestMessageTemplate(sessionMeta) || {};
     const buyerInfo = this._getLatestBuyerInfo(sessionMeta);
     const targetUid = String(sessionMeta.userUid || sessionMeta.customerId || sessionMeta.sessionId || '');
+
+    if (!hasSendMessageTemplate) {
+      return {
+        to: {
+          role: 'user',
+          uid: targetUid,
+        },
+        from: {
+          role: 'mall_cs',
+        },
+        ts,
+        content: text,
+        msg_id: null,
+        type: 0,
+        is_aut: 0,
+        manual_reply: 1,
+        status: 'read',
+        is_read: 1,
+        hash,
+      };
+    }
+
     const from = { ...(template.from || {}) };
     const to = { ...(template.to || {}) };
 
@@ -890,8 +1316,62 @@ class PddApiClient extends EventEmitter {
     return String(text || '').replace(/\s+/g, ' ').trim();
   }
 
+  _isInviteOrderTemplateMessage(item = {}) {
+    const templateName = String(item?.template_name || item?.templateName || '').trim();
+    if (templateName === 'substitute_order_v2' || templateName === 'substitute_order_v3') return true;
+    if (templateName) return false;
+    const messageType = Number(
+      item?.type
+      ?? item?.msg_type
+      ?? item?.message_type
+      ?? item?.content_type
+      ?? -1
+    );
+    const sourceText = this._extractMessageText(item);
+    if (this._isRefundPendingNoticeText(sourceText) || this._isRefundSuccessNoticeText(sourceText)) {
+      return false;
+    }
+    const info = item?.info && typeof item.info === 'object' ? item.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const goodsInfoList = [
+      infoData?.goods_info_list,
+      infoData?.goodsInfoList,
+      infoData?.goods_list,
+      infoData?.goodsList,
+      info?.goods_info_list,
+      info?.goodsInfoList,
+      info?.goods_list,
+      info?.goodsList,
+    ].find(Array.isArray) || [];
+    return messageType === 64 && !!(
+      goodsInfoList.length
+      && goodsInfoList.some(entry => entry && typeof entry === 'object')
+    );
+  }
+
+  _isSystemNoticeMessage(item = {}) {
+    const sourceText = this._extractMessageText(item);
+    if (this._isRefundDefaultSellerNoteText(sourceText)) return false;
+    const messageType = Number(
+      item?.type
+      ?? item?.msg_type
+      ?? item?.message_type
+      ?? item?.content_type
+      ?? -1
+    );
+    const cardId = String(item?.info?.card_id || '').trim();
+    if (messageType === 19 && cardId === 'ask_refund_apply') return false;
+    if (this._isInviteOrderTemplateMessage(item)) return false;
+    if (messageType === 31 || messageType === 90) return true;
+    const templateName = String(item?.template_name || item?.templateName || '').trim();
+    if (templateName) return true;
+    const systemInfo = item?.system;
+    if (systemInfo && typeof systemInfo === 'object' && Object.keys(systemInfo).length) return true;
+    return this._isSystemNoticeText(sourceText);
+  }
+
   _getMessageActor(item = {}) {
-    if (this._isSystemNoticeText(this._extractMessageText(item))) return 'system';
+    if (this._isSystemNoticeMessage(item)) return 'system';
     const role = String(
       item.role ||
       item.msg_from ||
@@ -929,6 +1409,7 @@ class PddApiClient extends EventEmitter {
   _isSystemNoticeText(text = '') {
     const source = String(text || '').trim();
     if (!source) return false;
+    if (this._isRefundPendingNoticeText(source) || this._isRefundSuccessNoticeText(source)) return true;
     return [
       /您接待过此消费者/,
       /机器人已暂停接待/,
@@ -939,10 +1420,36 @@ class PddApiClient extends EventEmitter {
       /为避免抢答/,
       /当前用户来自/,
       /商品详情页/,
-      /^\[?消费者已同意您发起的退款申请，请及时处理\]?$/,
-      /^退款成功通知$/,
-      /^退款成功$/,
+      /订单已超承诺发货时间/,
+      /请人工跟进/,
     ].some(pattern => pattern.test(source));
+  }
+
+  _isRefundDefaultSellerNoteText(text = '') {
+    const source = String(text || '').trim();
+    if (!source) return false;
+    return [
+      /帮您申请退款，您看可以吗.*点击下方卡片按钮/,
+      /帮您申请退货退款，您看可以吗.*点击下方卡片按钮/,
+      /帮您申请补寄，您看可以吗.*点击下方卡片按钮/,
+    ].some(pattern => pattern.test(source));
+  }
+
+  _normalizeSystemNoticeComparableText(text = '') {
+    return String(text || '')
+      .trim()
+      .replace(/^[\[【]\s*/, '')
+      .replace(/\s*[\]】]$/, '')
+      .trim();
+  }
+
+  _isRefundPendingNoticeText(text = '') {
+    return this._normalizeSystemNoticeComparableText(text) === '消费者已同意您发起的退款申请，请及时处理';
+  }
+
+  _isRefundSuccessNoticeText(text = '') {
+    const normalized = this._normalizeSystemNoticeComparableText(text);
+    return normalized === '退款成功通知' || normalized === '退款成功';
   }
 
   async _confirmSentTextMessage(sessionRef, text, options = {}) {
@@ -966,6 +1473,58 @@ class PddApiClient extends EventEmitter {
           confirmed: true,
           messageId: String(matched.messageId || ''),
           timestamp: matched.timestamp || 0,
+        };
+      }
+      if (index < attempts - 1) {
+        await this._sleep(delayMs);
+      }
+    }
+    return { confirmed: false };
+  }
+
+  async _confirmPendingConfirmMessage(sessionRef, pendingConfirmData = {}, options = {}) {
+    const attempts = Math.max(1, Number(options.attempts || 6));
+    const delayMs = Math.max(0, Number(options.delayMs || 650));
+    const pageSize = Math.max(20, Number(options.pageSize || 20));
+    const sentAtMs = Number(options.sentAtMs || Date.now());
+    const expectedText = this._normalizeComparableMessageText(pendingConfirmData?.showText || '');
+    const expectedConsumerMessageId = Number(
+      pendingConfirmData?.referenceConsumerMessageId
+      || pendingConfirmData?.refConsumerMessageId
+      || 0
+    );
+    for (let index = 0; index < attempts; index++) {
+      const messages = await this.getSessionMessages(sessionRef, 1, pageSize);
+      const matched = messages.find(message => {
+        const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+        const timestampMs = this._normalizeTimestampMs(message.timestamp);
+        if (timestampMs && (timestampMs < sentAtMs - 15000 || timestampMs > Date.now() + 60000)) {
+          return false;
+        }
+        const templateName = String(raw?.template_name || raw?.templateName || '').trim();
+        const showAuto = raw?.show_auto === true || raw?.showAuto === true;
+        const consumerMessageId = Number(
+          raw?.biz_context?.consumer_msg_id
+          || raw?.bizContext?.consumer_msg_id
+          || raw?.bizContext?.consumerMsgId
+          || raw?.push_biz_context?.consumer_msg_id
+          || raw?.pushBizContext?.consumer_msg_id
+          || 0
+        );
+        if (expectedConsumerMessageId > 0 && consumerMessageId === expectedConsumerMessageId) {
+          return true;
+        }
+        if (templateName !== 'mall_robot_text_msg' && !showAuto) return false;
+        const messageText = this._normalizeComparableMessageText(message.content);
+        if (expectedText && messageText && messageText === expectedText) return true;
+        return !!timestampMs && timestampMs >= sentAtMs - 15000;
+      });
+      if (matched) {
+        return {
+          confirmed: true,
+          messageId: String(matched.messageId || ''),
+          timestamp: matched.timestamp || 0,
+          content: String(matched.content || pendingConfirmData?.showText || '').trim(),
         };
       }
       if (index < attempts - 1) {
@@ -1534,11 +2093,15 @@ class PddApiClient extends EventEmitter {
   _hasPendingReplySession(session = {}) {
     const lastMessageActor = String(session?.lastMessageActor || '').toLowerCase();
     const lastMessageIsFromBuyer = session?.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer';
-    if (!lastMessageIsFromBuyer) return false;
     const waitValue = Number(session?.waitTime || 0);
-    if (Number.isFinite(waitValue) && waitValue > 0) return true;
-    if (session?.isTimeout) return true;
-    return Number(session?.unreadCount || 0) > 0;
+    const hasPendingIndicators = (
+      (Number.isFinite(waitValue) && waitValue > 0)
+      || session?.isTimeout
+      || Number(session?.unreadCount || 0) > 0
+    );
+    if (lastMessageIsFromBuyer) return hasPendingIndicators;
+    if (lastMessageActor === 'seller') return false;
+    return hasPendingIndicators;
   }
 
   _filterDisplaySessions(sessions = []) {
@@ -1547,6 +2110,35 @@ class PddApiClient extends EventEmitter {
       || this._isTodayTimestamp(session?.createdAt)
       || this._hasPendingReplySession(session)
     ));
+  }
+
+  _pickPendingBuyerMessage(messages = [], buyerIds = [], sessionMeta = {}) {
+    const sorted = Array.isArray(messages)
+      ? messages.slice().sort((a, b) => this._normalizeTimestampMs(a?.timestamp) - this._normalizeTimestampMs(b?.timestamp))
+      : [];
+    let latestBuyerMessage = null;
+    const comparableBuyerIds = Array.isArray(buyerIds)
+      ? buyerIds.map(value => String(value || '').trim()).filter(Boolean)
+      : [];
+    const previewText = this._normalizeComparableMessageText(this._extractSessionPreviewText(sessionMeta));
+    for (const item of sorted) {
+      const actor = String(item?.actor || this._getMessageActor(item?.raw || item) || '').toLowerCase();
+      const senderId = String(item?.senderId || item?.raw?.from_uid || item?.raw?.sender_id || item?.raw?.from_id || item?.raw?.from?.uid || '').trim();
+      const isBuyerMessage = actor === 'buyer' || (!!senderId && comparableBuyerIds.includes(senderId));
+      const isSellerMessage = actor === 'seller';
+      const text = String(item?.content || '').trim();
+      const normalizedText = this._normalizeComparableMessageText(text);
+      const matchesPreview = !!previewText && !!normalizedText && normalizedText === previewText;
+      if (!text || actor === 'system') continue;
+      if (isSellerMessage) {
+        latestBuyerMessage = null;
+        continue;
+      }
+      if (isBuyerMessage || (actor === 'unknown' && matchesPreview)) {
+        latestBuyerMessage = item;
+      }
+    }
+    return latestBuyerMessage;
   }
 
   _parseSessionIdentity(item = {}) {
@@ -1885,6 +2477,215 @@ class PddApiClient extends EventEmitter {
     }
   }
 
+  _normalizeOrderSn(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  _matchSessionByOrderSn(session = {}, orderSn = '') {
+    const targetOrderSn = this._normalizeOrderSn(orderSn);
+    if (!targetOrderSn) return false;
+    const candidates = [
+      session?.orderId,
+      session?.orderSn,
+      session?.order_sn,
+      session?.raw?.order_id,
+      session?.raw?.orderId,
+      session?.raw?.order_sn,
+      session?.raw?.orderSn,
+    ].map(value => this._normalizeOrderSn(value)).filter(Boolean);
+    return candidates.includes(targetOrderSn);
+  }
+
+  _findCachedSessionByOrderSn(orderSn = '', sessions = []) {
+    const list = Array.isArray(sessions) ? sessions : [];
+    const matched = list.find(item => this._matchSessionByOrderSn(item, orderSn));
+    return matched ? this._cloneJson(matched) : null;
+  }
+
+  _findCachedSessionByUid(uid = '') {
+    const normalizedUid = String(uid || '').trim();
+    if (!normalizedUid) return null;
+    const cachedSessions = [
+      ...this._sessionCache,
+      ...this._parseSessionList(this._getLatestResponseBody('/plateau/chat/latest_conversations')),
+    ];
+    const matched = cachedSessions.find(item => {
+      const candidates = [
+        item?.sessionId,
+        item?.explicitSessionId,
+        item?.conversationId,
+        item?.chatId,
+        item?.rawId,
+        item?.customerId,
+        item?.userUid,
+        item?.raw?.session_id,
+        item?.raw?.conversation_id,
+        item?.raw?.chat_id,
+        item?.raw?.id,
+        item?.raw?.customer_id,
+        item?.raw?.buyer_id,
+        item?.raw?.uid,
+        item?.raw?.to?.uid,
+        item?.raw?.user_info?.uid,
+      ].map(value => String(value || '').trim()).filter(Boolean);
+      return candidates.includes(normalizedUid);
+    });
+    return matched ? this._cloneJson(matched) : null;
+  }
+
+  _parseOrderHistoryMessageItem(item) {
+    if (!item) return null;
+    if (typeof item === 'string') {
+      const parsed = this._safeParseJson(item);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    }
+    return item && typeof item === 'object' ? item : null;
+  }
+
+  async getHistoryMessagesByOrderSn(orderSn, options = {}) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单号');
+    }
+    const payload = await this._post('/latitude/message/getHistoryMessage', {
+      orderSn: normalizedOrderSn,
+      startTime: Math.max(0, Number(options?.startTime || 0) || 0),
+      endTime: Math.max(0, Number(options?.endTime || Math.floor(Date.now() / 1000)) || Math.floor(Date.now() / 1000)),
+      pageNum: Math.max(0, Number(options?.pageNum || 0) || 0),
+      pageSize: Math.max(1, Math.min(Number(options?.pageSize || 20) || 20, 100)),
+    });
+    const normalizedList = (Array.isArray(payload?.result?.messageList) ? payload.result.messageList : [])
+      .map(item => this._parseOrderHistoryMessageItem(item))
+      .filter(Boolean);
+    const messages = this._parseMessages({
+      result: {
+        messages: normalizedList,
+      },
+    });
+    return {
+      payload,
+      messages,
+      userInfo: payload?.result?.userInfo && typeof payload.result.userInfo === 'object'
+        ? payload.result.userInfo
+        : {},
+      mallInfo: payload?.result?.mallInfo && typeof payload.result.mallInfo === 'object'
+        ? payload.result.mallInfo
+        : {},
+    };
+  }
+
+  _buildSyntheticSessionFromOrderHistory(orderSn = '', history = {}) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    const payload = history?.payload && typeof history.payload === 'object' ? history.payload : {};
+    const userInfo = history?.userInfo && typeof history.userInfo === 'object' ? history.userInfo : {};
+    const mallInfo = history?.mallInfo && typeof history.mallInfo === 'object' ? history.mallInfo : {};
+    const messages = Array.isArray(history?.messages) ? history.messages : [];
+    const buyerMessage = messages.find(item => item?.isFromBuyer && String(item?.senderId || '').trim());
+    const latestMessage = messages.length ? messages[messages.length - 1] : null;
+    const uid = String(
+      userInfo?.uid
+      || buyerMessage?.senderId
+      || buyerMessage?.raw?.from?.uid
+      || ''
+    ).trim();
+    if (!uid) return null;
+    const cachedSession = this._findCachedSessionByUid(uid);
+    if (cachedSession) {
+      return {
+        ...cachedSession,
+        orderId: cachedSession.orderId || normalizedOrderSn,
+        customerName: cachedSession.customerName || String(userInfo?.nickName || userInfo?.nickname || '').trim(),
+        customerAvatar: cachedSession.customerAvatar || String(userInfo?.avatar || '').trim(),
+      };
+    }
+    const customerName = String(userInfo?.nickName || userInfo?.nickname || buyerMessage?.senderName || '').trim();
+    const customerAvatar = String(userInfo?.avatar || '').trim();
+    return {
+      sessionId: uid,
+      explicitSessionId: '',
+      conversationId: '',
+      chatId: '',
+      rawId: '',
+      customerId: uid,
+      userUid: uid,
+      customerName,
+      customerAvatar,
+      lastMessage: String(latestMessage?.content || '').trim(),
+      lastMessageTime: Number(latestMessage?.timestamp || 0) || 0,
+      lastMessageActor: String(latestMessage?.actor || 'unknown'),
+      lastMessageIsFromBuyer: latestMessage?.isFromBuyer === true,
+      createdAt: Number(messages[0]?.timestamp || latestMessage?.timestamp || 0) || 0,
+      unreadCount: 0,
+      isTimeout: false,
+      waitTime: 0,
+      groupNumber: 0,
+      group_number: 0,
+      orderId: normalizedOrderSn,
+      goodsInfo: null,
+      csUid: '',
+      mallId: String(mallInfo?.mallId || ''),
+      mallName: String(mallInfo?.mallName || ''),
+      isShopMember: null,
+      raw: {
+        ...(payload?.result || {}),
+        user_info: {
+          uid,
+          nickname: customerName,
+          avatar: customerAvatar,
+        },
+        uid,
+        customer_id: uid,
+        buyer_id: uid,
+        order_id: normalizedOrderSn,
+        order_sn: normalizedOrderSn,
+      },
+    };
+  }
+
+  async findSessionByOrderSn(orderSn, options = {}) {
+    const normalizedOrderSn = String(orderSn || '').trim();
+    if (!normalizedOrderSn) {
+      throw new Error('缺少订单号');
+    }
+    if (!this._sessionInited) {
+      await this.initSession();
+    }
+
+    let matchedSession = this._findCachedSessionByOrderSn(normalizedOrderSn, this._sessionCache);
+    if (matchedSession) {
+      return matchedSession;
+    }
+
+    const pageLimit = Math.max(1, Math.min(Number(options?.pageLimit || 4) || 4, 10));
+    const pageSize = Math.max(20, Math.min(Number(options?.pageSize || 50) || 50, 100));
+    for (let page = 1; page <= pageLimit; page += 1) {
+      const sessions = await this.getSessionList(page, pageSize);
+      matchedSession = this._findCachedSessionByOrderSn(normalizedOrderSn, sessions);
+      if (matchedSession) {
+        return matchedSession;
+      }
+      if (!Array.isArray(sessions) || sessions.length < pageSize) {
+        break;
+      }
+    }
+    try {
+      const history = await this.getHistoryMessagesByOrderSn(normalizedOrderSn, {
+        pageSize: Math.max(10, Math.min(Number(options?.historyPageSize || 20) || 20, 100)),
+      });
+      const syntheticSession = this._buildSyntheticSessionFromOrderHistory(normalizedOrderSn, history);
+      if (!syntheticSession?.sessionId) {
+        throw new Error('未找到对应订单会话');
+      }
+      return syntheticSession;
+    } catch (error) {
+      this._log('[API] 按订单号查找会话失败', {
+        orderSn: normalizedOrderSn,
+        message: error.message,
+      });
+      throw new Error('未找到对应订单会话');
+    }
+  }
+
   _isBuyerMessage(item) {
     return this._getMessageActor(item) === 'buyer';
   }
@@ -1913,6 +2714,64 @@ class PddApiClient extends EventEmitter {
         ].find(entry => typeof entry === 'string' && entry.trim());
         if (nestedText) return nestedText;
       }
+    }
+    const structuredText = this._extractStructuredMessageText(item);
+    if (structuredText) return structuredText;
+    return '';
+  }
+
+  _extractStructuredMessageEntryText(entry) {
+    if (!entry || typeof entry !== 'object') return '';
+    return this._pickGoodsText([
+      entry?.text,
+      entry?.content,
+      entry?.message,
+      entry?.msg,
+      entry?.title,
+      entry?.label,
+      entry?.name,
+      entry?.desc,
+      entry?.value,
+    ]);
+  }
+
+  _extractStructuredMessageText(item = {}) {
+    const info = item?.info && typeof item.info === 'object' ? item.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const systemInfo = item?.system && typeof item.system === 'object' ? item.system : {};
+    const pushBizContext = item?.push_biz_context && typeof item.push_biz_context === 'object' ? item.push_biz_context : {};
+    const directText = this._pickGoodsText([
+      info?.mall_content,
+      info?.merchant_content,
+      info?.content,
+      info?.text,
+      info?.title,
+      infoData?.mall_content,
+      infoData?.content,
+      infoData?.text,
+      infoData?.title,
+      info?.label,
+      info?.desc,
+      info?.tip,
+      info?.message,
+      systemInfo?.text,
+      systemInfo?.content,
+      pushBizContext?.replace_content,
+      pushBizContext?.replaceContent,
+    ]);
+    if (directText) return directText;
+    const entryLists = [
+      Array.isArray(info?.item_content) ? info.item_content : [],
+      Array.isArray(info?.mall_item_content) ? info.mall_item_content : [],
+      Array.isArray(info?.items) ? info.items : [],
+    ];
+    for (const list of entryLists) {
+      const entryText = list
+        .map(entry => this._extractStructuredMessageEntryText(entry))
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      if (entryText) return entryText;
     }
     return '';
   }
@@ -2697,21 +3556,22 @@ class PddApiClient extends EventEmitter {
     return directCandidates.find(Array.isArray) || [];
   }
 
-  _parseMessages(payload) {
+  _parseMessages(payload, sessionRef = null) {
     const list = this._findMessageArray(payload);
+    const readMark = this._getLatestConversationReadMark(sessionRef, payload);
 
     return list.map(item => ({
       actor: this._getMessageActor(item),
       messageId: item.msg_id || item.message_id || item.id || '',
       sessionId: item.session_id || item.conversation_id || item.chat_id || item?.to?.uid || item?.from?.uid || '',
       content: this._extractMessageText(item),
-      msgType: item.msg_type || item.message_type || item.content_type || 1,
+      msgType: item.msg_type || item.message_type || item.content_type || item.type || 1,
       isFromBuyer: this._isBuyerMessage(item),
       isSystem: this._getMessageActor(item) === 'system',
       senderName: this._extractMessageSenderName(item),
       senderId: item.from_uid || item.sender_id || item.from_id || item?.from?.uid || '',
       timestamp: item.send_time || item.time || item.ts || item.timestamp || item.created_at || 0,
-      readState: this._extractMessageReadState(item),
+      readState: this._extractMessageBuyerReadState(item, { readMark }) || '',
       extra: item.extra || item.ext || null,
       raw: item,
     }));
@@ -3861,7 +4721,12 @@ class PddApiClient extends EventEmitter {
     const limitAmountFen = Math.max(0, Number(checkResult?.limitAmount || 0) || 0);
     const transferCode = String(checkResult?.transferCode || '').trim();
     const transferDesc = String(checkResult?.transferDesc || '').trim();
-    const submitTemplate = this._getLatestSmallPaymentSubmitTemplate(normalizedOrderSn);
+    const desiredType = this._normalizeSmallPaymentTemplateLabel(
+      params?.refundType ?? params?.refund_type ?? params?.type
+    );
+    const submitTemplate = this._getLatestSmallPaymentSubmitTemplate(normalizedOrderSn, {
+      desiredType,
+    });
     const submitTemplateMeta = this._analyzeSmallPaymentSubmitTemplate(submitTemplate);
     const tipList = Array.isArray(tipsResult?.tipVOList) ? tipsResult.tipVOList : [];
     const confirmTipList = Array.isArray(tipsResult?.confirmTipVOList) ? tipsResult.confirmTipVOList : [];
@@ -3908,7 +4773,63 @@ class PddApiClient extends EventEmitter {
     };
   }
 
-  _normalizeSmallPaymentRefundType(value) {
+  _inferSmallPaymentTypeLabel(text) {
+    const normalized = String(text || '').trim();
+    if (!normalized) return '';
+    if (normalized.includes('补运费')) return 'shipping';
+    if (normalized.includes('补差价')) return 'difference';
+    if (normalized.includes('其他') || normalized.includes('补偿')) return 'other';
+    return '';
+  }
+
+  _resolveSmallPaymentRefundTypeFromTemplate(templateBody, submitTemplateMeta = null) {
+    const snapshotType = submitTemplateMeta?.snapshot?.type;
+    const templateType = snapshotType !== undefined
+      ? snapshotType
+      : this._readObjectPath(templateBody, submitTemplateMeta?.recognizedFields?.typeField);
+    if (!Number.isFinite(Number(templateType))) {
+      return null;
+    }
+    const labelCandidates = [
+      submitTemplateMeta?.snapshot?.note,
+      this._readObjectPath(templateBody, submitTemplateMeta?.recognizedFields?.noteField),
+      templateBody?.transferTypeDesc,
+      templateBody?.transfer_type_desc,
+      templateBody?.remarks,
+      templateBody?.remark,
+    ];
+    const matchedLabel = labelCandidates
+      .map(item => this._inferSmallPaymentTypeLabel(item))
+      .find(Boolean);
+    return {
+      refundType: Math.max(0, Math.round(Number(templateType))),
+      label: matchedLabel || '',
+    };
+  }
+
+  _resolveSmallPaymentRefundTypeFromHistory(detailList = [], desiredLabel = '') {
+    const normalizedDesired = String(desiredLabel || '').trim();
+    if (!normalizedDesired || !Array.isArray(detailList)) {
+      return null;
+    }
+    for (const item of detailList) {
+      if (!item || typeof item !== 'object') continue;
+      const refundType = item?.refundType ?? item?.refund_type ?? item?.transferType ?? item?.transfer_type;
+      if (!Number.isFinite(Number(refundType))) continue;
+      const matchedLabel = [
+        item?.transferTypeDesc,
+        item?.transfer_type_desc,
+        item?.remarks,
+        item?.remark,
+      ].map(text => this._inferSmallPaymentTypeLabel(text)).find(Boolean);
+      if (matchedLabel && matchedLabel === normalizedDesired) {
+        return Math.max(0, Math.round(Number(refundType)));
+      }
+    }
+    return null;
+  }
+
+  _normalizeSmallPaymentRefundType(value, options = {}) {
     if (typeof value === 'number' && Number.isFinite(value)) {
       return Math.max(0, Math.round(value));
     }
@@ -3916,19 +4837,50 @@ class PddApiClient extends EventEmitter {
     if (!normalized) {
       throw new Error('缺少打款类型');
     }
+    if (['0', '1', '2'].includes(normalized)) {
+      return Number(normalized);
+    }
     if (['other', '其他', '2'].includes(normalized)) {
       return 2;
     }
-    if (['difference', '补差价'].includes(normalized)) {
-      throw new Error('当前尚未确认“补差价”的真实 refundType 映射，请先继续抓取一次该类型请求');
-    }
-    if (['shipping', '补运费'].includes(normalized)) {
-      throw new Error('当前尚未确认“补运费”的真实 refundType 映射，请先继续抓取一次该类型请求');
-    }
-    if (['0', '1'].includes(normalized)) {
-      return Number(normalized);
+    const desiredLabel = ['difference', '补差价'].includes(normalized)
+      ? 'difference'
+      : (['shipping', '补运费'].includes(normalized) ? 'shipping' : '');
+    if (desiredLabel) {
+      const templateResolved = this._resolveSmallPaymentRefundTypeFromTemplate(
+        options?.templateBody,
+        options?.submitTemplateMeta
+      );
+      if (templateResolved?.label === desiredLabel && Number.isFinite(Number(templateResolved?.refundType))) {
+        return templateResolved.refundType;
+      }
+      const historyResolved = this._resolveSmallPaymentRefundTypeFromHistory(options?.detailList, desiredLabel);
+      if (Number.isFinite(Number(historyResolved))) {
+        return historyResolved;
+      }
+      throw new Error(`当前尚未捕获“${desiredLabel === 'shipping' ? '补运费' : '补差价'}”的真实 refundType，请先在嵌入网页完成一次该类型打款`);
     }
     throw new Error(`暂不支持的打款类型：${value}`);
+  }
+
+  _buildSmallPaymentSubmitRequestBody(params = {}) {
+    const templateBody = params?.templateBody && typeof params.templateBody === 'object'
+      ? this._cloneJson(params.templateBody)
+      : {};
+    const recognizedFields = params?.submitTemplateMeta?.recognizedFields || {};
+    const writeField = (path, fallbackKey, value) => {
+      if (path) {
+        this._writeObjectPath(templateBody, path, value);
+      } else {
+        templateBody[fallbackKey] = value;
+      }
+    };
+    writeField(recognizedFields.orderField, 'orderSn', params.orderSn);
+    writeField(recognizedFields.amountField, 'playMoneyAmount', params.playMoneyAmount);
+    writeField(recognizedFields.typeField, 'refundType', params.refundType);
+    writeField(recognizedFields.noteField, 'remarks', params.remarks);
+    writeField(recognizedFields.chargeField, 'chargeType', params.chargeType);
+    return templateBody;
   }
 
   async submitSmallPayment(params = {}) {
@@ -3936,9 +4888,6 @@ class PddApiClient extends EventEmitter {
     if (!normalizedOrderSn) {
       throw new Error('缺少订单编号');
     }
-    const refundType = this._normalizeSmallPaymentRefundType(
-      params?.refundType ?? params?.refund_type ?? params?.type
-    );
     const playMoneyAmount = Number.isFinite(Number(params?.playMoneyAmountFen))
       ? Math.max(0, Math.round(Number(params.playMoneyAmountFen)))
       : this._parseOrderPriceYuanToFen(params?.playMoneyAmount || params?.amount);
@@ -3961,21 +4910,34 @@ class PddApiClient extends EventEmitter {
       throw new Error('当前店铺尚未捕获小额打款真实提交模板');
     }
     const templateBody = this._safeParseJson(submitTemplate?.requestBody);
+    const submitTemplateMeta = this._analyzeSmallPaymentSubmitTemplate(submitTemplate);
+    const refundType = this._normalizeSmallPaymentRefundType(
+      params?.refundType ?? params?.refund_type ?? params?.type,
+      {
+        detailList: info?.detailList,
+        templateBody,
+        submitTemplateMeta,
+      }
+    );
     const chargeType = Number.isFinite(Number(params?.chargeType))
       ? Math.max(0, Math.round(Number(params.chargeType)))
       : Math.max(0, Number(
-        templateBody?.chargeType
+        submitTemplateMeta?.snapshot?.chargeType
+        ?? this._readObjectPath(templateBody, submitTemplateMeta?.recognizedFields?.chargeField)
+        ?? templateBody?.chargeType
         ?? templateBody?.charge_type
         ?? info?.channel
         ?? 4
       ) || 0);
-    const requestBody = {
+    const requestBody = this._buildSmallPaymentSubmitRequestBody({
+      templateBody,
+      submitTemplateMeta,
       orderSn: normalizedOrderSn,
       playMoneyAmount,
       refundType,
       remarks,
       chargeType,
-    };
+    });
     this._log('[API] 提交小额打款', {
       orderSn: normalizedOrderSn,
       playMoneyAmount,
@@ -4006,6 +4968,414 @@ class PddApiClient extends EventEmitter {
       transferCode: result?.transferCode ?? null,
       cashierShortUrl,
       cashierUrl: cashierShortUrl ? `https://mms.pinduoduo.com/cashier/?orderSn=${cashierShortUrl}` : '',
+    };
+  }
+
+  _resolveInviteOrderUid(params = {}) {
+    const sessionMeta = this._normalizeSessionMeta(params?.session || params?.sessionId);
+    const candidates = [
+      params?.uid,
+      sessionMeta?.userUid,
+      sessionMeta?.customerId,
+      sessionMeta?.sessionId,
+      sessionMeta?.raw?.uid,
+      sessionMeta?.raw?.to?.uid,
+      sessionMeta?.raw?.user_info?.uid,
+      sessionMeta?.raw?.buyer_id,
+      sessionMeta?.raw?.customer_id,
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    return candidates[0] || '';
+  }
+
+  _getInviteOrderSessionState(uid) {
+    const normalizedUid = String(uid || '').trim();
+    if (!normalizedUid) {
+      return {
+        uid: '',
+        goodsList: [],
+        selectedItems: [],
+      };
+    }
+    if (!this._inviteOrderStateByUid.has(normalizedUid)) {
+      this._inviteOrderStateByUid.set(normalizedUid, {
+        uid: normalizedUid,
+        goodsList: [],
+        selectedItems: [],
+      });
+    }
+    return this._inviteOrderStateByUid.get(normalizedUid);
+  }
+
+  _formatInviteOrderFen(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return '';
+    const yuan = amount / 100;
+    return yuan.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  }
+
+  _normalizeInviteOrderGoodsItem(item = {}) {
+    const minPrice = Number(item?.minOnSaleGroupPriceOriginal);
+    const maxPrice = Number(item?.maxOnSaleGroupPriceOriginal);
+    let priceText = '';
+    if (Number.isFinite(minPrice) && Number.isFinite(maxPrice) && minPrice > 0 && maxPrice > 0) {
+      priceText = minPrice === maxPrice
+        ? `¥${this._formatInviteOrderFen(minPrice)}`
+        : `¥${this._formatInviteOrderFen(minPrice)}-${this._formatInviteOrderFen(maxPrice)}`;
+    } else if (String(item?.defaultPriceStr || '').trim()) {
+      priceText = `¥${String(item.defaultPriceStr).trim()}`;
+    }
+    const metaParts = [];
+    if (Number.isFinite(Number(item?.quantity))) {
+      metaParts.push(`库存 ${Number(item.quantity)}`);
+    }
+    if (Number.isFinite(Number(item?.soldQuantity))) {
+      metaParts.push(`已售 ${Number(item.soldQuantity)}`);
+    }
+    if (String(item?.failInviteReason || '').trim()) {
+      metaParts.push(String(item.failInviteReason).trim());
+    }
+    return {
+      itemId: String(item?.goodsId || '').trim(),
+      goodsId: Number(item?.goodsId || 0),
+      title: String(item?.goodsName || '').trim(),
+      imageUrl: String(item?.thumbUrl || item?.hdUrl || '').trim(),
+      priceText,
+      metaText: metaParts.join(' · '),
+      canInvite: item?.canInvite !== false,
+      raw: this._cloneJson(item),
+    };
+  }
+
+  _filterInviteOrderGoodsList(goodsList = [], keyword = '') {
+    const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+    if (!normalizedKeyword) return goodsList;
+    return goodsList.filter(item => String(item?.title || '').toLowerCase().includes(normalizedKeyword));
+  }
+
+  _buildInviteOrderSnapshot(uid, options = {}) {
+    const normalizedUid = String(uid || '').trim();
+    const state = this._getInviteOrderSessionState(normalizedUid);
+    const keyword = String(options?.keyword || '').trim();
+    const goodsList = Array.isArray(options?.goodsList) ? options.goodsList : state.goodsList;
+    const selectedItems = Array.isArray(state.selectedItems) ? state.selectedItems : [];
+    const selectedGoodsIds = new Set(
+      selectedItems.map(item => String(item?.goodsId || '').trim()).filter(Boolean)
+    );
+    const filteredGoodsList = this._filterInviteOrderGoodsList(goodsList, keyword).map(item => ({
+      ...item,
+      selected: selectedGoodsIds.has(String(item?.goodsId || '').trim()),
+      buttonText: selectedGoodsIds.has(String(item?.goodsId || '').trim()) ? '已加入' : '加入清单',
+    }));
+    const totalFen = selectedItems.reduce((sum, item) => sum + Number(item?.promoPrice || item?.skuPrice || 0), 0);
+    let statusText = selectedItems.length
+      ? `已选 ${selectedItems.length} 件商品，可直接发送给买家`
+      : '未添加任何商品，请从左侧列表选择商品';
+    if (!filteredGoodsList.length && keyword) {
+      statusText = '未找到匹配商品，请尝试更换关键词';
+    } else if (!filteredGoodsList.length) {
+      statusText = '暂未读取到可邀请商品';
+    }
+    return {
+      success: true,
+      source: 'api',
+      goodsItems: filteredGoodsList,
+      selectedItems: selectedItems.map((item, index) => ({
+        itemId: `${item.goodsId || 'goods'}:${item.skuId || index}`,
+        title: item.displayTitle || item.title || '已选商品',
+        imageUrl: String(item?.imageUrl || '').trim(),
+        priceText: `¥${this._formatInviteOrderFen(Number(item?.promoPrice || item?.skuPrice || 0)) || '0.00'}`,
+        goodsNumber: Number(item?.goodsNumber || 1),
+      })),
+      selectedCount: selectedItems.length,
+      totalText: `¥${this._formatInviteOrderFen(totalFen || 0) || '0.00'}`,
+      statusText,
+    };
+  }
+
+  async _loadInviteOrderGoodsList(uid) {
+    const payload = await this._requestGoodsPageApi('/latitude/goods/getMallChatGoodsList', {
+      pageNum: 1,
+      pageSize: 15,
+      uid,
+    }, 'POST');
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      throw new Error(businessError);
+    }
+    const result = payload?.result || {};
+    const rawList = [
+      ...(Array.isArray(result?.goodsList) ? result.goodsList : []),
+      ...(Array.isArray(result?.activeGoodsList) ? result.activeGoodsList : []),
+      ...(Array.isArray(result?.footprintGoodsList) ? result.footprintGoodsList : []),
+    ];
+    const deduped = [];
+    const seen = new Set();
+    for (const item of rawList) {
+      const normalized = this._normalizeInviteOrderGoodsItem(item);
+      if (!normalized.goodsId || !normalized.title) continue;
+      const key = String(normalized.goodsId);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(normalized);
+    }
+    return deduped;
+  }
+
+  async _loadInviteOrderSkuSelector(uid, goodsId) {
+    const payload = await this._requestGoodsPageApi('/latitude/goods/skuSelectorForMall', {
+      goodsId,
+      uid,
+    }, 'POST');
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      throw new Error(businessError);
+    }
+    const result = payload?.result || {};
+    const skuList = Array.isArray(result?.sku) ? result.sku : [];
+    return { payload, result, skuList };
+  }
+
+  _buildInviteOrderSkuSpecText(specs = [], { withKeys = false } = {}) {
+    return (Array.isArray(specs) ? specs : [])
+      .map(item => {
+        const key = String(item?.specKey || '').trim();
+        const value = String(item?.specValue || '').trim();
+        if (withKeys && key && value) return `${key}:${value}`;
+        return value || key;
+      })
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  _buildInviteOrderSkuPriceText(sku = {}) {
+    const price = Number(
+      sku?.groupPrice
+      || sku?.oldGroupPrice
+      || sku?.normalPrice
+      || sku?.price
+      || 0
+    );
+    return price > 0 ? `¥${this._formatInviteOrderFen(price)}` : '';
+  }
+
+  async getInviteOrderSkuOptions(params = {}) {
+    const uid = this._resolveInviteOrderUid(params);
+    const goodsId = Number(String(params?.itemId || params?.goodsId || '').trim());
+    if (!uid) {
+      throw new Error('缺少买家 UID');
+    }
+    if (!Number.isFinite(goodsId) || goodsId <= 0) {
+      throw new Error('缺少商品标识');
+    }
+    const state = this._getInviteOrderSessionState(uid);
+    if (!Array.isArray(state.goodsList) || !state.goodsList.length) {
+      state.goodsList = await this._loadInviteOrderGoodsList(uid);
+    }
+    const goodsInfo = state.goodsList.find(item => Number(item?.goodsId) === goodsId) || {};
+    const { result, skuList } = await this._loadInviteOrderSkuSelector(uid, goodsId);
+    const availableSku = skuList.find(item => Number(item?.isOnsale) === 1 && Number(item?.quantity || 0) > 0)
+      || skuList.find(item => Number(item?.isOnsale) === 1)
+      || skuList[0];
+    const optionLabelSet = new Set();
+    const skuOptions = skuList
+      .map((item, index) => {
+        const skuId = Number(item?.skuId || 0);
+        if (!skuId) return null;
+        const label = this._buildInviteOrderSkuSpecText(item?.specs || []);
+        const detailLabel = this._buildInviteOrderSkuSpecText(item?.specs || [], { withKeys: true });
+        const specKeys = Array.isArray(item?.specs) ? item.specs.map(spec => String(spec?.specKey || '').trim()).filter(Boolean) : [];
+        specKeys.forEach(key => optionLabelSet.add(key));
+        const quantity = Number(item?.quantity || 0);
+        return {
+          skuId,
+          label: label || `规格 ${index + 1}`,
+          detailLabel: detailLabel || label || `规格 ${index + 1}`,
+          priceText: this._buildInviteOrderSkuPriceText(item) || goodsInfo.priceText || '',
+          quantity,
+          stockText: Number.isFinite(quantity) ? `库存 ${Math.max(0, quantity)}` : '',
+          disabled: Number(item?.isOnsale) !== 1 || quantity <= 0,
+        };
+      })
+      .filter(Boolean);
+    return {
+      success: true,
+      source: 'api',
+      goodsId,
+      title: String(goodsInfo?.title || result?.goodsName || '').trim() || '商品',
+      imageUrl: String(goodsInfo?.imageUrl || '').trim(),
+      priceText: String(goodsInfo?.priceText || '').trim() || (availableSku ? this._buildInviteOrderSkuPriceText(availableSku) : ''),
+      optionLabel: optionLabelSet.size === 1 ? Array.from(optionLabelSet)[0] : '规格',
+      selectedSkuId: availableSku?.skuId ? String(availableSku.skuId) : '',
+      skuOptions,
+    };
+  }
+
+  async _resolveInviteOrderSelection(uid, goodsId, goodsList = [], preferredSkuId = '') {
+    const { result, skuList } = await this._loadInviteOrderSkuSelector(uid, goodsId);
+    const normalizedPreferredSkuId = Number(String(preferredSkuId || '').trim());
+    const targetSku = (Number.isFinite(normalizedPreferredSkuId) && normalizedPreferredSkuId > 0
+      ? skuList.find(item => Number(item?.skuId) === normalizedPreferredSkuId)
+      : null)
+      || skuList.find(item => Number(item?.isOnsale) === 1 && Number(item?.quantity || 0) > 0)
+      || skuList.find(item => Number(item?.isOnsale) === 1)
+      || skuList[0];
+    if (!targetSku?.skuId) {
+      throw new Error('该商品暂无可邀请规格');
+    }
+    if (Number.isFinite(normalizedPreferredSkuId) && normalizedPreferredSkuId > 0 && Number(targetSku?.skuId) !== normalizedPreferredSkuId) {
+      throw new Error('所选规格不存在');
+    }
+    if (Number(targetSku?.isOnsale) !== 1 || Number(targetSku?.quantity || 0) <= 0) {
+      throw new Error('所选规格当前不可邀请');
+    }
+    const skuPrice = Number(
+      targetSku?.groupPrice
+      || targetSku?.oldGroupPrice
+      || targetSku?.normalPrice
+      || targetSku?.price
+      || 0
+    );
+    const promoPayload = await this._requestGoodsPageApi('/latitude/goods/substitutePromoPrice', {
+      type: 1,
+      uid,
+      selectList: [{
+        goodsId,
+        skuId: targetSku.skuId,
+        goodsNumber: 1,
+        skuPrice,
+      }],
+    }, 'POST');
+    const promoBusinessError = this._normalizeBusinessError(promoPayload);
+    if (promoBusinessError) {
+      throw new Error(promoBusinessError);
+    }
+    const promoItem = Array.isArray(promoPayload?.result?.skuPromoPriceList)
+      ? promoPayload.result.skuPromoPriceList[0]
+      : null;
+    const goodsInfo = goodsList.find(item => Number(item?.goodsId) === Number(goodsId)) || {};
+    const specText = this._buildInviteOrderSkuSpecText(targetSku?.specs || [], { withKeys: true });
+    return {
+      goodsId: Number(goodsId),
+      skuId: Number(targetSku.skuId),
+      goodsNumber: Number(promoItem?.goodsNumber || 1),
+      skuPrice: Number(promoItem?.skuPrice || skuPrice || 0),
+      promoPrice: Number(promoItem?.promoPrice || skuPrice || 0),
+      title: String(goodsInfo?.title || result?.goodsName || '').trim(),
+      imageUrl: String(goodsInfo?.imageUrl || '').trim(),
+      displayTitle: specText
+        ? `${String(goodsInfo?.title || result?.goodsName || '商品').trim()}（${specText}）`
+        : String(goodsInfo?.title || result?.goodsName || '商品').trim(),
+    };
+  }
+
+  async getInviteOrderState(params = {}) {
+    const uid = this._resolveInviteOrderUid(params);
+    if (!uid) {
+      throw new Error('缺少买家 UID');
+    }
+    const state = this._getInviteOrderSessionState(uid);
+    state.goodsList = await this._loadInviteOrderGoodsList(uid);
+    return this._buildInviteOrderSnapshot(uid, {
+      keyword: params?.keyword,
+      goodsList: state.goodsList,
+    });
+  }
+
+  async addInviteOrderItem(params = {}) {
+    const uid = this._resolveInviteOrderUid(params);
+    const goodsId = Number(String(params?.itemId || '').trim());
+    const preferredSkuId = String(params?.skuId || '').trim();
+    if (!uid) {
+      throw new Error('缺少买家 UID');
+    }
+    if (!Number.isFinite(goodsId) || goodsId <= 0) {
+      throw new Error('缺少商品标识');
+    }
+    const state = this._getInviteOrderSessionState(uid);
+    if (!Array.isArray(state.goodsList) || !state.goodsList.length) {
+      state.goodsList = await this._loadInviteOrderGoodsList(uid);
+    }
+    const exists = state.selectedItems.find(item => Number(item?.goodsId) === goodsId);
+    if (!exists) {
+      const selection = await this._resolveInviteOrderSelection(uid, goodsId, state.goodsList, preferredSkuId);
+      state.selectedItems.push(selection);
+    }
+    return this._buildInviteOrderSnapshot(uid, {
+      keyword: params?.keyword,
+      goodsList: state.goodsList,
+    });
+  }
+
+  async clearInviteOrderItems(params = {}) {
+    const uid = this._resolveInviteOrderUid(params);
+    if (!uid) {
+      throw new Error('缺少买家 UID');
+    }
+    const state = this._getInviteOrderSessionState(uid);
+    state.selectedItems = [];
+    if (!Array.isArray(state.goodsList) || !state.goodsList.length) {
+      state.goodsList = await this._loadInviteOrderGoodsList(uid);
+    }
+    return this._buildInviteOrderSnapshot(uid, {
+      keyword: params?.keyword,
+      goodsList: state.goodsList,
+    });
+  }
+
+  async submitInviteOrder(params = {}) {
+    const uid = this._resolveInviteOrderUid(params);
+    if (!uid) {
+      throw new Error('缺少买家 UID');
+    }
+    const state = this._getInviteOrderSessionState(uid);
+    const goodsList = Array.isArray(state.selectedItems)
+      ? state.selectedItems
+        .filter(item => item?.goodsId && item?.skuId)
+        .map(item => ({
+          skuId: Number(item.skuId),
+          goodsId: Number(item.goodsId),
+          goodsNumber: Number(item.goodsNumber || 1),
+        }))
+      : [];
+    if (!goodsList.length) {
+      throw new Error('请先选择至少一个商品');
+    }
+    const payload = await this._requestGoodsPageApi('/latitude/goods/sendSubstituteOrderCard', {
+      goodsList,
+      uid,
+      note: '',
+      couponAmount: 0,
+      autoSendCoupon: true,
+    }, 'POST');
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      throw new Error(businessError);
+    }
+    state.selectedItems = [];
+    return {
+      success: true,
+      source: 'api',
+      message: '邀请下单已发送',
+    };
+  }
+
+  async submitInviteFollow(params = {}) {
+    const uid = this._resolveInviteOrderUid(params);
+    if (!uid) {
+      throw new Error('缺少买家 UID');
+    }
+    const payload = await this._requestGoodsPageApi('/latitude/message/sendFavMallCard', {
+      uid,
+    }, 'POST');
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      throw new Error(businessError.message || '发送邀请关注失败');
+    }
+    return {
+      success: true,
+      source: 'api',
+      uid,
+      message: '邀请关注已发送',
     };
   }
 
@@ -4104,9 +5474,20 @@ class PddApiClient extends EventEmitter {
       .filter(Boolean)
       .slice(0, 3)
       .join('/');
+    const actionGroupText = (Array.isArray(debug.actionGroup) ? debug.actionGroup : [])
+      .map(item => {
+        const text = String(item?.text || '').trim();
+        const tag = String(item?.tag || '').trim();
+        const cls = String(item?.cls || '').trim().replace(/\s+/g, '.');
+        return text ? `${text}:${tag}${cls ? `@${cls.slice(0, 18)}` : ''}` : '';
+      })
+      .filter(Boolean)
+      .slice(0, 6)
+      .join('/');
     const panelText = String(debug?.panelText || '').replace(/\s+/g, ' ').trim().slice(0, 60);
     return [
       cardActionText ? `cardActions=${cardActionText}` : '',
+      actionGroupText ? `actionGroup=${actionGroupText}` : '',
       buttonText ? `buttons=${buttonText}` : '',
       inputText ? `inputs=${inputText}` : '',
       panelText ? `panel=${panelText}` : '',
@@ -4642,6 +6023,24 @@ class PddApiClient extends EventEmitter {
                 left: item?.left || 0,
                 top: item?.top || 0,
               }));
+            const anchorAction = (getCardActionCandidates(card) || []).find(item => /order-btn-item/.test(String(item?.cls || '')));
+            const actionGroup = anchorAction?.el?.parentElement
+              ? Array.from(anchorAction.el.parentElement.children)
+                .filter(isVisible)
+                .map(el => {
+                  const rect = el.getBoundingClientRect();
+                  return {
+                    text: getText(el).slice(0, 40),
+                    tag: String(el.tagName || '').toLowerCase(),
+                    cls: String(el.className || '').slice(0, 40),
+                    left: Math.round(rect.left || 0),
+                    top: Math.round(rect.top || 0),
+                    width: Math.round(rect.width || 0),
+                    height: Math.round(rect.height || 0),
+                  };
+                })
+                .slice(0, 10)
+              : [];
             const allInputs = Array.from(document.querySelectorAll('input'))
               .filter(isVisible)
               .map(el => {
@@ -4659,6 +6058,7 @@ class PddApiClient extends EventEmitter {
               input: summarizeElement(input),
               buttons: visibleButtons,
               cardActions,
+              actionGroup,
               inputs: allInputs,
             };
           };
@@ -6505,7 +7905,7 @@ class PddApiClient extends EventEmitter {
       const requestBody = buildRequestBody(candidate, useSessionWindow);
       try {
         const payload = await this._post('/plateau/chat/list', requestBody);
-        const messages = this._parseMessages(payload);
+        const messages = this._parseMessages(payload, sessionMeta);
         this._log('[API] chat/list 候选响应', {
           candidateId: candidate.id,
           candidateRole: candidate.role,
@@ -6529,7 +7929,7 @@ class PddApiClient extends EventEmitter {
     for (const entry of cachedEntries) {
       const cachedPayload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
       if (!cachedPayload) continue;
-      const cachedMessages = this._parseMessages(cachedPayload);
+      const cachedMessages = this._parseMessages(cachedPayload, sessionMeta);
       if (cachedMessages.length > 0) {
         this._log('[API] chat/list 回退页面抓取缓存', {
           sessionId: String(sessionMeta.sessionId || ''),
@@ -6711,17 +8111,128 @@ class PddApiClient extends EventEmitter {
     };
   }
 
-  async sendMessage(sessionRef, text) {
+  async _ensureSendMessageContext(sessionRef) {
+    const { ids, sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const hasSessionMessageTraffic = !!this._getLatestSessionTraffic('/plateau/chat/list', ids);
+    const hasSessionSendTraffic = !!this._getLatestSessionTraffic('/plateau/chat/send_message', ids);
+    if (hasSessionMessageTraffic || hasSessionSendTraffic) return;
+    this._log('[API] 发送前预热会话上下文', {
+      sessionId: String(sessionMeta?.sessionId || ''),
+      customerId: String(sessionMeta?.customerId || ''),
+      userUid: String(sessionMeta?.userUid || ''),
+    });
+    try {
+      await this.getSessionMessages(sessionMeta, 1, 30);
+    } catch (error) {
+      this._log('[API] 发送前预热失败', {
+        sessionId: String(sessionMeta?.sessionId || ''),
+        message: error?.message || '未知异常',
+      });
+    }
+  }
+
+  async sendMessage(sessionRef, text, options = {}) {
     if (!this._sessionInited) {
       await this.initSession();
     }
 
     const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const manualSource = String(options?.manualSource || 'manual').trim() || 'manual';
+    const sendStartedAtMs = Date.now();
+    const preparedContext = await this._prepareManualSendContext(sessionMeta);
+    const preCheckInfo = preparedContext?.checked
+      ? (preparedContext.preCheckInfo || null)
+      : this._getLatestSendMessagePreCheck(sessionMeta);
+    if (preCheckInfo?.needPreCheck && preCheckInfo?.canFinish === false) {
+      const preCheckName = String(preCheckInfo?.name || '').trim();
+      const traceId = String(preCheckInfo?.traceId || '').trim();
+      const pendingConfirmData = preparedContext?.pendingConfirmData || preparedContext?.trusteeshipInfo?.pendingConfirmData || null;
+      if (preCheckName === 'noViciousTalk' && preparedContext?.pendingConfirmExecuted && pendingConfirmData?.referenceConsumerMessageId) {
+        const confirmResult = await this._confirmPendingConfirmMessage(sessionMeta, pendingConfirmData, {
+          sentAtMs: sendStartedAtMs,
+        });
+        if (confirmResult.confirmed) {
+          const pendingText = String(confirmResult.content || pendingConfirmData?.showText || '').trim();
+          const requestedText = String(text || '').trim();
+          const pendingResult = {
+            success: true,
+            confirmed: true,
+            sendMode: 'pending-confirm',
+            manualSource,
+            sessionId: String(sessionMeta.sessionId || ''),
+            customerId: String(sessionMeta.customerId || ''),
+            userUid: String(sessionMeta.userUid || ''),
+            messageId: confirmResult.messageId,
+            text: pendingText,
+            requestedText,
+            response: {
+              success: true,
+              preCheckInfo: this._cloneJson(preCheckInfo),
+            },
+            warning: pendingText && pendingText !== String(text || '').trim()
+              ? '当前会话存在平台待确认回复，已按平台待确认消息发送'
+              : '',
+          };
+          const shouldRetryRequestedText = requestedText
+            && pendingText
+            && requestedText !== pendingText
+            && options?.skipRetryAfterPendingConfirm !== true;
+          if (shouldRetryRequestedText) {
+            try {
+              const retryResult = await this.sendMessage(sessionMeta, requestedText, {
+                ...options,
+                skipRetryAfterPendingConfirm: true,
+              });
+              return {
+                ...retryResult,
+                preludeSendMode: 'pending-confirm',
+                preludeMessageId: pendingResult.messageId,
+                preludeText: pendingText,
+                warning: [
+                  pendingResult.warning,
+                  retryResult?.warning || '',
+                ].filter(Boolean).join('；'),
+              };
+            } catch (retryError) {
+              const detail = retryError?.message || '未知错误';
+              const wrappedError = new Error(`平台待确认消息已发送，但补发输入内容失败: ${detail}`);
+              wrappedError.errorCode = retryError?.errorCode || 40013;
+              wrappedError.partialResult = pendingResult;
+              wrappedError.payload = retryError?.payload;
+              throw wrappedError;
+            }
+          }
+          this.emit('messageSent', pendingResult);
+          return pendingResult;
+        }
+      }
+      if (preCheckName === 'noViciousTalk') {
+        this._log('[API] noViciousTalk 前置校验未放行，继续尝试真实 send_message', {
+          sessionId: String(sessionMeta.sessionId || ''),
+          uid: String(sessionMeta.userUid || sessionMeta.customerId || ''),
+          traceId,
+          pendingConfirmExecuted: preparedContext?.pendingConfirmExecuted === true,
+          hasPendingConfirmData: !!pendingConfirmData?.referenceConsumerMessageId,
+        });
+      } else {
+      const message = preCheckName === 'noViciousTalk'
+        ? '机器人已暂停接待，请人工跟进'
+        : '当前会话发送前置校验未通过，请人工跟进';
+      const error = new Error(
+        [message, traceId ? `traceId=${traceId}` : ''].filter(Boolean).join(' | ')
+      );
+      error.errorCode = 40013;
+      error.payload = { success: true, preCheckInfo: this._cloneJson(preCheckInfo) };
+      throw error;
+      }
+    }
+    await this._ensureSendMessageContext(sessionMeta);
     const requestBody = this._buildSendMessageBody(sessionMeta, text);
     this._log('[API] 发送消息', {
       sessionId: String(sessionMeta.sessionId || ''),
       targetUid: String(requestBody?.data?.message?.to?.uid || ''),
       textLength: String(text || '').length,
+      manualSource,
       client: requestBody?.client,
       hasTopAntiContent: !!requestBody?.anti_content,
       hasBodyAntiContent: !!requestBody?.data?.anti_content,
@@ -6729,7 +8240,64 @@ class PddApiClient extends EventEmitter {
       preMsgId: requestBody?.data?.message?.pre_msg_id || '',
     });
     const sentAtMs = Date.now();
-    const payload = await this._post('/plateau/chat/send_message', requestBody);
+    let payload;
+    try {
+      payload = await this._post('/plateau/chat/send_message', requestBody);
+    } catch (error) {
+      const payloadSummary = error?.payload && typeof error.payload === 'object'
+        ? {
+            success: error.payload.success,
+            code: error.payload.code,
+            error_code: error.payload.error_code,
+            error_msg: error.payload.error_msg,
+            message: error.payload.message,
+          }
+        : null;
+      const detailParts = [
+        error?.message || '消息发送失败',
+        error?.statusCode ? `status=${error.statusCode}` : '',
+        error?.errorCode ? `code=${error.errorCode}` : '',
+        payloadSummary ? `payload=${JSON.stringify(payloadSummary)}` : '',
+        requestBody?.data?.message?.to?.uid ? `targetUid=${requestBody.data.message.to.uid}` : '',
+        requestBody?.data?.message?.pre_msg_id ? `preMsgId=${requestBody.data.message.pre_msg_id}` : '',
+      ].filter(Boolean);
+      const wrappedError = new Error(detailParts.join(' | '));
+      wrappedError.statusCode = error?.statusCode;
+      wrappedError.errorCode = error?.errorCode;
+      wrappedError.payload = error?.payload;
+      throw wrappedError;
+    }
+    const businessError = this._normalizeBusinessError(payload);
+    if (businessError) {
+      const responseSummary = payload && typeof payload === 'object'
+        ? {
+            success: payload.success,
+            code: payload.code,
+            error_code: payload.error_code,
+            error_msg: payload.error_msg,
+            message: payload.message,
+          }
+        : {};
+      const detailParts = [
+        businessError.message || '消息发送失败',
+        businessError.code ? `code=${businessError.code}` : '',
+        Object.values(responseSummary).some(value => value !== undefined && value !== null && value !== '')
+          ? `response=${JSON.stringify(responseSummary)}`
+          : '',
+      ].filter(Boolean);
+      const error = new Error(detailParts.join(' | '));
+      error.errorCode = businessError.code;
+      error.payload = payload;
+      if (this._isAuthError(businessError.code)) {
+        throw this._markAuthExpired(error, {
+          errorCode: businessError.code,
+          errorMsg: businessError.message,
+          authState: 'expired',
+          source: 'business-code',
+        });
+      }
+      throw error;
+    }
     const confirmResult = await this._confirmSentTextMessage(sessionMeta, text, { sentAtMs });
     const confirmed = !!confirmResult.confirmed;
     if (!confirmed) {
@@ -6750,6 +8318,8 @@ class PddApiClient extends EventEmitter {
     const result = {
       success: true,
       confirmed,
+      sendMode: 'manual-interface',
+      manualSource,
       sessionId: String(sessionMeta.sessionId || ''),
       customerId: String(sessionMeta.customerId || ''),
       userUid: String(sessionMeta.userUid || ''),
@@ -6760,6 +8330,13 @@ class PddApiClient extends EventEmitter {
     };
     this.emit('messageSent', result);
     return result;
+  }
+
+  async sendManualMessage(sessionRef, text, options = {}) {
+    return this.sendMessage(sessionRef, text, {
+      ...options,
+      manualSource: options?.manualSource || 'manual',
+    });
   }
 
   async sendImage(sessionRef, filePath) {
@@ -7170,14 +8747,37 @@ class PddApiClient extends EventEmitter {
     };
   }
 
-  async _pollMessagesForSession(sessionId) {
-    const messages = await this.getSessionMessages(sessionId, 1, 20);
+  async _pollMessagesForSession(sessionRef, options = {}) {
+    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
+    const messages = await this.getSessionMessages(sessionMeta.sessionId || sessionRef, 1, 20);
     const newMessages = [];
+    const bootstrapOnly = options.bootstrapOnly === true;
+    const emitBootstrapPending = options.emitBootstrapPending === true;
+    const buyerIds = [
+      sessionMeta?.customerId,
+      sessionMeta?.userUid,
+      sessionMeta?.raw?.customer_id,
+      sessionMeta?.raw?.buyer_id,
+      sessionMeta?.raw?.uid,
+      sessionMeta?.raw?.user_info?.uid,
+    ].map(value => String(value || '')).filter(Boolean);
+
+    const pendingBootstrapMessage = bootstrapOnly && emitBootstrapPending
+      ? this._pickPendingBuyerMessage(messages, buyerIds, sessionMeta.raw || sessionMeta)
+      : null;
+    const pendingBootstrapKey = pendingBootstrapMessage
+      ? String(pendingBootstrapMessage.messageId || `${pendingBootstrapMessage.sessionId}|${pendingBootstrapMessage.senderId}|${pendingBootstrapMessage.timestamp}|${pendingBootstrapMessage.content}`)
+      : '';
 
     for (const item of messages) {
       const key = item.messageId || `${item.sessionId}|${item.senderId}|${item.timestamp}|${item.content}`;
-      if (!item.isFromBuyer || !item.content || this._seenMessageIds.has(key)) continue;
+      const senderId = String(item.senderId || item?.raw?.from_uid || item?.raw?.sender_id || item?.raw?.from_id || item?.raw?.from?.uid || '');
+      const isBuyerMessage = item.isFromBuyer || (!!senderId && buyerIds.includes(senderId));
+      if (!isBuyerMessage || !item.content || this._seenMessageIds.has(key)) continue;
       this._seenMessageIds.add(key);
+      if (bootstrapOnly) {
+        if (!emitBootstrapPending || key !== pendingBootstrapKey) continue;
+      }
       newMessages.push(item);
     }
 
@@ -7215,14 +8815,81 @@ class PddApiClient extends EventEmitter {
         .sort((a, b) => Number(b.unreadCount || 0) - Number(a.unreadCount || 0))
         .slice(0, 5);
 
+      if (!this._pollBootstrapDone) {
+        const bootstrapTargets = sessions
+          .filter(item => item.sessionId)
+          .sort((a, b) => this._normalizeTimestampMs(b?.lastMessageTime) - this._normalizeTimestampMs(a?.lastMessageTime));
+        const bootstrapPendingMessages = [];
+        for (const sessionItem of bootstrapTargets) {
+          const seededMessages = await this._pollMessagesForSession(sessionItem, {
+            bootstrapOnly: true,
+            emitBootstrapPending: true,
+          });
+          this._log('[API] Bootstrap检查会话', {
+            sessionId: String(sessionItem?.sessionId || ''),
+            customerName: String(sessionItem?.customerName || '未知客户'),
+            previewText: String(sessionItem?.lastMessage || '').trim(),
+            unreadCount: Number(sessionItem?.unreadCount || 0) || 0,
+            waitTime: Number(sessionItem?.waitTime || 0) || 0,
+            lastMessageActor: String(sessionItem?.lastMessageActor || 'unknown'),
+            pickedPendingText: seededMessages.length
+              ? String(seededMessages[seededMessages.length - 1]?.content || '').trim()
+              : '',
+            willEmitPending: seededMessages.length > 0,
+          });
+          if (seededMessages.length) {
+            bootstrapPendingMessages.push({
+              sessionItem,
+              message: seededMessages[seededMessages.length - 1],
+            });
+          }
+        }
+        this._pollBootstrapDone = true;
+        this._log('[API] 首轮轮询预热完成', {
+          seededSessions: bootstrapTargets.length,
+          pendingSessions: bootstrapPendingMessages.length,
+        });
+        for (const item of bootstrapPendingMessages) {
+          const message = item.message;
+          const sessionItem = item.sessionItem;
+          this.emit('newMessage', {
+            shopId: this.shopId,
+            sessionId: message.sessionId,
+            customer: message.senderName || sessionItem.customerName || '未知客户',
+            customerId: message.senderId || sessionItem.customerId || '',
+            userUid: message.senderId || sessionItem.userUid || sessionItem.customerId || '',
+            session: {
+              ...this._cloneJson(sessionItem),
+              sessionId: message.sessionId || sessionItem.sessionId || '',
+              customerId: message.senderId || sessionItem.customerId || '',
+              userUid: message.senderId || sessionItem.userUid || sessionItem.customerId || '',
+              customerName: message.senderName || sessionItem.customerName || '未知客户',
+            },
+            text: message.content,
+            timestamp: message.timestamp,
+            messageId: message.messageId,
+          });
+        }
+        this._schedulePoll(POLL_INTERVAL);
+        return;
+      }
+
       for (const sessionItem of targets) {
-        const freshMessages = await this._pollMessagesForSession(sessionItem.sessionId);
+        const freshMessages = await this._pollMessagesForSession(sessionItem);
         for (const message of freshMessages) {
           this.emit('newMessage', {
             shopId: this.shopId,
             sessionId: message.sessionId,
             customer: message.senderName || sessionItem.customerName || '未知客户',
             customerId: message.senderId || sessionItem.customerId || '',
+            userUid: message.senderId || sessionItem.userUid || sessionItem.customerId || '',
+            session: {
+              ...this._cloneJson(sessionItem),
+              sessionId: message.sessionId || sessionItem.sessionId || '',
+              customerId: message.senderId || sessionItem.customerId || '',
+              userUid: message.senderId || sessionItem.userUid || sessionItem.customerId || '',
+              customerName: message.senderName || sessionItem.customerName || '未知客户',
+            },
             text: message.content,
             timestamp: message.timestamp,
             messageId: message.messageId,
@@ -7280,6 +8947,7 @@ class PddApiClient extends EventEmitter {
     this.stopPolling();
     this.removeAllListeners();
     this._seenMessageIds.clear();
+    this._pollBootstrapDone = false;
     this._sessionCache = [];
   }
 }

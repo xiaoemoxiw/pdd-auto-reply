@@ -3,19 +3,24 @@ const path = require('path');
 
 let debugWindow = null;
 
-function createDebugWindow(parent) {
+async function createDebugWindow(parent) {
   if (debugWindow) {
+    if (debugWindow.isMinimized()) debugWindow.restore();
+    if (!debugWindow.isVisible()) debugWindow.show();
     debugWindow.focus();
     return debugWindow;
   }
+
+  const validParent = parent && !parent.isDestroyed() ? parent : undefined;
 
   debugWindow = new BrowserWindow({
     width: 720,
     height: 520,
     minWidth: 480,
     minHeight: 320,
-    parent,
+    parent: validParent,
     title: '调试面板 · 网络抓包',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'debug-preload.js'),
       contextIsolation: true,
@@ -23,7 +28,20 @@ function createDebugWindow(parent) {
     }
   });
 
-  debugWindow.loadFile(path.join(__dirname, '..', 'renderer', 'debug.html'));
+  try {
+    await debugWindow.loadFile(path.join(__dirname, '..', 'renderer', 'debug.html'));
+  } catch (err) {
+    if (debugWindow && !debugWindow.isDestroyed()) {
+      debugWindow.destroy();
+    }
+    debugWindow = null;
+    throw err;
+  }
+
+  if (debugWindow && !debugWindow.isDestroyed()) {
+    debugWindow.show();
+    debugWindow.focus();
+  }
 
   debugWindow.on('closed', () => {
     debugWindow = null;

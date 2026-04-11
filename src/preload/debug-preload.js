@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld('debugApi', {
   onApiLog: (cb) => ipcRenderer.on('api-log', (_, d) => cb(d)),
   onAutoReplySent: (cb) => ipcRenderer.on('auto-reply-sent', (_, d) => cb(d)),
   onSystemLog: (cb) => ipcRenderer.on('system-log', (_, d) => cb(d)),
+  toggleNetworkMonitor: (enabled) => ipcRenderer.invoke('toggle-network-monitor', enabled),
+  getNetworkMonitorStatus: () => ipcRenderer.invoke('get-network-monitor-status'),
 });

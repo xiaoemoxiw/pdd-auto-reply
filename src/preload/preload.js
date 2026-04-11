@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   reloadPdd: () => ipcRenderer.invoke('reload-pdd'),
   navigatePdd: (url) => ipcRenderer.invoke('navigate-pdd', url),
 
+  readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
+
   // 客服页面 URL 管理
   getChatUrl: () => ipcRenderer.invoke('get-chat-url'),
   setChatUrl: (url) => ipcRenderer.invoke('set-chat-url', url),
@@ -58,10 +60,14 @@ contextBridge.exposeInMainWorld('pddApi', {
   setMailUrl: (url) => ipcRenderer.invoke('set-mail-url', url),
   getInvoiceUrl: () => ipcRenderer.invoke('get-invoice-url'),
   setInvoiceUrl: (url) => ipcRenderer.invoke('set-invoice-url', url),
+  openInvoiceOrderOverlay: (params) => ipcRenderer.invoke('open-invoice-order-overlay', params),
+  closeEmbeddedOverlay: () => ipcRenderer.invoke('close-embedded-overlay'),
   getViolationUrl: () => ipcRenderer.invoke('get-violation-url'),
   setViolationUrl: (url) => ipcRenderer.invoke('set-violation-url', url),
   getTicketUrl: () => ipcRenderer.invoke('get-ticket-url'),
   setTicketUrl: (url) => ipcRenderer.invoke('set-ticket-url', url),
+  getAfterSaleUrl: () => ipcRenderer.invoke('get-aftersale-url'),
+  setAfterSaleUrl: (url) => ipcRenderer.invoke('set-aftersale-url', url),
   getCurrentUrl: () => ipcRenderer.invoke('get-current-url'),
 
   // Cookie 注入
@@ -75,10 +81,20 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiInitSession: () => ipcRenderer.invoke('api-init-session'),
   apiTestConnection: (params) => ipcRenderer.invoke('api-test-connection', params),
   apiGetSessions: (params) => ipcRenderer.invoke('api-get-sessions', params),
+  apiFindSessionByOrderSn: (params) => ipcRenderer.invoke('api-find-session-by-order-sn', params),
   apiGetMessages: (params) => ipcRenderer.invoke('api-get-messages', params),
   apiGetGoodsCard: (params) => ipcRenderer.invoke('api-get-goods-card', params),
   apiGetRefundOrders: (params) => ipcRenderer.invoke('api-get-refund-orders', params),
+  apiSubmitRefundApply: (params) => ipcRenderer.invoke('api-submit-refund-apply', params),
   apiGetSideOrders: (params) => ipcRenderer.invoke('api-get-side-orders', params),
+  apiGetInviteOrderState: (params) => ipcRenderer.invoke('api-get-invite-order-state', params),
+  apiGetInviteOrderSkuOptions: (params) => ipcRenderer.invoke('api-get-invite-order-sku-options', params),
+  apiAddInviteOrderItem: (params) => ipcRenderer.invoke('api-add-invite-order-item', params),
+  apiClearInviteOrderItems: (params) => ipcRenderer.invoke('api-clear-invite-order-items', params),
+  apiSubmitInviteOrder: (params) => ipcRenderer.invoke('api-submit-invite-order', params),
+  apiSubmitInviteFollow: (params) => ipcRenderer.invoke('api-submit-invite-follow', params),
+  apiGetSmallPaymentInfo: (params) => ipcRenderer.invoke('api-get-small-payment-info', params),
+  apiSubmitSmallPayment: (params) => ipcRenderer.invoke('api-submit-small-payment', params),
   apiGetOrderRemark: (params) => ipcRenderer.invoke('api-get-order-remark', params),
   apiGetOrderRemarkTags: (params) => ipcRenderer.invoke('api-get-order-remark-tags', params),
   apiSaveOrderRemark: (params) => ipcRenderer.invoke('api-save-order-remark', params),
@@ -86,6 +102,10 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiSendMessage: (params) => ipcRenderer.invoke('api-send-message', params),
   apiSelectImage: () => ipcRenderer.invoke('api-select-image'),
   apiSendImage: (params) => ipcRenderer.invoke('api-send-image', params),
+  apiSelectVideo: () => ipcRenderer.invoke('api-select-video'),
+  apiUploadVideo: (params) => ipcRenderer.invoke('api-upload-video', params),
+  apiGetVideoLibrary: (params) => ipcRenderer.invoke('api-get-video-library', params),
+  apiSendVideo: (params) => ipcRenderer.invoke('api-send-video', params),
   apiMarkLatestConversations: (params) => ipcRenderer.invoke('api-mark-latest-conversations', params),
   apiStartPolling: (params) => ipcRenderer.invoke('api-start-polling', params),
   apiStopPolling: (params) => ipcRenderer.invoke('api-stop-polling', params),
@@ -96,6 +116,21 @@ contextBridge.exposeInMainWorld('pddApi', {
   mailGetDetail: (params) => ipcRenderer.invoke('mail-get-detail', params),
   invoiceGetOverview: (params) => ipcRenderer.invoke('invoice-get-overview', params),
   invoiceGetList: (params) => ipcRenderer.invoke('invoice-get-list', params),
+  invoiceGetDetail: (params) => ipcRenderer.invoke('invoice-get-detail', params),
+  invoiceSubmitRecord: (params) => ipcRenderer.invoke('invoice-submit-record', params),
+  aftersaleGetOverview: (params) => ipcRenderer.invoke('aftersale-get-overview', params),
+  aftersaleGetList: (params) => ipcRenderer.invoke('aftersale-get-list', params),
+  aftersaleGetRegions: (params) => ipcRenderer.invoke('aftersale-get-regions', params),
+  aftersaleGetShippingCompanies: (params) => ipcRenderer.invoke('aftersale-get-shipping-companies', params),
+  aftersaleGetShippingDetail: (params) => ipcRenderer.invoke('aftersale-get-shipping-detail', params),
+  aftersaleListRefundAddresses: (params) => ipcRenderer.invoke('aftersale-list-refund-addresses', params),
+  aftersaleApproveReturnGoods: (params) => ipcRenderer.invoke('aftersale-approve-return-goods', params),
+  aftersaleApproveResend: (params) => ipcRenderer.invoke('aftersale-approve-resend', params),
+  aftersaleAgreeRefundPreCheck: (params) => ipcRenderer.invoke('aftersale-agree-refund-precheck', params),
+  ticketGetList: (params) => ipcRenderer.invoke('ticket-get-list', params),
+  ticketGetDetail: (params) => ipcRenderer.invoke('ticket-get-detail', params),
+  violationGetList: (params) => ipcRenderer.invoke('violation-get-list', params),
+  violationGetDetail: (params) => ipcRenderer.invoke('violation-get-detail', params),
   getApiStarredSessions: () => ipcRenderer.invoke('get-api-starred-sessions'),
   getLastApiSessionSelection: () => ipcRenderer.invoke('get-last-api-session-selection'),
   setLastApiSessionSelection: (selection) => ipcRenderer.invoke('set-last-api-session-selection', selection),
@@ -117,7 +152,10 @@ contextBridge.exposeInMainWorld('pddApi', {
 
   // 调试窗口
   openDebugWindow: () => ipcRenderer.invoke('open-debug-window'),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   debugLog: (payload) => ipcRenderer.send('renderer-debug-log', payload),
+  toggleNetworkMonitor: (enabled) => ipcRenderer.invoke('toggle-network-monitor', enabled),
+  getNetworkMonitorStatus: () => ipcRenderer.invoke('get-network-monitor-status'),
 
   // 测试自动回复
   testAutoReply: () => ipcRenderer.invoke('test-auto-reply'),
@@ -141,10 +179,17 @@ contextBridge.exposeInMainWorld('pddApi', {
   onAiDownloadProgress: (cb) => ipcRenderer.on('ai-download-progress', (_, d) => cb(d)),
 
   // 事件监听
+  onPddPageLoading: (cb) => ipcRenderer.on('pdd-page-loading', (_, d) => cb(d)),
   onPddPageLoaded: (cb) => ipcRenderer.on('pdd-page-loaded', (_, d) => cb(d)),
+  onPddPageFailed: (cb) => ipcRenderer.on('pdd-page-failed', (_, d) => cb(d)),
   onPddNavigated: (cb) => ipcRenderer.on('pdd-navigated', (_, d) => cb(d)),
   onAutoReplySent: (cb) => ipcRenderer.on('auto-reply-sent', (_, d) => cb(d)),
+  onAutoReplyError: (cb) => ipcRenderer.on('auto-reply-error', (_, d) => cb(d)),
   onUnmatchedMessage: (cb) => ipcRenderer.on('unmatched-message', (_, d) => cb(d)),
+  onFallbackScheduled: (cb) => ipcRenderer.on('fallback-scheduled', (_, d) => cb(d)),
+  onFallbackTriggered: (cb) => ipcRenderer.on('fallback-triggered', (_, d) => cb(d)),
+  onFallbackSendStart: (cb) => ipcRenderer.on('fallback-send-start', (_, d) => cb(d)),
+  onFallbackSkipped: (cb) => ipcRenderer.on('fallback-skipped', (_, d) => cb(d)),
   onFallbackCancelled: (cb) => ipcRenderer.on('fallback-cancelled', (_, d) => cb(d)),
   onChatUrlDetected: (cb) => ipcRenderer.on('chat-url-detected', (_, d) => cb(d)),
 
@@ -156,5 +201,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   onApiAuthExpired: (cb) => ipcRenderer.on('api-auth-expired', (_, d) => cb(d)),
   onApiSessionUpdated: (cb) => ipcRenderer.on('api-session-updated', (_, d) => cb(d)),
   onApiNewMessage: (cb) => ipcRenderer.on('api-new-message', (_, d) => cb(d)),
-  onApiMessageSent: (cb) => ipcRenderer.on('api-message-sent', (_, d) => cb(d))
+  onApiBootstrapInspect: (cb) => ipcRenderer.on('api-bootstrap-inspect', (_, d) => cb(d)),
+  onApiMessageSent: (cb) => ipcRenderer.on('api-message-sent', (_, d) => cb(d)),
+  onApiReadMarkUpdated: (cb) => ipcRenderer.on('api-read-mark-updated', (_, d) => cb(d))
 });

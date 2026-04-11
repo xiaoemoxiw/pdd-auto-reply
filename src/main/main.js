@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, session, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session, dialog, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { nativeImage } = require('electron');
@@ -86,7 +86,7 @@ const store = new Store({
     autoReplyEnabled: false,
     defaultReply: {
       enabled: true,
-      texts: ['亲，您好！您的问题我已收到，请稍等，马上为您处理~'],
+      texts: ['亲，目前咨询客户较多，客服小姐姐在一个一个回复，稍等一下~'],
       delay: 2000,
       cooldown: 60000,
       strategy: 'random',
@@ -99,6 +99,7 @@ const store = new Store({
     invoiceUrl: '',
     violationUrl: '',
     ticketUrl: '',
+    aftersaleUrl: '',
     shops: [],
     activeShopId: '',
     shopGroups: [],
@@ -120,12 +121,15 @@ const store = new Store({
   }
 });
 
-// 运行时状态：兜底延迟发送的计时器（customer -> timer）
+// 运行时状态：兜底延迟发送的计时器（fallbackKey -> timer）
 const pendingFallbacks = new Map();
-// 运行时状态：每个客户最后一次兜底发送的时间戳（用于冷却）
+const pendingFallbackMeta = new Map(); // fallbackKey -> { messageKey, createdAt }
+// 运行时状态：每个会话最后一次兜底发送的时间戳（用于冷却）
 const fallbackCooldowns = new Map();
 // 跨通道消息去重：防止 DOM 监听和网络监控同时处理同一条消息
-const messageDedup = new Map(); // "customer|message" -> timestamp
+const messageDedup = new Map(); // "shop|session|messageId" or "shop|session|message" -> timestamp
+// 发送去重：防止同一会话的同一自动回复在短时间内被并发重复发送
+const autoReplySendDedup = new Map(); // "shop|session|question|answer" -> timestamp
 const embeddedPageActions = new Map(); // shopId -> last action
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
@@ -133,6 +137,7 @@ const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=4
 const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav';
 const PDD_VIOLATION_URL = 'https://mms.pinduoduo.com/pg/violation_list/mall_manage?msfrom=mms_sidenav';
 const PDD_TICKET_URL = 'https://mms.pinduoduo.com/aftersales/work_order/list?msfrom=mms_sidenav';
+const PDD_AFTERSALE_URL = 'https://mms.pinduoduo.com/aftersales/refund/list?msfrom=mms_sidenav';
 
 const MOCK_SHOPS = [
   { id: 'shop_1', name: '环球优品旗舰店', account: 'huanqiu_001', mallId: '', group: 'group_1', remark: '主力店铺', status: 'online', loginMethod: 'token', userAgent: '', bindTime: '2025-10-15', category: '日用百货', balance: 15280.50 },
@@ -213,6 +218,26 @@ const MOCK_RULES = [
     ],
     excludeKeywords: [],
     reply: '亲，请提供一下您的订单号，我帮您查询物流信息哦~'
+  },
+  {
+    id: 'qa_8', name: '品质口感咨询', enabled: true, matchType: 'contains', priority: 85, shops: null,
+    keywords: ['品质好吗', '好吃吗', '口感好吗', '甜吗', '新鲜吗'],
+    keywordGroups: [
+      ['品质好吗', '品质怎么样', '质量好吗', '质量怎么样'],
+      ['好吃吗', '口感好吗', '口感怎么样', '甜吗', '新鲜吗', '味道怎么样']
+    ],
+    excludeKeywords: ['不好吃', '不新鲜', '质量不好', '品质差'],
+    reply: '亲，咱家商品品质和口感都不错呢，大多数顾客反馈都很好，您可以放心拍下哦~'
+  },
+  {
+    id: 'qa_9', name: '历史订单咨询', enabled: true, matchType: 'contains', priority: 88, shops: null,
+    keywords: ['之前买过', '以前买过', '我2月份买的', '我上次买的', '老订单'],
+    keywordGroups: [
+      ['之前买过', '以前买过', '上次买的', '之前下单', '以前下单', '老顾客'],
+      ['1月份买的', '2月份买的', '3月份买的', '上个月买的', '前几天买的', '之前买的']
+    ],
+    excludeKeywords: ['现在买', '现在下单', '准备买', '想买'],
+    reply: '亲，麻烦您提供一下对应订单号或订单截图，我帮您核实之前购买的商品信息哦~'
   }
 ];
 
@@ -359,8 +384,35 @@ function getPddTicketUrl() {
   return store.get('ticketUrl') || PDD_TICKET_URL;
 }
 
+function getPddAfterSaleUrl() {
+  let backendOrigin = '';
+  try {
+    backendOrigin = new URL(getPddViolationUrl()).origin;
+  } catch {}
+  const stored = store.get('aftersaleUrl');
+  if (stored) {
+    if (!backendOrigin) return stored;
+    try {
+      const storedOrigin = new URL(stored).origin;
+      const templateOrigin = new URL(PDD_AFTERSALE_URL).origin;
+      if (storedOrigin !== backendOrigin && storedOrigin === templateOrigin) {
+        const template = new URL(PDD_AFTERSALE_URL);
+        return `${backendOrigin}${template.pathname}${template.search}${template.hash}`;
+      }
+    } catch {}
+    return stored;
+  }
+  if (!backendOrigin) return PDD_AFTERSALE_URL;
+  try {
+    const template = new URL(PDD_AFTERSALE_URL);
+    return `${backendOrigin}${template.pathname}${template.search}${template.hash}`;
+  } catch {
+    return PDD_AFTERSALE_URL;
+  }
+}
+
 function isEmbeddedPddView(view) {
-  return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket';
+  return view === 'chat' || view === 'mail' || view === 'invoice' || view === 'violation' || view === 'ticket' || view === 'aftersale';
 }
 
 function isMailRelatedView(view) {
@@ -384,6 +436,7 @@ function getEmbeddedViewUrl(view) {
   if (isInvoiceRelatedView(view)) return getPddInvoiceUrl();
   if (isViolationRelatedView(view)) return getPddViolationUrl();
   if (isTicketRelatedView(view)) return getPddTicketUrl();
+  if (view === 'aftersale') return getPddAfterSaleUrl();
   return getPddChatUrl();
 }
 
@@ -413,26 +466,36 @@ function isTicketPageUrl(url) {
   return text.includes('/aftersales/work_order/') || text.includes('/work_order/');
 }
 
+function isAfterSalePageUrl(url) {
+  const text = String(url || '');
+  if (text.includes('/aftersales/work_order/') || text.includes('/work_order/')) return false;
+  return text.includes('/aftersale/') || text.includes('/aftersales/');
+}
+
 function normalizeStoredPddUrls() {
   const storedChatUrl = store.get('chatUrl');
-  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl) || isViolationPageUrl(storedChatUrl) || isTicketPageUrl(storedChatUrl)) {
+  if (!storedChatUrl || isMailPageUrl(storedChatUrl) || isInvoicePageUrl(storedChatUrl) || isViolationPageUrl(storedChatUrl) || isTicketPageUrl(storedChatUrl) || isAfterSalePageUrl(storedChatUrl)) {
     store.set('chatUrl', PDD_CHAT_URL);
   }
   const storedMailUrl = store.get('mailUrl');
-  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl) || isViolationPageUrl(storedMailUrl) || isTicketPageUrl(storedMailUrl)) {
+  if (!storedMailUrl || isChatPageUrl(storedMailUrl) || isInvoicePageUrl(storedMailUrl) || isViolationPageUrl(storedMailUrl) || isTicketPageUrl(storedMailUrl) || isAfterSalePageUrl(storedMailUrl)) {
     store.set('mailUrl', PDD_MAIL_URL);
   }
   const storedInvoiceUrl = store.get('invoiceUrl');
-  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl) || isViolationPageUrl(storedInvoiceUrl) || isTicketPageUrl(storedInvoiceUrl)) {
+  if (!storedInvoiceUrl || isChatPageUrl(storedInvoiceUrl) || isMailPageUrl(storedInvoiceUrl) || isViolationPageUrl(storedInvoiceUrl) || isTicketPageUrl(storedInvoiceUrl) || isAfterSalePageUrl(storedInvoiceUrl)) {
     store.set('invoiceUrl', PDD_INVOICE_URL);
   }
   const storedViolationUrl = store.get('violationUrl');
-  if (!storedViolationUrl || isChatPageUrl(storedViolationUrl) || isMailPageUrl(storedViolationUrl) || isInvoicePageUrl(storedViolationUrl) || isTicketPageUrl(storedViolationUrl)) {
+  if (!storedViolationUrl || isChatPageUrl(storedViolationUrl) || isMailPageUrl(storedViolationUrl) || isInvoicePageUrl(storedViolationUrl) || isTicketPageUrl(storedViolationUrl) || isAfterSalePageUrl(storedViolationUrl)) {
     store.set('violationUrl', PDD_VIOLATION_URL);
   }
   const storedTicketUrl = store.get('ticketUrl');
-  if (!storedTicketUrl || isChatPageUrl(storedTicketUrl) || isMailPageUrl(storedTicketUrl) || isInvoicePageUrl(storedTicketUrl) || isViolationPageUrl(storedTicketUrl)) {
+  if (!storedTicketUrl || isChatPageUrl(storedTicketUrl) || isMailPageUrl(storedTicketUrl) || isInvoicePageUrl(storedTicketUrl) || isViolationPageUrl(storedTicketUrl) || isAfterSalePageUrl(storedTicketUrl)) {
     store.set('ticketUrl', PDD_TICKET_URL);
+  }
+  const storedAfterSaleUrl = store.get('aftersaleUrl');
+  if (!storedAfterSaleUrl || isChatPageUrl(storedAfterSaleUrl) || isMailPageUrl(storedAfterSaleUrl) || isInvoicePageUrl(storedAfterSaleUrl) || isViolationPageUrl(storedAfterSaleUrl) || isTicketPageUrl(storedAfterSaleUrl)) {
+    store.set('aftersaleUrl', getPddAfterSaleUrl());
   }
 }
 
@@ -472,6 +535,10 @@ function detectChatPage(view, shopId) {
   if (isTicketPageUrl(currentUrl) && currentUrl !== store.get('ticketUrl')) {
     store.set('ticketUrl', currentUrl);
     console.log('[PDD助手] 自动检测到工单管理页面，已保存:', currentUrl);
+  }
+  if (isAfterSalePageUrl(currentUrl) && currentUrl !== store.get('aftersaleUrl')) {
+    store.set('aftersaleUrl', currentUrl);
+    console.log('[PDD助手] 自动检测到售后中心页面，已保存:', currentUrl);
   }
 
   view.webContents.executeJavaScript(`
@@ -627,6 +694,57 @@ function normalizeTrafficNotifyText(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function extractTrafficNotifyEntryText(entry = {}) {
+  if (!entry || typeof entry !== 'object') return '';
+  return normalizeTrafficNotifyText(
+    entry?.text
+    || entry?.content
+    || entry?.message
+    || entry?.msg
+    || entry?.title
+    || entry?.label
+    || entry?.name
+    || entry?.desc
+    || entry?.value
+    || ''
+  );
+}
+
+function extractTrafficStructuredMessageText(rawMessage = {}) {
+  const info = rawMessage?.info && typeof rawMessage.info === 'object' ? rawMessage.info : {};
+  const systemInfo = rawMessage?.system && typeof rawMessage.system === 'object' ? rawMessage.system : {};
+  const pushBizContext = rawMessage?.push_biz_context && typeof rawMessage.push_biz_context === 'object'
+    ? rawMessage.push_biz_context
+    : {};
+  const directText = normalizeTrafficNotifyText(
+    info?.mall_content
+    || info?.merchant_content
+    || info?.content
+    || info?.text
+    || info?.title
+    || info?.label
+    || info?.desc
+    || info?.tip
+    || info?.message
+    || systemInfo?.text
+    || systemInfo?.content
+    || pushBizContext?.replace_content
+    || pushBizContext?.replaceContent
+    || ''
+  );
+  if (directText) return directText;
+  const entryLists = [
+    Array.isArray(info?.item_content) ? info.item_content : [],
+    Array.isArray(info?.mall_item_content) ? info.mall_item_content : [],
+    Array.isArray(info?.items) ? info.items : [],
+  ];
+  for (const list of entryLists) {
+    const entryText = list.map(entry => extractTrafficNotifyEntryText(entry)).filter(Boolean).join(' ').trim();
+    if (entryText) return entryText;
+  }
+  return '';
+}
+
 function buildRefundCardStateDebugPayload(message = {}) {
   const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
   const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
@@ -671,6 +789,9 @@ function buildRefundCardFromNotify(rawMessage = {}) {
   const info = rawMessage?.info && typeof rawMessage.info === 'object' ? rawMessage.info : {};
   if (String(info.card_id || '').trim() !== 'ask_refund_apply') return null;
   const goodsInfo = info?.goods_info && typeof info.goods_info === 'object' ? info.goods_info : {};
+  const displayState = info?.mstate && typeof info.mstate === 'object'
+    ? info.mstate
+    : (info?.state && typeof info.state === 'object' ? info.state : {});
   const itemList = Array.isArray(info?.item_list) ? info.item_list : [];
   const rows = itemList.map(item => {
     const label = normalizeTrafficNotifyText(item?.left || item?.label || item?.name || '');
@@ -682,6 +803,16 @@ function buildRefundCardFromNotify(rawMessage = {}) {
   const findRowValue = (...keywords) => {
     const row = rows.find(item => keywords.some(keyword => item.label.includes(keyword)));
     return row?.value || '';
+  };
+  const resolveFooterText = () => {
+    const explicitText = normalizeTrafficNotifyText(
+      displayState?.text || displayState?.desc || displayState?.label || displayState?.expire_text || ''
+    );
+    if (explicitText && explicitText !== '已过期') return explicitText;
+    const statusValue = Number(displayState?.status);
+    if (statusValue === 2) return '消费者已同意';
+    if (statusValue === 3) return '消费者已拒绝';
+    return '等待消费者确认';
   };
   const amountFen = Number(goodsInfo?.total_amount || 0) || 0;
   return {
@@ -696,7 +827,7 @@ function buildRefundCardFromNotify(rawMessage = {}) {
     amountText: findRowValue('退款金额') || (amountFen > 0 ? `¥${(amountFen / 100).toFixed(2)}` : ''),
     noteText: findRowValue('申请说明') || '商家代消费者填写售后单',
     contactText: findRowValue('联系方式'),
-    footerText: normalizeTrafficNotifyText(info?.state?.expire_text || '') || '等待消费者确认',
+    footerText: resolveFooterText(),
   };
 }
 
@@ -706,6 +837,7 @@ function buildRefundStatusUpdateFromNotify(rawMessage = {}) {
   if (messageType !== 90) return null;
   const targetMessageId = String(data?.msg_id || '').trim();
   const statusValue = Number(data?.status);
+  const statusText = normalizeTrafficNotifyText(data?.text || '');
   if (!targetMessageId || !Number.isFinite(statusValue)) return null;
   if (statusValue === 2) {
     return {
@@ -713,6 +845,14 @@ function buildRefundStatusUpdateFromNotify(rawMessage = {}) {
       targetMessageId,
       status: statusValue,
       displayText: '消费者已同意您发起的退款申请，请及时处理',
+    };
+  }
+  if (statusValue === 3) {
+    return {
+      kind: 'refund-rejected',
+      targetMessageId,
+      status: statusValue,
+      displayText: statusText || '消费者已拒绝',
     };
   }
   return null;
@@ -741,6 +881,7 @@ function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {})
     : '';
   const content = normalizeTrafficNotifyText(
     rawMessage?.content
+    || extractTrafficStructuredMessageText(rawMessage)
     || rawMessage?.push_biz_context?.replace_content
     || rawMessage?.push_biz_context?.replaceContent
     || rawMessage?.data?.content
@@ -758,7 +899,7 @@ function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {})
     timestamp: Number(rawMessage?.ts || 0) * 1000 || Date.now(),
     isFromBuyer,
     senderName: isFromBuyer ? '买家' : getShopDisplayName(shopId),
-    readState: String(rawMessage?.status || '').trim().toLowerCase() === 'read' ? 'read' : '',
+    readState: '',
     content: normalizedContent,
     templateName,
     refundCard,
@@ -766,6 +907,26 @@ function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {})
     trafficSourceType: String(options?.sourceType || '').trim(),
     notifyRequestId: String(options?.requestId || '').trim(),
     raw: rawMessage,
+  };
+}
+
+function extractApiTrafficReadMarkUpdate(shopId, entry) {
+  if (!shopId || !entry) return null;
+  const notifyPayload = getTrafficNotifyPayload(entry);
+  if (!notifyPayload || String(notifyPayload?.response || '') !== 'mall_system_msg') return null;
+  if (Number(notifyPayload?.message?.type) !== 20) return null;
+  const data = notifyPayload?.message?.data;
+  if (!data || typeof data !== 'object') return null;
+  const sessionId = String(data?.user_id || data?.uid || '').trim();
+  const userLastRead = String(data?.user_last_read || data?.userLastRead || '').trim();
+  if (!sessionId || !userLastRead) return null;
+  return {
+    shopId,
+    sessionId,
+    userLastRead,
+    minSupportedMsgId: String(data?.min_supported_msg_id || data?.minSupportedMsgId || '').trim(),
+    source: 'traffic-notify',
+    requestId: String(notifyPayload?.request_id || '').trim(),
   };
 }
 
@@ -792,6 +953,11 @@ function updateApiSessionSnapshotWithMessages(shopId, messages = []) {
 
 function pushApiMessagesFromTraffic(shopId, entry) {
   if (!shopId || !entry) return;
+  const readMarkUpdate = extractApiTrafficReadMarkUpdate(shopId, entry);
+  if (readMarkUpdate) {
+    mainWindow?.webContents.send('api-read-mark-updated', readMarkUpdate);
+    sendToDebug('api-read-mark-updated', readMarkUpdate);
+  }
   const notifyPayload = getTrafficNotifyPayload(entry);
   const notifyMessages = extractTrafficNotifyMessages(notifyPayload);
   if (!notifyMessages.length) return;
@@ -910,12 +1076,11 @@ function startNetworkMonitor(view, shopId) {
               '/mercury/play_money/check',
             ].some(part => String(normalizedEntry?.url || '').includes(part));
             if (orderSn && hasSmallPaymentFields && !isKnownPrecheck) {
-              store.set(`apiSmallPaymentSubmitTemplate.${shopId}`, {
+              rememberSmallPaymentSubmitTemplate(shopId, {
                 url: normalizedEntry.url,
                 method: normalizedEntry.method || 'POST',
                 requestBody: JSON.stringify(parsedBody),
-                updatedAt: Date.now(),
-              });
+              }, parsedBody);
             }
           } catch {}
         }
@@ -998,6 +1163,66 @@ function getLatestEmbeddedPageAction(shopId, requestTimestamp = Date.now()) {
   };
 }
 
+function inferSmallPaymentTemplateLabel(body = {}) {
+  const candidates = [
+    body?.transferTypeDesc,
+    body?.transfer_type_desc,
+    body?.remarks,
+    body?.remark,
+    body?.leaveMessage,
+    body?.leave_message,
+  ].map(item => String(item || '').trim()).filter(Boolean);
+  for (const text of candidates) {
+    if (text.includes('补运费')) return 'shipping';
+    if (text.includes('补差价')) return 'difference';
+    if (text.includes('其他') || text.includes('补偿')) return 'other';
+  }
+  const refundType = body?.refundType ?? body?.refund_type;
+  if (Number(refundType) === 2) {
+    return 'other';
+  }
+  return '';
+}
+
+function normalizeStoredSmallPaymentTemplates(value) {
+  if (!value || typeof value !== 'object') {
+    return { latest: null, byLabel: {}, byRefundType: {} };
+  }
+  if (value.latest || value.byLabel || value.byRefundType) {
+    return {
+      latest: value.latest && typeof value.latest === 'object' ? value.latest : null,
+      byLabel: value.byLabel && typeof value.byLabel === 'object' ? { ...value.byLabel } : {},
+      byRefundType: value.byRefundType && typeof value.byRefundType === 'object' ? { ...value.byRefundType } : {},
+    };
+  }
+  return {
+    latest: value,
+    byLabel: {},
+    byRefundType: {},
+  };
+}
+
+function rememberSmallPaymentSubmitTemplate(shopId, template = {}, parsedBody = {}) {
+  if (!shopId || !template || typeof template !== 'object') return;
+  const nextState = normalizeStoredSmallPaymentTemplates(
+    store.get(`apiSmallPaymentSubmitTemplate.${shopId}`)
+  );
+  const templateEntry = {
+    ...template,
+    updatedAt: Date.now(),
+  };
+  nextState.latest = templateEntry;
+  const inferredLabel = inferSmallPaymentTemplateLabel(parsedBody);
+  if (inferredLabel) {
+    nextState.byLabel[inferredLabel] = templateEntry;
+  }
+  const refundType = parsedBody?.refundType ?? parsedBody?.refund_type;
+  if (Number.isFinite(Number(refundType))) {
+    nextState.byRefundType[String(Math.max(0, Math.round(Number(refundType))))] = templateEntry;
+  }
+  store.set(`apiSmallPaymentSubmitTemplate.${shopId}`, nextState);
+}
+
 function getApiClient(shopId) {
   if (!shopId) return null;
   if (apiClients.has(shopId)) return apiClients.get(shopId);
@@ -1005,6 +1230,12 @@ function getApiClient(shopId) {
   const client = new PddApiClient(shopId, {
     onLog(message, extra) {
       sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      if (message === '[API] Bootstrap检查会话') {
+        mainWindow?.webContents.send('api-bootstrap-inspect', {
+          shopId,
+          ...(extra && typeof extra === 'object' ? extra : {}),
+        });
+      }
       if (!shouldConsoleLogApiMessage(message)) {
         return;
       }
@@ -1065,8 +1296,27 @@ function getApiClient(shopId) {
       message: payload.text,
       customer: payload.customer,
       conversationId: payload.sessionId,
+      sessionId: payload.sessionId,
+      messageId: payload.messageId || '',
+      session: payload.session || null,
       source: 'api-polling',
       shopId
+    }).catch(error => {
+      const message = error?.message || String(error || '未知错误');
+      console.error(`[PDD助手] 接口自动回复处理失败: ${message}`);
+      mainWindow?.webContents.send('auto-reply-error', {
+        shopId,
+        sessionId: payload.sessionId || '',
+        customer: payload.customer || '',
+        message: payload.text || '',
+        error: message,
+        errorCode: error?.errorCode || 0,
+      });
+      sendToDebug('auto-reply-error', {
+        shopId,
+        sessionId: payload.sessionId || '',
+        error: message,
+      });
     });
   });
 
@@ -1597,6 +1847,18 @@ function getInvoiceApiClient(shopId) {
     },
     getInvoiceUrl() {
       return getPddInvoiceUrl();
+    },
+    getSubmitConfig() {
+      const all = store.get('invoiceSubmitApiConfig') || {};
+      return all[shopId] || all.__global || null;
+    },
+    setSubmitConfig(config) {
+      const all = store.get('invoiceSubmitApiConfig') || {};
+      all[shopId] = config || null;
+      if (config) {
+        all.__global = config;
+      }
+      store.set('invoiceSubmitApiConfig', all);
     }
   });
   invoiceApiClients.set(shopId, client);
@@ -1625,7 +1887,10 @@ function getTicketApiClient(shopId) {
     },
     getTicketUrl() {
       return getPddTicketUrl();
-    }
+    },
+    requestInPddPage(request) {
+      return requestViaPddPage(shopId, request);
+    },
   });
   ticketApiClients.set(shopId, client);
   return client;
@@ -1704,6 +1969,7 @@ function hasRecoveredApiToken(shopId) {
 
 function isApiReadyShop(shop) {
   if (!shop?.id) return false;
+  if (shop.status === 'expired' || shop.status === 'invalid') return false;
   if (shop.loginMethod !== 'token') return true;
   return hasRecoveredApiToken(shop.id);
 }
@@ -1849,8 +2115,13 @@ function createMainWindow() {
   mainWindow.on('resize', () => {
     const [w, h] = mainWindow.getSize();
     store.set('windowBounds', { width: w, height: h });
-    if (isEmbeddedPddView(currentView) && shopManager) {
-      shopManager.resizeActiveView();
+    if (shopManager) {
+      if (isEmbeddedPddView(currentView)) {
+        shopManager.resizeActiveView();
+      }
+      if (typeof shopManager.isOverlayVisible === 'function' && shopManager.isOverlayVisible()) {
+        shopManager.resizeActiveViewOverlay();
+      }
     }
   });
 
@@ -1933,6 +2204,10 @@ ipcMain.handle('inject-cookies', async (event, cookies) => {
   return true;
 });
 
+ipcMain.handle('read-clipboard-text', () => {
+  return clipboard.readText();
+});
+
 registerShopIpc({
   ipcMain,
   store,
@@ -2008,11 +2283,13 @@ registerEmbeddedViewIpc({
   isInvoicePageUrl,
   isViolationPageUrl,
   isTicketPageUrl,
+  isAfterSalePageUrl,
   isChatPageUrl,
   getPddMailUrl,
   getPddInvoiceUrl,
   getPddViolationUrl,
   getPddTicketUrl,
+  getPddAfterSaleUrl,
   getPddChatUrl,
   getEmbeddedViewUrl
 });
@@ -2306,8 +2583,8 @@ async function selectConversationInView(view) {
 }
 
 /**
- * 统一消息处理管线：DOM 监听和网络监控共用
- * @param {{ message: string, customer: string, conversationId: string, source?: string, shopId?: string }} data
+ * 统一消息处理管线：DOM 监听、网络监控和接口轮询共用
+ * @param {{ message: string, customer: string, conversationId?: string, sessionId?: string, session?: object, source?: string, shopId?: string }} data
  */
 async function handleNewCustomerMessage(data) {
   if (!store.get('autoReplyEnabled')) {
@@ -2315,18 +2592,24 @@ async function handleNewCustomerMessage(data) {
     return;
   }
 
-  // 跨通道去重：10秒内相同客户的相同消息只处理一次
-  const dedupKey = `${data.customer}|${data.message}`;
+  const normalizedMessage = String(data.message || '').replace(/\s+/g, ' ').trim();
+  const dedupShopId = String(data.shopId || '');
+  const dedupSessionId = String(data.sessionId || data.conversationId || '');
+  const dedupMessageId = String(data.messageId || '');
+  // 跨通道去重：优先按会话+消息ID，其次按会话+消息文本
+  const dedupKey = dedupMessageId
+    ? `${dedupShopId}|${dedupSessionId}|${dedupMessageId}`
+    : `${dedupShopId}|${dedupSessionId || data.customer || ''}|${normalizedMessage}`;
   const now = Date.now();
   const lastProcessed = messageDedup.get(dedupKey);
-  if (lastProcessed && now - lastProcessed < 10000) {
+  if (lastProcessed && now - lastProcessed < 30000) {
     console.log(`[PDD助手] 跨通道去重，跳过: "${data.message?.slice(0, 30)}" (${now - lastProcessed}ms前已处理)`);
     return;
   }
   messageDedup.set(dedupKey, now);
   if (messageDedup.size > 200) {
     for (const [k, t] of messageDedup) {
-      if (now - t > 60000) messageDedup.delete(k);
+      if (now - t > 180000) messageDedup.delete(k);
     }
   }
 
@@ -2363,95 +2646,239 @@ async function handleNewCustomerMessage(data) {
     return;
   }
 
+  const fallbackKey = buildFallbackKey(data);
+  const source = data.source || 'unknown';
+  const conversationId = data.conversationId || data.sessionId || '';
+  const fallbackMessageKey = [
+    String(data.shopId || '').trim(),
+    String(conversationId || data.customer || '').trim(),
+    normalizedMessage,
+  ].join('|');
+
   const doSend = async () => {
-    const view = shopManager?.getActiveView();
-    if (!view) return;
-    if (data.source === 'api-polling' && data.shopId && shopManager?.getActiveShopId() !== data.shopId) {
-      console.log(`[PDD助手] 接口轮询消息来自店铺 ${data.shopId}，当前嵌入页店铺为 ${shopManager?.getActiveShopId() || '无'}，跳过嵌入页发送`);
+    const sendDedupKey = [
+      data.shopId || '',
+      conversationId || data.customer || '',
+      normalizedMessage,
+      String(result.reply || '').replace(/\s+/g, ' ').trim(),
+    ].join('|');
+    const lastSentAt = autoReplySendDedup.get(sendDedupKey);
+    if (lastSentAt && Date.now() - lastSentAt < 30000) {
+      console.log(`[PDD助手] 自动回复发送去重，跳过重复发送: "${data.message?.slice(0, 30)}"`);
+      sendToDebug('auto-reply-dedup-skipped', {
+        shopId: data.shopId || shopManager?.getActiveShopId() || '',
+        conversationId,
+        customer: data.customer,
+        question: data.message,
+        answer: result.reply,
+        source,
+      });
       return;
     }
+    autoReplySendDedup.set(sendDedupKey, Date.now());
+    if (autoReplySendDedup.size > 200) {
+      const cutoff = Date.now() - 180000;
+      for (const [key, timestamp] of autoReplySendDedup) {
+        if (timestamp < cutoff) autoReplySendDedup.delete(key);
+      }
+    }
 
-    // 确保有活跃会话（没有则自动选择）
-    await selectConversationInView(view);
-
-    view.webContents.send('send-reply', {
-      conversationId: data.conversationId,
-      message: result.reply,
-      source: data.source || 'unknown',
-    });
     const replyData = {
       shopId: data.shopId || shopManager?.getActiveShopId() || '',
-      conversationId: data.conversationId,
+      conversationId,
       customer: data.customer,
       question: data.message,
       answer: result.reply,
       matched: result.matched,
       ruleName: result.ruleName,
       score: result.score,
-      source: data.source || 'unknown',
+      source,
     };
+
+    if (source === 'api-polling') {
+      if (!data.shopId) {
+        throw new Error('接口自动回复缺少店铺信息');
+      }
+      const sessionRef = data.session || data.sessionId || data.conversationId;
+      if (!sessionRef) {
+        throw new Error('接口自动回复缺少会话标识');
+      }
+      const sendResult = await getApiClient(data.shopId).sendManualMessage(sessionRef, result.reply, {
+        manualSource: 'auto-reply',
+      });
+      const apiReplyData = {
+        ...replyData,
+        sendMode: sendResult?.sendMode || 'manual-interface',
+        manualSource: sendResult?.manualSource || 'auto-reply',
+        actualText: sendResult?.text || '',
+        requestedText: sendResult?.requestedText || result.reply,
+      };
+      mainWindow?.webContents.send('auto-reply-sent', apiReplyData);
+      sendToDebug('auto-reply-sent', apiReplyData);
+      return;
+    }
+
+    const view = shopManager?.getActiveView();
+    if (!view) return;
+
+    // 确保有活跃会话（没有则自动选择）
+    await selectConversationInView(view);
+
+    view.webContents.send('send-reply', {
+      conversationId,
+      message: result.reply,
+      source,
+    });
     mainWindow?.webContents.send('auto-reply-sent', replyData);
     sendToDebug('auto-reply-sent', replyData);
   };
 
   if (result.matched) {
-    cancelPendingFallback(data.customer);
+    cancelPendingFallback(fallbackKey);
     await doSend();
   } else {
     // ---- 兜底回复流程 ----
 
     // 冷却检查：同一客户在冷却期内不重复兜底
     const cooldown = defaultReply?.cooldown || 60000;
-    const lastTime = fallbackCooldowns.get(data.customer);
+    const lastTime = fallbackCooldowns.get(fallbackKey);
     if (lastTime && Date.now() - lastTime < cooldown) {
+      const remainingMs = Math.max(0, cooldown - (Date.now() - lastTime));
+      mainWindow?.webContents.send('fallback-skipped', {
+        customer: data.customer,
+        message: data.message,
+        reason: '冷却中',
+        remainingMs,
+        shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      });
+      sendToDebug('fallback-skipped', {
+        customer: data.customer,
+        message: data.message,
+        reason: 'cooldown',
+        remainingMs,
+        shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      });
       appendUnmatchedLog(data);
       return;
     }
 
-    // 取消该客户之前的待发兜底（如果有）
-    cancelPendingFallback(data.customer);
+    // 同一会话内，同一条未命中消息已在待发队列中时，不要反复重排队。
+    const existingPendingMeta = pendingFallbackMeta.get(fallbackKey);
+    if (existingPendingMeta?.messageKey === fallbackMessageKey) {
+      sendToDebug('fallback-schedule-dedup-skipped', {
+        shopId: data.shopId || shopManager?.getActiveShopId() || '',
+        sessionId: data.sessionId || data.conversationId || '',
+        customer: data.customer || '',
+        message: data.message || '',
+        source,
+      });
+      return;
+    }
+
+    // 取消同一会话之前的待发兜底（如果有）
+    cancelPendingFallback(fallbackKey);
 
     // 通知 UI 显示需要人工关注
     mainWindow?.webContents.send('unmatched-message', {
+      shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      sessionId: data.sessionId || data.conversationId || '',
       customer: data.customer,
       message: data.message,
-      fallbackReply: result.reply
+      fallbackReply: result.reply,
+      source,
     });
-    sendToDebug('unmatched-message', { customer: data.customer, message: data.message });
+    sendToDebug('unmatched-message', {
+      shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      sessionId: data.sessionId || data.conversationId || '',
+      customer: data.customer,
+      message: data.message,
+      source,
+    });
 
     // 记录未匹配消息
     appendUnmatchedLog(data);
 
     // 延迟发送兜底（给人工抢答留时间）
     const delay = defaultReply?.delay || 2000;
+    mainWindow?.webContents.send('fallback-scheduled', {
+      shopId: data.shopId || shopManager?.getActiveShopId() || '',
+      sessionId: data.sessionId || data.conversationId || '',
+      customer: data.customer || '',
+      message: data.message || '',
+      delayMs: delay,
+      source,
+    });
     const timer = setTimeout(async () => {
-      pendingFallbacks.delete(data.customer);
+      pendingFallbacks.delete(fallbackKey);
+      pendingFallbackMeta.delete(fallbackKey);
 
-      // 人工抢答取消：检查输入框是否有人正在输入
-      if (defaultReply?.cancelOnHumanReply !== false) {
-        const view = shopManager?.getActiveView();
-        if (view) {
-          try {
-            const humanTyping = await view.webContents.executeJavaScript(
-              `window.__PDD_HELPER__?.checkInputBoxHasContent?.() || false`
-            );
-            if (humanTyping) {
-              console.log(`[PDD助手] 检测到人工正在输入，取消兜底回复: ${data.customer}`);
-              mainWindow?.webContents.send('fallback-cancelled', {
-                customer: data.customer,
-                reason: '人工正在输入'
-              });
-              return;
-            }
-          } catch { /* 检查失败则继续发送 */ }
+      try {
+        mainWindow?.webContents.send('fallback-triggered', {
+          shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          sessionId: data.sessionId || data.conversationId || '',
+          customer: data.customer || '',
+          message: data.message || '',
+          source,
+        });
+        // 接口对接页没有复用嵌入页输入框；若继续检查隐藏 BrowserView 的草稿，
+        // 会把接口页兜底误判为“人工正在输入”而取消发送。
+        if (source !== 'api-polling' && defaultReply?.cancelOnHumanReply !== false) {
+          const view = shopManager?.getActiveView();
+          if (view) {
+            try {
+              const humanTyping = await view.webContents.executeJavaScript(
+                `window.__PDD_HELPER__?.checkInputBoxHasContent?.() || false`
+              );
+              if (humanTyping) {
+                console.log(`[PDD助手] 检测到人工正在输入，取消兜底回复: ${data.customer}`);
+                mainWindow?.webContents.send('fallback-cancelled', {
+                  customer: data.customer,
+                  reason: '人工正在输入'
+                });
+                return;
+              }
+            } catch { /* 检查失败则继续发送 */ }
+          }
         }
-      }
 
-      fallbackCooldowns.set(data.customer, Date.now());
-      await doSend();
+        mainWindow?.webContents.send('fallback-send-start', {
+          shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          sessionId: data.sessionId || data.conversationId || '',
+          customer: data.customer || '',
+          message: data.message || '',
+          source,
+        });
+        await doSend();
+        fallbackCooldowns.set(fallbackKey, Date.now());
+      } catch (error) {
+        const message = error?.message || String(error || '兜底回复发送失败');
+        console.error(`[PDD助手] 兜底回复发送失败: ${message}`);
+        mainWindow?.webContents.send('auto-reply-error', {
+          shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          sessionId: data.sessionId || data.conversationId || '',
+          customer: data.customer || '',
+          message: data.message || '',
+          error: message,
+          errorCode: error?.errorCode || 0,
+          source,
+          phase: 'fallback-send',
+        });
+        sendToDebug('auto-reply-error', {
+          shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          sessionId: data.sessionId || data.conversationId || '',
+          customer: data.customer || '',
+          error: message,
+          source,
+          phase: 'fallback-send',
+        });
+      }
     }, delay);
 
-    pendingFallbacks.set(data.customer, timer);
+    pendingFallbacks.set(fallbackKey, timer);
+    pendingFallbackMeta.set(fallbackKey, {
+      messageKey: fallbackMessageKey,
+      createdAt: Date.now(),
+    });
   }
 }
 
@@ -2464,12 +2891,21 @@ ipcMain.on('new-customer-message', (event, data) => {
   });
 });
 
-function cancelPendingFallback(customer) {
-  const existing = pendingFallbacks.get(customer);
+function buildFallbackKey(data = {}) {
+  return [
+    String(data?.shopId || '').trim(),
+    String(data?.sessionId || data?.conversationId || '').trim(),
+    String(data?.customer || '').trim(),
+  ].join('|');
+}
+
+function cancelPendingFallback(fallbackKey) {
+  const existing = pendingFallbacks.get(fallbackKey);
   if (existing) {
     clearTimeout(existing);
-    pendingFallbacks.delete(customer);
+    pendingFallbacks.delete(fallbackKey);
   }
+  pendingFallbackMeta.delete(fallbackKey);
 }
 
 function appendUnmatchedLog(data) {
@@ -2478,11 +2914,48 @@ function appendUnmatchedLog(data) {
     message: data.message,
     customer: data.customer,
     timestamp: Date.now(),
-    shopId: shopManager?.getActiveShopId() || ''
+    shopId: data.shopId || shopManager?.getActiveShopId() || ''
   });
   // 保留最近 N 条
   if (log.length > UNMATCHED_LOG_MAX) log.length = UNMATCHED_LOG_MAX;
   store.set('unmatchedLog', log);
+}
+
+function ensureBuiltInRules(rules = []) {
+  const normalized = Array.isArray(rules) ? [...rules] : [];
+  const builtInRuleIds = ['qa_8', 'qa_9'];
+  for (const ruleId of builtInRuleIds) {
+    const hasRule = normalized.some(rule => String(rule?.id || '') === ruleId);
+    if (hasRule) continue;
+    const builtInRule = MOCK_RULES.find(rule => rule.id === ruleId);
+    if (builtInRule) normalized.push({ ...builtInRule });
+  }
+  return normalized;
+}
+
+function ensureDefaultReplyConfig(config = null) {
+  const legacyText = '亲，您好！您的问题我已收到，请稍等，马上为您处理~';
+  const nextText = '亲，目前咨询客户较多，客服小姐姐在一个一个回复，稍等一下~';
+  const normalized = config && typeof config === 'object' ? { ...config } : {};
+
+  if (!Array.isArray(normalized.texts) && normalized.text) {
+    normalized.texts = [normalized.text];
+  }
+
+  if (!Array.isArray(normalized.texts) || normalized.texts.length === 0) {
+    normalized.texts = [nextText];
+    return normalized;
+  }
+
+  if (normalized.texts.length === 1 && String(normalized.texts[0] || '').trim() === legacyText) {
+    normalized.texts = [nextText];
+  }
+
+  if (String(normalized.text || '').trim() === legacyText) {
+    normalized.text = nextText;
+  }
+
+  return normalized;
 }
 
 // ---- App Lifecycle ----
@@ -2491,8 +2964,19 @@ function initMockData() {
   if (!store.get('shopGroups') || store.get('shopGroups').length === 0) {
     store.set('shopGroups', MOCK_GROUPS);
   }
-  if (store.get('rules').length === 0) {
+  const currentRules = store.get('rules');
+  if (!Array.isArray(currentRules) || currentRules.length === 0) {
     store.set('rules', MOCK_RULES);
+  } else {
+    const mergedRules = ensureBuiltInRules(currentRules);
+    if (mergedRules.length !== currentRules.length) {
+      store.set('rules', mergedRules);
+    }
+  }
+  const currentDefaultReply = store.get('defaultReply');
+  const mergedDefaultReply = ensureDefaultReplyConfig(currentDefaultReply);
+  if (JSON.stringify(mergedDefaultReply) !== JSON.stringify(currentDefaultReply || {})) {
+    store.set('defaultReply', mergedDefaultReply);
   }
   if (!store.get('quickPhrases') || store.get('quickPhrases').length === 0) {
     store.set('quickPhrases', MOCK_QUICK_PHRASES);
@@ -2528,6 +3012,44 @@ function setupAppMenu() {
         { role: 'copy', label: '复制' },
         { role: 'paste', label: '粘贴' },
         { role: 'selectAll', label: '全选' }
+      ]
+    },
+    {
+      label: '调试',
+      submenu: [
+        {
+          label: '打开调试面板',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => {
+            const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+            Promise.resolve(createDebugWindow(parent))
+              .then(win => {
+                if (!win || win.isDestroyed()) return;
+                if (win.isMinimized()) win.restore();
+                win.show();
+                win.focus();
+              })
+              .catch(err => console.error('[PDD助手] 打开调试面板失败:', err?.message || String(err)));
+          }
+        },
+        {
+          label: '打开 DevTools',
+          accelerator: 'CmdOrCtrl+Alt+I',
+          click: () => {
+            try {
+              if (isEmbeddedPddView(currentView)) {
+                const view = shopManager?.getActiveView();
+                if (!view) return;
+                view.webContents.openDevTools({ mode: 'detach' });
+                return;
+              }
+              if (!mainWindow || mainWindow.isDestroyed()) return;
+              mainWindow.webContents.openDevTools({ mode: 'detach' });
+            } catch (err) {
+              console.error('[PDD助手] 打开 DevTools 失败:', err?.message || String(err));
+            }
+          }
+        }
       ]
     },
     {

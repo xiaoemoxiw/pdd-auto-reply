@@ -27,6 +27,8 @@ class ShopManager {
     this._pendingQRShopId = null;     // 扫码登录中的临时 shopId
     this._shopInfoTimer = null;
     this._shopInfoFetchingShopId = '';
+    this._overlayTopOffset = 0;
+    this._overlayVisible = false;
   }
 
   // ---- BrowserView 生命周期 ----
@@ -594,6 +596,8 @@ class ShopManager {
     if (!this.activeShopId) return;
     const view = this.views.get(this.activeShopId);
     if (view) {
+      this._overlayVisible = false;
+      this._overlayTopOffset = 0;
       this.mainWindow.setBrowserView(view);
       this._resizeView(view);
     }
@@ -605,12 +609,36 @@ class ShopManager {
     if (view) {
       try { this.mainWindow.removeBrowserView(view); } catch {}
     }
+    this._overlayVisible = false;
   }
 
   resizeActiveView() {
     if (!this.activeShopId) return;
     const view = this.views.get(this.activeShopId);
     if (view) this._resizeView(view);
+  }
+
+  isOverlayVisible() {
+    return !!this._overlayVisible;
+  }
+
+  showActiveViewOverlay(topOffset = 0) {
+    if (!this.activeShopId) return;
+    const view = this.views.get(this.activeShopId);
+    if (!view) return;
+    const normalizedOffset = Math.max(0, Number(topOffset || 0));
+    this._overlayTopOffset = normalizedOffset;
+    this._overlayVisible = true;
+    this.mainWindow.setBrowserView(view);
+    this._resizeViewOverlay(view);
+  }
+
+  resizeActiveViewOverlay() {
+    if (!this._overlayVisible) return;
+    if (!this.activeShopId) return;
+    const view = this.views.get(this.activeShopId);
+    if (!view) return;
+    this._resizeViewOverlay(view);
   }
 
   _resizeView(view) {
@@ -620,6 +648,17 @@ class ShopManager {
       y: TOOLBAR_HEIGHT + CHAT_BAR_HEIGHT,
       width: bounds.width - SIDEBAR_WIDTH,
       height: bounds.height - TOOLBAR_HEIGHT - CHAT_BAR_HEIGHT - STATUSBAR_HEIGHT
+    });
+  }
+
+  _resizeViewOverlay(view) {
+    const bounds = this.mainWindow.getContentBounds();
+    const topOffset = Math.max(0, Number(this._overlayTopOffset || 0));
+    view.setBounds({
+      x: SIDEBAR_WIDTH,
+      y: TOOLBAR_HEIGHT + topOffset,
+      width: bounds.width - SIDEBAR_WIDTH,
+      height: bounds.height - TOOLBAR_HEIGHT - topOffset - STATUSBAR_HEIGHT
     });
   }
 

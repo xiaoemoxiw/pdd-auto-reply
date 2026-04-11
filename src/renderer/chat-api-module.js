@@ -7,6 +7,7 @@
   let apiRefundSelectedOrder = null;
   let apiRefundAllowOrderReselect = true;
   let apiRefundCustomAmount = '';
+  let apiSmallPaymentCandidates = [];
   let apiSmallPaymentState = {
     visible: false,
     loading: false,
@@ -18,6 +19,33 @@
     order: null,
     info: null,
   };
+  let apiInviteOrderState = {
+    visible: false,
+    loading: false,
+    submitting: false,
+    keyword: '',
+    goodsItems: [],
+    selectedItems: [],
+    selectedCount: 0,
+    totalText: '¥0.00',
+    statusText: '未添加任何商品，请从左侧列表选择商品',
+    canClear: false,
+  };
+  let apiInviteOrderSpecState = {
+    visible: false,
+    loading: false,
+    confirming: false,
+    itemId: '',
+    goodsId: '',
+    title: '',
+    imageUrl: '',
+    priceText: '',
+    optionLabel: '规格',
+    skuOptions: [],
+    selectedSkuId: '',
+    error: '',
+  };
+  let apiInviteFollowSubmitting = false;
   let apiSideOrderSessionKey = '';
   let apiSideOrderCountdownTimer = null;
   let apiGoodsSpecModalState = {
@@ -27,6 +55,7 @@
     card: null,
     specItems: [],
   };
+  const apiGoodsSourceDebugPrintedKeys = new Set();
   const apiSideOrderStore = {
     personal: { cacheKey: '', loading: false, stale: false, error: '', items: [] },
     aftersale: { cacheKey: '', loading: false, stale: false, error: '', items: [] },
@@ -1409,6 +1438,69 @@
     return callRuntime('loadApiSessions', options);
   }
 
+  function findLocalApiSessionByKeyword(keyword = '') {
+    const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+    if (!normalizedKeyword) return null;
+    return getLatestApiSessionsForDisplay().find(session => {
+      const orderText = String(session?.orderId || session?.orderSn || '').trim().toLowerCase();
+      return orderText === normalizedKeyword
+        || String(session?.sessionId || '').trim().toLowerCase() === normalizedKeyword
+        || String(session?.customerId || '').trim().toLowerCase() === normalizedKeyword
+        || String(session?.customerName || '').trim().toLowerCase().includes(normalizedKeyword);
+    }) || null;
+  }
+
+  function prependApiSearchSession(session = {}) {
+    const shopId = String(session?.shopId || '').trim();
+    const sessionId = String(session?.sessionId || '').trim();
+    if (!shopId || !sessionId) return;
+    const state = getState();
+    const preservedSessions = Array.isArray(state.apiSessions)
+      ? state.apiSessions.filter(item => !(String(item?.shopId || '') === shopId && String(item?.sessionId || '') === sessionId))
+      : [];
+    mergeApiSessionsForShop(shopId, [session, ...preservedSessions.filter(item => String(item?.shopId || '') === shopId)]);
+    setApiPinnedSearchSession(session);
+  }
+
+  async function handleApiSessionSearchSubmit() {
+    const state = getState();
+    const rawKeyword = String(state.apiSessionKeyword || '').trim();
+    const normalizedKeyword = rawKeyword.toLowerCase();
+    if (!rawKeyword) {
+      setApiHint('请输入订单号、客户名或会话关键词');
+      return;
+    }
+    const localTarget = findLocalApiSessionByKeyword(rawKeyword);
+    if (localTarget) {
+      setApiPinnedSearchSession(localTarget);
+      setApiSessionTab('latest');
+      await openApiSession(localTarget.sessionId, localTarget.customerName, localTarget.shopId);
+      setApiHint(`已定位会话：${localTarget.customerName || localTarget.customerId || localTarget.sessionId}`);
+      return;
+    }
+    const scopeShopId = state.apiSelectedShopId || state.apiActiveSessionShopId || state.activeShopId || state.API_ALL_SHOPS;
+    const result = await window.pddApi.apiFindSessionByOrderSn({
+      shopId: scopeShopId,
+      orderSn: rawKeyword,
+      pageSize: 50,
+      pageLimit: 4,
+    });
+    if (!result?.sessionId) {
+      if (result?.error) {
+        setApiHint(result.error);
+        return;
+      }
+      setApiHint(normalizedKeyword ? '未找到对应订单会话，可先刷新会话再尝试搜索' : '请输入订单号');
+      return;
+    }
+    prependApiSearchSession(result);
+    setApiSessionTab('latest');
+    await openApiSession(result.sessionId, result.customerName, result.shopId, {
+      forceRefresh: true,
+    });
+    setApiHint(`已按订单号打开会话：${result.customerName || result.customerId || result.sessionId}`);
+  }
+
   function loadApiTraffic(shopId) {
     return callRuntime('loadApiTraffic', shopId);
   }
@@ -1503,15 +1595,25 @@
   }
 
   function appendApiLocalServiceMessage(payload = {}) {
-    return callRuntime('appendApiLocalServiceMessage', payload);
+    const result = callRuntime('appendApiLocalServiceMessage', payload);
+    renderApiMessages();
+    return result;
   }
 
   function refreshApiAfterMessageSent(payload = {}) {
     return callRuntime('refreshApiAfterMessageSent', payload);
   }
 
+  function applyApiReadMarkUpdate(payload = {}) {
+    return callRuntime('applyApiReadMarkUpdate', payload);
+  }
+
   function mergeApiSessionsForShop(shopId, sessions = []) {
     return callRuntime('mergeApiSessionsForShop', shopId, sessions);
+  }
+
+  function setApiPinnedSearchSession(session = null) {
+    return callRuntime('setApiPinnedSearchSession', session);
   }
 
   function renderApiStatus() {
@@ -1938,18 +2040,71 @@
   }
 
   function normalizeApiRefundCardAmountText(value) {
+    if (value === undefined || value === null || value === '') return '';
+    const text = String(value).trim();
+    if (!text) return '';
+    if (/^¥/.test(text)) return text.replace(/^¥\s+/, '¥');
+    const numericText = text.replace(/[^\d.-]/g, '');
+    if (/^\d+$/.test(numericText)) {
+      const fenValue = Number(numericText);
+      if (Number.isFinite(fenValue) && fenValue > 0) {
+        return `¥${(fenValue / 100).toFixed(2)}`;
+      }
+    }
+    const numeric = Number(numericText);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return `¥${numeric.toFixed(2)}`;
+    }
     const amountText = normalizeApiRefundAmountText(value);
     return amountText.replace(/^¥\s+/, '¥');
   }
 
   function resolveApiRefundCardFooterText(state = {}, fallbackText = '') {
     const statusValue = Number(state?.status);
-    if (statusValue === 0) return '等待消费者确认';
-    const normalizedFallback = String(fallbackText || '').trim();
-    if (!normalizedFallback || normalizedFallback === '已过期') {
+    const normalizedFallback = String(
+      fallbackText
+      || state?.text
+      || state?.desc
+      || state?.label
+      || state?.expire_text
+      || ''
+    ).trim();
+    if (normalizedFallback && normalizedFallback !== '已过期') {
+      return normalizedFallback;
+    }
+    if (statusValue === 2) return '消费者已同意';
+    if (statusValue === 3) return '消费者已拒绝';
+    if (statusValue === 0 || statusValue === 1) {
       return '等待消费者确认';
     }
-    return normalizedFallback;
+    return normalizedFallback || '等待消费者确认';
+  }
+
+  function resolveApiRefundStatusFooterText(kind = '', displayText = '', fallbackText = '') {
+    const normalizedFallback = String(fallbackText || '').trim();
+    const normalizedDisplay = String(displayText || '').trim();
+    if (normalizedFallback) return normalizedFallback;
+    if (kind === 'refund-pending') return '消费者已同意';
+    if (kind === 'refund-rejected') return normalizedDisplay || '消费者已拒绝';
+    if (kind === 'refund-success') return normalizedDisplay || '退款成功';
+    return normalizedDisplay;
+  }
+
+  function normalizeApiSystemComparableText(text = '') {
+    return String(text || '')
+      .trim()
+      .replace(/^[\[【]\s*/, '')
+      .replace(/\s*[\]】]$/, '')
+      .trim();
+  }
+
+  function isApiRefundPendingNoticeText(text = '') {
+    return normalizeApiSystemComparableText(text) === '消费者已同意您发起的退款申请，请及时处理';
+  }
+
+  function isApiRefundSuccessNoticeText(text = '') {
+    const normalized = normalizeApiSystemComparableText(text);
+    return normalized === '退款成功通知' || normalized === '退款成功';
   }
 
   function getApiRefundStatusUpdateMeta(message = {}) {
@@ -1959,12 +2114,18 @@
     if (directMeta) {
       const kind = String(directMeta.kind || '').trim();
       if (kind) {
+        const displayText = String(directMeta.displayText || '').trim();
+        const footerText = resolveApiRefundStatusFooterText(
+          kind,
+          displayText,
+          directMeta.footerText
+        );
         return {
           kind,
           targetMessageId: String(directMeta.targetMessageId || '').trim(),
           status: Number(directMeta.status ?? ''),
-          displayText: String(directMeta.displayText || '').trim(),
-          footerText: kind === 'refund-pending' ? '消费者已同意' : '',
+          displayText,
+          footerText,
         };
       }
     }
@@ -1974,18 +2135,28 @@
     if (messageType === 90) {
       const targetMessageId = String(data?.msg_id || '').trim();
       const statusValue = Number(data?.status);
+      const statusText = String(data?.text || '').trim();
       if (targetMessageId && statusValue === 2) {
         return {
           kind: 'refund-pending',
           targetMessageId,
           status: statusValue,
           displayText: '消费者已同意您发起的退款申请，请及时处理',
-          footerText: '消费者已同意',
+          footerText: resolveApiRefundStatusFooterText('refund-pending', '消费者已同意您发起的退款申请，请及时处理', statusText),
+        };
+      }
+      if (targetMessageId && statusValue === 3) {
+        return {
+          kind: 'refund-rejected',
+          targetMessageId,
+          status: statusValue,
+          displayText: statusText || '消费者已拒绝',
+          footerText: resolveApiRefundStatusFooterText('refund-rejected', statusText || '消费者已拒绝', statusText),
         };
       }
     }
-    const source = String(message?.content || raw?.content || '').trim();
-    if (/^\[?消费者已同意您发起的退款申请，请及时处理\]?$/.test(source)) {
+    const source = getApiSystemNoticeText(message) || String(message?.content || raw?.content || '').trim();
+    if (isApiRefundPendingNoticeText(source)) {
       return {
         kind: 'refund-pending',
         targetMessageId: '',
@@ -1994,7 +2165,7 @@
         footerText: '消费者已同意',
       };
     }
-    if (/^退款成功(?:通知)?$/.test(source)) {
+    if (isApiRefundSuccessNoticeText(source)) {
       return {
         kind: 'refund-success',
         targetMessageId: '',
@@ -2004,6 +2175,420 @@
       };
     }
     return null;
+  }
+
+  function extractApiStructuredNoticeEntryText(entry = {}) {
+    if (!entry || typeof entry !== 'object') return '';
+    return String(
+      entry?.text
+      || entry?.content
+      || entry?.message
+      || entry?.msg
+      || entry?.title
+      || entry?.label
+      || entry?.name
+      || entry?.desc
+      || entry?.value
+      || ''
+    ).trim();
+  }
+
+  function getApiSystemNoticeText(messageOrText = '') {
+    if (typeof messageOrText === 'string') return messageOrText.trim();
+    const raw = messageOrText?.raw && typeof messageOrText.raw === 'object' ? messageOrText.raw : {};
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const directText = [
+      messageOrText?.content,
+      raw?.content,
+      raw?.msg_content,
+      raw?.text,
+      raw?.message,
+      info?.mall_content,
+      info?.merchant_content,
+      info?.content,
+      info?.text,
+      info?.title,
+      info?.label,
+      info?.desc,
+      info?.tip,
+      info?.message,
+      messageOrText?.extra?.text,
+      raw?.extra?.text,
+      raw?.ext?.text,
+    ].filter(Boolean).map(item => String(item || '').trim()).find(Boolean);
+    if (directText) return directText;
+    const entryLists = [
+      Array.isArray(info?.item_content) ? info.item_content : [],
+      Array.isArray(info?.mall_item_content) ? info.mall_item_content : [],
+      Array.isArray(info?.items) ? info.items : [],
+    ];
+    for (const list of entryLists) {
+      const entryText = list.map(entry => extractApiStructuredNoticeEntryText(entry)).filter(Boolean).join(' ').trim();
+      if (entryText) return entryText;
+    }
+    return [
+      messageOrText?.content,
+      raw?.content,
+      raw?.msg_content,
+      raw?.text,
+      raw?.message,
+      info?.mall_content,
+      messageOrText?.extra?.text,
+      raw?.extra?.text,
+      raw?.ext?.text,
+    ].filter(Boolean).map(item => String(item || '').trim()).find(Boolean) || '';
+  }
+
+  function normalizeApiSystemActionText(text = '') {
+    return String(text || '')
+      .trim()
+      .replace(/^>>\s*/, '')
+      .replace(/\s*<<$/, '')
+      .trim();
+  }
+
+  function isApiUnmatchedReplyNoticeMessage(message = {}) {
+    return /机器人未找到对应(?:的)?回复/.test(getApiSystemNoticeText(message));
+  }
+
+  function isApiGoodsSourceNoticeMessage(message = {}) {
+    const source = getApiSystemNoticeText(message);
+    return /当前用户来自/.test(source) && /商品详情页/.test(source);
+  }
+
+  function debugApiGoodsSourceMessage(message = {}, session = {}, extra = {}) {
+    const sourceText = getApiSystemNoticeText(message);
+    if (!isApiGoodsSourceNoticeMessage(message)) return;
+    const sessionKey = getApiSessionKey(session || {});
+    const messageId = String(
+      message?.messageId
+      || message?.msgId
+      || message?.msg_id
+      || message?.id
+      || message?.raw?.msg_id
+      || message?.raw?.message_id
+      || ''
+    ).trim();
+    const signature = [
+      sessionKey,
+      messageId,
+      String(message?.timestamp || ''),
+      sourceText,
+    ].join('::');
+    if (apiGoodsSourceDebugPrintedKeys.has(signature)) return;
+    apiGoodsSourceDebugPrintedKeys.add(signature);
+    if (apiGoodsSourceDebugPrintedKeys.size > 50) {
+      const firstKey = apiGoodsSourceDebugPrintedKeys.values().next().value;
+      if (firstKey) apiGoodsSourceDebugPrintedKeys.delete(firstKey);
+    }
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const payload = {
+      sessionKey,
+      customer: String(session?.customerName || session?.displayName || '').trim(),
+      sourceText,
+      messageMeta: {
+        messageId,
+        timestamp: Number(message?.timestamp || 0) || 0,
+        type: Number(raw?.type ?? message?.type ?? -1),
+        templateName: String(raw?.template_name || raw?.templateName || message?.templateName || '').trim(),
+        content: String(message?.content || raw?.content || raw?.msg_content || '').trim(),
+      },
+      goodsLinkInfo: extra?.goodsLinkInfo || null,
+      resolvedCard: extra?.goodsCard || null,
+      messageExtra: message?.extra || null,
+      rawInfo: info,
+      rawInfoData: infoData,
+      rawExtra: raw?.extra || null,
+      rawBizContext: raw?.biz_context || raw?.bizContext || null,
+      sessionGoodsInfo: session?.goodsInfo || null,
+      sessionRawGoodsInfo: session?.raw?.goods_info || null,
+      sessionRawGoods: session?.raw?.goods || null,
+    };
+    emitRendererDebug('chat-api', 'goods-source-message-debug', payload);
+    recordApiSyncState('商品来源调试', `${payload.customer || sessionKey || '未知会话'} 已输出原始数据`);
+  }
+
+  function pickApiGoodsTextWithExclusions(sources = [], keys = [], exclusions = []) {
+    const isExcluded = text => {
+      const normalized = String(text || '').trim();
+      if (!normalized) return true;
+      return exclusions.some(rule => {
+        if (!rule) return false;
+        if (rule instanceof RegExp) return rule.test(normalized);
+        return normalized === String(rule).trim();
+      });
+    };
+    const extractText = (value, preferredKeys = [], seen = new Set()) => {
+      if (typeof value === 'string' && value.trim()) {
+        return isExcluded(value) ? '' : value.trim();
+      }
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+      if (!value || typeof value !== 'object' || seen.has(value)) return '';
+      seen.add(value);
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const matched = extractText(item, preferredKeys, seen);
+          if (matched) return matched;
+        }
+        return '';
+      }
+      for (const key of preferredKeys) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        const matched = extractText(value[key], preferredKeys, seen);
+        if (matched) return matched;
+      }
+      for (const item of Object.values(value)) {
+        const matched = extractText(item, preferredKeys, seen);
+        if (matched) return matched;
+      }
+      return '';
+    };
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+        const matched = extractText(source[key], ['title', 'name', 'text', 'content', 'url', 'src', 'imageUrl', 'image_url']);
+        if (matched) return matched;
+      }
+    }
+    return '';
+  }
+
+  function getApiRefundSystemNoticeKind(message = {}) {
+    const statusMeta = getApiRefundStatusUpdateMeta(message);
+    if (statusMeta?.kind && statusMeta.kind !== 'refund-rejected') return statusMeta.kind;
+    const source = getApiSystemNoticeText(message);
+    if (!source) return '';
+    if (isApiRefundPendingNoticeText(source)) return 'refund-pending';
+    if (isApiRefundSuccessNoticeText(source)) return 'refund-success';
+    return '';
+  }
+
+  function getApiRefundSystemNoticeDisplayText(message = {}) {
+    const statusMeta = getApiRefundStatusUpdateMeta(message);
+    if (statusMeta?.displayText) return statusMeta.displayText;
+    const source = getApiSystemNoticeText(message);
+    const kind = getApiRefundSystemNoticeKind(message);
+    if (kind === 'refund-pending') return '消费者已同意您发起的退款申请，请及时处理';
+    if (kind === 'refund-success') return '退款成功';
+    return source;
+  }
+
+  function isApiInviteOrderTemplateMessage(message = {}) {
+    const raw = message?.raw && typeof message.raw === 'object'
+      ? message.raw
+      : (message && typeof message === 'object' ? message : {});
+    const templateName = String(raw?.template_name || raw?.templateName || message?.template_name || message?.templateName || '').trim();
+    if (templateName === 'substitute_order_v2' || templateName === 'substitute_order_v3') return true;
+    if (templateName) return false;
+    const messageType = Number(
+      raw?.type
+      ?? raw?.msg_type
+      ?? raw?.message_type
+      ?? raw?.content_type
+      ?? message?.type
+      ?? message?.msgType
+      ?? -1
+    );
+    const sourceText = getApiSystemNoticeText({ ...message, raw });
+    if (isApiRefundPendingNoticeText(sourceText) || isApiRefundSuccessNoticeText(sourceText)) {
+      return false;
+    }
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const goodsInfoList = [
+      infoData?.goods_info_list,
+      infoData?.goodsInfoList,
+      infoData?.goods_list,
+      infoData?.goodsList,
+      info?.goods_info_list,
+      info?.goodsInfoList,
+      info?.goods_list,
+      info?.goodsList,
+    ].find(Array.isArray) || [];
+    return messageType === 64 && !!(
+      goodsInfoList.length
+      && goodsInfoList.some(entry => entry && typeof entry === 'object')
+    );
+  }
+
+  function renderApiRefundSystemNoticeCardHtml(message = {}, options = {}) {
+    const kind = getApiRefundSystemNoticeKind(message);
+    if (!kind) return '';
+    const card = findApiMatchedRefundCard(options.sortedMessages, {
+      targetMessageId: getApiRefundStatusUpdateMeta(message)?.targetMessageId,
+      messageIndex: options.messageIndex,
+      activeSession: options.activeSession,
+    });
+    const displayText = getApiRefundSystemNoticeDisplayText(message);
+    if (!card) {
+      if (kind === 'refund-success') {
+        return `<div class="api-system-refund-card success">
+          <div class="api-system-refund-card-success-head">
+            <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+            <span>${esc(displayText)}</span>
+          </div>
+        </div>`;
+      }
+      return `<div class="api-system-refund-card pending">
+        <div class="api-system-refund-card-header">${esc(displayText)}</div>
+      </div>`;
+    }
+    const imageHtml = card.imageUrl
+      ? `<img class="api-system-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+      : `<div class="api-system-refund-card-media-placeholder">商品</div>`;
+    if (kind === 'refund-success') {
+      return `<div class="api-system-refund-card success">
+        <div class="api-system-refund-card-success-head">
+          <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+          <span>退款成功</span>
+        </div>
+        <div class="api-system-refund-card-goods">
+          ${imageHtml}
+          <div class="api-system-refund-card-main">
+            <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+            <div class="api-system-refund-card-success-meta">
+              ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
+              <div class="api-system-refund-card-success-actual">实收：${esc(card.amountText || '--')}</div>
+            </div>
+          </div>
+        </div>
+        <div class="api-system-refund-card-success-footer">
+          <div class="api-system-refund-card-success-amount">
+            <span class="api-system-refund-card-success-amount-label">退款金额</span>
+            <span class="api-system-refund-card-success-amount-value">${esc(card.amountText || '--')}</span>
+          </div>
+          <span class="api-system-refund-card-success-button">查看订单售后详情</span>
+        </div>
+      </div>`;
+    }
+    return renderApiRefundCardHtml(card, {
+      headerText: displayText,
+      actionButtonLabel: '去处理',
+    });
+  }
+
+  function isApiSystemNoticeMessage(message = {}) {
+    const source = getApiSystemNoticeText(message);
+    if (isApiRefundDefaultSellerNoteText(source)) return false;
+    if (extractApiRefundCard(message)) return false;
+    if (isApiInviteOrderTemplateMessage(message)) return false;
+    if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const messageType = Number(raw?.type ?? message?.type ?? -1);
+    if (messageType === 31 || messageType === 90) return true;
+    if (String(raw?.template_name || raw?.templateName || '').trim()) return true;
+    if (raw?.system && typeof raw.system === 'object' && Object.keys(raw.system).length) return true;
+    if (!source) return false;
+    if (isApiRefundPendingNoticeText(source) || isApiRefundSuccessNoticeText(source)) return true;
+    return [
+      /您接待过此消费者/,
+      /机器人已暂停接待/,
+      /机器人未找到对应(?:的)?回复/,
+      /立即恢复接待/,
+      /为避免插嘴/,
+      /为避免插播/,
+      /为避免抢答/,
+      /当前用户来自/,
+      /商品详情页/,
+      /订单已超承诺发货时间/,
+      /请人工跟进/,
+    ].some(pattern => pattern.test(source));
+  }
+
+  function isApiRefundDefaultSellerNoteText(text = '') {
+    const source = String(text || '').trim();
+    if (!source) return false;
+    return [
+      /帮您申请退款，您看可以吗.*点击下方卡片按钮/,
+      /帮您申请退货退款，您看可以吗.*点击下方卡片按钮/,
+      /帮您申请补寄，您看可以吗.*点击下方卡片按钮/,
+    ].some(pattern => pattern.test(source));
+  }
+
+  function getApiSystemPromptContext(sortedMessages = [], messageIndex = -1) {
+    const activeSession = getApiActiveSession() || {};
+    const state = getState();
+    const currentMessage = sortedMessages[messageIndex] || {};
+    const customer = String(activeSession.customerName || activeSession.displayName || state.apiActiveSessionName || '').trim();
+    const previousBuyerMessage = sortedMessages
+      .slice(0, messageIndex)
+      .reverse()
+      .find(item => !isApiSystemNoticeMessage(item) && item.isFromBuyer && String(item.content || '').trim());
+    return {
+      customer,
+      message: String(previousBuyerMessage?.content || '').trim(),
+      systemText: getApiSystemNoticeText(currentMessage),
+    };
+  }
+
+  async function handleApiSystemAction(action = '', messageIndex = -1, sortedMessages = []) {
+    if (action !== 'create-rule') return;
+    const state = getState();
+    const context = getApiSystemPromptContext(sortedMessages, messageIndex);
+    try {
+      if (state.currentView !== 'qa') {
+        await callRuntime('switchView', 'qa');
+      }
+      if (typeof window.openQAUnmatchedFromContext !== 'function') {
+        setApiHint('未找到规则入口');
+        return;
+      }
+      const result = await window.openQAUnmatchedFromContext({
+        customer: context.customer,
+        message: context.message,
+      });
+      if (result?.matched || result?.prefilled) {
+        setApiHint('已打开规则编辑');
+      } else {
+        setApiHint('未定位到对应消息，请手动补充规则');
+      }
+    } catch (error) {
+      setApiHint('打开规则入口失败');
+      addLog(`打开规则入口失败: ${error.message || error}`, 'error');
+    }
+  }
+
+  function buildApiSystemActionHtml(actionText = '', options = {}) {
+    const normalized = normalizeApiSystemActionText(actionText);
+    if (!normalized) return '';
+    const source = getApiSystemNoticeText(options.message);
+    if (
+      /^点击添加$/.test(normalized)
+      && /机器人未找到对应(?:的)?回复/.test(source)
+      && Number.isInteger(options.messageIndex)
+      && options.messageIndex >= 0
+    ) {
+      return `<button class="api-message-system-action api-message-system-action-button" type="button" data-system-action="create-rule" data-message-index="${options.messageIndex}">${esc(normalized)}</button>`;
+    }
+    return `<span class="api-message-system-action">${renderApiPddEmojiHtml(normalized)}</span>`;
+  }
+
+  function renderApiSystemMessageHtml(messageOrText = '', options = {}) {
+    const source = getApiSystemNoticeText(messageOrText);
+    if (!source) return '';
+    const refundNoticeKind = getApiRefundSystemNoticeKind(messageOrText);
+    if (refundNoticeKind) {
+      return renderApiRefundSystemNoticeCardHtml(messageOrText, options);
+    }
+    const actionPattern = /(>>[^<>\n]+<<|点击(?:添加|【[^】\n]+】))/g;
+    const normalizedSource = source.replace(/^(\s*>>[^<>\n]+<<\s*)+/, '').trim();
+    const target = normalizedSource || source;
+    const actionMatch = target.match(actionPattern);
+    if (actionMatch) {
+      const actionText = actionMatch[0];
+      const actionIndex = target.indexOf(actionText);
+      const prefix = actionIndex >= 0 ? target.slice(0, actionIndex) : target;
+      const suffix = actionIndex >= 0 ? target.slice(actionIndex + actionText.length) : '';
+      return [
+        prefix ? `<span class="api-message-system-main">${renderApiPddEmojiHtml(prefix)}</span>` : '',
+        buildApiSystemActionHtml(actionText, options),
+        suffix ? `<span class="api-message-system-main">${renderApiPddEmojiHtml(suffix)}</span>` : '',
+      ].join('');
+    }
+    return `<span class="api-message-system-main">${renderApiPddEmojiHtml(target)}</span>`;
   }
 
   function findApiMatchedRefundCard(sortedMessages = [], options = {}) {
@@ -2083,6 +2668,14 @@
     });
     const displayText = statusMeta.displayText || '消费者已同意您发起的退款申请，请及时处理';
     if (!card) {
+      if (statusMeta.kind === 'refund-success') {
+        return `<div class="api-system-refund-card success">
+          <div class="api-system-refund-card-success-head">
+            <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+            <span>退款成功</span>
+          </div>
+        </div>`;
+      }
       return `<div class="api-system-refund-card pending">
         <div class="api-system-refund-card-header">${esc(displayText)}</div>
       </div>`;
@@ -2090,32 +2683,35 @@
     const imageHtml = card.imageUrl
       ? `<img class="api-system-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
       : `<div class="api-system-refund-card-media-placeholder">商品</div>`;
-    const rows = [
-      { label: '申请类型', value: card.actionText || '退款' },
-      { label: '申请原因', value: card.reasonText || '其他原因' },
-      card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
-      { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
-      card.contactText ? { label: '联系方式', value: card.contactText } : null,
-    ].filter(Boolean);
-    return `<div class="api-system-refund-card success">
-      <div class="api-system-refund-card-header">${esc(displayText)}</div>
-      <div class="api-system-refund-card-goods">
-        ${imageHtml}
-        <div class="api-system-refund-card-main">
-          <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
-          <div class="api-system-refund-card-success-meta">
-            ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
-            ${card.amountText ? `<div class="api-system-refund-card-price">${esc(card.amountText)}</div>` : ''}
+    if (statusMeta.kind === 'refund-success') {
+      return `<div class="api-system-refund-card success">
+        <div class="api-system-refund-card-success-head">
+          <span class="api-system-refund-card-success-icon" aria-hidden="true"></span>
+          <span>退款成功</span>
+        </div>
+        <div class="api-system-refund-card-goods">
+          ${imageHtml}
+          <div class="api-system-refund-card-main">
+            <div class="api-system-refund-card-goods-title">${esc(card.goodsTitle || '订单商品')}</div>
+            <div class="api-system-refund-card-success-meta">
+              ${card.specText ? `<div class="api-system-refund-card-spec">${esc(card.specText)}</div>` : ''}
+              <div class="api-system-refund-card-success-actual">实收：${esc(card.amountText || '--')}</div>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="api-system-refund-card-rows">
-        ${rows.map(row => `<div class="api-system-refund-card-row"><span class="api-system-refund-card-label">${esc(row.label)}</span><span class="api-system-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
-      </div>
-      <div class="api-system-refund-card-footer">
-        <span class="api-system-refund-card-action">去处理</span>
-      </div>
-    </div>`;
+        <div class="api-system-refund-card-success-footer">
+          <div class="api-system-refund-card-success-amount">
+            <span class="api-system-refund-card-success-amount-label">退款金额</span>
+            <span class="api-system-refund-card-success-amount-value">${esc(card.amountText || '--')}</span>
+          </div>
+          <span class="api-system-refund-card-success-button">查看订单售后详情</span>
+        </div>
+      </div>`;
+    }
+    return renderApiRefundCardHtml(card, {
+      headerText: displayText,
+      actionButtonLabel: '去处理',
+    });
   }
 
   function getApiRefundCardTypeText(type = 'refund') {
@@ -2229,9 +2825,11 @@
     const noteText = pickApiRefundText(sources, ['noteText', 'note_text', 'applyNote', 'apply_note', 'description', 'desc'])
       || String(fallback?.noteText || '').trim()
       || '商家代消费者填写售后单';
+    const cardState = card?.mstate || card?.mState || card?.state || card?.status || fallback?.mstate || fallback?.mState || fallback?.state || {};
     const footerText = resolveApiRefundCardFooterText(
-      card?.state || card?.status || fallback?.state || {},
+      cardState,
       pickApiRefundText(sources, ['footerText', 'footer_text', 'statusText', 'status_text', 'statusDesc', 'status_desc'])
+      || pickApiRefundText([card?.mstate, card?.mState, card?.state, fallback?.mstate, fallback?.mState, fallback?.state], ['text', 'desc', 'label', 'expire_text'])
       || String(fallback?.footerText || '').trim()
     );
     const actionTypeRaw = pickApiRefundText(sources, ['actionText', 'action_text', 'applyTypeText', 'apply_type_text', 'afterSalesTypeDesc', 'after_sales_type_desc', 'type'])
@@ -2307,7 +2905,10 @@
             const row = (Array.isArray(info?.item_list) ? info.item_list : []).find(item => String(item?.left || '').includes('联系方式'));
             return Array.isArray(row?.right) ? row.right.map(entry => String(entry?.text || '').trim()).filter(Boolean).join(' ') : '';
           })(),
-          footerText: resolveApiRefundCardFooterText(info?.state, info?.state?.expire_text),
+          footerText: resolveApiRefundCardFooterText(
+            info?.mstate || info?.state,
+            info?.mstate?.text || info?.state?.text || info?.mstate?.expire_text || info?.state?.expire_text
+          ),
         }
       : null;
     const sourceCard = (directCard && typeof directCard === 'object') ? directCard : rawRefundCard;
@@ -2682,34 +3283,69 @@
     return items.filter(item => item && item.key && (item.orderId || item.orderSn));
   }
 
-  function renderApiSmallPaymentOrderSelector() {
-    const container = document.getElementById('apiSmallPaymentOrderSelector');
-    if (!container) return;
-    const orders = getApiSmallPaymentCandidateOrders();
-    const currentKey = String(apiSmallPaymentState.orderKey || '');
-    if (!apiSmallPaymentState.selectingOrder || orders.length <= 1) {
-      container.style.display = 'none';
-      container.innerHTML = '';
+  async function ensureApiSmallPaymentCandidateOrders() {
+    const existingOrders = getApiSmallPaymentCandidateOrders();
+    if (existingOrders.length) {
+      return existingOrders;
+    }
+    const state = getState();
+    if (!state.apiActiveSessionId || !state.apiActiveSessionShopId) {
+      return [];
+    }
+    ensureApiSideOrderSessionScope();
+    const session = getApiSideOrderSession();
+    if (!session) {
+      return [];
+    }
+    const entry = getApiSideOrderEntry('personal');
+    entry.cacheKey = `${getApiSessionKey(session.shopId, session.sessionId)}::personal`;
+    entry.loading = true;
+    entry.error = '';
+    await loadApiSideOrders('personal');
+    return getApiSmallPaymentCandidateOrders();
+  }
+
+  function renderApiSmallPaymentOrderSelectModal() {
+    const listEl = document.getElementById('apiSmallPaymentSelectList');
+    const emptyEl = document.getElementById('apiSmallPaymentSelectEmpty');
+    const summaryEl = document.getElementById('apiSmallPaymentSelectSummary');
+    if (!listEl || !emptyEl || !summaryEl) return;
+    listEl.classList.toggle('is-scrollable', apiSmallPaymentCandidates.length > 3);
+    summaryEl.textContent = `${apiSmallPaymentCandidates.length}条数据`;
+    if (!apiSmallPaymentCandidates.length) {
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
       return;
     }
-    container.style.display = 'block';
-    container.innerHTML = orders.map(order => {
-      const orderKey = String(order?.key || '');
+    emptyEl.style.display = 'none';
+    listEl.innerHTML = apiSmallPaymentCandidates.map(order => {
       const quantityText = getApiSmallPaymentOrderQuantity(order);
       const detailText = String(order?.detailText || '所拍规格待确认').trim();
-      const metaText = [detailText, quantityText].filter(Boolean).join(' · ');
-      const selected = orderKey === currentKey;
+      const metaText = [detailText, quantityText].filter(Boolean).join(' x ');
       return `
-        <div class="api-small-payment-order-option">
-          <div class="api-small-payment-order-option-main">
-            <div class="api-small-payment-order-option-id">订单编号：${esc(order?.orderId || '-')}</div>
-            <div class="api-small-payment-order-option-title">${esc(order?.title || '未命名商品')}</div>
-            <div class="api-small-payment-order-option-meta">${esc(metaText || '所拍规格待确认')} · ¥${esc(formatApiSideOrderMoneyNumber(getApiSideOrderPriceBaseAmount(order) || 0))}</div>
+        <div class="api-small-payment-select-item">
+          <div class="api-small-payment-select-media">
+            ${order.imageUrl ? `<img src="${esc(order.imageUrl)}" alt="${esc(order.title || '订单商品')}">` : '<span>商品</span>'}
           </div>
-          <button class="api-small-payment-order-option-btn" type="button" data-api-small-payment-select-order="${esc(orderKey)}">${selected ? '当前订单' : '选择'}</button>
+          <div class="api-small-payment-select-main">
+            <div class="api-small-payment-select-id">订单编号：${esc(order.orderId || '-')}</div>
+            <div class="api-small-payment-select-title">${esc(order.title || '未命名商品')}</div>
+            <div class="api-small-payment-select-meta">${esc(metaText || '所拍规格待确认')}</div>
+            <div class="api-small-payment-select-price">¥${esc(formatApiSideOrderMoneyNumber(getApiSideOrderPriceBaseAmount(order) || 0))}</div>
+          </div>
+          <div class="api-small-payment-select-action">
+            <button class="api-small-payment-select-btn" type="button" data-api-small-payment-order-key="${esc(order.key)}">选择订单</button>
+          </div>
         </div>
       `;
     }).join('');
+  }
+
+  function renderApiSmallPaymentOrderSelector() {
+    const container = document.getElementById('apiSmallPaymentOrderSelector');
+    if (!container) return;
+    container.style.display = 'none';
+    container.innerHTML = '';
   }
 
   function renderApiSmallPaymentStatus(order = getSelectedApiSmallPaymentOrder()) {
@@ -2814,8 +3450,8 @@
       } else if (info?.submitTemplateReady) {
         const recognizedCount = Number(info?.submitTemplateMeta?.recognizedCount || 0) || 0;
         permissionText.textContent = recognizedCount > 0
-          ? `已捕获真实提交模板，已识别 ${recognizedCount} 个关键字段，当前仍待对齐后接通接口页确认提交`
-          : '已捕获真实提交模板，当前仍待对齐字段后接通接口页确认提交';
+          ? `已捕获真实提交模板，已识别 ${recognizedCount} 个关键字段，当前优先按真实字段提交`
+          : '已捕获真实提交模板，当前将按模板字段尝试提交';
       } else if (info?.needChargePlayMoney) {
         permissionText.textContent = '当前打款能力涉及收费规则，请在确认前核对平台说明';
       } else if (Array.isArray(info?.tips) && info.tips.length) {
@@ -2825,7 +3461,7 @@
       }
     }
     if (changeOrderButton) {
-      changeOrderButton.textContent = apiSmallPaymentState.selectingOrder ? '收起列表' : '修改订单';
+      changeOrderButton.textContent = '重选订单';
     }
     if (submitButton) {
       if (apiSmallPaymentState.loading) {
@@ -2950,17 +3586,65 @@
     syncApiSmallPaymentForm(order);
   }
 
-  function openApiSmallPaymentModal(orderKey = '') {
+  async function openApiSmallPaymentOrderSelector(options = {}) {
     const state = getState();
     if (!state.apiActiveSessionId) {
       setApiHint('请先选择一个接口会话');
       return;
     }
-    const order = getApiSideOrderItem(orderKey);
+    const preferredOrderKey = String(options?.orderKey || '').trim();
+    const orders = await ensureApiSmallPaymentCandidateOrders();
+    apiSmallPaymentCandidates = orders;
+    if (!orders.length) {
+      setApiHint('当前会话暂无可选订单');
+      showApiSideOrderToast('当前会话暂无可选订单');
+      return;
+    }
+    if (preferredOrderKey) {
+      const matchedOrder = orders.find(item => String(item?.key || '') === preferredOrderKey);
+      if (matchedOrder) {
+        openApiSmallPaymentModal(matchedOrder.key);
+        return;
+      }
+    }
+    if (orders.length === 1) {
+      openApiSmallPaymentModal(orders[0]?.key || '');
+      return;
+    }
+    renderApiSmallPaymentOrderSelectModal();
+    window.showModal?.('modalApiSmallPaymentOrderSelect');
+  }
+
+  function closeApiSmallPaymentOrderSelector() {
+    window.hideModal?.('modalApiSmallPaymentOrderSelect');
+  }
+
+  function handleApiSmallPaymentOrderSelection(event) {
+    const button = event.target.closest('[data-api-small-payment-order-key]');
+    if (!button) return;
+    const orderKey = String(button.dataset.apiSmallPaymentOrderKey || '').trim();
+    if (!orderKey) return;
+    closeApiSmallPaymentOrderSelector();
+    openApiSmallPaymentModal(orderKey);
+  }
+
+  function openApiSmallPaymentModal(orderKey = '') {
+    const normalizedOrderKey = String(orderKey || '').trim();
+    if (!normalizedOrderKey) {
+      void openApiSmallPaymentOrderSelector();
+      return;
+    }
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    const order = getApiSideOrderItem(normalizedOrderKey);
     if (!order) {
       showApiSideOrderToast('未找到对应订单');
       return;
     }
+    closeApiSmallPaymentOrderSelector();
     closeApiSideOrderPriceEditor();
     apiSideOrderRemarkState = {
       ...apiSideOrderRemarkState,
@@ -2994,16 +3678,8 @@
   }
 
   function handleApiSmallPaymentChangeOrder() {
-    const orders = getApiSmallPaymentCandidateOrders();
-    if (orders.length <= 1) {
-      showApiSideOrderToast('当前仅有一笔可选订单');
-      return;
-    }
-    apiSmallPaymentState = {
-      ...apiSmallPaymentState,
-      selectingOrder: !apiSmallPaymentState.selectingOrder,
-    };
-    syncApiSmallPaymentForm();
+    closeApiSmallPaymentModal({ silent: true });
+    void openApiSmallPaymentOrderSelector();
   }
 
   async function handleApiSmallPaymentSubmit() {
@@ -3091,6 +3767,609 @@
         submitting: false,
       };
       syncApiSmallPaymentForm(order);
+    }
+  }
+
+  function normalizeApiInviteOrderSnapshot(result = {}) {
+    const goodsItems = Array.isArray(result?.goodsItems)
+      ? result.goodsItems.filter(item => item && typeof item === 'object')
+      : [];
+    const selectedItems = Array.isArray(result?.selectedItems)
+      ? result.selectedItems.filter(item => item && typeof item === 'object')
+      : [];
+    const selectedCount = Number.isFinite(Number(result?.selectedCount))
+      ? Number(result.selectedCount)
+      : selectedItems.length;
+    const totalText = String(result?.totalText || result?.totalPriceText || '').trim() || '¥0.00';
+    const emptyText = String(result?.emptyText || '').trim();
+    const statusText = String(result?.statusText || '').trim()
+      || emptyText
+      || (selectedCount > 0 ? `已选 ${selectedCount} 件商品，可直接发送给买家` : '未添加任何商品，请从左侧列表选择商品');
+    return {
+      goodsItems,
+      selectedItems,
+      selectedCount,
+      totalText,
+      statusText,
+      canClear: selectedCount > 0,
+      source: String(result?.source || '').trim(),
+    };
+  }
+
+  function normalizeApiInviteOrderSkuOptionsResult(result = {}) {
+    const skuOptions = Array.isArray(result?.skuOptions)
+      ? result.skuOptions
+        .filter(item => item && typeof item === 'object')
+        .map((item, index) => ({
+          skuId: String(item?.skuId || '').trim(),
+          label: String(item?.label || item?.detailLabel || `规格 ${index + 1}`).trim(),
+          detailLabel: String(item?.detailLabel || item?.label || `规格 ${index + 1}`).trim(),
+          priceText: String(item?.priceText || '').trim(),
+          stockText: String(item?.stockText || '').trim(),
+          disabled: Boolean(item?.disabled),
+        }))
+        .filter(item => item.skuId)
+      : [];
+    const fallbackSelectedSkuId = skuOptions.find(item => !item.disabled)?.skuId || '';
+    return {
+      goodsId: String(result?.goodsId || '').trim(),
+      title: String(result?.title || '').trim() || '商品',
+      imageUrl: String(result?.imageUrl || '').trim(),
+      priceText: String(result?.priceText || '').trim(),
+      optionLabel: String(result?.optionLabel || '').trim() || '规格',
+      skuOptions,
+      selectedSkuId: String(result?.selectedSkuId || '').trim() || fallbackSelectedSkuId,
+    };
+  }
+
+  function renderApiInviteOrderSpecModal() {
+    const summaryEl = document.getElementById('apiInviteOrderSpecSummary');
+    const loadingEl = document.getElementById('apiInviteOrderSpecLoading');
+    const errorEl = document.getElementById('apiInviteOrderSpecError');
+    const emptyEl = document.getElementById('apiInviteOrderSpecEmpty');
+    const optionsEl = document.getElementById('apiInviteOrderSpecOptions');
+    const confirmButton = document.getElementById('btnApiInviteOrderSpecConfirm');
+    const labelEl = document.getElementById('apiInviteOrderSpecLabel');
+    if (!summaryEl || !loadingEl || !errorEl || !emptyEl || !optionsEl || !confirmButton || !labelEl) return;
+    const summaryTitle = apiInviteOrderSpecState.title || '商品';
+    const summaryPrice = apiInviteOrderSpecState.priceText || '';
+    labelEl.textContent = apiInviteOrderSpecState.optionLabel || '规格';
+    summaryEl.innerHTML = `<div class="api-invite-order-spec-product">
+      ${apiInviteOrderSpecState.imageUrl
+        ? `<img class="api-invite-order-spec-product-image" src="${esc(apiInviteOrderSpecState.imageUrl)}" alt="${esc(summaryTitle)}">`
+        : '<div class="api-invite-order-spec-product-image is-placeholder">商品</div>'}
+      <div class="api-invite-order-spec-product-main">
+        ${summaryPrice ? `<div class="api-invite-order-spec-product-price">${esc(summaryPrice)}</div>` : ''}
+        <div class="api-invite-order-spec-product-title">${esc(summaryTitle)}</div>
+        <div class="api-invite-order-spec-product-tip">请选择：${esc(apiInviteOrderSpecState.optionLabel || '规格')}</div>
+      </div>
+    </div>`;
+    loadingEl.style.display = apiInviteOrderSpecState.loading ? 'flex' : 'none';
+    errorEl.style.display = apiInviteOrderSpecState.error ? 'block' : 'none';
+    errorEl.textContent = apiInviteOrderSpecState.error || '';
+    const shouldShowOptions = !apiInviteOrderSpecState.loading && !apiInviteOrderSpecState.error && apiInviteOrderSpecState.skuOptions.length > 0;
+    labelEl.style.display = !apiInviteOrderSpecState.error && (apiInviteOrderSpecState.loading || apiInviteOrderSpecState.skuOptions.length > 0) ? 'block' : 'none';
+    optionsEl.style.display = shouldShowOptions ? 'grid' : 'none';
+    emptyEl.style.display = !apiInviteOrderSpecState.loading && !apiInviteOrderSpecState.error && !apiInviteOrderSpecState.skuOptions.length ? 'block' : 'none';
+    optionsEl.innerHTML = apiInviteOrderSpecState.skuOptions.map(item => {
+      const isSelected = item.skuId === apiInviteOrderSpecState.selectedSkuId;
+      return `<button
+        type="button"
+        class="api-invite-order-spec-option${isSelected ? ' is-selected' : ''}${item.disabled ? ' is-disabled' : ''}"
+        data-api-invite-order-sku-id="${esc(item.skuId)}"
+        ${item.disabled ? 'disabled' : ''}
+        title="${esc(item.detailLabel || item.label)}"
+      >${esc(item.label)}</button>`;
+    }).join('');
+    const hasSelectableOption = apiInviteOrderSpecState.skuOptions.some(item => !item.disabled);
+    if (apiInviteOrderSpecState.confirming) {
+      confirmButton.disabled = true;
+      confirmButton.textContent = '加入中...';
+    } else {
+      confirmButton.disabled = apiInviteOrderSpecState.loading || !hasSelectableOption || !apiInviteOrderSpecState.selectedSkuId;
+      confirmButton.textContent = '确定';
+    }
+  }
+
+  async function loadApiInviteOrderSkuOptions(item = {}) {
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    const itemId = String(item?.itemId || '').trim();
+    if (!activeSession || !itemId) {
+      throw new Error('缺少商品信息');
+    }
+    if (!window.pddApi?.apiGetInviteOrderSkuOptions) {
+      throw new Error('当前版本缺少邀请下单规格能力');
+    }
+    const result = await window.pddApi.apiGetInviteOrderSkuOptions({
+      shopId: state.apiActiveSessionShopId,
+      sessionId: state.apiActiveSessionId,
+      session: activeSession,
+      itemId,
+    });
+    if (!result || result.error) {
+      throw new Error(result?.error || '读取邀请下单规格失败');
+    }
+    return normalizeApiInviteOrderSkuOptionsResult(result);
+  }
+
+  async function openApiInviteOrderSpecModal(item = {}) {
+    const itemId = String(item?.itemId || '').trim();
+    if (!itemId) return;
+    apiInviteOrderSpecState = {
+      visible: true,
+      loading: true,
+      confirming: false,
+      itemId,
+      goodsId: String(item?.goodsId || itemId).trim(),
+      title: String(item?.title || '').trim(),
+      imageUrl: String(item?.imageUrl || '').trim(),
+      priceText: String(item?.priceText || '').trim(),
+      optionLabel: '规格',
+      skuOptions: [],
+      selectedSkuId: '',
+      error: '',
+    };
+    renderApiInviteOrderSpecModal();
+    window.showModal?.('modalApiInviteOrderSpec');
+    try {
+      const result = await loadApiInviteOrderSkuOptions(item);
+      if (!apiInviteOrderSpecState.visible || apiInviteOrderSpecState.itemId !== itemId) return;
+      apiInviteOrderSpecState = {
+        ...apiInviteOrderSpecState,
+        loading: false,
+        goodsId: result.goodsId || apiInviteOrderSpecState.goodsId,
+        title: result.title || apiInviteOrderSpecState.title,
+        imageUrl: result.imageUrl || apiInviteOrderSpecState.imageUrl,
+        priceText: result.priceText || apiInviteOrderSpecState.priceText,
+        optionLabel: result.optionLabel || '规格',
+        skuOptions: result.skuOptions,
+        selectedSkuId: result.selectedSkuId || '',
+        error: '',
+      };
+      renderApiInviteOrderSpecModal();
+    } catch (error) {
+      if (!apiInviteOrderSpecState.visible || apiInviteOrderSpecState.itemId !== itemId) return;
+      apiInviteOrderSpecState = {
+        ...apiInviteOrderSpecState,
+        loading: false,
+        error: error?.message || '读取邀请下单规格失败',
+      };
+      renderApiInviteOrderSpecModal();
+      setApiHint(error?.message || '读取邀请下单规格失败');
+      showApiSideOrderToast(error?.message || '读取邀请下单规格失败');
+    }
+  }
+
+  function closeApiInviteOrderSpecModal() {
+    apiInviteOrderSpecState = {
+      visible: false,
+      loading: false,
+      confirming: false,
+      itemId: '',
+      goodsId: '',
+      title: '',
+      imageUrl: '',
+      priceText: '',
+      optionLabel: '规格',
+      skuOptions: [],
+      selectedSkuId: '',
+      error: '',
+    };
+    window.hideModal?.('modalApiInviteOrderSpec');
+  }
+
+  function renderApiInviteOrderModal() {
+    const goodsListEl = document.getElementById('apiInviteOrderGoodsList');
+    const selectedListEl = document.getElementById('apiInviteOrderSelectedList');
+    const countTextEl = document.getElementById('apiInviteOrderCountText');
+    const totalTextEl = document.getElementById('apiInviteOrderTotalText');
+    const statusTextEl = document.getElementById('apiInviteOrderStatusText');
+    const submitButton = document.getElementById('btnApiInviteOrderSubmit');
+    const clearButton = document.getElementById('btnApiInviteOrderClear');
+    const searchButton = document.getElementById('btnApiInviteOrderSearch');
+    const keywordInput = document.getElementById('apiInviteOrderKeyword');
+    if (keywordInput && keywordInput.value !== apiInviteOrderState.keyword) {
+      keywordInput.value = apiInviteOrderState.keyword;
+    }
+    if (goodsListEl) {
+      if (apiInviteOrderState.loading && !apiInviteOrderState.goodsItems.length) {
+        goodsListEl.innerHTML = '<div class="api-invite-order-empty">正在读取邀请下单商品列表...</div>';
+      } else if (!apiInviteOrderState.goodsItems.length) {
+        goodsListEl.innerHTML = `<div class="api-invite-order-empty">${esc(apiInviteOrderState.statusText || '暂未读取到店铺商品')}</div>`;
+      } else {
+        goodsListEl.innerHTML = apiInviteOrderState.goodsItems.map((item, index) => {
+          const itemId = item.itemId || `available:${index}`;
+          const buttonText = item.selected ? '已加入' : (item.buttonText || '加入清单');
+          return `
+            <div class="api-invite-order-card">
+              <div class="api-invite-order-media">
+                ${item.imageUrl ? `<img src="${esc(item.imageUrl)}" alt="${esc(item.title || '商品主图')}">` : '<span>商品</span>'}
+              </div>
+              <div class="api-invite-order-info">
+                <div class="api-invite-order-title">${esc(item.title || '未命名商品')}</div>
+                <div class="api-invite-order-price">${esc(item.priceText || '-')}</div>
+                ${item.metaText ? `<div class="api-invite-order-meta">${esc(item.metaText)}</div>` : ''}
+              </div>
+              <button class="api-invite-order-action ${item.selected ? 'is-selected' : ''}" type="button"
+                data-api-invite-order-item="${esc(itemId)}" ${item.selected ? 'disabled' : ''}>${esc(buttonText)}</button>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+    if (selectedListEl) {
+      if (!apiInviteOrderState.selectedItems.length) {
+        selectedListEl.innerHTML = '<div class="api-invite-order-empty">未添加任何商品，请从左侧列表选择商品</div>';
+      } else {
+        selectedListEl.innerHTML = apiInviteOrderState.selectedItems.map((item, index) => {
+          const title = item.title || item.text || '已选商品';
+          const priceText = item.priceText || '-';
+          const quantity = Math.max(1, Number(item.goodsNumber || item.quantity || 1) || 1);
+          return `
+            <div class="api-invite-order-selected-item">
+              <div class="api-invite-order-selected-media">
+                ${item.imageUrl ? `<img src="${esc(item.imageUrl)}" alt="${esc(title)}">` : '<span>商品</span>'}
+              </div>
+              <div class="api-invite-order-selected-info">
+                <div class="api-invite-order-selected-title">${esc(title)}</div>
+                <div class="api-invite-order-selected-price">${esc(priceText)}</div>
+              </div>
+              <div class="api-invite-order-selected-side">
+                <span class="api-invite-order-selected-index">${index + 1}</span>
+                <span class="api-invite-order-selected-qty">x${quantity}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+    if (countTextEl) {
+      countTextEl.textContent = `已选 ${apiInviteOrderState.selectedCount} 件商品`;
+    }
+    if (totalTextEl) {
+      totalTextEl.textContent = apiInviteOrderState.totalText || '¥0.00';
+    }
+    if (statusTextEl) {
+      statusTextEl.textContent = apiInviteOrderState.statusText || '';
+    }
+    if (submitButton) {
+      if (apiInviteOrderState.submitting) {
+        submitButton.disabled = true;
+        submitButton.textContent = '发送中...';
+      } else {
+        submitButton.disabled = apiInviteOrderState.loading || apiInviteOrderState.selectedCount <= 0;
+        submitButton.textContent = '发送';
+      }
+    }
+    if (clearButton) {
+      clearButton.disabled = apiInviteOrderState.loading || !apiInviteOrderState.canClear;
+    }
+    if (searchButton) {
+      searchButton.disabled = apiInviteOrderState.loading || apiInviteOrderState.submitting;
+      searchButton.textContent = apiInviteOrderState.loading ? '查询中...' : '搜索';
+    }
+  }
+
+  function applyApiInviteOrderSnapshot(result = {}, options = {}) {
+    const snapshot = normalizeApiInviteOrderSnapshot(result);
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      loading: false,
+      submitting: false,
+      goodsItems: snapshot.goodsItems,
+      selectedItems: snapshot.selectedItems,
+      selectedCount: snapshot.selectedCount,
+      totalText: snapshot.totalText,
+      statusText: snapshot.statusText,
+      canClear: snapshot.canClear,
+    };
+    if (!options.skipHint && snapshot.source) {
+      setApiHint(snapshot.source === 'api' ? '邀请下单已切到真实接口链路' : '邀请下单数据已刷新');
+    }
+    renderApiInviteOrderModal();
+  }
+
+  async function loadApiInviteOrderSnapshot(options = {}) {
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    if (!state.apiActiveSessionId || !activeSession) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    if (!window.pddApi?.apiGetInviteOrderState) {
+      setApiHint('当前版本缺少邀请下单能力');
+      return;
+    }
+    const nextKeyword = options.keyword !== undefined
+      ? String(options.keyword || '').trim()
+      : String(apiInviteOrderState.keyword || '').trim();
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      visible: true,
+      loading: true,
+      keyword: nextKeyword,
+    };
+    renderApiInviteOrderModal();
+    try {
+      const result = await window.pddApi.apiGetInviteOrderState({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession,
+        keyword: nextKeyword,
+        refreshOpen: options.refreshOpen !== false,
+      });
+      if (!apiInviteOrderState.visible) return;
+      if (!result || result.error) {
+        throw new Error(result?.error || '读取邀请下单弹窗失败');
+      }
+      applyApiInviteOrderSnapshot(result, options);
+    } catch (error) {
+      apiInviteOrderState = {
+        ...apiInviteOrderState,
+        loading: false,
+        goodsItems: [],
+        selectedItems: [],
+        selectedCount: 0,
+        totalText: '¥0.00',
+        statusText: error?.message || '读取邀请下单弹窗失败',
+        canClear: false,
+      };
+      renderApiInviteOrderModal();
+      setApiHint(error?.message || '读取邀请下单弹窗失败');
+      showApiSideOrderToast(error?.message || '读取邀请下单弹窗失败');
+    }
+  }
+
+  async function openApiInviteOrderModal() {
+    const state = getState();
+    if (!state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      visible: true,
+      submitting: false,
+    };
+    renderApiInviteOrderModal();
+    window.showModal?.('modalApiInviteOrder');
+    await loadApiInviteOrderSnapshot({ refreshOpen: true, skipHint: true });
+  }
+
+  function closeApiInviteOrderModal(options = {}) {
+    closeApiInviteOrderSpecModal();
+    apiInviteOrderState = {
+      visible: false,
+      loading: false,
+      submitting: false,
+      keyword: '',
+      goodsItems: [],
+      selectedItems: [],
+      selectedCount: 0,
+      totalText: '¥0.00',
+      statusText: '未添加任何商品，请从左侧列表选择商品',
+      canClear: false,
+    };
+    if (!options?.silent) {
+      window.hideModal?.('modalApiInviteOrder');
+    } else {
+      window.hideModal?.('modalApiInviteOrder');
+    }
+  }
+
+  async function handleApiInviteOrderSearch() {
+    const keyword = document.getElementById('apiInviteOrderKeyword')?.value || '';
+    await loadApiInviteOrderSnapshot({ keyword, refreshOpen: true, skipHint: true });
+  }
+
+  async function handleApiInviteOrderGoodsClick(event) {
+    const button = event.target.closest('[data-api-invite-order-item]');
+    if (!button || apiInviteOrderState.loading || apiInviteOrderState.submitting) return;
+    if (!window.pddApi?.apiGetInviteOrderSkuOptions) {
+      setApiHint('当前版本缺少邀请下单规格能力');
+      return;
+    }
+    const itemId = String(button.dataset.apiInviteOrderItem || '').trim();
+    if (!itemId) return;
+    const item = apiInviteOrderState.goodsItems.find(candidate => String(candidate?.itemId || '').trim() === itemId);
+    await openApiInviteOrderSpecModal(item || { itemId });
+  }
+
+  function handleApiInviteOrderSpecOptionClick(event) {
+    const button = event.target.closest('[data-api-invite-order-sku-id]');
+    if (!button || apiInviteOrderSpecState.loading || apiInviteOrderSpecState.confirming || button.disabled) return;
+    const skuId = String(button.dataset.apiInviteOrderSkuId || '').trim();
+    if (!skuId) return;
+    apiInviteOrderSpecState = {
+      ...apiInviteOrderSpecState,
+      selectedSkuId: skuId,
+      error: '',
+    };
+    renderApiInviteOrderSpecModal();
+  }
+
+  async function handleApiInviteOrderSpecConfirm() {
+    if (!window.pddApi?.apiAddInviteOrderItem) {
+      setApiHint('当前版本缺少邀请下单添加能力');
+      return;
+    }
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    const itemId = String(apiInviteOrderSpecState.itemId || '').trim();
+    const selectedSkuId = String(apiInviteOrderSpecState.selectedSkuId || '').trim();
+    if (!activeSession || !itemId || !selectedSkuId) return;
+    apiInviteOrderSpecState = {
+      ...apiInviteOrderSpecState,
+      confirming: true,
+      error: '',
+    };
+    renderApiInviteOrderSpecModal();
+    try {
+      const result = await window.pddApi.apiAddInviteOrderItem({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession,
+        itemId,
+        skuId: selectedSkuId,
+      });
+      if (!result || result.error) {
+        throw new Error(result?.error || '加入邀请下单清单失败');
+      }
+      closeApiInviteOrderSpecModal();
+      applyApiInviteOrderSnapshot(result, { skipHint: true });
+      setApiHint('已加入邀请下单清单');
+    } catch (error) {
+      apiInviteOrderSpecState = {
+        ...apiInviteOrderSpecState,
+        confirming: false,
+        error: error?.message || '加入邀请下单清单失败',
+      };
+      renderApiInviteOrderSpecModal();
+      setApiHint(error?.message || '加入邀请下单清单失败');
+      showApiSideOrderToast(error?.message || '加入邀请下单清单失败');
+    }
+  }
+
+  async function handleApiInviteOrderClear() {
+    if (!window.pddApi?.apiClearInviteOrderItems || !apiInviteOrderState.canClear) return;
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    if (!activeSession) return;
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      loading: true,
+    };
+    renderApiInviteOrderModal();
+    try {
+      const result = await window.pddApi.apiClearInviteOrderItems({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession,
+      });
+      if (!result || result.error) {
+        throw new Error(result?.error || '清空邀请下单清单失败');
+      }
+      applyApiInviteOrderSnapshot(result, { skipHint: true });
+      setApiHint('已清空邀请下单清单');
+    } catch (error) {
+      apiInviteOrderState = {
+        ...apiInviteOrderState,
+        loading: false,
+      };
+      renderApiInviteOrderModal();
+      setApiHint(error?.message || '清空邀请下单清单失败');
+      showApiSideOrderToast(error?.message || '清空邀请下单清单失败');
+    }
+  }
+
+  async function handleApiInviteOrderSubmit() {
+    const state = getState();
+    const activeSession = getApiActiveSession();
+    if (!activeSession || !state.apiActiveSessionId) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    if (!apiInviteOrderState.selectedCount) {
+      setApiHint('请先选择至少一个商品');
+      return;
+    }
+    if (!window.pddApi?.apiSubmitInviteOrder) {
+      setApiHint('当前版本缺少邀请下单发送能力');
+      return;
+    }
+    apiInviteOrderState = {
+      ...apiInviteOrderState,
+      submitting: true,
+    };
+    renderApiInviteOrderModal();
+    try {
+      recordApiSyncState(
+        '邀请下单弹窗',
+        `会话：${activeSession.customerName || activeSession.customerId || state.apiActiveSessionId}；商品数：${apiInviteOrderState.selectedCount}`,
+      );
+      const result = await window.pddApi.apiSubmitInviteOrder({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session: activeSession,
+      });
+      if (!result || result.error) {
+        throw new Error(result?.error || '发送邀请下单失败');
+      }
+      const previewCard = buildApiInviteOrderPreviewCard();
+      const syntheticKey = `invite-order::${state.apiActiveSessionShopId}::${state.apiActiveSessionId}::${Date.now()}`;
+      closeApiInviteOrderModal({ silent: true });
+      appendApiLocalServiceMessage({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        text: previewCard.messageText,
+        inviteOrderCard: previewCard,
+        syntheticKey,
+        timestamp: Date.now(),
+      });
+      await refreshApiAfterMessageSent({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        syntheticKey,
+      });
+      setApiHint(result?.message || '邀请下单已发送');
+      showApiSideOrderToast(result?.message || '邀请下单已发送');
+    } catch (error) {
+      apiInviteOrderState = {
+        ...apiInviteOrderState,
+        submitting: false,
+      };
+      renderApiInviteOrderModal();
+      setApiHint(error?.message || '发送邀请下单失败');
+      showApiSideOrderToast(error?.message || '发送邀请下单失败');
+    }
+  }
+
+  async function handleApiInviteFollowClick() {
+    const session = getApiActiveSession();
+    if (!session) {
+      setApiHint('请先选择一个接口会话');
+      return;
+    }
+    const followStatus = getApiConversationFollowStatus(session);
+    if (followStatus.visible && followStatus.text) {
+      setApiHint('当前买家已关注本店，无需再次邀请');
+      return;
+    }
+    if (apiInviteFollowSubmitting) {
+      setApiHint('邀请关注发送中，请稍候');
+      return;
+    }
+    if (!window.pddApi?.apiSubmitInviteFollow) {
+      setApiHint('当前版本缺少邀请关注能力');
+      return;
+    }
+    const state = getState();
+    apiInviteFollowSubmitting = true;
+    try {
+      recordApiSyncState(
+        '邀请关注',
+        `会话：${session.customerName || session.customerId || state.apiActiveSessionId}`,
+      );
+      const result = await window.pddApi.apiSubmitInviteFollow({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+        session,
+      });
+      if (!result || result.error) {
+        throw new Error(result?.error || '发送邀请关注失败');
+      }
+      await refreshApiAfterMessageSent({
+        shopId: state.apiActiveSessionShopId,
+        sessionId: state.apiActiveSessionId,
+      });
+      setApiHint(result?.message || '邀请关注已发送，正在同步最新消息');
+      showApiSideOrderToast(result?.message || '邀请关注已发送');
+    } catch (error) {
+      setApiHint(error?.message || '发送邀请关注失败');
+      showApiSideOrderToast(error?.message || '发送邀请关注失败');
+    } finally {
+      apiInviteFollowSubmitting = false;
     }
   }
 
@@ -3476,22 +4755,6 @@
     const normalized = String(message?.readState || '').toLowerCase();
     if (normalized === 'read') return 'read';
     if (normalized === 'unread') return 'unread';
-    const candidates = [
-      message?.raw?.is_read,
-      message?.raw?.isRead,
-      message?.raw?.read_status,
-      message?.raw?.readStatus,
-      message?.raw?.read_state,
-      message?.raw?.readState,
-    ];
-    for (const value of candidates) {
-      if (value === undefined || value === null || value === '') continue;
-      if (typeof value === 'boolean') return value ? 'read' : 'unread';
-      if (typeof value === 'number') return value > 0 ? 'read' : 'unread';
-      const text = String(value).trim().toLowerCase();
-      if (['1', 'true', 'read', '已读'].includes(text)) return 'read';
-      if (['0', 'false', 'unread', '未读'].includes(text)) return 'unread';
-    }
     return '';
   }
 
@@ -3509,8 +4772,8 @@
       message?.raw,
       message,
     ].filter(Boolean);
-    const match = rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
-      || rawText.match(/https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
+    const match = rawText.match(/https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?[^ \n]+/i)
+      || rawText.match(/https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/poros\/h5[^ \n]*goods_id=\d+[^ \n]*/i);
     let url = match?.[0]
       ? match[0].replace(/&amp;/gi, '&')
       : pickApiGoodsText(structuredSources, ['url', 'share_url', 'shareUrl', 'goods_url', 'goodsUrl', 'jump_url', 'jumpUrl', 'link_url', 'linkUrl']);
@@ -3520,14 +4783,17 @@
     if (url && /^\/(?:goods2?|goods)\.html\?/i.test(url)) {
       url = `https://mobile.yangkeduo.com${url}`;
     }
-    const isHttpGoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
-    const isH5GoodsUrl = url && /^https?:\/\/(?:mobile\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
+    const isHttpGoodsUrl = url && /^https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/(?:goods2?|goods)\.html\?/i.test(url);
+    const isH5GoodsUrl = url && /^https?:\/\/(?:[\w-]+\.)?yangkeduo\.com\/poros\/h5/i.test(url) && /[?&]goods_id=\d+/i.test(url);
     if (url && !isHttpGoodsUrl && !isH5GoodsUrl) {
       url = '';
     }
-    const goodsIdMatch = url
+    const goodsIdMatch = (url
       ? (url.match(/[?&]goods_id=(\d+)/i) || url.match(/[?&]goodsId=(\d+)/i))
-      : null;
+      : null)
+      || rawText.match(/[?&]goods_id=(\d+)/i)
+      || rawText.match(/[?&]goodsId=(\d+)/i)
+      || rawText.match(/商品ID[:：]?\s*(\d{6,})/i);
     const goodsId = goodsIdMatch?.[1]
       || pickApiGoodsText(structuredSources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']);
     if (goodsId) {
@@ -3723,27 +4989,231 @@
       </div>
       <div class="api-goods-card-divider"></div>
       <div class="api-goods-card-body">
-        ${imageHtml}
-        <div class="api-goods-card-main">
-          <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
-          ${priceHtml}
-          <button
-            class="api-goods-card-spec"
-            type="button"
-            data-goods-cache-key="${esc(card.cacheKey || '')}"
-            data-goods-id="${esc(card.goodsId || '')}"
-            data-goods-url="${esc(card.url || '')}"
-            data-goods-title="${esc(card.title || '')}"
-            data-goods-image-url="${esc(card.imageUrl || '')}"
-            data-goods-price-text="${esc(card.priceText || '')}"
-            data-goods-group-text="${esc(card.groupText || '')}"
-            data-goods-spec-text="${esc(card.specText || '查看商品规格')}"
-            data-goods-stock-text="${esc(card.stockText || '')}"
-            data-goods-sales-text="${esc(card.salesText || '')}"
-            data-goods-pending-group-text="${esc(card.pendingGroupText || '')}"
-            data-goods-spec-items="${esc(JSON.stringify(specItems || []))}"
-          >${esc(card.specText || '查看商品规格')}</button>
+        <div class="api-goods-card-content">
+          <div class="api-goods-card-media">
+            ${imageHtml}
+          </div>
+          <div class="api-goods-card-main">
+            <div class="api-goods-card-summary">
+              <div class="api-goods-card-title">${esc(card.title || '拼多多商品')}</div>
+              ${priceHtml}
+            </div>
+            <button
+              class="api-goods-card-spec"
+              type="button"
+              data-goods-cache-key="${esc(card.cacheKey || '')}"
+              data-goods-id="${esc(card.goodsId || '')}"
+              data-goods-url="${esc(card.url || '')}"
+              data-goods-title="${esc(card.title || '')}"
+              data-goods-image-url="${esc(card.imageUrl || '')}"
+              data-goods-price-text="${esc(card.priceText || '')}"
+              data-goods-group-text="${esc(card.groupText || '')}"
+              data-goods-spec-text="${esc(card.specText || '查看商品规格')}"
+              data-goods-stock-text="${esc(card.stockText || '')}"
+              data-goods-sales-text="${esc(card.salesText || '')}"
+              data-goods-pending-group-text="${esc(card.pendingGroupText || '')}"
+              data-goods-spec-items="${esc(JSON.stringify(specItems || []))}"
+            >${esc(card.specText || '查看商品规格')}</button>
+          </div>
         </div>
+      </div>
+    </div>`;
+  }
+
+  function findApiGoodsSourceReferenceCard(sortedMessages = [], messageIndex = -1, session = {}, goodsLinkInfo = null) {
+    if (!Array.isArray(sortedMessages) || !sortedMessages.length || messageIndex < 0) return null;
+    const state = getState();
+    const expectedGoodsId = String(goodsLinkInfo?.goodsId || '').trim();
+    let nearestMeaningfulCard = null;
+    for (let distance = 1; distance <= 12; distance++) {
+      const candidateIndexes = [messageIndex - distance, messageIndex + distance];
+      for (const candidateIndex of candidateIndexes) {
+        if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= sortedMessages.length) continue;
+        const candidateMessage = sortedMessages[candidateIndex];
+        const candidateLinkInfo = extractApiGoodsLinkInfo(candidateMessage);
+        if (!candidateLinkInfo) continue;
+        const candidateFallbackCard = buildApiGoodsCardFallback(candidateLinkInfo, candidateMessage, session);
+        const candidateCachedCard = candidateLinkInfo.cacheKey
+          ? state.apiGoodsCardCache?.get(candidateLinkInfo.cacheKey)
+          : null;
+        const candidateCard = normalizeApiGoodsCard(
+          candidateLinkInfo?.cacheKey ? { ...(candidateCachedCard || {}), cacheKey: candidateLinkInfo.cacheKey } : (candidateCachedCard || {}),
+          candidateLinkInfo?.cacheKey ? { ...(candidateFallbackCard || {}), cacheKey: candidateLinkInfo.cacheKey } : (candidateFallbackCard || {})
+        );
+        if (!isMeaningfulApiGoodsCard(candidateCard)) continue;
+        const candidateGoodsId = String(candidateLinkInfo.goodsId || candidateCard.goodsId || '').trim();
+        if (expectedGoodsId && candidateGoodsId && candidateGoodsId === expectedGoodsId) {
+          return candidateCard;
+        }
+        if (!nearestMeaningfulCard) {
+          nearestMeaningfulCard = candidateCard;
+        }
+      }
+    }
+    return nearestMeaningfulCard;
+  }
+
+  function resolveApiGoodsSourceCard(message = {}, session = {}, goodsLinkInfo = null, cachedCard = null, options = {}) {
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const goodsList = [
+      infoData?.goods_info_list,
+      infoData?.goodsInfoList,
+      infoData?.goods_list,
+      infoData?.goodsList,
+      info?.goods_info_list,
+      info?.goodsInfoList,
+      info?.goods_list,
+      info?.goodsList,
+      infoData?.goods,
+      info?.goods,
+    ].find(Array.isArray) || [];
+    const goodsItem = goodsList.find(item => item && typeof item === 'object') || {};
+    const sourceNoticeText = getApiSystemNoticeText(message).replace(/^\[|\]$/g, '').trim();
+    const textExclusions = [
+      sourceNoticeText,
+      /当前用户来自/,
+      /商品详情页/,
+    ];
+    const sources = [
+      goodsItem,
+      session?.goodsInfo,
+      session?.raw?.goods_info,
+      session?.raw?.goods,
+      infoData,
+      info,
+      message?.extra,
+      raw?.extra,
+      raw?.biz_context,
+      raw?.bizContext,
+      raw,
+      message,
+    ].filter(Boolean);
+    const fallbackCard = normalizeApiGoodsCard({
+      cacheKey: String(goodsLinkInfo?.cacheKey || ''),
+      goodsId: goodsLinkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'target_goods_id', 'targetGoodsId', 'id']),
+      url: goodsLinkInfo?.url || '',
+      title: pickApiGoodsTextWithExclusions(sources, [
+        'goods_name',
+        'goodsName',
+        'goods_title',
+        'goodsTitle',
+        'item_title',
+        'itemTitle',
+        'share_title',
+        'shareTitle',
+        'name',
+        'title',
+      ], textExclusions) || '',
+      imageUrl: pickApiGoodsText(sources, [
+        'imageUrl',
+        'image_url',
+        'thumb_url',
+        'hd_thumb_url',
+        'goods_thumb_url',
+        'thumbUrl',
+        'hdThumbUrl',
+        'goodsThumbUrl',
+        'pic_url',
+        'sku_thumb_url',
+        'skuThumbUrl',
+        'cover_url',
+        'coverUrl',
+        'hd_url',
+        'hdUrl',
+        'top_gallery',
+        'gallery',
+        'images',
+        'imageList',
+      ]),
+      priceText: pickApiGoodsText(sources, [
+        'priceText',
+        'price_text',
+        'price',
+        'promotion_price',
+        'promotionPrice',
+        'goods_price',
+        'goodsPrice',
+        'amount',
+        'amountText',
+        'sku_price',
+        'skuPrice',
+        'group_price',
+        'unit_price',
+        'pay_price',
+        'final_price',
+      ]) || formatApiGoodsPrice(pickApiGoodsNumber(sources, [
+        'promotion_price',
+        'promotionPrice',
+        'goods_price',
+        'goodsPrice',
+        'price',
+        'amount',
+        'sku_price',
+        'skuPrice',
+        'group_price',
+        'unit_price',
+        'pay_price',
+        'final_price',
+      ])),
+      specText: pickApiGoodsTextWithExclusions(sources, [
+        'specText',
+        'spec_text',
+        'spec',
+        'sku_spec',
+        'skuSpec',
+        'spec_desc',
+        'specDesc',
+        'sub_name',
+        'subName',
+        'sku_name',
+        'skuName',
+      ], textExclusions),
+    }, {});
+    const nearbyReferenceCard = findApiGoodsSourceReferenceCard(
+      options.sortedMessages,
+      Number.isInteger(options.messageIndex) ? options.messageIndex : -1,
+      session,
+      goodsLinkInfo
+    );
+    const genericFallbackCard = buildApiGoodsCardFallback(goodsLinkInfo || {}, message, session);
+    const normalized = normalizeApiGoodsCard(
+      goodsLinkInfo?.cacheKey ? { ...(cachedCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedCard || {}),
+      fallbackCard
+    );
+    const resolved = normalizeApiGoodsCard(
+      normalized,
+      nearbyReferenceCard || genericFallbackCard || {}
+    );
+    const placeholderTitle = String(resolved.title || '').trim() === '拼多多商品';
+    const referenceTitle = String(nearbyReferenceCard?.title || genericFallbackCard?.title || '').trim();
+    if (placeholderTitle && referenceTitle && referenceTitle !== '拼多多商品') {
+      resolved.title = referenceTitle;
+    }
+    const placeholderSpec = !String(resolved.specText || '').trim() || String(resolved.specText || '').trim() === '查看商品规格';
+    const referenceSpec = String(nearbyReferenceCard?.specText || genericFallbackCard?.specText || '').trim();
+    if (placeholderSpec && referenceSpec && referenceSpec !== '查看商品规格') {
+      resolved.specText = referenceSpec;
+    }
+    return isMeaningfulApiGoodsCard(resolved) ? resolved : null;
+  }
+
+  function renderApiGoodsSourceNoticeCardHtml(message = {}, card = {}) {
+    const sourceText = getApiSystemNoticeText(message).replace(/^\[|\]$/g, '').trim() || '当前用户来自 商品详情页';
+    const imageHtml = card.imageUrl
+      ? `<img class="api-source-goods-card-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">`
+      : '<div class="api-source-goods-card-image placeholder">商品</div>';
+    const specText = String(card.specText || '').trim();
+    return `<div class="api-source-goods-card">
+      <div class="api-source-goods-card-header">${esc(sourceText)}</div>
+      <div class="api-source-goods-card-body">
+        ${imageHtml}
+        <div class="api-source-goods-card-main">
+          <div class="api-source-goods-card-title">${esc(card.title || '拼多多商品')}</div>
+          ${specText && specText !== '查看商品规格' ? `<div class="api-source-goods-card-spec">${esc(specText)}</div>` : ''}
+        </div>
+        ${card.priceText ? `<div class="api-source-goods-card-price">${esc(card.priceText)}</div>` : ''}
       </div>
     </div>`;
   }
@@ -3903,19 +5373,31 @@
     hideApiGoodsSpecModalOverlay();
   }
 
-  function renderApiRefundCardHtml(card = {}) {
-    const imageHtml = card.imageUrl
-      ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
-      : '<div class="api-refund-card-media-placeholder">商品</div>';
-    const rows = [
+  function buildApiRefundCardRows(card = {}) {
+    return [
       { label: '申请类型', value: card.actionText || '退款' },
       { label: '申请原因', value: card.reasonText || '其他原因' },
       card.amountText ? { label: '退款金额', value: card.amountText, emphasis: true } : null,
       { label: '申请说明', value: card.noteText || '商家代消费者填写售后单' },
       card.contactText ? { label: '联系方式', value: card.contactText } : null,
     ].filter(Boolean);
+  }
+
+  function renderApiRefundCardHtml(card = {}, options = {}) {
+    const imageHtml = card.imageUrl
+      ? `<img class="api-refund-card-media" src="${esc(card.imageUrl)}" alt="${esc(card.goodsTitle || '商品主图')}">`
+      : '<div class="api-refund-card-media-placeholder">商品</div>';
+    const rows = buildApiRefundCardRows(card);
+    const headerText = String(options.headerText || card.title || '商家想帮您申请快捷退款').trim();
+    const actionButtonLabel = String(options.actionButtonLabel || '').trim();
+    const footerHtml = actionButtonLabel
+      ? `<span class="api-refund-card-action">${esc(actionButtonLabel)}</span>`
+      : esc(card.footerText || '等待消费者确认');
+    const footerClass = actionButtonLabel
+      ? 'api-refund-card-section api-refund-card-footer is-action'
+      : 'api-refund-card-section api-refund-card-footer';
     return `<div class="api-message-bubble api-refund-card-bubble">
-      <div class="api-refund-card-header">${esc(card.title || '商家想帮您申请快捷退款')}</div>
+      <div class="api-refund-card-header">${esc(headerText)}</div>
       <div class="api-refund-card-section">
         <div class="api-refund-card-goods">
           ${imageHtml}
@@ -3931,20 +5413,311 @@
       <div class="api-refund-card-section api-refund-card-rows">
         ${rows.map(row => `<div class="api-refund-card-row"><span class="api-refund-card-label">${esc(row.label)}</span><span class="api-refund-card-value${row.emphasis ? ' is-emphasis' : ''}">${esc(row.value)}</span></div>`).join('')}
       </div>
-      <div class="api-refund-card-section api-refund-card-footer">${esc(card.footerText || '等待消费者确认')}</div>
+      <div class="${footerClass}">${footerHtml}</div>
+    </div>`;
+  }
+
+  function extractApiInviteOrderCard(message = {}) {
+    const directCard = message?.inviteOrderCard && typeof message.inviteOrderCard === 'object'
+      ? message.inviteOrderCard
+      : null;
+    if (directCard) return normalizeApiInviteOrderCard(directCard, directCard);
+    const extraCard = message?.extra?.inviteOrderCard && typeof message.extra.inviteOrderCard === 'object'
+      ? message.extra.inviteOrderCard
+      : null;
+    if (extraCard) return normalizeApiInviteOrderCard(extraCard, extraCard);
+    const raw = message?.raw && typeof message.raw === 'object'
+      ? message.raw
+      : (message && typeof message === 'object' ? message : {});
+    const sourceText = getApiSystemNoticeText({ ...message, raw });
+    if (isApiRefundPendingNoticeText(sourceText) || isApiRefundSuccessNoticeText(sourceText)) return null;
+    if (!isApiInviteOrderTemplateMessage({ ...message, raw })) return null;
+    const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
+    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
+    const goodsList = [
+      infoData?.goods_info_list,
+      infoData?.goodsInfoList,
+      infoData?.goods_list,
+      infoData?.goodsList,
+      info?.goods_info_list,
+      info?.goodsInfoList,
+      info?.goods_list,
+      info?.goodsList,
+      infoData?.goods,
+      info?.goods,
+    ].find(Array.isArray) || [];
+    const goodsItem = goodsList.find(item => item && typeof item === 'object') || {};
+    const sources = [
+      infoData,
+      info,
+      raw?.extra,
+      raw?.biz_context,
+      raw?.bizContext,
+      raw,
+      goodsItem,
+    ].filter(Boolean);
+    const messageText = [
+      message?.content,
+      raw?.content,
+      raw?.msg_content,
+      raw?.text,
+      raw?.message,
+      info?.mall_content,
+      infoData?.mall_content,
+      info?.title,
+      infoData?.title,
+      infoData?.content,
+      infoData?.text,
+      infoData?.msg_content,
+    ].map(item => String(item || '').trim()).find(Boolean) || '';
+    const priceText = pickApiGoodsText([goodsItem, ...sources], [
+      'priceText',
+      'price_text',
+      'price',
+      'promotion_price',
+      'promotionPrice',
+      'goods_price',
+      'goodsPrice',
+      'amount',
+      'amountText',
+      'sku_price',
+      'skuPrice',
+      'group_price',
+      'unit_price',
+      'pay_price',
+      'final_price',
+    ]) || formatApiGoodsPrice(pickApiGoodsNumber([goodsItem, ...sources], [
+      'promotion_price',
+      'promotionPrice',
+      'goods_price',
+      'goodsPrice',
+      'price',
+      'amount',
+      'sku_price',
+      'skuPrice',
+      'group_price',
+      'unit_price',
+      'pay_price',
+      'final_price',
+    ]));
+    const totalText = pickApiGoodsText(sources, [
+      'totalText',
+      'total_text',
+      'payAmountText',
+      'pay_amount_text',
+      'mallTotalAmountText',
+      'mall_total_amount_text',
+      'totalAmountText',
+      'total_amount_text',
+      'amountText',
+      'orderAmountText',
+      'order_amount_text',
+      'orderPriceText',
+      'order_price_text',
+      'priceText',
+      'price_text',
+    ]) || formatApiGoodsPrice(pickApiGoodsNumber(sources, [
+      'pay_amount',
+      'payAmount',
+      'mall_total_amount',
+      'mallTotalAmount',
+      'discount_amount',
+      'discountAmount',
+      'total_amount',
+      'totalAmount',
+      'order_amount',
+      'orderAmount',
+      'total_price',
+      'totalPrice',
+      'amount',
+      'price',
+    ]));
+    const count = goodsList.reduce((sum, item) => {
+      const quantity = pickApiGoodsNumber([item], [
+        'goodsNumber',
+        'goods_number',
+        'quantity',
+        'num',
+        'count',
+        'buy_num',
+        'buyNum',
+        'goodsCount',
+        'goods_count',
+      ]);
+      return sum + (quantity || 1);
+    }, 0) || pickApiGoodsNumber(sources, [
+      'sku_count',
+      'skuCount',
+      'goodsNumber',
+      'goods_number',
+      'quantity',
+      'num',
+      'count',
+      'buy_num',
+      'buyNum',
+      'goodsCount',
+      'goods_count',
+    ]) || 1;
+    return normalizeApiInviteOrderCard({
+      messageText,
+      title: pickApiGoodsText([goodsItem, ...sources], [
+        'goods_name',
+        'goodsName',
+        'goods_title',
+        'goodsTitle',
+        'item_title',
+        'itemTitle',
+        'title',
+        'name',
+      ]) || '已选商品',
+      specText: pickApiGoodsText([goodsItem, ...sources], [
+        'specText',
+        'spec_text',
+        'spec',
+        'sku_spec',
+        'skuSpec',
+        'spec_desc',
+        'specDesc',
+        'sub_name',
+        'subName',
+        'sku_name',
+        'skuName',
+      ]),
+      imageUrl: pickApiGoodsText([goodsItem, ...sources], [
+        'imageUrl',
+        'image_url',
+        'sku_thumb_url',
+        'skuThumbUrl',
+        'thumb_url',
+        'hd_thumb_url',
+        'goods_thumb_url',
+        'thumbUrl',
+        'hdThumbUrl',
+        'goodsThumbUrl',
+        'pic_url',
+        'picUrl',
+        'goods_img_url',
+        'goodsImgUrl',
+        'hd_url',
+        'hdUrl',
+      ]),
+      priceText,
+      totalText: totalText || priceText,
+      count,
+    }, {
+      messageText,
+      priceText,
+      totalText: totalText || priceText,
+      count,
+    });
+  }
+
+  function normalizeApiInviteOrderCard(card = {}, fallback = {}) {
+    return {
+      messageText: String(card?.messageText || fallback?.messageText || '').trim(),
+      title: String(card?.title || fallback?.title || '已选商品').trim() || '已选商品',
+      specText: String(card?.specText || fallback?.specText || '').trim(),
+      imageUrl: String(card?.imageUrl || fallback?.imageUrl || '').trim(),
+      priceText: String(card?.priceText || fallback?.priceText || '').trim(),
+      totalText: String(card?.totalText || fallback?.totalText || card?.priceText || fallback?.priceText || '').trim(),
+      count: Math.max(1, Number(card?.count || fallback?.count || 1) || 1),
+    };
+  }
+
+  function normalizeApiInviteOrderComparableText(text = '') {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isSameApiInviteOrderCard(left = {}, right = {}) {
+    const normalizedLeft = normalizeApiInviteOrderCard(left, left);
+    const normalizedRight = normalizeApiInviteOrderCard(right, right);
+    return (
+      normalizeApiInviteOrderComparableText(normalizedLeft.messageText) === normalizeApiInviteOrderComparableText(normalizedRight.messageText)
+      && normalizeApiInviteOrderComparableText(normalizedLeft.title) === normalizeApiInviteOrderComparableText(normalizedRight.title)
+      && normalizeApiInviteOrderComparableText(normalizedLeft.specText) === normalizeApiInviteOrderComparableText(normalizedRight.specText)
+      && normalizeApiInviteOrderComparableText(normalizedLeft.priceText) === normalizeApiInviteOrderComparableText(normalizedRight.priceText)
+      && normalizeApiInviteOrderComparableText(normalizedLeft.totalText) === normalizeApiInviteOrderComparableText(normalizedRight.totalText)
+      && Number(normalizedLeft.count || 1) === Number(normalizedRight.count || 1)
+    );
+  }
+
+  function buildApiInviteOrderPreviewCard() {
+    const selectedItems = Array.isArray(apiInviteOrderState.selectedItems) ? apiInviteOrderState.selectedItems : [];
+    const firstItem = selectedItems[0] || {};
+    const title = String(firstItem.title || firstItem.text || '已选商品').trim() || '已选商品';
+    const specMatch = title.match(/（(.+?)）$/);
+    const displayTitle = specMatch ? title.replace(/（.+?）$/, '').trim() : title;
+    const specText = specMatch ? specMatch[1].trim() : '';
+    return {
+      messageText: '亲，喜欢的话，您可点击“发起拼单”完成支付',
+      title: displayTitle || title,
+      specText,
+      imageUrl: String(firstItem.imageUrl || '').trim(),
+      priceText: String(firstItem.priceText || '').trim(),
+      totalText: String(apiInviteOrderState.totalText || '').trim() || '¥0.00',
+      count: Math.max(1, Number(apiInviteOrderState.selectedCount || selectedItems.length || 1) || 1),
+    };
+  }
+
+  function renderApiInviteOrderCardHtml(card = {}) {
+    const count = Math.max(1, Number(card?.count || 1) || 1);
+    const countText = `x${count}`;
+    const imageHtml = card.imageUrl
+      ? `<img class="api-invite-order-message-image" src="${esc(card.imageUrl)}" alt="${esc(card.title || '商品主图')}">`
+      : '<div class="api-invite-order-message-image is-placeholder">商品</div>';
+    return `<div class="api-invite-order-message-bubble">
+      ${card.messageText ? `<div class="api-invite-order-message-text">${esc(card.messageText)}</div>` : ''}
+      <div class="api-invite-order-message-divider"></div>
+      <div class="api-invite-order-message-card">
+        ${imageHtml}
+        <div class="api-invite-order-message-main">
+          <div class="api-invite-order-message-title">${esc(card.title || '商品')}</div>
+          ${card.specText ? `<div class="api-invite-order-message-spec">${esc(card.specText)}</div>` : ''}
+        </div>
+        <div class="api-invite-order-message-side">
+          ${card.priceText ? `<div class="api-invite-order-message-price">${esc(card.priceText)}</div>` : ''}
+          <div class="api-invite-order-message-count">${esc(countText)}</div>
+        </div>
+      </div>
+      <div class="api-invite-order-message-divider"></div>
+      <div class="api-invite-order-message-footer">
+        <span class="api-invite-order-message-total">合计：<strong>${esc(card.totalText || card.priceText || '¥0.00')}</strong></span>
+      </div>
     </div>`;
   }
 
   function getApiDisplayMessages(state = {}, activeSession = null) {
     const sessionKey = getApiSessionKey(activeSession || {});
     const remoteMessages = Array.isArray(state.apiMessages) ? state.apiMessages.slice() : [];
-    const syntheticMessages = (Array.isArray(state.apiSyntheticRefundMessages) ? state.apiSyntheticRefundMessages : [])
-      .filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey);
+    const syntheticMessages = [
+      ...(Array.isArray(state.apiSyntheticRefundMessages) ? state.apiSyntheticRefundMessages : []),
+      ...(Array.isArray(state.apiSyntheticSystemMessages) ? state.apiSyntheticSystemMessages : []),
+      ...(Array.isArray(state.apiSyntheticServiceMessages) ? state.apiSyntheticServiceMessages : []),
+    ].filter(item => getApiSessionKey(item?.shopId || activeSession?.shopId || '', item?.sessionId || '') === sessionKey);
     const mergedMessages = remoteMessages.slice();
     syntheticMessages.forEach(item => {
       const syntheticKey = String(item?.syntheticKey || item?.refundCard?.localKey || '');
-      const duplicated = syntheticKey
-        && remoteMessages.some(remote => String(extractApiRefundCard(remote, activeSession)?.localKey || '') === syntheticKey);
+      let duplicated = syntheticKey && remoteMessages.some(remote => {
+        const refundKey = String(extractApiRefundCard(remote, activeSession)?.localKey || '');
+        const remoteSyntheticKey = String(remote?.syntheticKey || '');
+        return refundKey === syntheticKey || remoteSyntheticKey === syntheticKey;
+      });
+      if (!duplicated) {
+        const syntheticInviteOrderCard = extractApiInviteOrderCard(item);
+        if (syntheticInviteOrderCard) {
+          duplicated = remoteMessages.some(remote => {
+            if (remote?.isFromBuyer) return false;
+            const remoteInviteOrderCard = extractApiInviteOrderCard(remote);
+            if (!remoteInviteOrderCard || !isSameApiInviteOrderCard(remoteInviteOrderCard, syntheticInviteOrderCard)) return false;
+            const remoteTimestamp = getApiTimeMs(remote?.timestamp);
+            const syntheticTimestamp = getApiTimeMs(item?.timestamp);
+            if (remoteTimestamp && syntheticTimestamp && Math.abs(remoteTimestamp - syntheticTimestamp) > 2 * 60 * 1000) {
+              return false;
+            }
+            return true;
+          });
+        }
+      }
       if (!duplicated) {
         mergedMessages.push(item);
       }
@@ -4063,7 +5836,9 @@
       html += esc(source.slice(lastIndex, offset));
       const item = emojiMap.get(name);
       html += item
-        ? `<span class="api-inline-emoji" title="${esc(match)}">${esc(item.preview)}</span>`
+        ? (item.previewImage
+          ? `<img class="api-inline-emoji-image" src="${esc(item.previewImage)}" alt="${esc(name)}" title="${esc(match)}">`
+          : `<span class="api-inline-emoji" title="${esc(match)}">${esc(item.preview)}</span>`)
         : esc(match);
       lastIndex = offset + match.length;
       return match;
@@ -4132,6 +5907,22 @@
     </div>`;
   }
 
+  function getApiSellerDisplayName(message = null, activeSession = null) {
+    const state = getState();
+    const sessionShopName = String(
+      activeSession?.shopName
+      || (state.shops || []).find(item => item.id === state.apiActiveSessionShopId)?.name
+      || ''
+    ).trim();
+    return String(
+      message?.senderName
+      || state.apiTokenStatus?.serviceName
+      || sessionShopName
+      || state.apiTokenStatus?.mallName
+      || '主账号'
+    ).trim();
+  }
+
   function renderApiMessages() {
     try {
       const state = getState();
@@ -4189,57 +5980,124 @@
       let previousTimestamp = 0;
       container.innerHTML = sortedMessages.map((message, index) => {
         const isBuyer = !!message.isFromBuyer;
-        const buyerAvatar = activeSession?.customerAvatar || '';
-        const sellerText = (shopName || state.apiTokenStatus?.mallName || '主账号').slice(0, 4);
-        const avatarHtml = isBuyer
-          ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((state.apiActiveSessionName || '客户').slice(0, 2)))
-          : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
-        const senderName = shopName || message.senderName || '主账号';
-        const readState = isBuyer ? '' : getApiMessageReadState(message);
-        const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
-        const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
-        const imageUrl = getApiImageMessageUrl(message);
-        const goodsLinkInfo = isBuyer ? extractApiGoodsLinkInfo(message) : null;
+        const goodsLinkInfo = extractApiGoodsLinkInfo(message);
         const fallbackGoodsCard = goodsLinkInfo ? buildApiGoodsCardFallback(goodsLinkInfo, message, activeSession) : null;
         const cachedGoodsCard = goodsLinkInfo ? state.apiGoodsCardCache?.get(goodsLinkInfo.cacheKey) : null;
         const goodsCard = goodsLinkInfo ? normalizeApiGoodsCard(
           goodsLinkInfo?.cacheKey ? { ...(cachedGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (cachedGoodsCard || {}),
           goodsLinkInfo?.cacheKey ? { ...(fallbackGoodsCard || {}), cacheKey: goodsLinkInfo.cacheKey } : (fallbackGoodsCard || {})
         ) : null;
-        const refundCard = !isBuyer ? extractApiRefundCard(message, activeSession) : null;
         const refundStatusUpdate = !isBuyer ? getApiRefundStatusUpdateMeta(message) : null;
+        const isSystem = isApiSystemNoticeMessage(message);
+        const isGoodsSourceNotice = isSystem && isApiGoodsSourceNoticeMessage(message);
+        const goodsSourceCard = isGoodsSourceNotice
+          ? resolveApiGoodsSourceCard(message, activeSession, goodsLinkInfo, cachedGoodsCard, { sortedMessages, messageIndex: index })
+          : null;
+        const refundSystemNoticeKind = isSystem ? getApiRefundSystemNoticeKind(message) : '';
+        const buyerAvatar = activeSession?.customerAvatar || '';
+        const buyerAvatarHtml = buyerAvatar
+          ? `<img src="${esc(buyerAvatar)}" alt="">`
+          : esc((state.apiActiveSessionName || '客户').slice(0, 2));
+        const senderName = isBuyer ? '' : getApiSellerDisplayName(message, activeSession);
+        const sellerText = senderName.slice(0, 4) || '主账号';
+        const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
+          ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
+          : '';
+        if (refundStatusUpdate) {
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item platform-card">${renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index, activeSession })}</div>`;
+        }
+        if (goodsLinkInfo && fallbackGoodsCard) {
+          void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
+        }
+        if (isGoodsSourceNotice) {
+          debugApiGoodsSourceMessage(message, activeSession, {
+            goodsLinkInfo,
+            goodsCard: goodsSourceCard,
+          });
+        }
+        if (isGoodsSourceNotice && goodsSourceCard) {
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item platform-card source-goods-card">
+            ${renderApiGoodsSourceNoticeCardHtml(message, goodsSourceCard)}
+          </div>`;
+        }
+        if (isSystem && goodsLinkInfo) {
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item buyer goods-link-card">
+            <div class="api-message-avatar">${buyerAvatarHtml}</div>
+            <div class="api-message-body">
+              <div class="api-message-row">
+                ${renderApiGoodsCardHtml(goodsCard)}
+              </div>
+            </div>
+          </div>`;
+        }
+        if (isSystem) {
+          const systemVariantClass = [
+            isApiUnmatchedReplyNoticeMessage(message) ? 'unmatched-reply' : '',
+            refundSystemNoticeKind ? 'refund-notice' : '',
+          ].filter(Boolean).join(' ');
+          previousTimestamp = message.timestamp;
+          return `${divider}<div class="api-message-item system${systemVariantClass ? ` ${systemVariantClass}` : ''}">
+            <div class="api-message-system-bubble${systemVariantClass ? ` ${systemVariantClass}` : ''}">${renderApiSystemMessageHtml(message, { message, messageIndex: index, sortedMessages, activeSession })}</div>
+          </div>`;
+        }
+        const avatarHtml = isBuyer
+          ? (buyerAvatar ? `<img src="${esc(buyerAvatar)}" alt="">` : esc((state.apiActiveSessionName || '客户').slice(0, 2)))
+          : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
+        const readState = isBuyer ? '' : getApiMessageReadState(message);
+        const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
+        const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
+        const imageUrl = getApiImageMessageUrl(message);
+        const refundCard = !isBuyer ? extractApiRefundCard(message, activeSession) : null;
+        const inviteOrderCard = !isBuyer ? extractApiInviteOrderCard(message) : null;
         const resolvedRefundCard = refundCard ? applyApiRefundStatusToCard(refundCard, sortedMessages, {
           cardIndex: index,
           activeSession,
         }) : null;
-        if (goodsLinkInfo && fallbackGoodsCard) {
-          void ensureApiGoodsCardLoaded(goodsLinkInfo, fallbackGoodsCard);
-        }
         const imageMessage = isApiImageMessage(message);
         const videoMessage = isApiVideoMessage(message);
-        const bubbleHtml = refundStatusUpdate
-          ? renderApiRefundStatusUpdateCardHtml(message, { sortedMessages, messageIndex: index, activeSession })
-          : resolvedRefundCard
+        const bubbleHtml = resolvedRefundCard
           ? renderApiRefundCardHtml(resolvedRefundCard)
+          : inviteOrderCard
+          ? renderApiInviteOrderCardHtml(inviteOrderCard)
           : goodsLinkInfo
           ? renderApiGoodsCardHtml(goodsCard)
           : videoMessage
           ? renderApiVideoMessageHtml(message)
           : imageMessage
-            ? `<div class="api-message-bubble"><div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息">` : '[图片消息]'}</div></div>`
+            ? `<div class="api-message-bubble"><div class="api-message-content">${imageUrl ? `<img class="api-message-image" src="${esc(imageUrl)}" alt="图片消息" data-preview-url="${esc(imageUrl)}">` : '[图片消息]'}</div></div>`
             : `<div class="api-message-bubble"><div class="api-message-content">${renderApiPddEmojiHtml(message.content || '')}</div></div>`;
-        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !refundStatusUpdate && !imageMessage && !videoMessage && String(message.content || '').trim()
+        const isPlainTextSellerMessage = !isBuyer
+          && !goodsLinkInfo
+          && !resolvedRefundCard
+          && !inviteOrderCard
+          && !imageMessage
+          && !videoMessage
+          && String(message.content || '').trim();
+        const copyButtonHtml = isBuyer && !goodsLinkInfo && !resolvedRefundCard && !inviteOrderCard && !imageMessage && !videoMessage && String(message.content || '').trim()
           ? `<button class="api-message-copy" type="button" data-message-index="${index}">复制</button>`
           : '';
-        const footerHtml = !isBuyer
+        const footerHtml = isPlainTextSellerMessage
           ? `<div class="api-message-row-meta">${statusText ? `<span class="api-message-status ${readState}">${statusText}</span>` : ''}</div>`
           : '';
-        const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
-          ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
-          : '';
         previousTimestamp = message.timestamp;
-        if (resolvedRefundCard || refundStatusUpdate) {
+        if (resolvedRefundCard) {
           return `${divider}<div class="api-message-item platform-card">${bubbleHtml}</div>`;
+        }
+        if (inviteOrderCard) {
+          return `${divider}<div class="api-message-item platform-card invite-order-card">${bubbleHtml}</div>`;
+        }
+        if (goodsLinkInfo) {
+          return `${divider}<div class="api-message-item buyer goods-link-card">
+            <div class="api-message-avatar">${buyerAvatarHtml}</div>
+            <div class="api-message-body">
+              <div class="api-message-row">
+                ${bubbleHtml}
+              </div>
+            </div>
+          </div>`;
         }
         return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
           <div class="api-message-avatar">${avatarHtml}</div>
@@ -4263,6 +6121,25 @@
           } catch {
             showApiSideOrderToast('复制失败，请稍后重试');
           }
+        });
+      });
+      container.querySelectorAll('.api-message-image[data-preview-url]').forEach(image => {
+        image.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const url = image.dataset.previewUrl || image.getAttribute('src') || '';
+          if (typeof window.showApiImagePreview === 'function') {
+            window.showApiImagePreview(url);
+            return;
+          }
+          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        });
+      });
+      container.querySelectorAll('.api-message-system-action-button').forEach(button => {
+        button.addEventListener('click', async event => {
+          event.stopPropagation();
+          const messageIndex = Number(button.dataset.messageIndex);
+          await handleApiSystemAction(button.dataset.systemAction || '', messageIndex, sortedMessages);
         });
       });
       container.querySelectorAll('.api-goods-card-copy').forEach(button => {
@@ -4318,37 +6195,85 @@
   }
 
   function isApiImageMessage(message = {}) {
-    const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
+    const msgTypeSource = message?.msgType ?? message?.raw?.msg_type ?? message?.raw?.message_type ?? message?.raw?.content_type ?? message?.raw?.type ?? message?.type ?? '';
+    const msgType = String(msgTypeSource || '').toLowerCase();
     if (['2', 'image', 'img', 'pic', 'picture'].includes(msgType)) return true;
     const extraType = String(message?.extra?.type || message?.raw?.extra?.type || message?.raw?.ext?.type || '').toLowerCase();
     if (['image', 'img', 'pic', 'picture'].includes(extraType)) return true;
+    if (['emoji', 'sticker', 'emoticon', 'expression', 'face'].includes(extraType)) {
+      return !!getApiImageMessageUrl(message);
+    }
     const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
-    if (/\[(图片|image)\]/.test(rawContent)) return true;
-    if (/picture_url/.test(rawContent)) return true;
+    if (/\[(图片|image|表情|贴纸|emoji|sticker)\]/.test(rawContent)) return true;
+    if (/(picture_url|image_url|img_url|emoji_url|sticker_url)/.test(rawContent)) return true;
     if (/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/.test(rawContent)) return true;
-    return false;
+    return !!getApiImageMessageUrl(message);
   }
 
   function getApiImageMessageUrl(message = {}) {
+    const isLikelyImageUrl = value => {
+      const text = String(value || '').trim();
+      if (!text) return false;
+      if (text.startsWith('data:image/')) return true;
+      return /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(text);
+    };
     const candidates = [
       message?.extra?.url,
       message?.extra?.picture_url,
+      message?.extra?.image_url,
+      message?.extra?.img_url,
+      message?.extra?.emoji_url,
+      message?.extra?.sticker_url,
+      message?.extra?.expression_url,
+      message?.extra?.emoticon_url,
+      message?.extra?.face_url,
+      message?.extra?.preview_url,
+      message?.extra?.previewUrl,
+      message?.extra?.image?.url,
+      message?.extra?.emoji?.url,
+      message?.extra?.sticker?.url,
       message?.raw?.extra?.url,
       message?.raw?.extra?.picture_url,
+      message?.raw?.extra?.image_url,
+      message?.raw?.extra?.img_url,
+      message?.raw?.extra?.emoji_url,
+      message?.raw?.extra?.sticker_url,
+      message?.raw?.extra?.expression_url,
+      message?.raw?.extra?.emoticon_url,
+      message?.raw?.extra?.face_url,
       message?.raw?.ext?.url,
       message?.raw?.ext?.picture_url,
+      message?.raw?.ext?.image_url,
+      message?.raw?.ext?.img_url,
+      message?.raw?.ext?.emoji_url,
+      message?.raw?.ext?.sticker_url,
+      message?.raw?.ext?.expression_url,
+      message?.raw?.ext?.emoticon_url,
+      message?.raw?.ext?.face_url,
+      message?.raw?.info?.url,
+      message?.raw?.info?.picture_url,
+      message?.raw?.info?.image_url,
+      message?.raw?.info?.img_url,
+      message?.raw?.info?.emoji_url,
+      message?.raw?.info?.sticker_url,
+      message?.raw?.info?.expression_url,
+      message?.raw?.info?.emoticon_url,
+      message?.raw?.info?.face_url,
+      message?.raw?.info?.preview?.url,
     ].filter(Boolean);
-    if (candidates.length) return candidates[0];
+    const firstCandidate = candidates.find(isLikelyImageUrl) || candidates[0];
+    if (firstCandidate && isLikelyImageUrl(firstCandidate)) return String(firstCandidate);
     const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
     const urlMatch = rawText.match(/https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?/i);
     if (urlMatch) return urlMatch[0];
-    const jsonMatch = rawText.match(/\{[^{}]*"picture_url"\s*:\s*"([^"]+)"[^{}]*\}/);
-    return jsonMatch?.[1] || '';
+    const jsonMatch = rawText.match(/\{[^{}]*"(picture_url|image_url|img_url|emoji_url|sticker_url)"\s*:\s*"([^"]+)"[^{}]*\}/);
+    return jsonMatch?.[2] || '';
   }
 
   function isApiVideoMessage(message = {}) {
-    const msgType = String(message?.msgType || message?.raw?.msg_type || message?.raw?.message_type || '').toLowerCase();
-    if (['video', 'short_video', 'small_video'].includes(msgType)) return true;
+    const msgTypeSource = message?.msgType ?? message?.raw?.msg_type ?? message?.raw?.message_type ?? message?.raw?.content_type ?? message?.raw?.type ?? message?.type ?? '';
+    const msgType = String(msgTypeSource || '').toLowerCase();
+    if (['14', 'video', 'short_video', 'small_video'].includes(msgType)) return true;
     const rawContent = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`.toLowerCase();
     if (/(video_cover_url|f20_url|f30_url|transcode_f30_url|library_file)/.test(rawContent)) return true;
     if (/https?:\/\/\S+\.(mp4|mov|m4v|webm|avi|mkv)(\?\S*)?/i.test(rawContent)) return true;
@@ -4371,6 +6296,9 @@
       message?.raw?.ext?.video_url,
       message?.raw?.ext?.f30_url,
       message?.raw?.ext?.f20_url,
+      message?.raw?.info?.download_url,
+      message?.raw?.info?.downloadUrl,
+      message?.raw?.info?.url,
     ].filter(Boolean);
     if (candidates.length) return String(candidates[0] || '');
     const rawText = `${message?.content || ''} ${message?.raw?.content || ''} ${message?.raw?.msg_content || ''}`;
@@ -4387,6 +6315,7 @@
       || message?.raw?.extra?.coverUrl
       || message?.raw?.extra?.video_cover_url
       || message?.raw?.ext?.video_cover_url
+      || message?.raw?.info?.preview?.url
       || ''
     );
   }
@@ -4549,7 +6478,7 @@
         const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
         const groupNumber = getApiSessionGroupNumber(session);
         const orderTagHtml = groupNumber >= 1
-          ? `<span class="api-session-order-tag">订单：（${esc(String(groupNumber))}）</span>`
+          ? `<span class="api-session-order-tag">订单 ${esc(String(groupNumber))}</span>`
           : '';
         const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
         return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
@@ -4560,7 +6489,6 @@
                 <div class="api-session-item-name">
                   <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
                   ${orderTagHtml}
-                  ${unread > 0 ? `<span class="api-unread-badge">${unread}</span>` : ''}
                 </div>
                 <div class="api-session-shop">
                   <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
@@ -4647,14 +6575,19 @@
       ...result,
       shopId: state.apiActiveSessionShopId,
       sessionId: state.apiActiveSessionId,
-      text,
+      requestedText: text,
+      text: result?.text || text,
     };
     recordApiSyncState('发送成功', `会话：${state.apiActiveSessionName || state.apiActiveSessionId}`);
     clearApiPendingReplyState(successPayload);
     appendApiLocalServiceMessage(successPayload);
     const input = document.getElementById('apiMessageInput');
     if (input) input.value = '';
-    setApiHint('接口发送成功，正在同步最新消息');
+    if (result?.sendMode === 'pending-confirm') {
+      setApiHint('当前会话命中平台待确认回复，已按平台待确认消息发送');
+      return;
+    }
+    setApiHint('消息已通过人工发送接口下发，正在同步最新消息');
   }
 
   async function handleApiSendImage() {
@@ -4798,6 +6731,7 @@
   async function handleApiNewMessage(payload) {
     const state = getState();
     if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    recordApiSyncState('轮询新消息', `会话：${payload?.customer || payload?.sessionId || '未知会话'}`);
     await loadApiTraffic(getApiStatusShopId(true));
     const nextState = getState();
     const isCurrentSession = String(payload?.sessionId || '') === String(nextState.apiActiveSessionId)
@@ -4817,8 +6751,114 @@
     setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
   }
 
+  function handleApiBootstrapInspect(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customerName || payload?.sessionId || '未知会话';
+    const previewText = String(payload?.previewText || '').trim() || '空';
+    const pickedText = String(payload?.pickedPendingText || '').trim() || '无';
+    const actor = String(payload?.lastMessageActor || 'unknown');
+    const unread = Number(payload?.unreadCount || 0) || 0;
+    const detail = `会话：${sessionText}；预览：${previewText}；识别：${pickedText}；actor：${actor}；未读：${unread}；emit：${payload?.willEmitPending ? '是' : '否'}`;
+    recordApiSyncState('Bootstrap检查', detail);
+  }
+
   async function handleApiMessageSent(payload) {
     await refreshApiAfterMessageSent(payload);
+  }
+
+  function handleApiReadMarkUpdated(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    applyApiReadMarkUpdate(payload);
+  }
+
+  function handleApiAutoReplySent(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.conversationId || payload?.sessionId || '未知会话';
+    const ruleText = payload?.ruleName ? `，规则：${payload.ruleName}` : '';
+    const sendModeText = payload?.sendMode === 'pending-confirm'
+      ? '，按平台待确认消息发送'
+      : (payload?.sendMode === 'manual-interface' ? '，通过人工发送接口下发' : '');
+    recordApiSyncState('自动回复成功', `会话：${sessionText}${ruleText}${sendModeText}`);
+    if (payload?.sendMode === 'pending-confirm') {
+      setApiHint(`自动回复已按平台待确认消息发送：${sessionText}`);
+      return;
+    }
+    setApiHint(`自动回复已通过人工发送接口下发：${sessionText}`);
+  }
+
+  function handleApiAutoReplyError(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.sessionId || '未知会话';
+    const errorText = payload?.error || '未知错误';
+    const errorCode = Number(payload?.errorCode || 0) || 0;
+    const isPlatformPaused = /机器人已暂停接待，请人工跟进/.test(errorText)
+      || (payload?.phase === 'fallback-send' && (errorCode === 40013 || /code=40013/.test(errorText)));
+    recordApiSyncState('自动回复失败', `会话：${sessionText}，${errorText}`);
+    if (isPlatformPaused) {
+      appendApiLocalServiceMessage({
+        shopId: payload?.shopId || '',
+        sessionId: payload?.sessionId || '',
+        text: '机器人已暂停接待，请人工跟进',
+        isSystem: true,
+        syntheticKey: `platform-paused::${payload?.shopId || ''}::${payload?.sessionId || ''}`,
+        timestamp: Date.now(),
+      });
+    }
+    setApiHint(`自动回复失败：${errorText}`);
+  }
+
+  function handleApiUnmatchedMessage(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || '未知会话';
+    recordApiSyncState('自动回复未命中', `会话：${sessionText}，将发送兜底回复`);
+    setApiHint(`未命中规则，准备发送兜底：${sessionText}`);
+  }
+
+  function handleApiFallbackScheduled(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.sessionId || '未知会话';
+    const seconds = Math.max(0, Math.ceil(Number(payload?.delayMs || 0) / 1000));
+    recordApiSyncState('兜底排队', `会话：${sessionText}，${seconds} 秒后发送`);
+    setApiHint(`兜底已排队：${sessionText}`);
+  }
+
+  function handleApiFallbackTriggered(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.sessionId || '未知会话';
+    recordApiSyncState('兜底触发', `会话：${sessionText}，准备执行发送`);
+    setApiHint(`兜底开始执行：${sessionText}`);
+  }
+
+  function handleApiFallbackSendStart(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || payload?.sessionId || '未知会话';
+    recordApiSyncState('兜底发送', `会话：${sessionText}，已进入人工发送链路`);
+    setApiHint(`兜底进入人工发送链路：${sessionText}`);
+  }
+
+  function handleApiFallbackCancelled(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || '未知会话';
+    recordApiSyncState('兜底取消', `会话：${sessionText}，原因：${payload?.reason || '未知原因'}`);
+    setApiHint(`兜底已取消：${sessionText}`);
+  }
+
+  function handleApiFallbackSkipped(payload) {
+    const state = getState();
+    if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
+    const sessionText = payload?.customer || '未知会话';
+    const seconds = Math.max(0, Math.ceil(Number(payload?.remainingMs || 0) / 1000));
+    recordApiSyncState('兜底跳过', `会话：${sessionText}，冷却剩余 ${seconds} 秒`);
+    setApiHint(`兜底冷却中：${sessionText}`);
   }
 
   function handleApiAuthExpired(payload) {
@@ -4837,7 +6877,6 @@
   function bindChatApiModule() {
     if (initialized) return;
     initialized = true;
-    window.__chatApiModuleBound = true;
 
     renderApiEmojiPanel();
     startApiPendingReplyTicker();
@@ -4889,25 +6928,7 @@
     document.getElementById('apiSideOrderList')?.addEventListener('change', handleApiSideOrderListChange);
 
     document.getElementById('btnApiPlus')?.addEventListener('click', async () => {
-      const keyword = String(getState().apiSessionKeyword || '').trim().toLowerCase();
-      if (!keyword) {
-        setApiHint('请输入订单号、客户名或会话关键词');
-        return;
-      }
-      const target = getLatestApiSessionsForDisplay().find(session => {
-        const orderText = String(session.orderId || '').toLowerCase();
-        return orderText === keyword
-          || String(session.sessionId || '').toLowerCase() === keyword
-          || String(session.customerId || '').toLowerCase() === keyword
-          || String(session.customerName || '').toLowerCase().includes(keyword);
-      });
-      if (!target) {
-        setApiHint('当前列表未找到匹配会话，可先刷新会话再尝试搜索');
-        return;
-      }
-      setApiSessionTab('latest');
-      await openApiSession(target.sessionId, target.customerName, target.shopId);
-      setApiHint(`已定位会话：${target.customerName || target.customerId || target.sessionId}`);
+      await handleApiSessionSearchSubmit();
     });
 
     document.getElementById('apiLoadMoreSessions')?.addEventListener('click', async () => {
@@ -4931,10 +6952,27 @@
     document.getElementById('btnApiRiskManage')?.addEventListener('click', () => handleApiRiskMenuAction('manage'));
     document.getElementById('btnApiStar')?.addEventListener('click', handleApiStar);
     document.getElementById('btnApiRefund')?.addEventListener('click', openApiRefundOrderSelector);
+    document.getElementById('btnApiInviteFollow')?.addEventListener('click', handleApiInviteFollowClick);
+    document.getElementById('btnApiInviteOrder')?.addEventListener('click', openApiInviteOrderModal);
+    document.getElementById('btnApiSmallPayment')?.addEventListener('click', () => {
+      void openApiSmallPaymentOrderSelector();
+    });
+    document.getElementById('btnApiInviteOrderSearch')?.addEventListener('click', handleApiInviteOrderSearch);
+    document.getElementById('apiInviteOrderKeyword')?.addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      handleApiInviteOrderSearch();
+    });
+    document.getElementById('apiInviteOrderGoodsList')?.addEventListener('click', handleApiInviteOrderGoodsClick);
+    document.getElementById('apiInviteOrderSpecOptions')?.addEventListener('click', handleApiInviteOrderSpecOptionClick);
+    document.getElementById('btnApiInviteOrderSpecConfirm')?.addEventListener('click', handleApiInviteOrderSpecConfirm);
+    document.getElementById('btnApiInviteOrderClear')?.addEventListener('click', handleApiInviteOrderClear);
+    document.getElementById('btnApiInviteOrderSubmit')?.addEventListener('click', handleApiInviteOrderSubmit);
     document.getElementById('apiRefundOrderList')?.addEventListener('click', handleApiRefundOrderSelection);
     document.getElementById('btnApiRefundBack')?.addEventListener('click', handleApiRefundBack);
     document.getElementById('btnApiRefundSubmit')?.addEventListener('click', handleApiRefundSubmit);
     document.getElementById('apiRefundNote')?.addEventListener('input', updateApiRefundNoteCount);
+    document.getElementById('apiSmallPaymentSelectList')?.addEventListener('click', handleApiSmallPaymentOrderSelection);
     document.getElementById('btnApiSmallPaymentChangeOrder')?.addEventListener('click', handleApiSmallPaymentChangeOrder);
     document.getElementById('apiSmallPaymentOrderSelector')?.addEventListener('click', async event => {
       const button = event.target.closest('[data-api-small-payment-select-order]');
@@ -5036,7 +7074,17 @@
 
     window.pddApi.onApiSessionUpdated(handleApiSessionUpdated);
     window.pddApi.onApiNewMessage(handleApiNewMessage);
+    window.pddApi.onApiBootstrapInspect?.(handleApiBootstrapInspect);
     window.pddApi.onApiMessageSent(handleApiMessageSent);
+    window.pddApi.onApiReadMarkUpdated?.(handleApiReadMarkUpdated);
+    window.pddApi.onAutoReplySent(handleApiAutoReplySent);
+    window.pddApi.onAutoReplyError?.(handleApiAutoReplyError);
+    window.pddApi.onUnmatchedMessage(handleApiUnmatchedMessage);
+    window.pddApi.onFallbackScheduled?.(handleApiFallbackScheduled);
+    window.pddApi.onFallbackTriggered?.(handleApiFallbackTriggered);
+    window.pddApi.onFallbackSendStart?.(handleApiFallbackSendStart);
+    window.pddApi.onFallbackSkipped?.(handleApiFallbackSkipped);
+    window.pddApi.onFallbackCancelled(handleApiFallbackCancelled);
     window.pddApi.onApiAuthExpired(handleApiAuthExpired);
     renderApiSideOrders();
   }
@@ -5045,6 +7093,46 @@
   window.toggleApiEmojiPanel = toggleApiEmojiPanel;
   window.syncApiEmojiPanelPosition = syncApiEmojiPanelPosition;
   window.insertApiMessageText = insertApiMessageText;
+  window.__chatApiModuleFns = {
+    renderApiPddEmojiHtml,
+    extractApiGoodsLinkInfo,
+    pickApiGoodsText,
+    pickApiGoodsNumber,
+    formatApiGoodsPrice,
+    normalizeApiGoodsSpecItems,
+    buildApiGoodsSpecFallbackItems,
+    normalizeApiGoodsCard,
+    isMeaningfulApiGoodsCard,
+    describeApiGoodsCardResult,
+    buildApiGoodsCardFallback,
+    getApiSystemNoticeText,
+    isApiUnmatchedReplyNoticeMessage,
+    getApiRefundSystemNoticeKind,
+    getApiRefundSystemNoticeDisplayText,
+    isApiSystemNoticeMessage,
+    isApiGoodsSourceNoticeMessage,
+    debugApiGoodsSourceMessage,
+    resolveApiGoodsSourceCard,
+    renderApiGoodsSourceNoticeCardHtml,
+    renderApiEmojiPanel,
+    renderApiShopHeader,
+    renderApiSessions,
+    renderApiMessages,
+    renderApiPhrasePanel,
+    renderApiSideOrders,
+    renderApiGoodsCardHtml,
+    renderApiRefundCardHtml,
+    getApiRefundStatusUpdateMeta,
+    extractApiInviteOrderCard,
+    isApiInviteOrderTemplateMessage,
+    renderApiInviteOrderCardHtml,
+    renderApiVideoMessageHtml,
+    renderApiSystemMessageHtml,
+    renderApiRefundSystemNoticeCardHtml,
+    renderApiRefundStatusUpdateCardHtml,
+    ensureApiGoodsCardLoaded,
+    getApiSellerDisplayName,
+  };
   window.renderApiPddEmojiHtml = renderApiPddEmojiHtml;
   window.renderApiEmojiPanel = renderApiEmojiPanel;
   window.renderApiShopHeader = renderApiShopHeader;
@@ -5054,6 +7142,11 @@
   window.renderApiSideOrders = renderApiSideOrders;
   window.invalidateApiSideOrders = invalidateApiSideOrders;
   window.syncApiSelectionWithFilter = syncApiSelectionWithFilter;
+  window.openApiInviteOrderModal = openApiInviteOrderModal;
+  window.closeApiInviteOrderModal = closeApiInviteOrderModal;
+  window.closeApiInviteOrderSpecModal = closeApiInviteOrderSpecModal;
+  window.openApiSmallPaymentOrderSelector = openApiSmallPaymentOrderSelector;
+  window.closeApiSmallPaymentOrderSelector = closeApiSmallPaymentOrderSelector;
   window.openApiSmallPaymentModal = openApiSmallPaymentModal;
   window.closeApiSmallPaymentModal = closeApiSmallPaymentModal;
   window.openApiGoodsSpecModal = openApiGoodsSpecModal;

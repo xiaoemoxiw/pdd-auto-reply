@@ -30,6 +30,11 @@ class NetworkMonitor {
       '/latitude/',   // 订单、改价、待支付等接口
       '/mercury/',    // 售后与订单辅助接口
       '/pizza/order/', // 订单备注等页面接口
+      '/omaisms/invoice/',
+      '/orderinvoice/',
+      '/voice/api/mms/invoice/',
+      '/cambridge/api/',
+      '/invoice/',
       '/chats/',
       '/get_signature',
       '/store_image',
@@ -48,6 +53,7 @@ class NetworkMonitor {
       'galerie-api.pdd.net',
       'galerie-api.htj.pdd.net',
       'pddugc.com',
+      'pddpic.com',
       'store_image',
       'general_file',
       'get_signature',
@@ -60,7 +66,6 @@ class NetworkMonitor {
       'front_err',
       '_stm',
       'beacon',
-      'track',
       'log.',
       '.png',
       '.jpg',
@@ -84,8 +89,8 @@ class NetworkMonitor {
     }
 
     this.debugger.sendCommand('Network.enable', {
-      maxTotalBufferSize: 10 * 1024 * 1024,
-      maxResourceBufferSize: 5 * 1024 * 1024,
+      maxTotalBufferSize: 50 * 1024 * 1024,
+      maxResourceBufferSize: 20 * 1024 * 1024,
     });
 
     this.debugger.on('detach', (_, reason) => {
@@ -528,7 +533,8 @@ class NetworkMonitor {
       if (parsed) {
         this._analyzeForMessages(parsed, logEntry);
       }
-    } catch {
+    } catch (error) {
+      const message = String(error?.message || error || '').slice(0, 260);
       const apiTraffic = {
         ...requestEntry,
         status: requestEntry.status || 0,
@@ -537,6 +543,7 @@ class NetworkMonitor {
         responseBody: '',
         isJson: false,
         responseBodyUnavailable: true,
+        responseBodyError: message,
         triggerContext: this.getLatestAction(requestEntry.timestamp) || null,
       };
       this._log('network', `[${apiTraffic.status}] ${shortUrl} (body unavailable)`, apiTraffic);

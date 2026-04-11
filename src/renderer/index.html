@@ -12709,6 +12709,16 @@
         if (!reuseCachedSessions) {
           scheduleApiWarmupRefreshes(options.keepCurrent);
         }
+        const pendingOrderSn = String(window.__pendingOpenApiChatOrderSn || '').trim();
+        if (pendingOrderSn) {
+          window.__pendingOpenApiChatOrderSn = '';
+          const input = document.getElementById('apiSessionSearch');
+          if (input) {
+            input.value = pendingOrderSn;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          document.getElementById('btnApiPlus')?.click();
+        }
       } catch (error) {
         apiSessionLoadError = error.message || '加载客户对话失败';
         clearApiActiveSession();

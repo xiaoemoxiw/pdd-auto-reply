@@ -45,6 +45,9 @@ alwaysApply: true
 - 保持 `contextIsolation: true`，不要为了图省事开启不安全配置。
 - 不要在渲染层直接读写 store、文件或敏感认证信息。
 
+## 内嵌页面兼容性
+- 任务涉及 BrowserView/BrowserWindow 内嵌拼多多后台页面时，遵循 `embedded-page-compat.md` 的会话分区与 UA 兜底策略，优先用稳定 UA 避免“非 Chrome”拦截弹窗。
+
 ## 验证要求
 - 修改后至少做与变更范围匹配的最小验证，优先使用项目现有运行方式。
 - 涉及桌面 UI、IPC、店铺状态、自动回复或网络链路时，要确认关键流程没有被改坏。

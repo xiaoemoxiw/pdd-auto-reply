@@ -8,11 +8,7 @@ const aftersaleState = {
   overviewCounts: null,
   overviewTotal: 0,
   overviewUpdatedAt: 0,
-  statusCounts: {},
-  lastApiAt: 0,
-  lastApiParams: null,
-  lastApiResult: null,
-  lastApiThrownError: ''
+  statusCounts: {}
 };
 
 function escape(value) {
@@ -190,9 +186,6 @@ window.registerOpsCenterView({
         <div class="ops-aftersale-topbar">
           <div class="ops-aftersale-tabs" role="tablist" id="opsAftersaleTabs"></div>
           <div class="ops-aftersale-controls">
-            <select class="ops-aftersale-select" id="selectAftersaleStatus">
-              <option value="">全部状态</option>
-            </select>
             <button type="button" class="ops-aftersale-btn" id="btnAftersaleRefresh">刷新</button>
           </div>
         </div>
@@ -214,30 +207,6 @@ window.registerOpsCenterView({
             <tbody id="opsAftersaleTableBody"></tbody>
           </table>
         </div>
-        <details class="ops-aftersale-debug" id="opsAftersaleDebug" open>
-          <summary class="ops-aftersale-debug-summary">
-            <span>接口返回字段（调试）</span>
-            <span class="ops-aftersale-debug-summary-right">
-              <button type="button" class="ops-aftersale-debug-copy" id="btnAftersaleCopyDebug" disabled>复制 JSON</button>
-              <span class="ops-aftersale-debug-summary-meta" id="opsAftersaleDebugSummaryMeta"></span>
-            </span>
-          </summary>
-          <div class="ops-aftersale-debug-content">
-            <div class="ops-aftersale-debug-hints" id="opsAftersaleDebugHints"></div>
-            <div class="ops-aftersale-debug-grid">
-              <div class="ops-aftersale-debug-block">
-                <div class="ops-aftersale-debug-title">顶层字段</div>
-                <pre class="ops-aftersale-debug-pre" id="opsAftersaleDebugTopKeys"></pre>
-              </div>
-              <div class="ops-aftersale-debug-block">
-                <div class="ops-aftersale-debug-title">list[0] 字段</div>
-                <pre class="ops-aftersale-debug-pre" id="opsAftersaleDebugItemKeys"></pre>
-              </div>
-            </div>
-            <div class="ops-aftersale-debug-title" style="margin-top:10px">原始返回（JSON）</div>
-            <pre class="ops-aftersale-debug-json" id="opsAftersaleDebugJson"></pre>
-          </div>
-        </details>
       </div>
     `;
   },
@@ -323,54 +292,6 @@ window.registerOpsCenterView({
       renderAll();
       return true;
     }
-
-    function safeJsonStringify(value, space = 2) {
-      if (value === undefined) return '';
-      const seen = new WeakSet();
-      try {
-        return JSON.stringify(
-          value,
-          (key, val) => {
-            if (typeof val === 'bigint') return String(val);
-            if (typeof val === 'object' && val !== null) {
-              if (seen.has(val)) return '[Circular]';
-              seen.add(val);
-            }
-            return val;
-          },
-          space
-        );
-      } catch (err) {
-        return String(err?.message || err || '');
-      }
-    }
-
-    function buildDebugSnapshot(result) {
-      if (!result || typeof result !== 'object') return result;
-      if (Array.isArray(result)) return result.slice(0, 3);
-      const snapshot = { ...result };
-      if (Array.isArray(result.list)) {
-        const typeCounts = {};
-        const statusCounts = {};
-        result.list.forEach(item => {
-          const type = item?.afterSalesType ?? item?.after_sales_type;
-          const status = item?.afterSalesStatus ?? item?.after_sales_status ?? item?.serviceStatus ?? item?.service_status;
-          const typeKey = type === undefined || type === null || type === '' ? '-' : String(type);
-          const statusKey = status === undefined || status === null || status === '' ? '-' : String(status);
-          typeCounts[typeKey] = Number(typeCounts[typeKey] || 0) + 1;
-          statusCounts[statusKey] = Number(statusCounts[statusKey] || 0) + 1;
-        });
-        snapshot._listSummary = {
-          listLen: result.list.length,
-          afterSalesTypeCounts: typeCounts,
-          statusCounts,
-        };
-        snapshot.list = result.list.slice(0, 3);
-      }
-      return snapshot;
-    }
-
-    let lastDebugJsonText = '';
 
     function isDueSoonRow(row) {
       const ms = Number(row?.deadlineAtMs);
@@ -492,93 +413,11 @@ window.registerOpsCenterView({
         const overviewTotal = Object.keys(overviewCounts)
           .filter(key => key !== '2' && key !== '3')
           .reduce((sum, key) => sum + Number(overviewCounts[key] || 0), 0);
-        parts.push(`列表 ${listCount} 条`);
-        if (overviewTotal) parts.push(`合计 ${overviewTotal} 条`);
+        // parts.push(`列表 ${listCount} 条`);
+        // if (overviewTotal) parts.push(`合计 ${overviewTotal} 条`);
       }
       if (aftersaleState.error) parts.push(`失败：${escape(aftersaleState.error)}`);
       metaEl.innerHTML = parts.join(' ｜ ');
-    }
-
-    function renderDebugPanel() {
-      const summaryMetaEl = element.querySelector('#opsAftersaleDebugSummaryMeta');
-      const hintsEl = element.querySelector('#opsAftersaleDebugHints');
-      const topKeysEl = element.querySelector('#opsAftersaleDebugTopKeys');
-      const itemKeysEl = element.querySelector('#opsAftersaleDebugItemKeys');
-      const jsonEl = element.querySelector('#opsAftersaleDebugJson');
-      const copyBtn = element.querySelector('#btnAftersaleCopyDebug');
-
-      if (!summaryMetaEl || !hintsEl || !topKeysEl || !itemKeysEl || !jsonEl || !copyBtn) return;
-
-      if (!aftersaleState.lastApiAt) {
-        summaryMetaEl.textContent = '（点击“接口获取”后显示）';
-        hintsEl.textContent = '';
-        topKeysEl.textContent = '';
-        itemKeysEl.textContent = '';
-        jsonEl.textContent = '';
-        lastDebugJsonText = '';
-        copyBtn.disabled = true;
-        return;
-      }
-
-      summaryMetaEl.textContent = `（${formatTime(aftersaleState.lastApiAt)}）`;
-
-      const hints = [];
-      if (aftersaleState.lastApiParams) {
-        hints.push(`请求参数：${safeJsonStringify(aftersaleState.lastApiParams, 0)}`);
-      }
-      if (aftersaleState.lastApiThrownError) {
-        hints.push(`调用异常：${aftersaleState.lastApiThrownError}`);
-      }
-
-      const result = aftersaleState.lastApiResult;
-      const failures = Array.isArray(result?.failures) ? result.failures : [];
-      if (failures.length) {
-        const samples = failures.slice(0, 5).map(item => {
-          const name = String(item?.shopName || '').trim();
-          const id = String(item?.shopId || '').trim();
-          const prefix = name || (id ? `shopId=${id}` : '未知店铺');
-          const message = String(item?.message || '').trim();
-          return message ? `${prefix}：${message}` : prefix;
-        }).filter(Boolean);
-        hints.push(`失败店铺 ${failures.length} 个：${samples.join('；')}${failures.length > samples.length ? '…' : ''}`);
-      }
-      const topKeys = result && typeof result === 'object' && !Array.isArray(result) ? Object.keys(result) : [];
-      topKeys.sort((a, b) => a.localeCompare(b, 'zh-CN'));
-      topKeysEl.textContent = topKeys.length ? topKeys.join('\n') : '（无）';
-
-      const list = Array.isArray(result?.list) ? result.list : [];
-      if (list.length && list[0] && typeof list[0] === 'object' && !Array.isArray(list[0])) {
-        const keys = Object.keys(list[0]);
-        keys.sort((a, b) => a.localeCompare(b, 'zh-CN'));
-        itemKeysEl.textContent = keys.join('\n');
-      } else {
-        itemKeysEl.textContent = '（无）';
-      }
-
-      if (Array.isArray(result?.list)) {
-        const total = result?.total ? Number(result.total) : 0;
-        hints.push(`list 共 ${list.length} 条${Number.isFinite(total) && total ? `（total=${total}）` : ''}；JSON 区域仅展示前 ${Math.min(3, list.length)} 条样例。`);
-      }
-
-      const snapshot = buildDebugSnapshot(result);
-      lastDebugJsonText = safeJsonStringify(snapshot, 2);
-      jsonEl.textContent = lastDebugJsonText;
-      hintsEl.textContent = hints.join('\n');
-      copyBtn.disabled = !lastDebugJsonText;
-    }
-
-    function renderStatusSelect() {
-      const select = element.querySelector('#selectAftersaleStatus');
-      if (!select) return;
-      const currentValue = String(aftersaleState.statusFilter || '');
-      const options = [
-        { value: 'waitSellerHandle', label: '待商家处理' },
-        { value: 'platformHandling', label: '平台处理中' },
-        { value: 'waitBuyerHandle', label: '待买家处理' },
-        { value: 'returnedWaitHandle', label: '退货待处理' },
-        { value: 'expireIn24HoursWaitHandle', label: '即将逾期' },
-      ];
-      select.innerHTML = options.map(opt => `<option value="${escape(opt.value)}"${opt.value === currentValue ? ' selected' : ''}>${escape(opt.label)}</option>`).join('');
     }
 
     function buildRowActionsHtml(row) {
@@ -588,18 +427,21 @@ window.registerOpsCenterView({
       const version = row.version !== null && row.version !== undefined ? escape(String(row.version)) : '';
       const canRejectRefund = Number(row?.serviceStatus) === 1 && row.afterSalesType === 1;
       const afterSalesType = Number(row?.afterSalesType);
-      const canApproveReturnGoods = afterSalesType === 2 && Array.isArray(row?.actions) && row.actions.includes(1002);
+      const canApproveReturnGoods = afterSalesType === 2 && (
+        Number(row?.serviceStatus) === 1
+        || (Array.isArray(row?.actions) && row.actions.includes(1002))
+      );
       const isResend = afterSalesType === 4;
       const isExchange = afterSalesType === 3;
       const canApproveResend = isResend && Number(row?.serviceStatus) === 14;
-      const statusFilter = String(aftersaleState.statusFilter || '');
-      const canApproveRefund = statusFilter === 'waitSellerHandle' && !isResend && !isExchange;
+      const canFillResendTracking = isResend && Number(row?.serviceStatus) === 32;
+      const canApproveRefund = !isResend && !isExchange;
       const actions = [];
+      if (instanceId && canApproveReturnGoods) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-return-goods" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}" data-version="${version}">同意退货</a>`);
       if (instanceId && canApproveRefund) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-refund" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}" data-version="${version}">同意退款</a>`);
       if (instanceId && canApproveResend) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-resend" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}" data-version="${version}">同意补寄</a>`);
-      if (instanceId && isResend) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="resend-fill-tracking" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">已补寄，填写补寄单号</a>`);
+      if (instanceId && canFillResendTracking) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="resend-fill-tracking" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">已补寄，填写补寄单号</a>`);
       if (instanceId && isExchange) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-exchange" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">同意换货</a>`);
-      if (instanceId && statusFilter !== 'waitSellerHandle' && canApproveReturnGoods) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-return-goods" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}" data-version="${version}">同意退货</a>`);
       if (instanceId && canRejectRefund) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="reject-refund" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">驳回退款</a>`);
       actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="detail" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">查看详情</a>`);
       return `<div class="ops-aftersale-actions">${actions.join('')}</div>`;
@@ -653,7 +495,7 @@ window.registerOpsCenterView({
       };
 
       const countdownText = Number.isFinite(deadlineAtMs)
-        ? (deadlineAtMs <= Date.now() ? '已逾期' : `${formatRemain(deadlineAtMs - Date.now())}未处理`)
+        ? (deadlineAtMs <= Date.now() ? '已逾期' : `${formatRemain(deadlineAtMs - Date.now())}未处理，系统将自动退款`)
         : '';
 
       const getOrderInfo = () => {
@@ -793,10 +635,8 @@ window.registerOpsCenterView({
 
     function renderAll() {
       renderTabs();
-      renderStatusSelect();
       renderMeta();
       renderTable();
-      renderDebugPanel();
     }
 
     async function fetchOverview() {
@@ -839,9 +679,6 @@ window.registerOpsCenterView({
         ...(createEndTime !== null ? { createEndTime } : {}),
       };
       try {
-        aftersaleState.lastApiParams = null;
-        aftersaleState.lastApiThrownError = '';
-
         let result = null;
         try {
           result = await window.pddApi.aftersaleGetList(params);
@@ -852,13 +689,7 @@ window.registerOpsCenterView({
           const params2 = { ...params };
           delete params2.quickSearchType;
           result = await window.pddApi.aftersaleGetList(params2);
-          aftersaleState.lastApiThrownError = message;
-          aftersaleState.lastApiParams = params2;
         }
-        aftersaleState.lastApiAt = Date.now();
-        aftersaleState.lastApiParams = aftersaleState.lastApiParams || params;
-        aftersaleState.lastApiResult = result;
-        aftersaleState.lastApiThrownError = aftersaleState.lastApiThrownError || '';
         if (result?.error) {
           if (!silent || !aftersaleState.rows.length) {
             aftersaleState.error = result.error;
@@ -907,16 +738,7 @@ window.registerOpsCenterView({
           aftersaleState.rows = [];
           aftersaleState.total = 0;
           aftersaleState.updatedAt = Date.now();
-          aftersaleState.lastApiAt = Date.now();
-          aftersaleState.lastApiParams = params;
-          aftersaleState.lastApiResult = null;
-          aftersaleState.lastApiThrownError = err?.message || String(err || '售后列表获取失败');
           renderAll();
-        } else {
-          aftersaleState.lastApiAt = Date.now();
-          aftersaleState.lastApiParams = params;
-          aftersaleState.lastApiResult = null;
-          aftersaleState.lastApiThrownError = err?.message || String(err || '售后列表获取失败');
         }
       }
     }
@@ -949,23 +771,6 @@ window.registerOpsCenterView({
     const refreshBtn = element.querySelector('#btnAftersaleRefresh');
     refreshBtn?.addEventListener('click', async () => {
       await window.__opsAftersaleRefreshHandler?.();
-    });
-
-    element.querySelector('#btnAftersaleCopyDebug')?.addEventListener('click', async (event) => {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      try {
-        await copyText(lastDebugJsonText);
-        window.opsCenterToast?.('已复制');
-      } catch (err) {
-        window.opsCenterToast?.('复制失败');
-      }
-    });
-
-    element.querySelector('#selectAftersaleStatus')?.addEventListener('change', (event) => {
-      const value = String(event?.target?.value || '').trim();
-      aftersaleState.statusFilter = value;
-      renderAll();
     });
 
     element.addEventListener('click', async (event) => {
@@ -1158,11 +963,40 @@ window.registerOpsCenterView({
           return;
         }
         if (action === 'detail') {
-          window.opsCenterToast?.('详情入口已预留（后续可接入详情抽屉/弹窗）');
+          if (!instanceId) {
+            window.opsCenterToast?.('当前记录缺少售后单ID');
+            return;
+          }
+          const orderNo = String(legacyActionLink.dataset.order || '').trim();
+          const shopId = String(legacyActionLink.dataset.shop || '').trim();
+          try {
+            if (window.pddApi && typeof window.pddApi.openAfterSaleDetailWindow === 'function') {
+              Promise.resolve(window.pddApi.openAfterSaleDetailWindow({ instanceId, orderNo, shopId })).then((res) => {
+                if (res && res.error) window.opsCenterToast?.(String(res.error || '').trim() || '打开失败');
+              }).catch(() => {
+                window.opsCenterToast?.('打开失败');
+              });
+            } else {
+              window.opsCenterToast?.('详情窗口能力未就绪');
+            }
+          } catch (error) {
+            window.opsCenterToast?.('打开失败');
+          }
           return;
         }
         if (action === 'contact') {
-          window.opsCenterToast?.('联系消费者入口已预留');
+          const orderNo = String(legacyActionLink.dataset.order || '').trim();
+          if (!orderNo) {
+            window.opsCenterToast?.('当前记录缺少订单号');
+            return;
+          }
+          window.__pendingOpenApiChatOrderSn = orderNo;
+          const targetNav = document.querySelector('.nav-item[data-view="chat-api"]');
+          if (targetNav) {
+            targetNav.click();
+          } else {
+            window.opsCenterToast?.('未找到客户对话（接口对接）页面入口');
+          }
           return;
         }
         if (action === 'ship') {
@@ -1298,7 +1132,13 @@ window.registerOpsCenterView({
             return;
           }
           if (typeof window.openOpsAfterSaleRemarkDialog === 'function') {
-            window.openOpsAfterSaleRemarkDialog({ orderNo, shopId })?.catch?.(() => {});
+            window.openOpsAfterSaleRemarkDialog({ orderNo, shopId })
+              ?.then?.(async (result) => {
+                if (!result || result?.error) return;
+                await wait(300);
+                await window.__opsAftersaleRefreshHandler?.();
+              })
+              ?.catch?.(() => {});
           } else {
             window.opsCenterToast?.('备注弹窗未加载');
           }
@@ -1319,10 +1159,6 @@ window.registerOpsCenterView({
       aftersaleState.overviewTotal = 0;
       aftersaleState.overviewUpdatedAt = 0;
       aftersaleState.statusCounts = {};
-      aftersaleState.lastApiAt = 0;
-      aftersaleState.lastApiParams = null;
-      aftersaleState.lastApiResult = null;
-      aftersaleState.lastApiThrownError = '';
       renderAll();
       fetchOverview();
       fetchTicketList();

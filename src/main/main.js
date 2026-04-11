@@ -27,6 +27,8 @@ const { registerApiIpc } = require('./register-api-ipc');
 const { registerReplyIpc } = require('./register-reply-ipc');
 const { registerDebugIpc } = require('./register-debug-ipc');
 const { registerEmbeddedViewIpc } = require('./register-embedded-view-ipc');
+const { registerAfterSaleDetailWindowIpc } = require('./register-aftersale-detail-window-ipc');
+const { registerInvoiceOrderDetailWindowIpc } = require('./register-invoice-order-detail-window-ipc');
 const Store = require('electron-store');
 
 app.disableHardwareAcceleration();
@@ -86,7 +88,17 @@ const store = new Store({
     autoReplyEnabled: false,
     defaultReply: {
       enabled: true,
-      texts: ['亲，目前咨询客户较多，客服小姐姐在一个一个回复，稍等一下~'],
+      texts: [
+        '亲,我会乐意为你服务。收藏一下本小店，我们会不定期上新款。祝你网购愉快。',
+        '亲，如果您有什么疑问可以直接留言，客服看到了会记录下来的，没有及时回复您，真的非常抱歉！',
+        '亲，客服正在来的路上喔，您看到的商品基本都是有货的，可以参考详情和规格选择，拍下后尽快给您安排发出~',
+        '亲亲，客服人员正在仓库核实打包发货，您的问题我们记录好，客服小姐姐回来会为您解答哦！',
+        '若客服未及时回，可能是系统延迟，请留言，客服上线后处理，谢谢！',
+        '亲，客服已经听到您的呼叫，请稍等！',
+        '亲，您好，您的专线客服正骑着心爱的小摩托赶来呢，稍等哦。',
+        '亲~不好意思，现在忙于打包发货中，有事请留言，晚点给你回复，谢谢！',
+        '亲，您的专线客服正在骑着小摩托赶来呢，您问的问题可以先到主详情页查询或者在下单界面查询规格尺寸也是可以的，稍后您的问题我会在第一时间给您回复的，谢谢您的理解哦'
+      ],
       delay: 2000,
       cooldown: 60000,
       strategy: 'random',
@@ -2294,6 +2306,19 @@ registerEmbeddedViewIpc({
   getEmbeddedViewUrl
 });
 
+registerAfterSaleDetailWindowIpc({
+  ipcMain,
+  store,
+  getMainWindow: () => mainWindow
+});
+
+registerInvoiceOrderDetailWindowIpc({
+  ipcMain,
+  store,
+  getMainWindow: () => mainWindow,
+  getPddInvoiceUrl
+});
+
 registerAiIpc({
   ipcMain,
   app,
@@ -2935,7 +2960,18 @@ function ensureBuiltInRules(rules = []) {
 
 function ensureDefaultReplyConfig(config = null) {
   const legacyText = '亲，您好！您的问题我已收到，请稍等，马上为您处理~';
-  const nextText = '亲，目前咨询客户较多，客服小姐姐在一个一个回复，稍等一下~';
+  const previousDefaultText = '亲，目前咨询客户较多，客服小姐姐在一个一个回复，稍等一下~';
+  const nextDefaultTexts = [
+    '亲,我会乐意为你服务。收藏一下本小店，我们会不定期上新款。祝你网购愉快。',
+    '亲，如果您有什么疑问可以直接留言，客服看到了会记录下来的，没有及时回复您，真的非常抱歉！',
+    '亲，客服正在来的路上喔，您看到的商品基本都是有货的，可以参考详情和规格选择，拍下后尽快给您安排发出~',
+    '亲亲，客服人员正在仓库核实打包发货，您的问题我们记录好，客服小姐姐回来会为您解答哦！',
+    '若客服未及时回，可能是系统延迟，请留言，客服上线后处理，谢谢！',
+    '亲，客服已经听到您的呼叫，请稍等！',
+    '亲，您好，您的专线客服正骑着心爱的小摩托赶来呢，稍等哦。',
+    '亲~不好意思，现在忙于打包发货中，有事请留言，晚点给你回复，谢谢！',
+    '亲，您的专线客服正在骑着小摩托赶来呢，您问的问题可以先到主详情页查询或者在下单界面查询规格尺寸也是可以的，稍后您的问题我会在第一时间给您回复的，谢谢您的理解哦'
+  ];
   const normalized = config && typeof config === 'object' ? { ...config } : {};
 
   if (!Array.isArray(normalized.texts) && normalized.text) {
@@ -2943,16 +2979,17 @@ function ensureDefaultReplyConfig(config = null) {
   }
 
   if (!Array.isArray(normalized.texts) || normalized.texts.length === 0) {
-    normalized.texts = [nextText];
+    normalized.texts = [...nextDefaultTexts];
     return normalized;
   }
 
-  if (normalized.texts.length === 1 && String(normalized.texts[0] || '').trim() === legacyText) {
-    normalized.texts = [nextText];
+  if (normalized.texts.length === 1) {
+    const only = String(normalized.texts[0] || '').trim();
+    if (only === legacyText || only === previousDefaultText) normalized.texts = [...nextDefaultTexts];
   }
 
-  if (String(normalized.text || '').trim() === legacyText) {
-    normalized.text = nextText;
+  if ([legacyText, previousDefaultText].includes(String(normalized.text || '').trim())) {
+    normalized.text = nextDefaultTexts[0];
   }
 
   return normalized;

@@ -90,7 +90,7 @@ function normalizeTicketToRow(item = {}) {
   const deadlineAtMs = Number.isFinite(expireRemainTime) && expireRemainTime > 0
     ? Date.now() + expireRemainTime * 1000
     : parseTimestampToMs(pickFirst(item, ['deadLine', 'dead_line', 'deadline', 'deadlineAt', 'deadline_at', 'expireTime', 'expire_time'], ''));
-  
+
   // 补充退款金额等特有字段
   const refundAmount = Number(pickFirst(item, ['refundAmount', 'refund_amount'], 0)) / 100;
   const paidAmount = normalizeMoneyToYuan(pickFirst(item, [
@@ -109,12 +109,40 @@ function normalizeTicketToRow(item = {}) {
     'orderAmount',
     'order_amount',
   ], Number.NaN));
-  const afterSalesTypeName = String(pickFirst(item, ['afterSalesTypeName', 'after_sales_type_name'], '') || '').trim();
+  const afterSalesType = Number(pickFirst(item, ['afterSalesType', 'after_sales_type'], Number.NaN));
+  const rawAfterSalesTypeName = String(pickFirst(item, ['afterSalesTypeName', 'after_sales_type_name'], '') || '').trim();
+  const afterSalesTypeName = rawAfterSalesTypeName || ({
+    1: '仅退款',
+    2: '退货退款',
+    3: '换货',
+    4: '补寄',
+  }[Number.isFinite(afterSalesType) ? afterSalesType : 0] || '');
   const afterSalesReasonDesc = String(pickFirst(item, ['afterSalesReasonDesc', 'after_sales_reason_desc'], '') || '').trim();
   const shippingStatusDesc = String(pickFirst(item, ['sellerAfterSalesShippingStatusDesc', 'seller_after_sales_shipping_status_desc'], '') || '').trim();
-  const shippingTrackingNo = String(pickFirst(item, ['trackingNumber', 'tracking_number', 'expressNo', 'express_no', 'shipTrackingNumber', 'ship_tracking_number'], '') || '').trim();
+  const orderTrackingNumber = String(pickFirst(item, ['orderTrackingNumber', 'order_tracking_number', 'orderTrackingNo', 'order_tracking_no'], '') || '').trim();
+  const shippingTrackingNo = String(pickFirst(item, [
+    'orderTrackingNumber',
+    'order_tracking_number',
+    'orderTrackingNo',
+    'order_tracking_no',
+    'trackingNumber',
+    'tracking_number',
+    'expressNo',
+    'express_no',
+    'shipTrackingNumber',
+    'ship_tracking_number',
+  ], '') || '').trim();
   const returnTrackingNo = String(pickFirst(item, ['reverseTrackingNumber', 'reverse_tracking_number', 'returnTrackingNumber', 'return_tracking_number', 'returnShippingNo', 'return_shipping_no'], '') || '').trim();
+  const returnAddressId = String(pickFirst(item, ['returnAddressId', 'return_address_id'], '') || '').trim();
+  const version = Number(pickFirst(item, ['version'], Number.NaN));
+  const rawActions = pickFirst(item, ['actions', 'actionList', 'action_list'], null);
+  const actions = Array.isArray(rawActions)
+    ? rawActions.map(Number).filter(Number.isFinite)
+    : [];
   const thumbUrl = String(pickFirst(item, ['thumbUrl', 'thumb_url', 'goodsThumbUrl', 'goods_thumb_url'], '') || '').trim();
+  const mallRemark = String(pickFirst(item, ['mallRemark', 'mall_remark'], '') || '').trim();
+  const mallRemarkTagRaw = pickFirst(item, ['mallRemarkTag', 'mall_remark_tag'], null);
+  const mallRemarkTag = Number.isFinite(Number(mallRemarkTagRaw)) ? Number(mallRemarkTagRaw) : null;
 
   return {
     raw: item,
@@ -131,16 +159,23 @@ function normalizeTicketToRow(item = {}) {
     updatedAt,
     deadlineAtMs,
     goodsSku: String(pickFirst(item, ['spec', 'sku', 'goodsSpec', 'goods_spec'], '') || '').trim(),
-    
+
     // 退款售后单扩展字段
+    afterSalesType: Number.isFinite(afterSalesType) ? afterSalesType : null,
     refundAmount,
     paidAmount,
     afterSalesTypeName,
     afterSalesReasonDesc,
     shippingStatusDesc,
     shippingTrackingNo,
+    orderTrackingNumber,
     returnTrackingNo,
+    returnAddressId,
+    version: Number.isFinite(version) ? version : null,
+    actions,
     thumbUrl,
+    mallRemark,
+    mallRemarkTag,
   };
 }
 
@@ -207,6 +242,8 @@ window.registerOpsCenterView({
     `;
   },
   onMount(element) {
+    const actionLocks = new Set();
+
     async function copyText(text) {
       const value = String(text ?? '');
       if (!value) return false;
@@ -224,6 +261,67 @@ window.registerOpsCenterView({
       const ok = document.execCommand('copy');
       textarea.remove();
       return ok;
+    }
+
+    function wait(ms) {
+      const value = Number(ms);
+      const duration = Number.isFinite(value) && value > 0 ? value : 0;
+      return new Promise(resolve => setTimeout(resolve, duration));
+    }
+
+    function clampCount(value) {
+      const n = Number(value || 0);
+      if (!Number.isFinite(n)) return 0;
+      return n < 0 ? 0 : n;
+    }
+
+    function decCount(obj, key, delta = 1) {
+      if (!obj || typeof obj !== 'object') return;
+      const d = Number(delta || 0);
+      if (!Number.isFinite(d) || d <= 0) return;
+      obj[key] = clampCount(Number(obj[key] || 0) - d);
+    }
+
+    function optimisticRemoveRowByInstanceId(instanceId) {
+      const target = String(instanceId || '').trim();
+      if (!target) return false;
+      const idx = aftersaleState.rows.findIndex(row => String(row?.instanceId || '').trim() === target);
+      if (idx < 0) return false;
+      const row = aftersaleState.rows[idx];
+      aftersaleState.rows = aftersaleState.rows.filter(r => String(r?.instanceId || '').trim() !== target);
+
+      const derived = aftersaleState.statusCounts && typeof aftersaleState.statusCounts === 'object'
+        ? aftersaleState.statusCounts
+        : null;
+      const overview = aftersaleState.overviewCounts && typeof aftersaleState.overviewCounts === 'object'
+        ? aftersaleState.overviewCounts
+        : null;
+
+      if (isSellerPendingRow(row)) {
+        decCount(derived, 'waitSellerHandle', 1);
+        decCount(overview, 'waitSellerHandle', 1);
+      }
+      if ([8, 9].includes(Number(row?.serviceStatus))) {
+        decCount(derived, 'platformHandling', 1);
+        decCount(overview, 'platformHandling', 1);
+      }
+      if (isBuyerPendingRow(row)) {
+        decCount(derived, 'waitBuyerHandle', 1);
+        decCount(overview, 'waitBuyerHandle', 1);
+      }
+      if (isReturnPendingRow(row)) {
+        decCount(derived, 'returnedWaitHandle', 1);
+        decCount(overview, 'returnedWaitHandle', 1);
+      }
+      if (isDueSoonRow(row)) {
+        decCount(derived, 'expireIn24HoursWaitHandle', 1);
+        decCount(overview, 'expireIn24HoursWaitHandle', 1);
+      }
+
+      aftersaleState.total = getFilteredRows().length;
+      aftersaleState.updatedAt = Date.now();
+      renderAll();
+      return true;
     }
 
     function safeJsonStringify(value, space = 2) {
@@ -251,7 +349,24 @@ window.registerOpsCenterView({
       if (!result || typeof result !== 'object') return result;
       if (Array.isArray(result)) return result.slice(0, 3);
       const snapshot = { ...result };
-      if (Array.isArray(result.list)) snapshot.list = result.list.slice(0, 3);
+      if (Array.isArray(result.list)) {
+        const typeCounts = {};
+        const statusCounts = {};
+        result.list.forEach(item => {
+          const type = item?.afterSalesType ?? item?.after_sales_type;
+          const status = item?.afterSalesStatus ?? item?.after_sales_status ?? item?.serviceStatus ?? item?.service_status;
+          const typeKey = type === undefined || type === null || type === '' ? '-' : String(type);
+          const statusKey = status === undefined || status === null || status === '' ? '-' : String(status);
+          typeCounts[typeKey] = Number(typeCounts[typeKey] || 0) + 1;
+          statusCounts[statusKey] = Number(statusCounts[statusKey] || 0) + 1;
+        });
+        snapshot._listSummary = {
+          listLen: result.list.length,
+          afterSalesTypeCounts: typeCounts,
+          statusCounts,
+        };
+        snapshot.list = result.list.slice(0, 3);
+      }
       return snapshot;
     }
 
@@ -266,6 +381,16 @@ window.registerOpsCenterView({
 
     function normalizeText(value) {
       return String(value ?? '').replace(/\s+/g, ' ').trim();
+    }
+
+    function isSellerPendingRow(row) {
+      const status = Number(row?.serviceStatus);
+      if ([0, 1, 2, 3, 11, 32].includes(status)) return true;
+      const afterSalesType = Number(row?.afterSalesType);
+      if ([3, 4].includes(afterSalesType)) return true;
+      const text = normalizeText([row?.title, row?.status].filter(Boolean).join(' '));
+      if (!text) return false;
+      return ['待商家', '待卖家', '待商户', '待商户处理', '待商家处理'].some(key => text.includes(key));
     }
 
     function isBuyerPendingRow(row) {
@@ -283,16 +408,27 @@ window.registerOpsCenterView({
 
     function isClosedOrFinishedRow(row) {
       const status = Number(row?.serviceStatus);
-      // afterSalesStatus 枚举参考: 
-      // 14: 退款成功, 12: 退款失败, 15: 售后关闭, 16: 退款撤销等
-      // 由于工单的 status 和售后单不一致，这里做防御性判断
+      const afterSalesType = Number(row?.afterSalesType);
+      const closeTime = Number(row?.raw?.closeTime ?? row?.raw?.close_time ?? 0);
+      if (Number.isFinite(closeTime) && closeTime > 0) return true;
+
+      if ([3, 4].includes(afterSalesType)) {
+        const text = normalizeText([row?.title, row?.status].filter(Boolean).join(' '));
+        const looksPendingSeller = ['待商家', '待卖家', '待商户', '待商户处理', '待商家处理'].some(key => text.includes(key));
+        if (looksPendingSeller) return false;
+        const deadlineAtMs = Number(row?.deadlineAtMs);
+        if (Number.isFinite(deadlineAtMs) && deadlineAtMs > Date.now()) return false;
+        return status === 15 || status === 16 || status === 12;
+      }
+
+      // 退款/退货退款：这里做防御性判断
       return status === 14 || status === 15 || status === 16 || status === 12;
     }
 
     function buildDerivedCounts(rows) {
       const base = (Array.isArray(rows) ? rows : []).filter(row => !isClosedOrFinishedRow(row));
       const counts = {
-        waitSellerHandle: base.filter(row => Number(row?.serviceStatus) === 0 || Number(row?.serviceStatus) === 1 || Number(row?.serviceStatus) === 11).length,
+        waitSellerHandle: base.filter(isSellerPendingRow).length,
         platformHandling: base.filter(row => Number(row?.serviceStatus) === 8 || Number(row?.serviceStatus) === 9).length,
         waitBuyerHandle: base.filter(isBuyerPendingRow).length,
         returnedWaitHandle: base.filter(isReturnPendingRow).length,
@@ -447,9 +583,25 @@ window.registerOpsCenterView({
 
     function buildRowActionsHtml(row) {
       const instanceId = row.instanceId ? escape(row.instanceId) : '';
+      const orderNo = row.orderNo ? escape(row.orderNo) : '';
+      const shopId = row.shopId ? escape(String(row.shopId)) : '';
+      const version = row.version !== null && row.version !== undefined ? escape(String(row.version)) : '';
+      const canRejectRefund = Number(row?.serviceStatus) === 1 && row.afterSalesType === 1;
+      const afterSalesType = Number(row?.afterSalesType);
+      const canApproveReturnGoods = afterSalesType === 2 && Array.isArray(row?.actions) && row.actions.includes(1002);
+      const isResend = afterSalesType === 4;
+      const isExchange = afterSalesType === 3;
+      const canApproveResend = isResend && Number(row?.serviceStatus) === 14;
+      const statusFilter = String(aftersaleState.statusFilter || '');
+      const canApproveRefund = statusFilter === 'waitSellerHandle' && !isResend && !isExchange;
       const actions = [];
-      if (instanceId) actions.push(`<a class="ops-aftersale-link" href="#" data-action="copy-instance" data-value="${instanceId}">复制工单ID</a>`);
-      actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="detail" data-order="${escape(row.orderNo || '')}" data-instance="${instanceId}">查看详情</a>`);
+      if (instanceId && canApproveRefund) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-refund" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}" data-version="${version}">同意退款</a>`);
+      if (instanceId && canApproveResend) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-resend" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}" data-version="${version}">同意补寄</a>`);
+      if (instanceId && isResend) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="resend-fill-tracking" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">已补寄，填写补寄单号</a>`);
+      if (instanceId && isExchange) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-exchange" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">同意换货</a>`);
+      if (instanceId && statusFilter !== 'waitSellerHandle' && canApproveReturnGoods) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="approve-return-goods" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}" data-version="${version}">同意退货</a>`);
+      if (instanceId && canRejectRefund) actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="reject-refund" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">驳回退款</a>`);
+      actions.push(`<a class="ops-aftersale-link" href="#" data-aftersale-action="detail" data-shop="${shopId}" data-order="${orderNo}" data-instance="${instanceId}">查看详情</a>`);
       return `<div class="ops-aftersale-actions">${actions.join('')}</div>`;
     }
 
@@ -461,6 +613,7 @@ window.registerOpsCenterView({
         goodsSku,
         status,
         shopName,
+        shopId,
         customer,
         createdAt,
         updatedAt,
@@ -472,10 +625,23 @@ window.registerOpsCenterView({
         shippingStatusDesc,
         shippingTrackingNo,
         returnTrackingNo,
-        thumbUrl
+        thumbUrl,
+        mallRemark,
+        mallRemarkTag
       } = row;
       const isDue = Number.isFinite(deadlineAtMs) && (deadlineAtMs - Date.now() < 24 * 60 * 60 * 1000);
       const isOverdue = Number.isFinite(deadlineAtMs) && (deadlineAtMs < Date.now());
+
+      const getMallRemarkTagMeta = (value) => {
+        const v = Number(value);
+        if (!Number.isFinite(v)) return { label: '', color: '' };
+        if (v === 1) return { label: '红色', color: 'red' };
+        if (v === 2) return { label: '黄色', color: 'yellow' };
+        if (v === 3) return { label: '绿色', color: 'green' };
+        if (v === 4) return { label: '蓝色', color: 'blue' };
+        if (v === 5) return { label: '紫色', color: 'purple' };
+        return { label: '', color: '' };
+      };
 
       const formatRemain = (ms) => {
         const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -524,6 +690,18 @@ window.registerOpsCenterView({
         </div>
       `;
 
+      const mallRemarkText = String(mallRemark || '').trim();
+      const mallRemarkTagMeta = getMallRemarkTagMeta(mallRemarkTag);
+      const mallRemarkHtml = mallRemarkText
+        ? `
+          <div class="ops-aftersale-mall-remark" title="${escape(mallRemarkText)}">
+            ${mallRemarkTagMeta.color ? `<span class="ops-aftersale-mall-remark-dot is-${escape(mallRemarkTagMeta.color)}"></span>` : ''}
+            ${mallRemarkTagMeta.label ? `<span class="ops-aftersale-mall-remark-tag">${escape(mallRemarkTagMeta.label)}：</span>` : ''}
+            <span class="ops-aftersale-mall-remark-text">${escape(mallRemarkText)}</span>
+          </div>
+        `
+        : '';
+
       return `
         <tr class="ops-aftersale-row-head">
           <td colspan="8">
@@ -535,7 +713,7 @@ window.registerOpsCenterView({
               </div>
               <div class="ops-aftersale-row-head-right">
                 <span class="ops-aftersale-row-head-time">申请时间：${escape(createdAt || '-')}</span>
-                ${countdownText ? `<span class="ops-aftersale-row-head-countdown${isOverdue ? ' is-overdue' : ''}">（${escape(countdownText)}）</span>` : ''}
+                ${countdownText ? `<span class="ops-aftersale-row-head-countdown${isOverdue ? ' is-overdue' : isDue ? ' is-due-soon' : ''}">（${escape(countdownText)}）</span>` : ''}
                 <a class="ops-aftersale-link" href="#" data-aftersale-action="contact" data-order="${escape(orderNo || '')}">联系消费者</a>
               </div>
             </div>
@@ -547,19 +725,20 @@ window.registerOpsCenterView({
           <td>
             <div class="ops-aftersale-status">
               <strong>${escape(shippingStatusDesc || '-')}</strong>
-              <a class="ops-aftersale-link" href="#" data-aftersale-action="ship" data-value="${escape(shippingTrackingNo || '')}">查看运单</a>
+              <a class="ops-aftersale-link" href="#" data-aftersale-action="ship" data-instance="${escape(String(row?.instanceId || ''))}" data-shop="${escape(shopId || '')}" data-order="${escape(orderNo || '')}" data-value="${escape(shippingTrackingNo || '')}">查看运单</a>
             </div>
           </td>
           <td>${escape(afterSalesTypeName || '-')}</td>
           <td>
             <div class="ops-aftersale-status">
               <strong>${escape(status || '-')}</strong>
-              ${isOverdue ? '<div class="ops-aftersale-due" style="color:#e02e24">已逾期</div>' : isDue ? '<div class="ops-aftersale-due">即将逾期</div>' : ''}
-              <a class="ops-aftersale-link" href="#" data-aftersale-action="return-sn" data-value="${escape(returnTrackingNo || '')}">查看退货单号</a>
+              ${isOverdue ? '<div class="ops-aftersale-due" style="color:#e02e24">已逾期</div>' : (isDue && returnTrackingNo ? '<div class="ops-aftersale-due">即将逾期</div>' : '')}
+              ${returnTrackingNo ? `<a class="ops-aftersale-link" href="#" data-aftersale-action="return-sn" data-instance="${escape(String(row?.instanceId || ''))}" data-shop="${escape(shopId || '')}" data-order="${escape(orderNo || '')}" data-value="${escape(returnTrackingNo)}">查看退货单号</a>` : ''}
             </div>
           </td>
           <td>
-            <a class="ops-aftersale-link" href="#" data-aftersale-action="remark" data-order="${escape(orderNo || '')}">添加备注</a>
+            ${mallRemarkHtml}
+            <a class="ops-aftersale-link" href="#" data-aftersale-action="remark" data-order="${escape(orderNo || '')}" data-shop="${escape(shopId || '')}">添加备注</a>
           </td>
           <td>${escape(afterSalesReasonDesc || '-')}</td>
           <td>${buildRowActionsHtml(row)}</td>
@@ -570,7 +749,7 @@ window.registerOpsCenterView({
     function getFilteredRows() {
       const filterValue = String(aftersaleState.statusFilter || '').trim();
       const base = aftersaleState.rows.filter(row => !isClosedOrFinishedRow(row));
-      if (filterValue === 'waitSellerHandle') return base.filter(row => [0, 1, 11].includes(Number(row?.serviceStatus)));
+      if (filterValue === 'waitSellerHandle') return base.filter(isSellerPendingRow);
       if (filterValue === 'platformHandling') return base.filter(row => [8, 9].includes(Number(row?.serviceStatus)));
       if (filterValue === 'waitBuyerHandle') return base.filter(isBuyerPendingRow);
       if (filterValue === 'returnedWaitHandle') return base.filter(isReturnPendingRow);
@@ -639,9 +818,12 @@ window.registerOpsCenterView({
         renderAll();
         return;
       }
-      aftersaleState.loading = true;
-      aftersaleState.error = '';
-      renderAll();
+      const silent = !!options.silent;
+      if (!silent) {
+        aftersaleState.loading = true;
+        aftersaleState.error = '';
+        renderAll();
+      }
       const quickSearchType = Number.isFinite(Number(options.quickSearchType)) ? Number(options.quickSearchType) : null;
       const createStartTime = Number.isFinite(Number(options.createStartTime)) ? Number(options.createStartTime) : null;
       const createEndTime = Number.isFinite(Number(options.createEndTime)) ? Number(options.createEndTime) : null;
@@ -678,12 +860,14 @@ window.registerOpsCenterView({
         aftersaleState.lastApiResult = result;
         aftersaleState.lastApiThrownError = aftersaleState.lastApiThrownError || '';
         if (result?.error) {
-          aftersaleState.error = result.error;
-          aftersaleState.rows = [];
-          aftersaleState.total = 0;
-          aftersaleState.updatedAt = Date.now();
-          aftersaleState.loading = false;
-          renderAll();
+          if (!silent || !aftersaleState.rows.length) {
+            aftersaleState.error = result.error;
+            aftersaleState.rows = [];
+            aftersaleState.total = 0;
+            aftersaleState.updatedAt = Date.now();
+            aftersaleState.loading = false;
+            renderAll();
+          }
           return;
         }
         const list = Array.isArray(result?.list) ? result.list : [];
@@ -698,12 +882,14 @@ window.registerOpsCenterView({
             })
             .filter(Boolean)
             .join('；');
-          aftersaleState.error = `接口请求失败（${failures.length} 个店铺）：${summary}${failures.length > 3 ? '…' : ''}`;
-          aftersaleState.rows = [];
-          aftersaleState.total = 0;
-          aftersaleState.updatedAt = Date.now();
-          aftersaleState.loading = false;
-          renderAll();
+          if (!silent || !aftersaleState.rows.length) {
+            aftersaleState.error = `接口请求失败（${failures.length} 个店铺）：${summary}${failures.length > 3 ? '…' : ''}`;
+            aftersaleState.rows = [];
+            aftersaleState.total = 0;
+            aftersaleState.updatedAt = Date.now();
+            aftersaleState.loading = false;
+            renderAll();
+          }
           return;
         }
         const normalized = list.map(normalizeTicketToRow);
@@ -715,23 +901,54 @@ window.registerOpsCenterView({
         aftersaleState.loading = false;
         renderAll();
       } catch (err) {
-        aftersaleState.loading = false;
-        aftersaleState.error = err?.message || String(err || '售后列表获取失败');
-        aftersaleState.rows = [];
-        aftersaleState.total = 0;
-        aftersaleState.updatedAt = Date.now();
-        aftersaleState.lastApiAt = Date.now();
-        aftersaleState.lastApiParams = params;
-        aftersaleState.lastApiResult = null;
-        aftersaleState.lastApiThrownError = err?.message || String(err || '售后列表获取失败');
-        renderAll();
+        if (!silent || !aftersaleState.rows.length) {
+          aftersaleState.loading = false;
+          aftersaleState.error = err?.message || String(err || '售后列表获取失败');
+          aftersaleState.rows = [];
+          aftersaleState.total = 0;
+          aftersaleState.updatedAt = Date.now();
+          aftersaleState.lastApiAt = Date.now();
+          aftersaleState.lastApiParams = params;
+          aftersaleState.lastApiResult = null;
+          aftersaleState.lastApiThrownError = err?.message || String(err || '售后列表获取失败');
+          renderAll();
+        } else {
+          aftersaleState.lastApiAt = Date.now();
+          aftersaleState.lastApiParams = params;
+          aftersaleState.lastApiResult = null;
+          aftersaleState.lastApiThrownError = err?.message || String(err || '售后列表获取失败');
+        }
       }
+    }
+
+    window.__opsAftersaleRefreshHandler = async () => {
+      await Promise.all([fetchOverview(), fetchTicketList()]);
+    };
+    if (!window.__opsAftersaleRefreshBound) {
+      window.__opsAftersaleRefreshBound = true;
+      window.addEventListener('ops-aftersale-approved-return', async (event) => {
+        try {
+          const targetInstanceId = String(event?.detail?.id || '').trim();
+          const shouldOptimisticRemove = !!event?.detail?.optimisticRemove;
+          if (shouldOptimisticRemove && targetInstanceId) {
+            optimisticRemoveRowByInstanceId(targetInstanceId);
+            return;
+          }
+          await wait(300);
+          for (let round = 0; round < 4; round += 1) {
+            await Promise.all([fetchOverview(), fetchTicketList({ silent: round > 0 })]);
+            if (!targetInstanceId) break;
+            const stillVisible = aftersaleState.rows.some(row => String(row?.instanceId || '').trim() === targetInstanceId);
+            if (!stillVisible) break;
+            await wait(800);
+          }
+        } catch {}
+      });
     }
 
     const refreshBtn = element.querySelector('#btnAftersaleRefresh');
     refreshBtn?.addEventListener('click', async () => {
-      fetchOverview();
-      fetchTicketList();
+      await window.__opsAftersaleRefreshHandler?.();
     });
 
     element.querySelector('#btnAftersaleCopyDebug')?.addEventListener('click', async (event) => {
@@ -793,6 +1010,153 @@ window.registerOpsCenterView({
         event.preventDefault?.();
         const action = String(legacyActionLink.dataset.aftersaleAction || '').trim();
         const value = String(legacyActionLink.dataset.value || '').trim();
+        const instanceId = String(legacyActionLink.dataset.instance || '').trim();
+        if (action === 'approve-refund') {
+          if (!instanceId) {
+            window.opsCenterToast?.('当前记录缺少售后单ID');
+            return;
+          }
+          const orderNo = String(legacyActionLink.dataset.order || '').trim();
+          const shopId = String(legacyActionLink.dataset.shop || '').trim();
+          if (!orderNo) {
+            window.opsCenterToast?.('当前记录缺少订单号');
+            return;
+          }
+          if (!shopId) {
+            window.opsCenterToast?.('当前记录缺少店铺信息');
+            return;
+          }
+          if (!window.pddApi?.aftersaleAgreeRefundPreCheck) {
+            window.opsCenterToast?.('当前版本未暴露 aftersaleAgreeRefundPreCheck 接口');
+            return;
+          }
+          const lockKey = `approve-refund-precheck:${shopId}:${instanceId}`;
+          if (actionLocks.has(lockKey)) return;
+          actionLocks.add(lockKey);
+          try {
+            const resp = await window.pddApi.aftersaleAgreeRefundPreCheck({
+              shopId,
+              afterSalesId: instanceId,
+              orderSn: orderNo,
+            });
+            if (resp?.error) {
+              window.opsCenterToast?.(String(resp.error || '同意退款预检查失败'));
+              return;
+            }
+            const precheck = resp?.result && typeof resp.result === 'object' ? resp.result : (resp?.payload?.result && typeof resp.payload.result === 'object' ? resp.payload.result : null);
+            if (precheck?.tipSellerAccountAbnormal === true) {
+              if (typeof window.openOpsAfterSaleApproveRefundPrecheckDialog === 'function') {
+                window.openOpsAfterSaleApproveRefundPrecheckDialog({
+                  title: '您当前店铺的货款余额不足',
+                  message: '您当前店铺的货款余额不足（账户资金受限），为保证店铺正常运营，请您至少充值100元后再进行售后处理操作',
+                });
+              } else {
+                window.opsCenterToast?.('您当前店铺的货款余额不足（账户资金受限），请至少充值100元后再进行售后处理操作');
+              }
+              return;
+            }
+            window.opsCenterToast?.('预检查通过，同意退款提交入口已预留');
+          } catch (err) {
+            window.opsCenterToast?.(err?.message || String(err || '同意退款预检查失败'));
+          } finally {
+            actionLocks.delete(lockKey);
+          }
+          return;
+        }
+          if (action === 'approve-resend') {
+            if (!instanceId) {
+              window.opsCenterToast?.('当前记录缺少售后单ID');
+              return;
+            }
+            const orderNo = String(legacyActionLink.dataset.order || '').trim();
+            const shopId = String(legacyActionLink.dataset.shop || '').trim();
+            const version = String(legacyActionLink.dataset.version || '').trim();
+            if (!version) {
+              window.opsCenterToast?.('当前记录缺少版本号');
+              return;
+            }
+            if (!window.pddApi?.aftersaleApproveResend) {
+              window.opsCenterToast?.('当前版本未暴露 aftersaleApproveResend 接口');
+              return;
+            }
+            if (typeof window.openOpsAfterSaleResendTrackingDialog === 'function') {
+              window.openOpsAfterSaleResendTrackingDialog({ instanceId, orderNo, shopId, agreedHint: true })
+                ?.catch?.(() => {});
+            } else {
+              window.opsCenterToast?.('补寄单号弹窗未加载');
+            }
+            const lockKey = `approve-resend:${shopId}:${instanceId}`;
+            if (actionLocks.has(lockKey)) return;
+            actionLocks.add(lockKey);
+            try {
+              const result = await window.pddApi.aftersaleApproveResend({
+                shopId,
+                id: instanceId,
+                orderSn: orderNo,
+                version: Number(version),
+                frontAction: 1017,
+              });
+              if (result?.error) {
+                window.opsCenterToast?.(String(result.error || '同意补寄失败'));
+                return;
+              }
+              window.opsCenterToast?.('已提交同意补寄');
+            } catch (err) {
+              window.opsCenterToast?.(err?.message || String(err || '同意补寄失败'));
+            } finally {
+              actionLocks.delete(lockKey);
+            }
+            return;
+          }
+          if (action === 'resend-fill-tracking') {
+            if (!instanceId) {
+              window.opsCenterToast?.('当前记录缺少售后单ID');
+              return;
+            }
+            const orderNo = String(legacyActionLink.dataset.order || '').trim();
+            const shopId = String(legacyActionLink.dataset.shop || '').trim();
+            if (typeof window.openOpsAfterSaleResendTrackingDialog === 'function') {
+              const result = await window.openOpsAfterSaleResendTrackingDialog({ instanceId, orderNo, shopId });
+              const trackingNo = String(result?.trackingNo || '').trim();
+              const companyName = String(result?.companyName || result?.company || '').trim();
+              if (!trackingNo || !companyName) return;
+              window.opsCenterToast?.(`补寄单号已填写：${trackingNo}（提交入口已预留）`);
+            } else {
+              window.opsCenterToast?.('补寄单号弹窗未加载');
+            }
+            return;
+          }
+          if (action === 'approve-exchange') {
+            if (!instanceId) {
+              window.opsCenterToast?.('当前记录缺少售后单ID');
+              return;
+            }
+            window.opsCenterToast?.('同意换货入口已预留');
+            return;
+          }
+        if (action === 'approve-return-goods') {
+          if (!instanceId) {
+            window.opsCenterToast?.('当前记录缺少售后单ID');
+            return;
+          }
+          const orderNo = String(legacyActionLink.dataset.order || '').trim();
+          const shopId = String(legacyActionLink.dataset.shop || '').trim();
+          const version = String(legacyActionLink.dataset.version || '').trim();
+          if (typeof window.openOpsAfterSaleApproveReturnGoodsDialog === 'function') {
+            window.openOpsAfterSaleApproveReturnGoodsDialog({ instanceId, orderNo, shopId, version });
+          } else {
+            window.opsCenterToast?.('同意退货弹窗未加载');
+          }
+          return;
+        }
+        if (action === 'reject-refund') {
+          if (!instanceId) {
+            window.opsCenterToast?.('当前记录缺少售后单ID');
+            return;
+          }
+          window.opsCenterToast?.('驳回退款入口已预留');
+          return;
+        }
         if (action === 'detail') {
           window.opsCenterToast?.('详情入口已预留（后续可接入详情抽屉/弹窗）');
           return;
@@ -802,11 +1166,69 @@ window.registerOpsCenterView({
           return;
         }
         if (action === 'ship') {
-          if (!value) {
-            window.opsCenterToast?.('当前记录未返回运单号');
+          const orderNo = String(legacyActionLink.dataset.order || '').trim();
+          if (!orderNo) {
+            window.opsCenterToast?.('当前记录缺少订单号');
+            return;
+          }
+          const candidateInstanceId = String(legacyActionLink.dataset.instance || '').trim();
+          const row = candidateInstanceId
+            ? aftersaleState.rows.find(item => String(item?.instanceId || '').trim() === candidateInstanceId)
+            : null;
+          const shopId = String(legacyActionLink.dataset.shop || row?.shopId || '').trim();
+          if (!shopId) {
+            window.opsCenterToast?.('当前记录缺少店铺信息');
+            return;
+          }
+          const raw = row?.raw && typeof row.raw === 'object' ? row.raw : null;
+          const carrier = raw
+            ? String(pickFirst(raw, [
+              'shippingName',
+              'shipping_name',
+              'shippingCompanyName',
+              'shipping_company_name',
+              'orderShippingName',
+              'order_shipping_name',
+              'expressName',
+              'express_name',
+              'expressCompany',
+              'express_company',
+              'companyName',
+              'company_name',
+              'logisticsCompanyName',
+              'logistics_company_name',
+            ], '') || '').trim()
+            : '';
+          const trackingNumber = raw
+            ? String(pickFirst(raw, [
+              'orderTrackingNumber',
+              'order_tracking_number',
+              'orderTrackingNo',
+              'order_tracking_no',
+              'trackingNumber',
+              'tracking_number',
+              'expressNo',
+              'express_no',
+              'shipTrackingNumber',
+              'ship_tracking_number',
+            ], value) || '').trim()
+            : value;
+          if (typeof window.openOpsAfterSaleOrderTrackingDialog === 'function') {
+            window.openOpsAfterSaleOrderTrackingDialog({
+              shopId,
+              orderNo,
+              trackingNumber,
+              orderTrackingNumber: trackingNumber,
+              carrier,
+              raw,
+            });
             return;
           }
           try {
+            if (!value) {
+              window.opsCenterToast?.('当前版本未加载物流弹窗');
+              return;
+            }
             await copyText(value);
             window.opsCenterToast?.('已复制运单号');
           } catch {
@@ -819,6 +1241,47 @@ window.registerOpsCenterView({
             window.opsCenterToast?.('当前记录未返回退货单号');
             return;
           }
+          const orderNo = String(legacyActionLink.dataset.order || '').trim();
+          if (!orderNo) {
+            window.opsCenterToast?.('当前记录缺少订单号');
+            return;
+          }
+          const candidateInstanceId = String(legacyActionLink.dataset.instance || '').trim();
+          const row = candidateInstanceId
+            ? aftersaleState.rows.find(item => String(item?.instanceId || '').trim() === candidateInstanceId)
+            : null;
+          const shopId = String(legacyActionLink.dataset.shop || row?.shopId || '').trim();
+          if (!shopId) {
+            window.opsCenterToast?.('当前记录缺少店铺信息');
+            return;
+          }
+          const raw = row?.raw && typeof row.raw === 'object' ? row.raw : null;
+          const carrier = raw
+            ? String(pickFirst(raw, [
+              'reverseShippingName',
+              'reverse_shipping_name',
+              'reverseExpressName',
+              'reverse_express_name',
+              'returnShippingName',
+              'return_shipping_name',
+              'returnExpressName',
+              'return_express_name',
+              'shippingName',
+              'shipping_name',
+            ], '') || '').trim()
+            : '';
+          if (typeof window.openOpsAfterSaleOrderTrackingDialog === 'function') {
+            window.openOpsAfterSaleOrderTrackingDialog({
+              shopId,
+              orderNo,
+              queryType: 2,
+              trackingLabel: '退货单号',
+              trackingNumber: value,
+              carrier,
+              raw,
+            });
+            return;
+          }
           try {
             await copyText(value);
             window.opsCenterToast?.('已复制退货单号');
@@ -828,7 +1291,17 @@ window.registerOpsCenterView({
           return;
         }
         if (action === 'remark') {
-          window.opsCenterToast?.('备注入口已预留');
+          const orderNo = String(legacyActionLink.dataset.order || '').trim();
+          const shopId = String(legacyActionLink.dataset.shop || '').trim();
+          if (!orderNo) {
+            window.opsCenterToast?.('当前记录缺少订单号');
+            return;
+          }
+          if (typeof window.openOpsAfterSaleRemarkDialog === 'function') {
+            window.openOpsAfterSaleRemarkDialog({ orderNo, shopId })?.catch?.(() => {});
+          } else {
+            window.opsCenterToast?.('备注弹窗未加载');
+          }
           return;
         }
         window.opsCenterToast?.('操作入口已预留');

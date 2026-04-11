@@ -66,7 +66,6 @@ class NetworkMonitor {
       'front_err',
       '_stm',
       'beacon',
-      'track',
       'log.',
       '.png',
       '.jpg',
@@ -90,8 +89,8 @@ class NetworkMonitor {
     }
 
     this.debugger.sendCommand('Network.enable', {
-      maxTotalBufferSize: 10 * 1024 * 1024,
-      maxResourceBufferSize: 5 * 1024 * 1024,
+      maxTotalBufferSize: 50 * 1024 * 1024,
+      maxResourceBufferSize: 20 * 1024 * 1024,
     });
 
     this.debugger.on('detach', (_, reason) => {
@@ -534,7 +533,8 @@ class NetworkMonitor {
       if (parsed) {
         this._analyzeForMessages(parsed, logEntry);
       }
-    } catch {
+    } catch (error) {
+      const message = String(error?.message || error || '').slice(0, 260);
       const apiTraffic = {
         ...requestEntry,
         status: requestEntry.status || 0,
@@ -543,6 +543,7 @@ class NetworkMonitor {
         responseBody: '',
         isJson: false,
         responseBodyUnavailable: true,
+        responseBodyError: message,
         triggerContext: this.getLatestAction(requestEntry.timestamp) || null,
       };
       this._log('network', `[${apiTraffic.status}] ${shortUrl} (body unavailable)`, apiTraffic);

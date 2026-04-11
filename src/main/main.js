@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, session, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session, dialog, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { nativeImage } = require('electron');
@@ -2202,6 +2202,10 @@ ipcMain.handle('inject-cookies', async (event, cookies) => {
   const view = shopManager?.getActiveView();
   if (view) view.webContents.loadURL(getPddChatUrl());
   return true;
+});
+
+ipcMain.handle('read-clipboard-text', () => {
+  return clipboard.readText();
 });
 
 registerShopIpc({

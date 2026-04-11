@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   reloadPdd: () => ipcRenderer.invoke('reload-pdd'),
   navigatePdd: (url) => ipcRenderer.invoke('navigate-pdd', url),
 
+  readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),
+
   // 客服页面 URL 管理
   getChatUrl: () => ipcRenderer.invoke('get-chat-url'),
   setChatUrl: (url) => ipcRenderer.invoke('set-chat-url', url),
@@ -118,6 +120,13 @@ contextBridge.exposeInMainWorld('pddApi', {
   invoiceSubmitRecord: (params) => ipcRenderer.invoke('invoice-submit-record', params),
   aftersaleGetOverview: (params) => ipcRenderer.invoke('aftersale-get-overview', params),
   aftersaleGetList: (params) => ipcRenderer.invoke('aftersale-get-list', params),
+  aftersaleGetRegions: (params) => ipcRenderer.invoke('aftersale-get-regions', params),
+  aftersaleGetShippingCompanies: (params) => ipcRenderer.invoke('aftersale-get-shipping-companies', params),
+  aftersaleGetShippingDetail: (params) => ipcRenderer.invoke('aftersale-get-shipping-detail', params),
+  aftersaleListRefundAddresses: (params) => ipcRenderer.invoke('aftersale-list-refund-addresses', params),
+  aftersaleApproveReturnGoods: (params) => ipcRenderer.invoke('aftersale-approve-return-goods', params),
+  aftersaleApproveResend: (params) => ipcRenderer.invoke('aftersale-approve-resend', params),
+  aftersaleAgreeRefundPreCheck: (params) => ipcRenderer.invoke('aftersale-agree-refund-precheck', params),
   ticketGetList: (params) => ipcRenderer.invoke('ticket-get-list', params),
   ticketGetDetail: (params) => ipcRenderer.invoke('ticket-get-detail', params),
   violationGetList: (params) => ipcRenderer.invoke('violation-get-list', params),
@@ -143,7 +152,10 @@ contextBridge.exposeInMainWorld('pddApi', {
 
   // 调试窗口
   openDebugWindow: () => ipcRenderer.invoke('open-debug-window'),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   debugLog: (payload) => ipcRenderer.send('renderer-debug-log', payload),
+  toggleNetworkMonitor: (enabled) => ipcRenderer.invoke('toggle-network-monitor', enabled),
+  getNetworkMonitorStatus: () => ipcRenderer.invoke('get-network-monitor-status'),
 
   // 测试自动回复
   testAutoReply: () => ipcRenderer.invoke('test-auto-reply'),

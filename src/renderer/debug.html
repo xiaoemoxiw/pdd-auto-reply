@@ -117,6 +117,7 @@
 
   <div class="toolbar">
     <button class="toolbar-btn" id="btnClear">清空</button>
+    <button class="toolbar-btn" id="btnToggleMonitor">抓包已关</button>
     <button class="toolbar-btn" id="btnAutoScroll" title="自动滚动到底部">自动滚动</button>
     <input class="filter-input" id="filterInput" placeholder="过滤关键词...">
     <span class="toolbar-info" id="countInfo">0 条记录</span>
@@ -143,6 +144,7 @@
     let networkCount = 0;
     let messageCount = 0;
     let activeTab = 'system';
+    let monitorActive = false;
 
     // ---- 标签页切换 ----
     document.querySelectorAll('.tab').forEach(tab => {
@@ -180,6 +182,36 @@
     scrollBtn.addEventListener('click', () => {
       autoScroll = !autoScroll;
       scrollBtn.classList.toggle('active', autoScroll);
+    });
+
+    const monitorBtn = document.getElementById('btnToggleMonitor');
+    async function refreshMonitorStatus() {
+      if (!window.debugApi?.getNetworkMonitorStatus) {
+        monitorBtn.disabled = true;
+        monitorBtn.textContent = '抓包不可用';
+        document.getElementById('statusText').textContent = '抓包不可用';
+        document.getElementById('statusDot').style.background = '#666';
+        return;
+      }
+      try {
+        const status = await window.debugApi.getNetworkMonitorStatus();
+        monitorActive = !!status?.active;
+        monitorBtn.classList.toggle('active', monitorActive);
+        monitorBtn.textContent = monitorActive ? '抓包已开' : '抓包已关';
+        document.getElementById('statusText').textContent = monitorActive ? '抓包开启' : '抓包关闭';
+        document.getElementById('statusDot').style.background = monitorActive ? '#4caf50' : '#f44747';
+      } catch {
+        monitorBtn.textContent = '抓包异常';
+        document.getElementById('statusText').textContent = '抓包异常';
+        document.getElementById('statusDot').style.background = '#f44747';
+      }
+    }
+    monitorBtn.addEventListener('click', async () => {
+      if (!window.debugApi?.toggleNetworkMonitor) return;
+      try {
+        await window.debugApi.toggleNetworkMonitor(!monitorActive);
+      } catch {}
+      await refreshMonitorStatus();
     });
 
     document.getElementById('filterInput').addEventListener('input', (e) => {
@@ -309,7 +341,9 @@
       }
     });
 
-    addEntry('systemLog', 'info', '调试面板已打开，正在监听网络请求...');
+    refreshMonitorStatus().then(() => {
+      addEntry('systemLog', 'info', monitorActive ? '调试面板已打开，抓包已开启。' : '调试面板已打开，抓包当前关闭。');
+    });
   </script>
 </body>
 </html>

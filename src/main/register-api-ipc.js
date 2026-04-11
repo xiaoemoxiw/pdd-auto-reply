@@ -1,3 +1,5 @@
+const { shell } = require('electron');
+
 function registerApiIpc({
   ipcMain,
   dialog,
@@ -792,6 +794,130 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('aftersale-get-regions', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRegionChildren(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-get-shipping-companies', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getShippingCompanyList(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-get-shipping-detail', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    if (!params.orderSn && !params.order_sn && !params.orderNo && !params.order_no) return { error: '缺少订单号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getChatShippingDetail(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-list-refund-addresses', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).listRefundAddresses(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-approve-return-goods', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).approveReturnGoods(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-approve-resend', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    const version = Number(params.version ?? 0);
+    if (!Number.isFinite(version) || version <= 0) return { error: '缺少版本号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).approveResend(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-agree-refund-precheck', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).agreeRefundPreCheck(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
   ipcMain.handle('aftersale-get-overview', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
@@ -974,6 +1100,19 @@ function registerApiIpc({
     sessions.unshift(nextSession);
     store.set('apiStarredSessions', sessions);
     return { starred: true, sessions };
+  });
+
+  ipcMain.handle('open-external-url', async (event, input) => {
+    const url = String(input?.url || input || '').trim();
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      return { error: '无效链接' };
+    }
+    try {
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
   });
 }
 

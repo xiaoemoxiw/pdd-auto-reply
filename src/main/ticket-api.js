@@ -1,6 +1,7 @@
 const { session } = require('electron');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
+const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
 const DEFAULT_TICKET_URL = `${PDD_BASE}/aftersales/work_order/list?msfrom=mms_sidenav`;
 const TICKET_LIST_URL = '/strickland/sop/mms/todoList';
 const TICKET_DETAIL_URL = '/strickland/sop/mms/detail';
@@ -10,6 +11,9 @@ const TICKET_STATUS_COUNT_URL = '/strickland/sop/mms/statusCount';
 const REFUND_LIST_URL = '/mercury/mms/afterSales/queryList';
 const REFUND_COUNT_URL = '/mercury/mms/afterSales/queryCount';
 const REFUND_GROUP_COUNT_URL = '/mercury/mms/afterSales/queryGroupCount';
+const AGREE_REFUND_PRECHECK_URL = '/mercury/mms/afterSales/agreeRefundPreCheck';
+const REGION_GET_URL = '/latitude/order/region/get';
+const SHIPPING_COMPANY_LIST_URL = '/express_base/shipping_list/mms';
 
 function pickValue(source, keys, fallback = '') {
   for (const key of keys) {
@@ -79,6 +83,55 @@ function pickHeaderCaseInsensitive(headers, keys = []) {
     if (value !== undefined && value !== null && String(value).trim() !== '') return value;
   }
   return '';
+}
+
+function extractArrayFromPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return [];
+  const candidates = [
+    payload.result,
+    payload.data,
+    payload.list,
+    payload.regions,
+    payload.regionList,
+    payload?.result?.list,
+    payload?.result?.regions,
+    payload?.data?.list,
+    payload?.data?.regions
+  ];
+  for (const item of candidates) {
+    if (Array.isArray(item)) return item;
+  }
+  return [];
+}
+
+function normalizeRegionItem(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = pickValue(raw, [
+    'id',
+    'regionId',
+    'region_id',
+    'areaId',
+    'area_id',
+    'code',
+    'value'
+  ], '');
+  const name = pickValue(raw, [
+    'name',
+    'regionName',
+    'region_name',
+    'areaName',
+    'area_name',
+    'label',
+    'text',
+    'value'
+  ], '');
+  const trimmedName = String(name || '').trim();
+  let trimmedId = String(id ?? '').trim();
+  if (typeof id === 'number' && Number.isFinite(id)) trimmedId = String(id);
+  if (trimmedId && !/^\d+$/.test(trimmedId)) trimmedId = '';
+  if (!trimmedId) return null;
+  return { id: trimmedId, name: trimmedName || trimmedId };
 }
 
 function normalizeListRequestBody(body, forwardedFields = {}) {
@@ -151,6 +204,9 @@ class TicketApiClient {
     this._getApiTraffic = options.getApiTraffic || (() => []);
     this._getTicketUrl = options.getTicketUrl || (() => DEFAULT_TICKET_URL);
     this._requestInPddPage = typeof options.requestInPddPage === 'function' ? options.requestInPddPage : null;
+    this._regionCache = new Map();
+    this._shippingCompanyCache = null;
+    this._shippingCompanyCacheAt = 0;
   }
 
   _log(message, extra) {
@@ -283,6 +339,12 @@ class TicketApiClient {
       || urlPath === REFUND_LIST_URL
       || urlPath === REFUND_COUNT_URL
       || urlPath === REFUND_GROUP_COUNT_URL
+      || urlPath.startsWith('/antis/api/refundAddress/')
+      || urlPath.startsWith('/mercury/mms/afterSales/')
+      || urlPath.startsWith('/mercury/after_sales/')
+      || urlPath.startsWith(REGION_GET_URL)
+      || urlPath.startsWith('/express_base/')
+      || urlPath.startsWith('/express_wbfrontend/')
     );
     if (shouldTryPageRequest) {
       try {
@@ -627,6 +689,152 @@ class TicketApiClient {
     return { counts, payload };
   }
 
+  async listRefundAddresses(params = {}) {
+    const payload = await this._request('POST', '/antis/api/refundAddress/list', params || {});
+    const list = Array.isArray(payload?.result) ? payload.result : [];
+    return { list, payload };
+  }
+
+  async approveReturnGoods(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法同意退货');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法同意退货');
+
+    const versionRaw = pickValue(params, ['version'], '');
+    const version = Number(versionRaw || 0);
+    if (!Number.isFinite(version) || version <= 0) throw new Error('缺少版本号，无法同意退货');
+
+    const receiver = String(pickValue(params, ['receiver', 'receiverName', 'receiver_name', 'receiverName'], '') || '').trim();
+    if (!receiver) throw new Error('缺少收件人，无法同意退货');
+
+    const receiverPhone = String(pickValue(params, ['receiverPhone', 'receiver_phone', 'phone', 'mobile', 'tel'], '') || '').trim();
+    if (!receiverPhone) throw new Error('缺少联系电话，无法同意退货');
+
+    const provinceId = Number(pickValue(params, ['provinceId', 'province_id'], 0));
+    const cityId = Number(pickValue(params, ['cityId', 'city_id'], 0));
+    const districtId = Number(pickValue(params, ['districtId', 'district_id'], 0));
+    if (!Number.isFinite(provinceId) || !Number.isFinite(cityId) || !Number.isFinite(districtId) || provinceId <= 0 || cityId <= 0 || districtId <= 0) {
+      throw new Error('缺少省市区信息，无法同意退货');
+    }
+
+    const provinceName = String(pickValue(params, ['provinceName', 'province_name'], '') || '').trim();
+    const cityName = String(pickValue(params, ['cityName', 'city_name'], '') || '').trim();
+    const districtName = String(pickValue(params, ['districtName', 'district_name'], '') || '').trim();
+    if (!provinceName || !cityName || !districtName) throw new Error('缺少省市区名称，无法同意退货');
+
+    const refundAddress = String(pickValue(params, ['refundAddress', 'refund_address', 'detailAddress', 'detail_address'], '') || '').trim();
+    if (!refundAddress) throw new Error('缺少详细地址，无法同意退货');
+
+    const receiverAddress = String(pickValue(params, ['receiverAddress', 'receiver_address'], '') || '').trim()
+      || `${provinceName}${cityName}${districtName}${refundAddress}`;
+
+    const operateDesc = String(pickValue(params, ['operateDesc', 'operate_desc', 'message', 'remark', 'memo'], '') || '').trim();
+    if (!operateDesc) throw new Error('缺少留言，无法同意退货');
+
+    const checkUrlPath = '/mercury/after_sales/check_address_valid_and_return_address';
+    const checkTemplate = this._getTrafficRequestBody(checkUrlPath);
+    const checkBody = isPlainObject(checkTemplate) ? JSON.parse(JSON.stringify(checkTemplate)) : {};
+    checkBody.receiverName = receiver;
+    checkBody.provinceId = provinceId;
+    checkBody.provinceName = provinceName;
+    checkBody.cityId = cityId;
+    checkBody.cityName = cityName;
+    checkBody.districtId = districtId;
+    checkBody.districtName = districtName;
+    checkBody.refundAddress = refundAddress;
+    checkBody.orderSn = orderSn;
+    checkBody.id = id;
+    const checkPayload = await this._request('POST', checkUrlPath, checkBody);
+    const checkResult = checkPayload?.result;
+    if (checkResult && typeof checkResult === 'object') {
+      if (checkResult.refundAddressValid === false) throw new Error('退货地址校验失败');
+      if (checkResult.isBadAddress === true) throw new Error('退货地址疑似异常，请检查');
+      if (checkResult.isBadReceiver === true) throw new Error('收件人信息疑似异常，请检查');
+    }
+
+    const urlPath = '/mercury/mms/afterSales/agreeReturn';
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+    body.provinceId = provinceId;
+    body.provinceName = provinceName;
+    body.cityId = cityId;
+    body.cityName = cityName;
+    body.districtId = districtId;
+    body.districtName = districtName;
+    body.version = version;
+    body.receiver = receiver;
+    body.orderSn = orderSn;
+    body.receiverPhone = receiverPhone;
+    body.receiverAddress = receiverAddress;
+    body.refundAddress = refundAddress;
+    body.operateDesc = operateDesc;
+    body.id = id;
+    if (!('addressType' in body)) body.addressType = 1;
+    if (!('confirmWeakRemind' in body)) body.confirmWeakRemind = null;
+
+    const payload = await this._request('POST', urlPath, body);
+    return { ok: true, id, orderSn, payload };
+  }
+
+  async approveResend(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法同意补寄');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法同意补寄');
+
+    const versionRaw = pickValue(params, ['version'], '');
+    const version = Number(versionRaw || 0);
+    if (!Number.isFinite(version) || version <= 0) throw new Error('缺少版本号，无法同意补寄');
+
+    const frontActionRaw = pickValue(params, ['frontAction', 'front_action', 'action'], 1017);
+    const frontAction = Number(frontActionRaw || 0);
+    if (!Number.isFinite(frontAction) || frontAction <= 0) throw new Error('缺少操作类型，无法同意补寄');
+
+    const urlPath = '/mercury/after_sales/agree_resend';
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+    const tokenInfo = this._getTokenInfo();
+    const shop = this._getShopInfo();
+
+    body.id = id;
+    body.orderSn = orderSn;
+    body.version = version;
+    body.frontAction = frontAction;
+    if (!('uid' in body)) body.uid = null;
+    if (!('mallId' in body)) body.mallId = shop?.mallId || tokenInfo?.mallId || '';
+
+    const payload = await this._request('POST', urlPath, body);
+    return { ok: true, id, orderSn, payload };
+  }
+
+  async agreeRefundPreCheck(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法进行同意退款预检查');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法进行同意退款预检查');
+
+    const urlPath = AGREE_REFUND_PRECHECK_URL;
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+
+    const itemBase = Array.isArray(body?.items) && isPlainObject(body.items[0]) ? { ...body.items[0] } : {};
+    itemBase.afterSalesId = id;
+    itemBase.orderSn = orderSn;
+    if (!('uid' in itemBase)) itemBase.uid = null;
+    body.items = [itemBase];
+
+    const payload = await this._request('POST', urlPath, body);
+    const result = isPlainObject(payload?.result) ? payload.result : {};
+    return { ok: true, id, orderSn, result, payload };
+  }
+
   // ====== 以下为原有工单(客服处理) API (Strickland) ======
 
   async getList(params = {}) {
@@ -724,6 +932,101 @@ class TicketApiClient {
         ? payload.data
         : [];
     return { list, payload };
+  }
+
+  async getRegionChildren(params = {}) {
+    const parentIdRaw = pickValue(params, ['parentId', 'parent_id', 'pid', 'parent'], '0');
+    const parentId = String(parentIdRaw ?? '').trim() || '0';
+    if (parentId !== '0' && !/^\d+$/.test(parentId)) {
+      throw new Error('地区ID异常，请重新选择省市区');
+    }
+    const cacheKey = parentId;
+    if (this._regionCache.has(cacheKey)) {
+      return { list: this._regionCache.get(cacheKey) || [] };
+    }
+    const query = new URLSearchParams();
+    query.set('parent_id', parentId);
+    const urlPath = `${REGION_GET_URL}?${query.toString()}`;
+    const payload = await this._request('GET', urlPath, null);
+    const rawList = extractArrayFromPayload(payload);
+    const list = rawList.map(normalizeRegionItem).filter(Boolean);
+    this._regionCache.set(cacheKey, list);
+    return { list, payload };
+  }
+
+  async getShippingCompanyList(params = {}) {
+    const ttlMs = Math.max(0, Number(params?.ttlMs || params?.ttl_ms || 0));
+    const now = Date.now();
+    const ttl = ttlMs > 0 ? ttlMs : 6 * 60 * 60 * 1000;
+    if (this._shippingCompanyCache && (now - this._shippingCompanyCacheAt < ttl)) {
+      return { list: this._shippingCompanyCache.slice(0) };
+    }
+
+    const payload = await this._request('GET', SHIPPING_COMPANY_LIST_URL, null);
+    let rawList = extractArrayFromPayload(payload);
+    if (!rawList.length && isPlainObject(payload?.result)) {
+      rawList = extractArrayFromPayload(payload.result);
+    }
+    if (!rawList.length && isPlainObject(payload?.data)) {
+      rawList = extractArrayFromPayload(payload.data);
+    }
+    if (!rawList.length && isPlainObject(payload?.result?.data)) {
+      rawList = extractArrayFromPayload(payload.result.data);
+    }
+
+    const normalizeItem = (item) => {
+      if (!item || typeof item !== 'object') return null;
+      const id = pickValue(item, [
+        'id',
+        'shipId',
+        'ship_id',
+        'shippingId',
+        'shipping_id',
+        'companyId',
+        'company_id',
+        'code',
+        'shipCode',
+        'ship_code',
+        'shippingCode',
+        'shipping_code'
+      ], '');
+      const name = pickValue(item, [
+        'name',
+        'shipName',
+        'ship_name',
+        'shippingName',
+        'shipping_name',
+        'companyName',
+        'company_name',
+        'displayName',
+        'display_name'
+      ], '');
+      const value = String(id || name || '').trim();
+      const label = String(name || id || '').trim();
+      if (!value || !label) return null;
+      return { id: value, name: label };
+    };
+
+    const list = rawList.map(normalizeItem).filter(Boolean);
+    list.sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-CN'));
+    this._shippingCompanyCache = list;
+    this._shippingCompanyCacheAt = now;
+    return { list, payload };
+  }
+
+  async getChatShippingDetail(params = {}) {
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号');
+    const queryTypeRaw = Number(pickValue(params, ['queryType', 'query_type'], 1));
+    const queryType = Number.isFinite(queryTypeRaw) ? String(queryTypeRaw) : '1';
+    const client = String(pickValue(params, ['client'], 'web') || '').trim() || 'web';
+    const query = new URLSearchParams();
+    query.set('order_sn', orderSn);
+    query.set('query_type', queryType);
+    query.set('client', client);
+    const urlPath = `/chats/shippingDetail?${query.toString()}`;
+    const payload = await this._request('GET', urlPath, null, { Referer: CHAT_URL });
+    return { payload, result: payload?.result ?? null };
   }
 
   async getDetail(params = {}) {

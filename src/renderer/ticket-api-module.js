@@ -10,6 +10,10 @@
   let ticketApiFinishedShopBuckets = new Map();
   let ticketApiFinishedShopOptions = [];
   let ticketApiFinishedShopMenuHideTimer = null;
+  let ticketApiClosedShopKey = '';
+  let ticketApiClosedShopBuckets = new Map();
+  let ticketApiClosedShopOptions = [];
+  let ticketApiClosedShopMenuHideTimer = null;
   let ticketApiDatePreset = 'all';
   let ticketApiActiveId = '';
   let ticketApiActiveDetail = null;
@@ -17,8 +21,6 @@
   let ticketApiDetailError = '';
   let ticketApiPageMode = 'list';
   let ticketApiActiveLogisticsTab = 'outbound';
-  let ticketApiLastListResponse = null;
-  let ticketApiLastListResponseMeta = '';
   let ticketApiListLoaded = false;
   let ticketApiListLoading = false;
   let ticketApiRefreshListDebounceTimer = null;
@@ -530,6 +532,38 @@
     }
   }
 
+  function rebuildTicketClosedShopBuckets() {
+    const bucket = new Map();
+    for (const item of Array.isArray(ticketApiList) ? ticketApiList : []) {
+      if (getTicketQuickType(item) !== 'closed') continue;
+      const key = getTicketShopKey(item);
+      const shopName = String(item.shopName || '').trim() || getTicketActiveShopName();
+      if (!bucket.has(key)) {
+        bucket.set(key, { key, shopName, items: [] });
+      } else if (!bucket.get(key).shopName && shopName) {
+        bucket.get(key).shopName = shopName;
+      }
+      bucket.get(key).items.push(item);
+    }
+    const options = Array.from(bucket.values())
+      .map(entry => ({
+        key: entry.key,
+        shopName: entry.shopName || entry.key,
+        count: entry.items.length,
+        items: entry.items
+      }))
+      .sort((a, b) => (b.count - a.count) || String(a.shopName).localeCompare(String(b.shopName), 'zh-CN'));
+    const total = options.reduce((sum, item) => sum + item.count, 0);
+    ticketApiClosedShopBuckets = bucket;
+    ticketApiClosedShopOptions = [{ key: '__all__', shopName: '全部店铺', count: total, items: options.flatMap(item => item.items) }].concat(options);
+    const current = String(ticketApiClosedShopKey || '').trim();
+    if (current && current !== '__all__' && !bucket.has(current)) {
+      ticketApiClosedShopKey = '';
+    } else {
+      ticketApiClosedShopKey = current;
+    }
+  }
+
   function ensureTicketFinishedShopSelector() {
     const tabs = getEl('ticketApiStatusTabs');
     if (!tabs) return null;
@@ -620,6 +654,96 @@
     });
   }
 
+  function ensureTicketClosedShopSelector() {
+    const tabs = getEl('ticketApiStatusTabs');
+    if (!tabs) return null;
+    const closedButton = tabs.querySelector('[data-ticket-quick="closed"]');
+    if (!closedButton) return null;
+    let menu = getEl('ticketApiClosedShopMenu');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'ticketApiClosedShopMenu';
+      menu.className = 'ticket-api-finished-shop-menu';
+      menu.style.display = 'none';
+      tabs.appendChild(menu);
+    }
+    const alreadyBound = menu.dataset.ticketClosedBound === '1';
+
+    const positionMenu = () => {
+      if (!menu) return;
+      const left = closedButton.offsetLeft || 0;
+      const top = (closedButton.offsetTop || 0) + closedButton.offsetHeight + 6;
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+    };
+
+    const scheduleHide = () => {
+      if (ticketApiClosedShopMenuHideTimer) clearTimeout(ticketApiClosedShopMenuHideTimer);
+      ticketApiClosedShopMenuHideTimer = setTimeout(() => {
+        if (menu) menu.style.display = 'none';
+      }, 120);
+    };
+    const cancelHide = () => {
+      if (ticketApiClosedShopMenuHideTimer) clearTimeout(ticketApiClosedShopMenuHideTimer);
+      ticketApiClosedShopMenuHideTimer = null;
+    };
+    const show = () => {
+      cancelHide();
+      renderTicketClosedShopSelector();
+      if (!menu) return;
+      const total = Number(ticketApiClosedShopOptions?.[0]?.count || 0);
+      if (!total) {
+        menu.style.display = 'none';
+        return;
+      }
+      positionMenu();
+      menu.style.display = 'block';
+    };
+
+    if (!alreadyBound) {
+      menu.dataset.ticketClosedBound = '1';
+      menu?.addEventListener('mouseenter', show);
+      menu?.addEventListener('mouseleave', scheduleHide);
+      closedButton.addEventListener('mouseenter', show);
+      closedButton.addEventListener('mouseleave', scheduleHide);
+      document.addEventListener('click', (event) => {
+        if (!menu) return;
+        if (!menu.offsetParent) return;
+        if (menu.contains(event.target) || closedButton.contains(event.target)) return;
+        menu.style.display = 'none';
+      });
+    }
+
+    return { menu, closedButton, tabs, scheduleHide, show };
+  }
+
+  function renderTicketClosedShopSelector() {
+    const ctx = ensureTicketClosedShopSelector();
+    if (!ctx) return;
+    const menu = ctx.menu;
+    menu.innerHTML = ticketApiClosedShopOptions
+      .filter(item => item.key === '__all__' || item.count > 0)
+      .map(item => `
+        <button type="button" class="ticket-api-finished-shop-option" data-ticket-closed-shop="${esc(item.key)}">
+          <span class="ticket-api-finished-shop-name">${esc(item.shopName)}</span>
+          <span class="ticket-api-finished-shop-count">(${esc(String(item.count || 0))})</span>
+        </button>
+      `)
+      .join('');
+    menu.querySelectorAll('[data-ticket-closed-shop]').forEach(button => {
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const nextKey = String(button.dataset.ticketClosedShop || '').trim() || '';
+        ticketApiClosedShopKey = nextKey;
+        ticketApiQuickFilter = 'closed';
+        menu.style.display = 'none';
+        renderTicketQuickSummary();
+        await renderTicketApiState();
+      });
+    });
+  }
+
   function getTicketQuickType(item = {}) {
     const code = Number(item.statusCode || 0);
     const text = `${item.status || ''} ${item.progressText || ''}`.toLowerCase();
@@ -667,6 +791,7 @@
       button.classList.toggle('active', button.dataset.ticketQuick === ticketApiQuickFilter);
     });
     renderTicketFinishedShopSelector();
+    renderTicketClosedShopSelector();
   }
 
   function renderTicketFilterOptions() {
@@ -713,12 +838,21 @@
   function getTicketVisibleList() {
     const keyword = ticketApiKeyword.trim().toLowerCase();
     const baseList = (() => {
-      if (ticketApiQuickFilter !== 'finished') return ticketApiList;
-      const selectedKey = String(ticketApiFinishedShopKey || '').trim();
-      if (!selectedKey) return [];
-      if (selectedKey === '__all__') return ticketApiList;
-      const group = ticketApiFinishedShopBuckets.get(selectedKey);
-      return group ? group.items : ticketApiList;
+      if (ticketApiQuickFilter === 'finished') {
+        const selectedKey = String(ticketApiFinishedShopKey || '').trim();
+        if (!selectedKey) return [];
+        if (selectedKey === '__all__') return ticketApiList;
+        const group = ticketApiFinishedShopBuckets.get(selectedKey);
+        return group ? group.items : ticketApiList;
+      }
+      if (ticketApiQuickFilter === 'closed') {
+        const selectedKey = String(ticketApiClosedShopKey || '').trim();
+        if (!selectedKey) return [];
+        if (selectedKey === '__all__') return ticketApiList;
+        const group = ticketApiClosedShopBuckets.get(selectedKey);
+        return group ? group.items : ticketApiList;
+      }
+      return ticketApiList;
     })();
     return (Array.isArray(baseList) ? baseList : []).filter(item => {
       if (ticketApiQuickFilter && getTicketQuickType(item) !== ticketApiQuickFilter) return false;
@@ -797,6 +931,10 @@
         container.innerHTML = '<tr><td colspan="11"><div class="ticket-api-list-empty">请在“已完结”下拉中选择店铺查看对应已完结数据。</div></td></tr>';
         return;
       }
+      if (ticketApiQuickFilter === 'closed' && !String(ticketApiClosedShopKey || '').trim()) {
+        container.innerHTML = '<tr><td colspan="11"><div class="ticket-api-list-empty">请在“已关闭”下拉中选择店铺查看对应已关闭数据。</div></td></tr>';
+        return;
+      }
       container.innerHTML = '<tr><td colspan="11"><div class="ticket-api-list-empty">当前没有工单记录，可直接刷新列表重试。</div></td></tr>';
       return;
     }
@@ -873,16 +1011,6 @@
       return String(shop?.name || shop?.mallName || fallback || '-');
     } catch {
       return fallback || '-';
-    }
-  }
-
-  function renderTicketApiLastResponse() {
-    const pre = getEl('ticketApiLastResponse');
-    const meta = getEl('ticketApiLastResponseMeta');
-    if (!pre) return;
-    pre.textContent = ticketApiLastListResponse ? stringifySafely(ticketApiLastListResponse) : '暂无';
-    if (meta) {
-      meta.textContent = ticketApiLastListResponseMeta || '-';
     }
   }
 
@@ -1535,12 +1663,12 @@
 
   async function renderTicketApiState() {
     rebuildTicketFinishedShopBuckets();
+    rebuildTicketClosedShopBuckets();
     renderTicketFilterOptions();
     renderTicketMetrics();
     renderTicketQuickSummary();
     updateDateRangeText();
     renderTicketApiList();
-    renderTicketApiLastResponse();
     updateTicketApiBannerText();
     const visibleList = getTicketVisibleList();
     if (ticketApiActiveId && visibleList.some(item => String(item.ticketNo) === String(ticketApiActiveId))) {
@@ -1559,11 +1687,6 @@
 
   async function loadTicketApiList(options = {}) {
     if (options.fetch !== true) {
-      ticketApiLastListResponse = {
-        source: 'traffic',
-        trafficCount: ticketApiEntries.length
-      };
-      ticketApiLastListResponseMeta = 'traffic';
       ticketApiList = parseTicketRecordsFromTraffic(ticketApiEntries);
       ticketApiListLoaded = true;
       ticketApiListLoading = false;
@@ -1584,8 +1707,6 @@
           pageNo: 1,
           pageSize: 100
         });
-        ticketApiLastListResponse = result;
-        ticketApiLastListResponseMeta = `shopId=${listShopId} · ticketGetList`;
         if (result && !result.error) {
           ticketApiList = normalizeTicketApiRemoteList(Array.isArray(result.list) ? result.list : []);
           remoteLoaded = true;
@@ -1593,21 +1714,10 @@
           remoteError = result?.error || '加载工单管理列表失败';
         }
       } else {
-        ticketApiLastListResponse = {
-          error: 'ticketGetList 未暴露，已回退抓包解析',
-          shopId: listShopId,
-          trafficCount: ticketApiEntries.length
-        };
-        ticketApiLastListResponseMeta = `shopId=${listShopId || '-'} · traffic`;
+        remoteError = 'ticketGetList 未暴露，已回退抓包解析';
       }
     } catch (error) {
       remoteError = error?.message || '加载工单管理列表失败';
-      ticketApiLastListResponse = {
-        error: remoteError,
-        shopId: listShopId,
-        trafficCount: ticketApiEntries.length
-      };
-      ticketApiLastListResponseMeta = `shopId=${listShopId || '-'} · ticketGetList`;
     }
     if (!remoteLoaded) {
       const fallbackList = parseTicketRecordsFromTraffic(ticketApiEntries);
@@ -1731,6 +1841,9 @@
     ticketApiFinishedShopKey = '';
     ticketApiFinishedShopBuckets = new Map();
     ticketApiFinishedShopOptions = [];
+    ticketApiClosedShopKey = '';
+    ticketApiClosedShopBuckets = new Map();
+    ticketApiClosedShopOptions = [];
     ticketApiDatePreset = 'all';
     ticketApiActiveId = '';
     ticketApiActiveDetail = null;
@@ -1738,8 +1851,6 @@
     ticketApiDetailError = '';
     ticketApiPageMode = 'list';
     ticketApiActiveLogisticsTab = 'outbound';
-    ticketApiLastListResponse = null;
-    ticketApiLastListResponseMeta = '';
     ticketApiListLoaded = false;
     ticketApiListLoading = false;
     const keyword = getEl('ticketApiKeyword');
@@ -1755,7 +1866,6 @@
     renderTicketQuickSummary();
     updateDateRangeText();
     renderTicketApiList();
-    renderTicketApiLastResponse();
     renderTicketApiDetail();
     renderTicketApiTraffic();
     updateTicketApiBannerText();
@@ -1829,9 +1939,6 @@
         }
       }, 320);
     });
-    getEl('btnTicketApiCopyLastResponse')?.addEventListener('click', async () => {
-      await copyTicketDetailText(getEl('ticketApiLastResponse')?.textContent || '', '已复制接口返回信息');
-    });
     getEl('btnTicketApiClearTraffic')?.addEventListener('click', async () => {
       const shopId = activeShopId || API_ALL_SHOPS;
       await window.pddApi.clearApiTraffic({ shopId });
@@ -1873,6 +1980,14 @@
           renderTicketQuickSummary();
           await renderTicketApiState();
           ensureTicketFinishedShopSelector()?.show?.();
+          return;
+        }
+        if (nextFilter === 'closed') {
+          ticketApiQuickFilter = 'closed';
+          ticketApiClosedShopKey = '';
+          renderTicketQuickSummary();
+          await renderTicketApiState();
+          ensureTicketClosedShopSelector()?.show?.();
           return;
         }
         ticketApiQuickFilter = nextFilter;

@@ -17,6 +17,7 @@
   let ticketApiLastListResponseMeta = '';
   let ticketApiListLoaded = false;
   let ticketApiListLoading = false;
+  let ticketCopyToastTimer = null;
 
   function getEl(id) {
     return document.getElementById(id);
@@ -139,10 +140,11 @@
   function mapTicketStatusCode(status) {
     const code = Number(status);
     if (!Number.isFinite(code)) return String(status || '');
-    if (code === 1) return '待处理';
-    if (code === 2) return '处理中';
-    if (code === 3) return '待处理';
-    if (code === 4) return '已完结';
+    if (code === 0) return '待处理';
+    if (code === 1) return '处理中';
+    if (code === 2) return '已关闭';
+    if (code === 3) return '已完结';
+    if (code === 4) return '即将逾期';
     return String(code);
   }
 
@@ -153,6 +155,7 @@
       shopName: String(pickFirstValue(item, ['shopName', 'shop_name', 'mallName', 'mall_name']) || ''),
       ticketNo: String(item.instanceId || `instance-${index + 1}`),
       instanceId: String(item.instanceId || ''),
+      detailRequestId: String(item.instanceId || item.todoId || item.id || ''),
       orderSn: String(item.orderSn || ''),
       ticketType: String(item.problemTitle || '工单'),
       questionTitle: String(item.problemTitle || '工单'),
@@ -442,6 +445,31 @@
     }));
   }
 
+  function resolveTicketDetailRequestId(record = {}) {
+    const isUsable = (value) => {
+      const text = String(value || '').trim();
+      if (!text) return false;
+      if (/^(instance|ticket)-\d+$/i.test(text)) return false;
+      return true;
+    };
+    const pick = (...values) => values.find(isUsable) || '';
+
+    const direct = pick(record.detailRequestId, record.instanceId);
+    if (direct) return String(direct).trim();
+
+    const raw = record.raw && typeof record.raw === 'object' ? record.raw : {};
+    const fromRaw = pick(
+      pickFirstValue(raw, ['instanceId', 'instance_id']),
+      pickFirstValue(raw, ['todoId', 'todo_id']),
+      pickFirstValue(raw, ['workOrderId', 'work_order_id']),
+      pickFirstValue(raw, ['id'])
+    );
+    if (fromRaw) return String(fromRaw).trim();
+
+    const fallback = pick(record.ticketNo);
+    return fallback ? String(fallback).trim() : '';
+  }
+
   function isTicketFinishedStatus(status = '') {
     const text = String(status).toLowerCase();
     return text.includes('已完结') || text.includes('完结') || text.includes('完成') || text.includes('已处理') || text.includes('违规已处理');
@@ -460,13 +488,16 @@
     const code = Number(item.statusCode || 0);
     const text = `${item.status || ''} ${item.progressText || ''}`.toLowerCase();
     if (text.includes('违规已处理')) return 'violationHandled';
-    if (code === 1 || code === 3) return 'pending';
-    if (code === 2) return 'processing';
-    if (code === 4) return 'finished';
     if (text.includes('扣款')) return 'deduct';
     if (isTicketClosedStatus(text)) return 'closed';
     if (isTicketFinishedStatus(text)) return 'finished';
     if (text.includes('处理中') || text.includes('跟进') || text.includes('流转')) return 'processing';
+    if (text.includes('待处理')) return 'pending';
+    if (code === 0) return 'pending';
+    if (code === 1) return 'processing';
+    if (code === 2) return 'processing';
+    if (code === 3) return 'finished';
+    if (code === 4) return 'finished';
     return 'pending';
   }
 
@@ -978,11 +1009,9 @@
       .trim();
     const content = normalizeClipboardText(text);
     if (!content) return;
-    let attempted = false;
     try {
       let copied = false;
       if (typeof window.pddApi?.writeClipboardText === 'function') {
-        attempted = true;
         try {
           const result = await window.pddApi.writeClipboardText(content);
           copied = result !== false;
@@ -990,7 +1019,6 @@
         }
       }
       if (!copied && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        attempted = true;
         try {
           await navigator.clipboard.writeText(content);
           copied = true;
@@ -999,7 +1027,6 @@
       }
       if (!copied) {
         let textarea = null;
-        attempted = true;
         try {
           textarea = document.createElement('textarea');
           textarea.value = content;
@@ -1033,15 +1060,33 @@
         } catch {
         }
       }
+      const toastMessage = copied ? successText : '复制失败，请稍后重试';
       try {
         if (typeof window.showToast === 'function') {
-          window.showToast(copied || attempted ? successText : '复制失败，请稍后重试', 3000);
+          const toastEl = document.getElementById('toastMsg');
+          if (toastEl) {
+            toastEl.style.visibility = '';
+            toastEl.style.opacity = '';
+          }
+          window.showToast(toastMessage, 3000);
+          if (ticketCopyToastTimer) clearTimeout(ticketCopyToastTimer);
+          ticketCopyToastTimer = setTimeout(() => {
+            const currentToastEl = document.getElementById('toastMsg');
+            if (!currentToastEl) return;
+            const text = String(currentToastEl.textContent || '').trim();
+            if (!text) return;
+            if (text.includes('已复制') || text.includes('复制失败')) {
+              currentToastEl.classList.remove('show');
+              currentToastEl.style.display = 'none';
+            }
+            ticketCopyToastTimer = null;
+          }, 3200);
         }
       } catch {}
     } catch {
       try {
         if (typeof window.showToast === 'function') {
-          window.showToast(attempted ? successText : '复制失败，请稍后重试', 3000);
+          window.showToast('复制失败，请稍后重试', 3000);
         }
       } catch {}
     }
@@ -1339,12 +1384,11 @@
       renderTicketApiDetail();
       return;
     }
-    if (visibleList[0]?.ticketNo) {
-      await openTicketApiDetail(visibleList[0].ticketNo, { skipTraffic: true });
-      return;
-    }
     ticketApiActiveId = '';
     ticketApiActiveDetail = null;
+    ticketApiDetailLoading = false;
+    ticketApiDetailError = '';
+    setTicketApiPageMode('list', { scroll: false });
     renderTicketApiDetail();
   }
 

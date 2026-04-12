@@ -6,6 +6,8 @@ let detailView = null;
 let activeShopId = '';
 let toolbarHeight = 44;
 const sessionChromeUaMap = new WeakMap();
+const DEFAULT_CHROME_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 function applySessionChromeUserAgent(ses, userAgent) {
   if (!ses) return;
@@ -64,8 +66,9 @@ function getShopUserAgent(store, shopId) {
   const shops = store?.get('shops') || [];
   const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
   const ua = String(shop?.userAgent || '').trim();
-  if (ua) return ua;
-  return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  const lower = ua.toLowerCase();
+  const isChromeLike = ua && lower.includes('chrome/') && !lower.includes('electron/');
+  return isChromeLike ? ua : DEFAULT_CHROME_UA;
 }
 
 function sendState(payload = {}) {

@@ -30,6 +30,7 @@ const { registerEmbeddedViewIpc } = require('./register-embedded-view-ipc');
 const { registerAfterSaleDetailWindowIpc } = require('./register-aftersale-detail-window-ipc');
 const { registerInvoiceOrderDetailWindowIpc } = require('./register-invoice-order-detail-window-ipc');
 const { registerTicketTodoDetailWindowIpc } = require('./register-ticket-todo-detail-window-ipc');
+const { registerViolationInfoWindowIpc } = require('./register-violation-info-window-ipc');
 const Store = require('electron-store');
 
 app.disableHardwareAcceleration();
@@ -2125,6 +2126,12 @@ function createMainWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
+  mainWindow.on('focus', () => {
+    try {
+      if (typeof mainWindow.moveTop === 'function') mainWindow.moveTop();
+    } catch {}
+  });
+
   mainWindow.on('resize', () => {
     const [w, h] = mainWindow.getSize();
     store.set('windowBounds', { width: w, height: h });
@@ -2326,6 +2333,12 @@ registerInvoiceOrderDetailWindowIpc({
 });
 
 registerTicketTodoDetailWindowIpc({
+  ipcMain,
+  store,
+  getMainWindow: () => mainWindow
+});
+
+registerViolationInfoWindowIpc({
   ipcMain,
   store,
   getMainWindow: () => mainWindow

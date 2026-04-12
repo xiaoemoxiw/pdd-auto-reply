@@ -1,5 +1,6 @@
 const { BrowserWindow, BrowserView, shell } = require('electron');
 const path = require('path');
+const { getShopUserAgent, applySessionChromeUserAgent } = require('./pdd-chrome-ua');
 
 let detailWindow = null;
 let detailView = null;
@@ -21,14 +22,11 @@ function getShopPartition(shopId) {
   return `persist:pdd-${id}`;
 }
 
-function getShopUserAgent(store, shopId) {
-  const id = String(shopId || '').trim();
-  if (!id) return '';
-  const shops = store?.get('shops') || [];
-  const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
-  const ua = String(shop?.userAgent || '').trim();
-  if (ua) return ua;
-  return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+function setViewUserAgent(store, shopId, view) {
+  const ua = getShopUserAgent(store, shopId);
+  view.__pddUserAgent = ua;
+  if (ua) view.webContents.setUserAgent(ua);
+  applySessionChromeUserAgent(view.webContents.session, ua);
 }
 
 function sendState(payload = {}) {
@@ -95,8 +93,7 @@ function ensureView(store, shopId) {
   });
   activeShopId = nextShopId;
 
-  const userAgent = getShopUserAgent(store, nextShopId);
-  if (userAgent) detailView.webContents.setUserAgent(userAgent);
+  setViewUserAgent(store, nextShopId, detailView);
 
   detailView.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {
@@ -108,7 +105,9 @@ function ensureView(store, shopId) {
   detailView.webContents.setWindowOpenHandler(({ url }) => {
     if (url?.startsWith('http')) {
       if (isMerchantUrl(url)) {
-        detailView.webContents.loadURL(url);
+        const ua = detailView?.__pddUserAgent;
+        if (ua) detailView.webContents.loadURL(url, { userAgent: ua });
+        else detailView.webContents.loadURL(url);
       } else {
         shell.openExternal(url);
       }
@@ -159,14 +158,11 @@ async function createInvoiceOrderDetailWindow(parent) {
     detailWindow.focus();
     return detailWindow;
   }
-
-  const validParent = parent && !parent.isDestroyed() ? parent : undefined;
   detailWindow = new BrowserWindow({
     width: 1240,
     height: 820,
     minWidth: 980,
     minHeight: 640,
-    parent: validParent,
     title: '订单开票',
     show: false,
     webPreferences: {
@@ -226,7 +222,9 @@ function loadInvoiceOrderDetailUrl(store, shopId, url) {
   const view = ensureView(store, targetShopId);
   detailWindow.setBrowserView(view);
   resizeView();
-  view.webContents.loadURL(targetUrl);
+  const ua = view?.__pddUserAgent;
+  if (ua) view.webContents.loadURL(targetUrl, { userAgent: ua });
+  else view.webContents.loadURL(targetUrl);
   return { ok: true };
 }
 

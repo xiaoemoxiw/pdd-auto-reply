@@ -575,16 +575,31 @@
       menu.id = 'ticketApiFinishedShopMenu';
       menu.className = 'ticket-api-finished-shop-menu';
       menu.style.display = 'none';
-      tabs.appendChild(menu);
+      menu.style.position = 'fixed';
+      menu.style.zIndex = '9999';
+      document.body.appendChild(menu);
     }
     const alreadyBound = menu.dataset.ticketFinishedBound === '1';
 
     const positionMenu = () => {
       if (!menu) return;
-      const left = finishedButton.offsetLeft || 0;
-      const top = (finishedButton.offsetTop || 0) + finishedButton.offsetHeight + 6;
-      menu.style.left = `${left}px`;
-      menu.style.top = `${top}px`;
+      if (menu.parentNode !== document.body) {
+        document.body.appendChild(menu);
+      }
+      const rect = finishedButton.getBoundingClientRect();
+      const gap = 6;
+      const padding = 8;
+      const width = menu.offsetWidth || 260;
+      const height = menu.offsetHeight || 240;
+      let left = rect.left;
+      let top = rect.bottom + gap;
+      left = Math.max(padding, Math.min(left, window.innerWidth - width - padding));
+      if (top + height > window.innerHeight - padding) {
+        top = rect.top - height - gap;
+        top = Math.max(padding, top);
+      }
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(top)}px`;
     };
 
     const scheduleHide = () => {
@@ -606,8 +621,10 @@
         menu.style.display = 'none';
         return;
       }
-      positionMenu();
       menu.style.display = 'block';
+      menu.style.visibility = 'hidden';
+      positionMenu();
+      menu.style.visibility = 'visible';
     };
 
     if (!alreadyBound) {
@@ -616,9 +633,16 @@
       menu?.addEventListener('mouseleave', scheduleHide);
       finishedButton.addEventListener('mouseenter', show);
       finishedButton.addEventListener('mouseleave', scheduleHide);
+      const onViewportChange = () => {
+        if (!menu) return;
+        if (menu.style.display === 'none') return;
+        positionMenu();
+      };
+      window.addEventListener('resize', onViewportChange);
+      window.addEventListener('scroll', onViewportChange, true);
       document.addEventListener('click', (event) => {
         if (!menu) return;
-        if (!menu.offsetParent) return;
+        if (menu.style.display === 'none') return;
         if (menu.contains(event.target) || finishedButton.contains(event.target)) return;
         menu.style.display = 'none';
       });
@@ -665,16 +689,31 @@
       menu.id = 'ticketApiClosedShopMenu';
       menu.className = 'ticket-api-finished-shop-menu';
       menu.style.display = 'none';
-      tabs.appendChild(menu);
+      menu.style.position = 'fixed';
+      menu.style.zIndex = '9999';
+      document.body.appendChild(menu);
     }
     const alreadyBound = menu.dataset.ticketClosedBound === '1';
 
     const positionMenu = () => {
       if (!menu) return;
-      const left = closedButton.offsetLeft || 0;
-      const top = (closedButton.offsetTop || 0) + closedButton.offsetHeight + 6;
-      menu.style.left = `${left}px`;
-      menu.style.top = `${top}px`;
+      if (menu.parentNode !== document.body) {
+        document.body.appendChild(menu);
+      }
+      const rect = closedButton.getBoundingClientRect();
+      const gap = 6;
+      const padding = 8;
+      const width = menu.offsetWidth || 260;
+      const height = menu.offsetHeight || 240;
+      let left = rect.left;
+      let top = rect.bottom + gap;
+      left = Math.max(padding, Math.min(left, window.innerWidth - width - padding));
+      if (top + height > window.innerHeight - padding) {
+        top = rect.top - height - gap;
+        top = Math.max(padding, top);
+      }
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(top)}px`;
     };
 
     const scheduleHide = () => {
@@ -696,8 +735,10 @@
         menu.style.display = 'none';
         return;
       }
-      positionMenu();
       menu.style.display = 'block';
+      menu.style.visibility = 'hidden';
+      positionMenu();
+      menu.style.visibility = 'visible';
     };
 
     if (!alreadyBound) {
@@ -706,9 +747,16 @@
       menu?.addEventListener('mouseleave', scheduleHide);
       closedButton.addEventListener('mouseenter', show);
       closedButton.addEventListener('mouseleave', scheduleHide);
+      const onViewportChange = () => {
+        if (!menu) return;
+        if (menu.style.display === 'none') return;
+        positionMenu();
+      };
+      window.addEventListener('resize', onViewportChange);
+      window.addEventListener('scroll', onViewportChange, true);
       document.addEventListener('click', (event) => {
         if (!menu) return;
-        if (!menu.offsetParent) return;
+        if (menu.style.display === 'none') return;
         if (menu.contains(event.target) || closedButton.contains(event.target)) return;
         menu.style.display = 'none';
       });

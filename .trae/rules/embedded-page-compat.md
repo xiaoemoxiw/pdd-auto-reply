@@ -1,5 +1,5 @@
 ---
-description: 当任务涉及 BrowserView/BrowserWindow 内嵌拼多多后台页面（订单/开票/售后等）并需要兼容性处理时使用此规则
+description: 当任务涉及 BrowserView/BrowserWindow 内嵌拼多多后台页面，并需要兼容性处理时使用此规则
 alwaysApply: false
 ---
 
@@ -19,11 +19,20 @@ alwaysApply: false
 - UA 设置必须落在主进程创建 `BrowserView` 时（`webContents.setUserAgent`），不要在渲染层拼接或注入
 - 不要全局覆写整个 app 的 UA；只对“内嵌拼多多后台页面”的 BrowserView/窗口生效
 
+### 新窗口 UA 默认值（必须）
+- 项目内所有“打开新窗口展示拼多多后台页”的场景（独立 `BrowserWindow` + `BrowserView`、独立 `BrowserWindow` 直接加载等）默认都按上述 UA 策略执行
+- 目标是让新窗口表现为“正常 Win10 Chrome”，避免被后台识别为非 Chrome 并弹拦截/引导弹窗
+
 ## 窗口层级与焦点（必须）
 - 新开的内置窗口默认行为：`win.show(); win.focus();`，让“点击打开”符合用户预期（新窗口直接置顶并获得焦点）
 - 打开内置窗口时不要强行把主窗口顶到最前面（不要在打开流程里额外 `mainWindow.focus()`）
 - 主窗口置顶策略：主窗口获得焦点时执行一次 `moveTop()`，确保主窗口可随时被用户点击置顶（不依赖子窗口状态）
 - macOS 重点：若需求是“主窗口可以压住内置窗口”，避免给内置窗口设置 `parent: mainWindow`（子窗口会长期压在父窗口之上）
+
+### 默认交互行为（必须）
+- 新窗口创建后必须立即 `show()` + `focus()`，避免出现“窗口已打开但不在最前/没有获得焦点”的误解
+- 打开新窗口的流程不得包含任何“顺手把主窗口顶到最前面”的动作；主窗口是否置顶只由用户点击/聚焦主窗口触发
+- 主窗口获得焦点时只做一次 `moveTop()` 即可，不依赖任何子窗口事件回调或状态同步
 
 ## 弹窗与引导（推荐做法）
 - 遇到“检测到非 chrome / 已安装去使用 / 下载 Chrome”等引导弹窗：

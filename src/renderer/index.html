@@ -7355,64 +7355,31 @@
       </div>
       <div class="view-page" id="viewViolationApi">
         <div class="violation-api-page">
-          <div class="violation-api-tutorial-bar">
-            <span class="violation-api-tutorial-title">违规信息</span>
-            <span class="violation-api-tutorial-tab active" data-violation-nav-tab="shop">店铺违规管理</span>
-            <span class="violation-api-tutorial-tab" data-violation-nav-tab="goods">店铺/商品违规</span>
-            <span class="violation-api-tutorial-tab" data-violation-nav-tab="appeal">违规申诉/整改</span>
-            <span class="violation-api-tutorial-tab" data-violation-nav-tab="live">直播违规</span>
-            <span class="violation-api-tutorial-tab" data-violation-nav-tab="after">售后服务违规</span>
-            <span class="violation-api-tutorial-tab" data-violation-nav-tab="warning">违规预警</span>
-          </div>
-
-          <div class="violation-api-section">
-            <div class="violation-api-banner">
-              <span class="violation-api-banner-icon">!</span>
-              <span id="violationApiBannerText">进入页面后会直接请求违规列表，并整理详情与申诉信息。</span>
-            </div>
-          </div>
-
           <div class="violation-api-page-state" id="violationApiListShell">
-            <div class="violation-api-section">
-              <div class="violation-api-filter-bar">
-                <div class="violation-api-filter-group">
-                  <span class="violation-api-filter-label">快速筛选:</span>
-                  <button class="violation-api-quick-tab active" data-violation-quick="all">待申诉 <span
-                      id="violationApiQuickPendingCount">0</span></button>
-                  <button class="violation-api-quick-tab" data-violation-quick="appealing">待完善资料 <span
-                      id="violationApiQuickAppealingCount">0</span></button>
-                  <button class="violation-api-quick-tab" data-violation-quick="processing">平台处理中 <span
-                      id="violationApiQuickProcessingCount">0</span></button>
-                </div>
-              </div>
-              <div class="violation-api-filter-panel">
-                <div class="violation-api-filter-grid">
-                  <div class="violation-api-filter-item">
-                    <label class="violation-api-filter-label" for="violationApiStatusFilter">处理进度</label>
-                    <select class="form-select" id="violationApiStatusFilter">
-                      <option value="">全部</option>
-                    </select>
-                  </div>
-                  <div class="violation-api-filter-item">
-                    <label class="violation-api-filter-label" for="violationApiTypeFilter">违规类型</label>
-                    <select class="form-select" id="violationApiTypeFilter">
-                      <option value="">全部</option>
-                    </select>
-                  </div>
-                  <div class="violation-api-filter-item">
-                    <label class="violation-api-filter-label" for="violationApiKeyword">违规单号</label>
-                    <input class="form-input" id="violationApiKeyword" placeholder="请输入违规单号">
+            <div class="violation-api-section violation-api-section--filters">
+              <div class="violation-api-filter-bar violation-api-status-row">
+                <div class="violation-api-filter-group violation-api-status-tabs" id="violationApiStatusTabs">
+                  <button type="button" class="violation-api-quick-tab active" data-violation-quick="pending">
+                    待申诉 <span class="violation-api-status-count" id="violationApiQuickPendingCount">0</span>
+                  </button>
+                  <button type="button" class="violation-api-quick-tab" data-violation-quick="processing">
+                    平台处理中 <span class="violation-api-status-count" id="violationApiQuickProcessingCount">0</span>
+                  </button>
+                  <button type="button" class="violation-api-quick-tab" data-violation-quick="appealing">
+                    待完善资料 <span class="violation-api-status-count" id="violationApiQuickAppealingCount">0</span>
+                  </button>
+                  <div class="violation-api-progress-wrap">
+                    <button type="button" class="violation-api-quick-tab violation-api-progress-trigger" id="violationApiProgressDropdownBtn">
+                      <span id="violationApiProgressDropdownLabel">选择所有进度类型</span>
+                      <span class="violation-api-progress-arrow">▾</span>
+                    </button>
+                    <div class="violation-api-progress-menu is-hidden" id="violationApiProgressMenu"></div>
                   </div>
                 </div>
-                <div class="violation-api-filter-actions">
-                  <button class="btn btn-primary" id="btnViolationApiApplyFilters">搜索</button>
-                  <button class="btn btn-secondary" id="btnViolationApiResetFilters">重置</button>
-                  <span class="spacer"></span>
-                  <button class="btn btn-secondary" id="btnViolationApiRefreshList">刷新列表</button>
+                <div class="violation-api-status-tools">
+                  <button class="btn btn-primary" id="btnViolationApiRefreshList">刷新</button>
                   <button class="btn btn-secondary" id="btnViolationApiRefreshPage">刷新违规页</button>
-                  <button class="btn btn-secondary" id="btnViolationApiReloadTraffic" style="display:none;">刷新抓包</button>
                   <button class="btn btn-secondary" id="btnViolationApiOpenDebug">调试窗口</button>
-                  <button class="btn btn-secondary" id="btnViolationApiClearTraffic" style="display:none;">清空记录</button>
                 </div>
               </div>
             </div>
@@ -7429,13 +7396,17 @@
                 <table class="data-table violation-api-table">
                   <thead>
                     <tr>
-                      <th>违规编号</th>
-                      <th>违规类型</th>
-                      <th>违规通知时间</th>
-                      <th>申诉时间</th>
-                      <th>平台处理时间</th>
-                      <th>当前进度</th>
-                      <th style="width:88px">操作</th>
+                      <th style="width:46px">序号</th>
+                      <th style="width:140px">店铺名称</th>
+                      <th style="width:170px">违规编号</th>
+                      <th style="width:160px">违规类型</th>
+                      <th style="width:100px">罚金</th>
+                      <th style="width:90px">订单数</th>
+                      <th style="width:120px">当前进度</th>
+                      <th style="width:150px">通知时间</th>
+                      <th style="width:150px">申诉时间</th>
+                      <th style="width:150px">平台处理</th>
+                      <th style="min-width:220px">违规理由</th>
                     </tr>
                   </thead>
                   <tbody id="violationApiList"></tbody>
@@ -7443,6 +7414,19 @@
               </div>
               <div class="violation-api-table-footer">
                 <span class="violation-api-table-meta" id="violationApiFooterTotal">共 0 条</span>
+              </div>
+            </div>
+
+            <div class="violation-api-section">
+              <div class="violation-api-table-header">
+                <div class="violation-api-table-title">
+                  <span>接口返回字段</span>
+                  <span class="violation-api-table-meta" id="violationApiResponseMeta">点击列表记录查看</span>
+                </div>
+                <div class="violation-api-table-status" id="violationApiResponseStatus">当前展示该记录在“列表接口”中的原始返回数据</div>
+              </div>
+              <div class="violation-api-response-body" id="violationApiResponseBody">
+                <div class="violation-api-response-empty">点击上方列表中的一条记录，即可在这里查看接口返回字段</div>
               </div>
             </div>
           </div>

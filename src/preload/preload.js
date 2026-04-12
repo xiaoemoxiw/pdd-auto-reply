@@ -157,6 +157,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   openAfterSaleDetailWindow: (params) => ipcRenderer.invoke('aftersale-open-detail-window', params),
   openInvoiceOrderDetailWindow: (params) => ipcRenderer.invoke('invoice-open-order-detail-window', params),
   openTicketTodoDetailWindow: (params) => ipcRenderer.invoke('ticket-open-todo-detail-window', params),
+  openViolationInfoWindow: (params) => ipcRenderer.invoke('violation-open-info-window', params),
   debugLog: (payload) => ipcRenderer.send('renderer-debug-log', payload),
   toggleNetworkMonitor: (enabled) => ipcRenderer.invoke('toggle-network-monitor', enabled),
   getNetworkMonitorStatus: () => ipcRenderer.invoke('get-network-monitor-status'),

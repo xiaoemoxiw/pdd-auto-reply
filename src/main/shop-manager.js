@@ -1,6 +1,7 @@
 const { BrowserView, session, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { getShopUserAgent, applySessionChromeUserAgent } = require('./pdd-chrome-ua');
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
 const PDD_LOGIN_URL = 'https://mms.pinduoduo.com/login';
@@ -443,9 +444,10 @@ class ShopManager {
       callback(true);
     });
 
-    if (shop?.userAgent) {
-      view.webContents.setUserAgent(shop.userAgent);
-    }
+    const userAgent = getShopUserAgent(this.store, shopId);
+    view.__pddUserAgent = userAgent;
+    if (userAgent) view.webContents.setUserAgent(userAgent);
+    applySessionChromeUserAgent(view.webContents.session, userAgent);
 
     // 拦截页面内导航，非商家后台域名的链接用系统浏览器打开
     view.webContents.on('will-navigate', (event, url) => {
@@ -462,7 +464,9 @@ class ShopManager {
       if (url?.startsWith('http')) {
         if (this._isMerchantUrl(url)) {
           this.mainWindow.webContents.send('pdd-navigated', { url, fromPopup: true });
-          view.webContents.loadURL(url);
+          const ua = view?.__pddUserAgent;
+          if (ua) view.webContents.loadURL(url, { userAgent: ua });
+          else view.webContents.loadURL(url);
         } else {
           shell.openExternal(url);
         }

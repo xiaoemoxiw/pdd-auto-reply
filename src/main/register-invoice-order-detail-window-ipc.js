@@ -43,9 +43,7 @@ function registerInvoiceOrderDetailWindowIpc({
       const url = buildInvoiceOrderDetailUrl(base, params);
       if (!url) return { error: '缺少订单详情链接' };
 
-      const mainWindow = getMainWindow?.();
-      const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-      const win = await createInvoiceOrderDetailWindow(parent);
+      const win = await createInvoiceOrderDetailWindow();
       if (!win || win.isDestroyed()) return { error: '详情窗口创建失败' };
 
       const res = loadInvoiceOrderDetailUrl(store, shopId, url);
@@ -95,4 +93,3 @@ function registerInvoiceOrderDetailWindowIpc({
 module.exports = {
   registerInvoiceOrderDetailWindowIpc
 };
-

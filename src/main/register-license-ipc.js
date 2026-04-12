@@ -1,5 +1,5 @@
 const { getOrCreateHardwareId } = require('./license-hardware-id');
-const { verifyLicenseCode, getClientAuthProfile } = require('./license-service');
+const { verifyLicenseCode, unbindLicenseCode, getClientAuthProfile } = require('./license-service');
 const { getLicenseData, setLicenseData, clearLicenseData, isLicenseValid } = require('./license-store');
 
 function formatTimestamp() {
@@ -122,13 +122,31 @@ function registerLicenseIpc({
   });
 
   ipcMain.handle('license:clear', async () => {
+    const license = getLicenseData(store);
+    const requireRemoteUnbind = String(process.env.LICENSE_UNBIND_REQUIRED || '') === '1';
+
+    let remoteUnbindOk = false;
+    if (license?.code) {
+      const hardwareId = String(license.hardwareId || getOrCreateHardwareId(store));
+      const token = String(license.clientToken || license.client_token || '');
+      try {
+        await unbindLicenseCode({ code: license.code, hardwareId, token: token || undefined });
+        remoteUnbindOk = true;
+      } catch (err) {
+        const status = Number(err?.status || 0);
+        if (requireRemoteUnbind && status !== 404 && status !== 405) {
+          throw err;
+        }
+      }
+    }
+
     clearLicenseData(store);
     stopLicenseRefreshTimer();
     broadcastLicenseUpdated();
 
     createLicenseWindow?.();
     destroyMainWindow?.();
-    return { ok: true };
+    return { ok: true, remoteUnbindOk };
   });
 
   ipcMain.handle('license:switch-to-main', async () => {

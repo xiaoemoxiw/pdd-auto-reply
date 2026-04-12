@@ -60,6 +60,11 @@ function unwrapDataPayload(json) {
   return json;
 }
 
+function getUnbindPath() {
+  const env = String(process.env.LICENSE_UNBIND_PATH || '').trim();
+  return env || '/api/v1/license-codes/unbind';
+}
+
 async function verifyLicenseCode({ code, hardwareId }) {
   const payload = { code: String(code || '').trim(), hardware_id: String(hardwareId || '').trim() };
   if (!payload.code) throw new Error('缺少授权码');
@@ -72,6 +77,18 @@ async function verifyLicenseCode({ code, hardwareId }) {
   return unwrapDataPayload(res);
 }
 
+async function unbindLicenseCode({ code, hardwareId, token }) {
+  const payload = { code: String(code || '').trim(), hardware_id: String(hardwareId || '').trim() };
+  if (!payload.code) throw new Error('缺少授权码');
+  if (!payload.hardware_id) throw new Error('缺少硬件ID');
+  const res = await licenseFetch(getUnbindPath(), {
+    method: 'POST',
+    body: payload,
+    token
+  });
+  return unwrapDataPayload(res);
+}
+
 async function getClientAuthProfile({ token }) {
   if (!token) throw new Error('缺少 client_token');
   const res = await licenseFetch('/api/v1/client-auth/profile', { method: 'GET', token });
@@ -80,5 +97,6 @@ async function getClientAuthProfile({ token }) {
 
 module.exports = {
   verifyLicenseCode,
+  unbindLicenseCode,
   getClientAuthProfile
 };

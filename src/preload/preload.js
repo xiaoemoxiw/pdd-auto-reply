@@ -132,6 +132,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   ticketGetDetail: (params) => ipcRenderer.invoke('ticket-get-detail', params),
   violationGetList: (params) => ipcRenderer.invoke('violation-get-list', params),
   violationGetDetail: (params) => ipcRenderer.invoke('violation-get-detail', params),
+  deductionGetList: (params) => ipcRenderer.invoke('deduction-get-list', params),
   getApiStarredSessions: () => ipcRenderer.invoke('get-api-starred-sessions'),
   getLastApiSessionSelection: () => ipcRenderer.invoke('get-last-api-session-selection'),
   setLastApiSessionSelection: (selection) => ipcRenderer.invoke('set-last-api-session-selection', selection),

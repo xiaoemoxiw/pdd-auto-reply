@@ -9,6 +9,7 @@ const { MailApiClient } = require('./mail-api');
 const { InvoiceApiClient } = require('./invoice-api');
 const { TicketApiClient } = require('./ticket-api');
 const { ViolationApiClient } = require('./violation-api');
+const { DeductionApiClient } = require('./deduction-api');
 const { createSettingsWindow } = require('./settings-window');
 const { createLicenseWindow, getLicenseWindow, destroyLicenseWindow } = require('./license-window');
 const { createDebugWindow, sendToDebug } = require('./debug-window');
@@ -303,6 +304,7 @@ let mailApiClients = new Map();
 let invoiceApiClients = new Map();
 let ticketApiClients = new Map();
 let violationApiClients = new Map();
+let deductionApiClients = new Map();
 let apiTrafficStore = new Map();
 let apiSessionStore = new Map();
 let rendererWatcher = null;
@@ -1957,6 +1959,31 @@ function destroyViolationApiClient(shopId) {
   violationApiClients.delete(shopId);
 }
 
+function getDeductionApiClient(shopId) {
+  if (!shopId) return null;
+  if (deductionApiClients.has(shopId)) return deductionApiClients.get(shopId);
+  const client = new DeductionApiClient(shopId, {
+    onLog(message, extra) {
+      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
+      console.log(`[PDD扣款管理:${shopId}] ${message}`);
+    },
+    getShopInfo() {
+      const shops = store.get('shops') || [];
+      return shops.find(item => item.id === shopId) || null;
+    },
+    getApiTraffic() {
+      return getApiTraffic(shopId);
+    }
+  });
+  deductionApiClients.set(shopId, client);
+  return client;
+}
+
+function destroyDeductionApiClient(shopId) {
+  if (!deductionApiClients.has(shopId)) return;
+  deductionApiClients.delete(shopId);
+}
+
 function getApiTraffic(shopId) {
   const runtimeList = (apiTrafficStore.get(shopId) || []).map(normalizeTrafficEntry);
   if (runtimeList.length >= 20) return runtimeList;
@@ -2176,6 +2203,7 @@ function createMainWindow() {
       destroyApiClient(shopId);
       destroyMailApiClient(shopId);
       destroyInvoiceApiClient(shopId);
+      destroyDeductionApiClient(shopId);
       apiTrafficStore.set(shopId, []);
     }
   });
@@ -2290,7 +2318,8 @@ registerShopIpc({
   destroyMailApiClient,
   destroyInvoiceApiClient,
   destroyTicketApiClient,
-  destroyViolationApiClient
+  destroyViolationApiClient,
+  destroyDeductionApiClient
 });
 
 registerApiIpc({
@@ -2310,6 +2339,7 @@ registerApiIpc({
   getInvoiceApiClient,
   getTicketApiClient,
   getViolationApiClient,
+  getDeductionApiClient,
   setApiTrafficEntries: (shopId, entries) => {
     apiTrafficStore.set(shopId, entries);
   }
@@ -3393,6 +3423,9 @@ app.on('before-quit', () => {
   }
   for (const shopId of violationApiClients.keys()) {
     destroyViolationApiClient(shopId);
+  }
+  for (const shopId of deductionApiClients.keys()) {
+    destroyDeductionApiClient(shopId);
   }
 });
 

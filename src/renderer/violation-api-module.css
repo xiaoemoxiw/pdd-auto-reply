@@ -55,6 +55,10 @@
   overflow: hidden;
 }
 
+.violation-api-section--filters {
+  overflow: visible;
+}
+
 .violation-api-banner {
   display: flex;
   align-items: center;
@@ -97,12 +101,43 @@
   flex-wrap: wrap;
 }
 
+.violation-api-status-tabs {
+  position: relative;
+}
+
+.violation-api-progress-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.violation-api-status-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .violation-api-filter-label,
 .violation-api-table-meta,
 .violation-api-table-status {
   font-size: 12px;
   color: #999;
   line-height: 1.6;
+}
+
+.violation-api-status-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 77, 79, 0.12);
+  color: #ff4d4f;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
 }
 
 .violation-api-quick-tab {
@@ -115,6 +150,75 @@
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+.violation-api-progress-trigger {
+  min-width: 170px;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.violation-api-progress-arrow {
+  color: #999;
+  font-size: 12px;
+}
+
+.violation-api-progress-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 220px;
+  max-height: 340px;
+  overflow: auto;
+  padding: 6px 0;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.12);
+  z-index: 30;
+}
+
+.violation-api-progress-menu.is-hidden {
+  display: none;
+}
+
+.violation-api-progress-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: #333;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.violation-api-progress-option:hover {
+  background: #f5f7ff;
+}
+
+.violation-api-progress-option.is-active {
+  background: #f4f7ff;
+  color: #4f7cff;
+  font-weight: 600;
+}
+
+.violation-api-progress-option-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.violation-api-progress-option-count {
+  color: #ff4d4f;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .violation-api-quick-tab.active {
@@ -131,7 +235,7 @@
 
 .violation-api-filter-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px 24px;
 }
 
@@ -178,7 +282,7 @@
 }
 
 .violation-api-table {
-  min-width: 980px;
+  min-width: 1480px;
 }
 
 .violation-api-table th,
@@ -188,6 +292,19 @@
 
 .violation-api-table tbody tr.active {
   background: #f5f8ff;
+}
+
+.violation-api-violation-no {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.violation-api-violation-no .violation-api-open-window {
+  font-weight: 600;
+}
+
+.violation-api-violation-no:hover {
+  text-decoration: underline;
 }
 
 .violation-api-row-actions {
@@ -251,6 +368,76 @@
   padding: 12px 18px;
   border-top: 1px solid #f0f0f0;
   background: #fff;
+}
+
+.violation-api-response-body {
+  padding: 14px 18px 18px;
+  background: #fff;
+}
+
+.violation-api-response-empty {
+  padding: 18px 0;
+  color: #999;
+  font-size: 13px;
+}
+
+.violation-api-response-raw {
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background: #fbfbfb;
+  overflow: auto;
+  max-height: 380px;
+}
+
+.violation-api-response-raw pre {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.violation-api-response-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+
+.violation-api-response-item {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.violation-api-response-key {
+  color: #666;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.violation-api-response-value {
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.7;
+  word-break: break-all;
+}
+
+.violation-api-response-block + .violation-api-response-block {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.violation-api-response-block-title {
+  color: #333;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
 }
 
 .violation-api-page-state.is-hidden {

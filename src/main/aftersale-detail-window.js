@@ -22,11 +22,13 @@ function getShopPartition(shopId) {
 }
 
 function getShopUserAgent(store, shopId) {
+  const fallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
   const id = String(shopId || '').trim();
-  if (!id) return '';
+  if (!id) return fallback;
   const shops = store?.get('shops') || [];
   const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
-  return String(shop?.userAgent || '').trim();
+  const ua = String(shop?.userAgent || '').trim();
+  return ua || fallback;
 }
 
 function sendState(payload = {}) {

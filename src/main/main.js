@@ -33,6 +33,7 @@ const { registerInvoiceOrderDetailWindowIpc } = require('./register-invoice-orde
 const { registerTicketTodoDetailWindowIpc } = require('./register-ticket-todo-detail-window-ipc');
 const { registerLicenseIpc } = require('./register-license-ipc');
 const { isLicenseValid } = require('./license-store');
+const { registerViolationInfoWindowIpc } = require('./register-violation-info-window-ipc');
 const Store = require('electron-store');
 
 app.disableHardwareAcceleration();
@@ -2152,6 +2153,12 @@ function createMainWindow() {
     }
   });
 
+  mainWindow.on('focus', () => {
+    try {
+      if (typeof mainWindow.moveTop === 'function') mainWindow.moveTop();
+    } catch {}
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     shopManager = null;
@@ -2373,6 +2380,12 @@ registerInvoiceOrderDetailWindowIpc({
 });
 
 registerTicketTodoDetailWindowIpc({
+  ipcMain,
+  store,
+  getMainWindow: () => mainWindow
+});
+
+registerViolationInfoWindowIpc({
   ipcMain,
   store,
   getMainWindow: () => mainWindow

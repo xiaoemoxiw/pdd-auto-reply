@@ -10,6 +10,7 @@ const { InvoiceApiClient } = require('./invoice-api');
 const { TicketApiClient } = require('./ticket-api');
 const { ViolationApiClient } = require('./violation-api');
 const { createSettingsWindow } = require('./settings-window');
+const { createLicenseWindow, getLicenseWindow, destroyLicenseWindow } = require('./license-window');
 const { createDebugWindow, sendToDebug } = require('./debug-window');
 const { ShopManager } = require('./shop-manager');
 const { TokenFileStore } = require('./token-file-store');
@@ -30,6 +31,8 @@ const { registerEmbeddedViewIpc } = require('./register-embedded-view-ipc');
 const { registerAfterSaleDetailWindowIpc } = require('./register-aftersale-detail-window-ipc');
 const { registerInvoiceOrderDetailWindowIpc } = require('./register-invoice-order-detail-window-ipc');
 const { registerTicketTodoDetailWindowIpc } = require('./register-ticket-todo-detail-window-ipc');
+const { registerLicenseIpc } = require('./register-license-ipc');
+const { isLicenseValid } = require('./license-store');
 const Store = require('electron-store');
 
 app.disableHardwareAcceleration();
@@ -130,7 +133,9 @@ const store = new Store({
       modelStatus: 'none',
       modelSource: 'mirror',
       customMirror: ''
-    }
+    },
+    license: null,
+    licenseHardwareId: ''
   }
 });
 
@@ -301,11 +306,20 @@ let apiTrafficStore = new Map();
 let apiSessionStore = new Map();
 let rendererWatcher = null;
 let rendererReloadTimer = null;
+let mainAppBootstrapped = false;
+let licenseRuntime = null;
 
 app.on('second-instance', () => {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    return;
+  }
+  const lw = getLicenseWindow?.();
+  if (lw && !lw.isDestroyed()) {
+    if (lw.isMinimized()) lw.restore();
+    lw.focus();
+  }
 });
 
 function isDevelopmentMode() {
@@ -2201,6 +2215,28 @@ async function migrateOldData() {
   }
 }
 
+function destroyMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    mainWindow.close();
+  } catch {}
+}
+
+async function ensureMainApp() {
+  if (!mainAppBootstrapped) {
+    await migrateOldData();
+    mainAppBootstrapped = true;
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow();
+  }
+
+  shopManager?.restoreAllTokenInfo?.();
+  await shopManager?.syncShopsFromTokenFiles?.({ broadcast: false, forceApplyTokens: true });
+  normalizeStoredPddUrls();
+}
+
 // ---- IPC Handlers ----
 
 ipcMain.handle('inject-cookies', async (event, cookies) => {
@@ -2224,6 +2260,17 @@ ipcMain.handle('read-clipboard-text', () => {
 ipcMain.handle('write-clipboard-text', (event, text) => {
   clipboard.writeText(String(text || ''));
   return true;
+});
+
+licenseRuntime = registerLicenseIpc({
+  ipcMain,
+  store,
+  createLicenseWindow,
+  getLicenseWindow,
+  destroyLicenseWindow,
+  ensureMainApp,
+  getMainWindow: () => mainWindow,
+  destroyMainWindow
 });
 
 registerShopIpc({
@@ -3144,13 +3191,12 @@ app.whenReady().then(async () => {
     }
   });
 
-  await migrateOldData();
-  createMainWindow();
-  shopManager.restoreAllTokenInfo();
-
-  await shopManager.syncShopsFromTokenFiles({ broadcast: false, forceApplyTokens: true });
-
-  normalizeStoredPddUrls();
+  if (isLicenseValid(store)) {
+    await ensureMainApp();
+    licenseRuntime?.startTimer?.();
+  } else {
+    createLicenseWindow();
+  }
 
   // 启动后状态检查 + 页面结构诊断
   if (isVerboseRuntimeLoggingEnabled()) {
@@ -3342,9 +3388,17 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (!mainWindow) {
-    createMainWindow();
-    const activeId = store.get('activeShopId');
-    if (activeId && shopManager) shopManager.switchTo(activeId);
+  const lw = getLicenseWindow?.();
+  if ((mainWindow && !mainWindow.isDestroyed()) || (lw && !lw.isDestroyed())) return;
+
+  if (isLicenseValid(store)) {
+    ensureMainApp().then(() => {
+      licenseRuntime?.startTimer?.();
+      const activeId = store.get('activeShopId');
+      if (activeId && shopManager) shopManager.switchTo(activeId);
+    });
+    return;
   }
+
+  createLicenseWindow();
 });

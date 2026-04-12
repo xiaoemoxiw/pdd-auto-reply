@@ -161,6 +161,15 @@ contextBridge.exposeInMainWorld('pddApi', {
   toggleNetworkMonitor: (enabled) => ipcRenderer.invoke('toggle-network-monitor', enabled),
   getNetworkMonitorStatus: () => ipcRenderer.invoke('get-network-monitor-status'),
 
+  // 授权验证
+  verifyLicense: (params) => ipcRenderer.invoke('license:verify', params),
+  getLicenseData: () => ipcRenderer.invoke('license:get-data'),
+  checkLicense: () => ipcRenderer.invoke('license:check'),
+  clearLicense: () => ipcRenderer.invoke('license:clear'),
+  switchToMainWindow: () => ipcRenderer.invoke('license:switch-to-main'),
+  refreshLicense: () => ipcRenderer.invoke('license:refresh'),
+  onLicenseUpdated: (cb) => ipcRenderer.on('license-updated', (_e, d) => cb(d)),
+
   // 测试自动回复
   testAutoReply: () => ipcRenderer.invoke('test-auto-reply'),
 

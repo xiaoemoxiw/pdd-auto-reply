@@ -19,8 +19,7 @@ function buildViolationInfoUrl(params = {}) {
 
 function registerViolationInfoWindowIpc({
   ipcMain,
-  store,
-  getMainWindow
+  store
 }) {
   ipcMain.handle('violation-open-info-window', async (event, params = {}) => {
     try {
@@ -34,10 +33,11 @@ function registerViolationInfoWindowIpc({
         if (!appealSn || !violationType) return { error: '缺少 appeal_sn 或 violation_type' };
       } catch {}
 
-      const mainWindow = getMainWindow?.();
-      const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-      const win = await createViolationInfoWindow(parent);
+      const win = await createViolationInfoWindow();
       if (!win || win.isDestroyed()) return { error: '详情窗口创建失败' };
+      try {
+        if (typeof win.setParentWindow === 'function') win.setParentWindow(null);
+      } catch {}
 
       const res = loadViolationInfoUrl(store, shopId, url);
       if (res && res.error) return res;
@@ -53,4 +53,3 @@ function registerViolationInfoWindowIpc({
 module.exports = {
   registerViolationInfoWindowIpc
 };
-

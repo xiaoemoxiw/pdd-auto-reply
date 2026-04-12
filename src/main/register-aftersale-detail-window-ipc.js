@@ -28,8 +28,7 @@ function isDetailWindowSender(event) {
 
 function registerAfterSaleDetailWindowIpc({
   ipcMain,
-  store,
-  getMainWindow
+  store
 }) {
   ipcMain.handle('aftersale-open-detail-window', async (event, params = {}) => {
     try {
@@ -37,10 +36,11 @@ function registerAfterSaleDetailWindowIpc({
       if (!url) return { error: '缺少详情链接' };
       const shopId = String(params?.shopId || '').trim();
 
-      const mainWindow = getMainWindow?.();
-      const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-      const win = await createAfterSaleDetailWindow(parent);
+      const win = await createAfterSaleDetailWindow();
       if (!win || win.isDestroyed()) return { error: '详情窗口创建失败' };
+      try {
+        if (typeof win.setParentWindow === 'function') win.setParentWindow(null);
+      } catch {}
 
       const res = loadAfterSaleDetailUrl(store, shopId, url);
       if (res && res.error) return res;
@@ -89,4 +89,3 @@ function registerAfterSaleDetailWindowIpc({
 module.exports = {
   registerAfterSaleDetailWindowIpc
 };
-

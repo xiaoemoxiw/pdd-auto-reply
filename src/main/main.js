@@ -2139,6 +2139,12 @@ function createMainWindow() {
     }
   });
 
+  mainWindow.on('focus', () => {
+    try {
+      if (typeof mainWindow.moveTop === 'function') mainWindow.moveTop();
+    } catch {}
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     shopManager = null;

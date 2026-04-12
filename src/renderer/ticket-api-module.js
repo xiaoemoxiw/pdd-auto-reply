@@ -6,6 +6,10 @@
   let ticketApiTypeFilter = '';
   let ticketApiStatusFilter = '';
   let ticketApiQuickFilter = 'pending';
+  let ticketApiFinishedShopKey = '';
+  let ticketApiFinishedShopBuckets = new Map();
+  let ticketApiFinishedShopOptions = [];
+  let ticketApiFinishedShopMenuHideTimer = null;
   let ticketApiDatePreset = 'all';
   let ticketApiActiveId = '';
   let ticketApiActiveDetail = null;
@@ -486,6 +490,136 @@
     return isTicketFinishedStatus(status) || isTicketClosedStatus(status);
   }
 
+  function getTicketShopKey(item = {}) {
+    const shopId = String(item.shopId || '').trim();
+    if (shopId) return shopId;
+    const shopName = String(item.shopName || '').trim();
+    if (shopName) return shopName;
+    return String(getTicketActiveShopName() || '').trim() || '-';
+  }
+
+  function rebuildTicketFinishedShopBuckets() {
+    const bucket = new Map();
+    for (const item of Array.isArray(ticketApiList) ? ticketApiList : []) {
+      if (getTicketQuickType(item) !== 'finished') continue;
+      const key = getTicketShopKey(item);
+      const shopName = String(item.shopName || '').trim() || getTicketActiveShopName();
+      if (!bucket.has(key)) {
+        bucket.set(key, { key, shopName, items: [] });
+      } else if (!bucket.get(key).shopName && shopName) {
+        bucket.get(key).shopName = shopName;
+      }
+      bucket.get(key).items.push(item);
+    }
+    const options = Array.from(bucket.values())
+      .map(entry => ({
+        key: entry.key,
+        shopName: entry.shopName || entry.key,
+        count: entry.items.length,
+        items: entry.items
+      }))
+      .sort((a, b) => (b.count - a.count) || String(a.shopName).localeCompare(String(b.shopName), 'zh-CN'));
+    const total = options.reduce((sum, item) => sum + item.count, 0);
+    ticketApiFinishedShopBuckets = bucket;
+    ticketApiFinishedShopOptions = [{ key: '__all__', shopName: '全部店铺', count: total, items: options.flatMap(item => item.items) }].concat(options);
+    const current = String(ticketApiFinishedShopKey || '').trim();
+    if (current && current !== '__all__' && !bucket.has(current)) {
+      ticketApiFinishedShopKey = '';
+    } else {
+      ticketApiFinishedShopKey = current;
+    }
+  }
+
+  function ensureTicketFinishedShopSelector() {
+    const tabs = getEl('ticketApiStatusTabs');
+    if (!tabs) return null;
+    const finishedButton = tabs.querySelector('[data-ticket-quick="finished"]');
+    if (!finishedButton) return null;
+    let menu = getEl('ticketApiFinishedShopMenu');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'ticketApiFinishedShopMenu';
+      menu.className = 'ticket-api-finished-shop-menu';
+      menu.style.display = 'none';
+      tabs.appendChild(menu);
+    }
+    const alreadyBound = menu.dataset.ticketFinishedBound === '1';
+
+    const positionMenu = () => {
+      if (!menu) return;
+      const left = finishedButton.offsetLeft || 0;
+      const top = (finishedButton.offsetTop || 0) + finishedButton.offsetHeight + 6;
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+    };
+
+    const scheduleHide = () => {
+      if (ticketApiFinishedShopMenuHideTimer) clearTimeout(ticketApiFinishedShopMenuHideTimer);
+      ticketApiFinishedShopMenuHideTimer = setTimeout(() => {
+        if (menu) menu.style.display = 'none';
+      }, 120);
+    };
+    const cancelHide = () => {
+      if (ticketApiFinishedShopMenuHideTimer) clearTimeout(ticketApiFinishedShopMenuHideTimer);
+      ticketApiFinishedShopMenuHideTimer = null;
+    };
+    const show = () => {
+      cancelHide();
+      renderTicketFinishedShopSelector();
+      if (!menu) return;
+      const total = Number(ticketApiFinishedShopOptions?.[0]?.count || 0);
+      if (!total) {
+        menu.style.display = 'none';
+        return;
+      }
+      positionMenu();
+      menu.style.display = 'block';
+    };
+
+    if (!alreadyBound) {
+      menu.dataset.ticketFinishedBound = '1';
+      menu?.addEventListener('mouseenter', show);
+      menu?.addEventListener('mouseleave', scheduleHide);
+      finishedButton.addEventListener('mouseenter', show);
+      finishedButton.addEventListener('mouseleave', scheduleHide);
+      document.addEventListener('click', (event) => {
+        if (!menu) return;
+        if (!menu.offsetParent) return;
+        if (menu.contains(event.target) || finishedButton.contains(event.target)) return;
+        menu.style.display = 'none';
+      });
+    }
+
+    return { menu, finishedButton, tabs, scheduleHide, show };
+  }
+
+  function renderTicketFinishedShopSelector() {
+    const ctx = ensureTicketFinishedShopSelector();
+    if (!ctx) return;
+    const menu = ctx.menu;
+    menu.innerHTML = ticketApiFinishedShopOptions
+      .filter(item => item.key === '__all__' || item.count > 0)
+      .map(item => `
+        <button type="button" class="ticket-api-finished-shop-option" data-ticket-finished-shop="${esc(item.key)}">
+          <span class="ticket-api-finished-shop-name">${esc(item.shopName)}</span>
+          <span class="ticket-api-finished-shop-count">(${esc(String(item.count || 0))})</span>
+        </button>
+      `)
+      .join('');
+    menu.querySelectorAll('[data-ticket-finished-shop]').forEach(button => {
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const nextKey = String(button.dataset.ticketFinishedShop || '').trim() || '';
+        ticketApiFinishedShopKey = nextKey;
+        ticketApiQuickFilter = 'finished';
+        menu.style.display = 'none';
+        renderTicketQuickSummary();
+        await renderTicketApiState();
+      });
+    });
+  }
+
   function getTicketQuickType(item = {}) {
     const code = Number(item.statusCode || 0);
     const text = `${item.status || ''} ${item.progressText || ''}`.toLowerCase();
@@ -532,6 +666,7 @@
     document.querySelectorAll('[data-ticket-quick]').forEach(button => {
       button.classList.toggle('active', button.dataset.ticketQuick === ticketApiQuickFilter);
     });
+    renderTicketFinishedShopSelector();
   }
 
   function renderTicketFilterOptions() {
@@ -577,7 +712,15 @@
 
   function getTicketVisibleList() {
     const keyword = ticketApiKeyword.trim().toLowerCase();
-    return ticketApiList.filter(item => {
+    const baseList = (() => {
+      if (ticketApiQuickFilter !== 'finished') return ticketApiList;
+      const selectedKey = String(ticketApiFinishedShopKey || '').trim();
+      if (!selectedKey) return [];
+      if (selectedKey === '__all__') return ticketApiList;
+      const group = ticketApiFinishedShopBuckets.get(selectedKey);
+      return group ? group.items : ticketApiList;
+    })();
+    return (Array.isArray(baseList) ? baseList : []).filter(item => {
       if (ticketApiQuickFilter && getTicketQuickType(item) !== ticketApiQuickFilter) return false;
       if (ticketApiTypeFilter && item.ticketType !== ticketApiTypeFilter) return false;
       if (ticketApiStatusFilter && item.status !== ticketApiStatusFilter) return false;
@@ -650,6 +793,10 @@
     }
 
     if (!visibleList.length) {
+      if (ticketApiQuickFilter === 'finished' && !String(ticketApiFinishedShopKey || '').trim()) {
+        container.innerHTML = '<tr><td colspan="11"><div class="ticket-api-list-empty">请在“已完结”下拉中选择店铺查看对应已完结数据。</div></td></tr>';
+        return;
+      }
       container.innerHTML = '<tr><td colspan="11"><div class="ticket-api-list-empty">当前没有工单记录，可直接刷新列表重试。</div></td></tr>';
       return;
     }
@@ -1387,6 +1534,7 @@
   }
 
   async function renderTicketApiState() {
+    rebuildTicketFinishedShopBuckets();
     renderTicketFilterOptions();
     renderTicketMetrics();
     renderTicketQuickSummary();
@@ -1580,6 +1728,9 @@
     ticketApiTypeFilter = '';
     ticketApiStatusFilter = '';
     ticketApiQuickFilter = 'pending';
+    ticketApiFinishedShopKey = '';
+    ticketApiFinishedShopBuckets = new Map();
+    ticketApiFinishedShopOptions = [];
     ticketApiDatePreset = 'all';
     ticketApiActiveId = '';
     ticketApiActiveDetail = null;
@@ -1716,6 +1867,14 @@
       button.addEventListener('click', async () => {
         const nextFilter = button.dataset.ticketQuick || '';
         if (nextFilter === ticketApiQuickFilter) return;
+        if (nextFilter === 'finished') {
+          ticketApiQuickFilter = 'finished';
+          ticketApiFinishedShopKey = '';
+          renderTicketQuickSummary();
+          await renderTicketApiState();
+          ensureTicketFinishedShopSelector()?.show?.();
+          return;
+        }
         ticketApiQuickFilter = nextFilter;
         renderTicketQuickSummary();
         await renderTicketApiState();

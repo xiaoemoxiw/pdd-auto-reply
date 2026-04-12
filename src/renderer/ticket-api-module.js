@@ -17,6 +17,8 @@
   let ticketApiLastListResponseMeta = '';
   let ticketApiListLoaded = false;
   let ticketApiListLoading = false;
+  let ticketApiRefreshListDebounceTimer = null;
+  let ticketApiRefreshListInFlight = false;
   let ticketCopyToastTimer = null;
 
   function getEl(id) {
@@ -615,9 +617,22 @@
 
   function renderTicketApiList() {
     const container = getEl('ticketApiList');
+    if (!container) return;
+    const countEl = getEl('ticketApiResultCount');
+    const footerEl = getEl('ticketApiFooterTotal');
+    const statusEl = getEl('ticketApiListStatus');
+
+    if (ticketApiListLoading) {
+      if (countEl) countEl.textContent = '...';
+      if (footerEl) footerEl.textContent = '加载中...';
+      if (statusEl) statusEl.textContent = '正在加载工单列表，请稍候。';
+      container.innerHTML = '<tr><td colspan="11"><div class="ticket-api-list-loading"><span class="ticket-api-loading-spinner"></span>正在加载中...</div></td></tr>';
+      return;
+    }
+
     const visibleList = getTicketVisibleList();
-    getEl('ticketApiResultCount').textContent = String(visibleList.length);
-    getEl('ticketApiFooterTotal').textContent = `共 ${visibleList.length} 条`;
+    if (countEl) countEl.textContent = String(visibleList.length);
+    if (footerEl) footerEl.textContent = `共 ${visibleList.length} 条`;
 
     const filterLabels = [];
     if (ticketApiQuickFilter === 'pending') filterLabels.push('待处理');
@@ -630,7 +645,9 @@
     if (ticketApiTypeFilter) filterLabels.push(`问题类型：${ticketApiTypeFilter}`);
     if (ticketApiDatePreset !== 'all') filterLabels.push(`创建时间：${getPresetDateRangeText()}`);
     if (ticketApiKeyword) filterLabels.push(`订单编号：${ticketApiKeyword}`);
-    getEl('ticketApiListStatus').textContent = filterLabels.length ? filterLabels.join(' · ') : '当前仅展示工单管理相关抓包与接口提取结果';
+    if (statusEl) {
+      statusEl.textContent = filterLabels.length ? filterLabels.join(' · ') : '当前仅展示工单管理相关抓包与接口提取结果';
+    }
 
     if (!visibleList.length) {
       container.innerHTML = '<tr><td colspan="11"><div class="ticket-api-list-empty">当前没有工单记录，可直接刷新列表重试。</div></td></tr>';
@@ -1405,10 +1422,12 @@
       await renderTicketApiState();
       return;
     }
+    const cachedList = Array.isArray(ticketApiList) ? ticketApiList.slice() : [];
     let remoteLoaded = false;
     let remoteError = '';
     ticketApiListLoading = true;
     updateTicketApiBannerText();
+    renderTicketApiList();
     const listShopId = (typeof API_ALL_SHOPS !== 'undefined' ? API_ALL_SHOPS : activeShopId);
     try {
       if (listShopId && typeof window.pddApi.ticketGetList === 'function') {
@@ -1443,7 +1462,8 @@
       ticketApiLastListResponseMeta = `shopId=${listShopId || '-'} · ticketGetList`;
     }
     if (!remoteLoaded) {
-      ticketApiList = parseTicketRecordsFromTraffic(ticketApiEntries);
+      const fallbackList = parseTicketRecordsFromTraffic(ticketApiEntries);
+      ticketApiList = fallbackList.length ? fallbackList : cachedList;
       if (remoteError && options.silentError !== true) {
         addLog(`${remoteError}，已回退到抓包解析结果`, 'error');
       }
@@ -1602,7 +1622,16 @@
       resetTicketApiState();
       return;
     }
-    await loadTicketApiTraffic(scopeShopId);
+    ticketApiListLoading = true;
+    updateTicketApiBannerText();
+    renderTicketApiList();
+    try {
+      await loadTicketApiTraffic(scopeShopId);
+    } catch (error) {
+      ticketApiEntries = [];
+      renderTicketApiTraffic();
+      addLog(`加载工单管理抓包记录失败：${error?.message || '未知错误'}`, 'error');
+    }
     await loadTicketApiList({ fetch: true });
   }
 
@@ -1621,9 +1650,33 @@
       addLog('已刷新工单管理抓包记录', 'info');
     });
     getEl('btnTicketApiRefreshList')?.addEventListener('click', async () => {
-      await loadTicketApiTraffic();
-      await loadTicketApiList({ fetch: true });
-      addLog('已刷新工单管理列表', 'info');
+      if (ticketApiRefreshListInFlight) return;
+      if (ticketApiRefreshListDebounceTimer) {
+        clearTimeout(ticketApiRefreshListDebounceTimer);
+      }
+      const button = getEl('btnTicketApiRefreshList');
+      if (button) button.disabled = true;
+      ticketApiListLoading = true;
+      updateTicketApiBannerText();
+      renderTicketApiList();
+      ticketApiRefreshListDebounceTimer = setTimeout(async () => {
+        ticketApiRefreshListDebounceTimer = null;
+        ticketApiRefreshListInFlight = true;
+        try {
+          try {
+            await loadTicketApiTraffic();
+          } catch (error) {
+            ticketApiEntries = [];
+            renderTicketApiTraffic();
+            addLog(`加载工单管理抓包记录失败：${error?.message || '未知错误'}`, 'error');
+          }
+          await loadTicketApiList({ fetch: true });
+          addLog('已刷新工单管理列表', 'info');
+        } finally {
+          ticketApiRefreshListInFlight = false;
+          if (button) button.disabled = false;
+        }
+      }, 320);
     });
     getEl('btnTicketApiCopyLastResponse')?.addEventListener('click', async () => {
       await copyTicketDetailText(getEl('ticketApiLastResponse')?.textContent || '', '已复制接口返回信息');

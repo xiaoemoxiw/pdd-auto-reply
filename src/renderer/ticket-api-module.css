@@ -406,6 +406,32 @@
   font-size: 13px;
 }
 
+.ticket-api-list-loading {
+  padding: 40px 18px;
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.ticket-api-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(79, 124, 255, 0.18);
+  border-top-color: #4f7cff;
+  border-radius: 50%;
+  animation: ticketApiSpin 0.9s linear infinite;
+}
+
+@keyframes ticketApiSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .ticket-api-list-item {
   border-bottom: 1px solid #f0f0f0;
   cursor: pointer;

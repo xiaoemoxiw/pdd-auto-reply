@@ -2156,6 +2156,21 @@
       animation: pulse 1s infinite;
     }
 
+    .status-link {
+      background: transparent;
+      border: none;
+      padding: 0;
+      margin: 0;
+      font-size: 11px;
+      color: #1677ff;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .status-link:hover {
+      text-decoration: underline;
+    }
+
     @keyframes pulse {
 
       0%,
@@ -8506,11 +8521,14 @@
   <div class="status-bar">
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText">正在加载拼多多页面...</span>
+    <span id="licenseStatus"></span>
+    <button type="button" class="status-link" id="btnLicenseUnbind" style="display:none;">解除绑定</button>
     <span style="margin-left:auto" id="unmatchedCount"></span>
     <span id="replyCount">已回复: 0 条</span>
   </div>
 
   <script src="./renderer-module-runtime.js"></script>
+  <script src="./license-status-module.js"></script>
   <script src="./ai-module.js"></script>
   <script src="./chat-api-module.js"></script>
   <script src="./quick-phrases-module.js"></script>

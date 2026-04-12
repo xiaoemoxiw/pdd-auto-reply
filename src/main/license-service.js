@@ -54,20 +54,28 @@ function safeParseJson(text) {
   }
 }
 
+function unwrapDataPayload(json) {
+  if (!json || typeof json !== 'object') return json;
+  if ('data' in json && json.data && typeof json.data === 'object') return json.data;
+  return json;
+}
+
 async function verifyLicenseCode({ code, hardwareId }) {
   const payload = { code: String(code || '').trim(), hardware_id: String(hardwareId || '').trim() };
   if (!payload.code) throw new Error('缺少授权码');
   if (!payload.hardware_id) throw new Error('缺少硬件ID');
 
-  return licenseFetch('/api/v1/license-codes/verify', {
+  const res = await licenseFetch('/api/v1/license-codes/verify', {
     method: 'POST',
     body: payload
   });
+  return unwrapDataPayload(res);
 }
 
 async function getClientAuthProfile({ token }) {
   if (!token) throw new Error('缺少 client_token');
-  return licenseFetch('/api/v1/client-auth/profile', { method: 'GET', token });
+  const res = await licenseFetch('/api/v1/client-auth/profile', { method: 'GET', token });
+  return unwrapDataPayload(res);
 }
 
 module.exports = {

@@ -41,13 +41,30 @@ function hashToShortId(input) {
   return h.slice(0, 32);
 }
 
+function formatHardwareId(compact) {
+  const v = safeString(compact).replace(/[^a-z0-9]/gi, '').toUpperCase();
+  const head = v.slice(0, 20).padEnd(20, '0');
+  return head.match(/.{1,4}/g).join('-');
+}
+
+function isFormattedHardwareId(value) {
+  return /^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){4}$/.test(safeString(value));
+}
+
 function getOrCreateHardwareId(store) {
   const existing = safeString(store?.get?.('licenseHardwareId'));
-  if (existing) return existing;
+  if (existing) {
+    if (isFormattedHardwareId(existing)) return existing;
+    const migrated = formatHardwareId(existing);
+    try {
+      store?.set?.('licenseHardwareId', migrated);
+    } catch {}
+    return migrated;
+  }
 
   const parts = getStableFingerprintParts();
   const seed = parts.length ? parts.join('|') : `fallback:${crypto.randomUUID()}`;
-  const hardwareId = hashToShortId(seed);
+  const hardwareId = formatHardwareId(hashToShortId(seed));
 
   try {
     store?.set?.('licenseHardwareId', hardwareId);

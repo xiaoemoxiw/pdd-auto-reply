@@ -2126,12 +2126,6 @@ function createMainWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
-  mainWindow.on('focus', () => {
-    try {
-      if (typeof mainWindow.moveTop === 'function') mainWindow.moveTop();
-    } catch {}
-  });
-
   mainWindow.on('resize', () => {
     const [w, h] = mainWindow.getSize();
     store.set('windowBounds', { width: w, height: h });

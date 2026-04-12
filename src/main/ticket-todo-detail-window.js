@@ -1,11 +1,50 @@
 const { BrowserWindow, BrowserView, shell } = require('electron');
 const path = require('path');
-const { getShopUserAgent, applySessionChromeUserAgent } = require('./pdd-chrome-ua');
 
 let detailWindow = null;
 let detailView = null;
 let activeShopId = '';
 let toolbarHeight = 44;
+const sessionChromeUaMap = new WeakMap();
+const DEFAULT_CHROME_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
+function applySessionChromeUserAgent(ses, userAgent) {
+  if (!ses) return;
+  const ua = String(userAgent || '').trim();
+  if (!ua) return;
+  try {
+    if (typeof ses.setUserAgent === 'function') {
+      ses.setUserAgent(ua);
+    }
+  } catch {}
+
+  const existing = sessionChromeUaMap.get(ses);
+  if (existing) {
+    existing.ua = ua;
+    return;
+  }
+  sessionChromeUaMap.set(ses, { ua });
+  if (!ses.webRequest || typeof ses.webRequest.onBeforeSendHeaders !== 'function') return;
+
+  ses.webRequest.onBeforeSendHeaders((details, callback) => {
+    const headers = details?.requestHeaders || {};
+    const targetUrl = String(details?.url || '');
+    try {
+      const hostname = new URL(targetUrl).hostname;
+      if (!hostname.endsWith('.pinduoduo.com')) return callback({ requestHeaders: headers });
+    } catch {
+      return callback({ requestHeaders: headers });
+    }
+    const current = sessionChromeUaMap.get(ses);
+    const nextUa = current?.ua || ua;
+    headers['User-Agent'] = nextUa;
+    headers['sec-ch-ua'] = '"Chromium";v="122", "Google Chrome";v="122", "Not(A:Brand";v="99"';
+    headers['sec-ch-ua-mobile'] = '?0';
+    headers['sec-ch-ua-platform'] = '"Windows"';
+    callback({ requestHeaders: headers });
+  });
+}
 
 function isMerchantUrl(url) {
   try {
@@ -20,6 +59,16 @@ function getShopPartition(shopId) {
   const id = String(shopId || '').trim();
   if (!id) return undefined;
   return `persist:pdd-${id}`;
+}
+
+function getShopUserAgent(store, shopId) {
+  const id = String(shopId || '').trim();
+  const shops = store?.get('shops') || [];
+  const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
+  const ua = String(shop?.userAgent || '').trim();
+  const lower = ua.toLowerCase();
+  const isChromeLike = ua && lower.includes('chrome/') && !lower.includes('electron/');
+  return isChromeLike ? ua : DEFAULT_CHROME_UA;
 }
 
 function sendState(payload = {}) {
@@ -55,6 +104,53 @@ function resizeView() {
   const width = Math.max(0, bounds.width);
   const height = Math.max(0, bounds.height - top);
   detailView.setBounds({ x: 0, y: top, width, height });
+}
+
+function shouldDismissNonChromePrompt(url) {
+  const text = String(url || '').trim();
+  if (!text) return false;
+  try {
+    const parsed = new URL(text);
+    if (!parsed.hostname.endsWith('.pinduoduo.com')) return false;
+    return parsed.pathname.includes('/aftersales/work_order/tododetail');
+  } catch {
+    return false;
+  }
+}
+
+async function dismissNonChromePrompt(view, url) {
+  if (!view || !view.webContents) return;
+  if (!shouldDismissNonChromePrompt(url)) return;
+  const wc = view.webContents;
+  const now = Date.now();
+  if (view.__lastDismissAttemptAt && now - view.__lastDismissAttemptAt < 1500) return;
+  view.__lastDismissAttemptAt = now;
+  try {
+    await wc.executeJavaScript(`(() => {
+      const text = (s) => String(s || '').replace(/\\s+/g, '');
+      const hasKeywords = (s) => {
+        const t = text(s);
+        return t.includes('非chrome') || t.includes('非Chrome') || t.includes('不是chrome') || t.includes('不是Chrome') || t.includes('浏览器不支持') || t.includes('下载新版Chrome');
+      };
+      const clickByText = (root) => {
+        const nodes = Array.from(root.querySelectorAll('button,a,span,div'));
+        const preferred = ['已安装去使用', '继续使用', '去使用', '继续在当前页使用', '我已知晓', '关闭'];
+        for (const label of preferred) {
+          const node = nodes.find(n => text(n?.innerText).includes(text(label)));
+          if (node) {
+            const clickable = node.closest('button,a') || node;
+            clickable.click();
+            return true;
+          }
+        }
+        return false;
+      };
+      const bodyText = document.body ? document.body.innerText : '';
+      if (!hasKeywords(bodyText)) return { ok: false, reason: 'no_prompt' };
+      if (clickByText(document)) return { ok: true };
+      return { ok: false, reason: 'not_found' };
+    })()`, true);
+  } catch {}
 }
 
 function destroyView() {
@@ -117,14 +213,17 @@ function ensureView(store, shopId) {
 
   detailView.webContents.on('did-finish-load', () => {
     sendState(getViewState());
+    dismissNonChromePrompt(detailView, detailView.webContents.getURL());
   });
 
   detailView.webContents.on('did-navigate', () => {
     sendState(getViewState());
+    dismissNonChromePrompt(detailView, detailView.webContents.getURL());
   });
 
   detailView.webContents.on('did-navigate-in-page', () => {
     sendState(getViewState());
+    dismissNonChromePrompt(detailView, detailView.webContents.getURL());
   });
 
   detailView.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {

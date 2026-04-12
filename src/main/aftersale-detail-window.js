@@ -1,6 +1,5 @@
 const { BrowserWindow, BrowserView, shell } = require('electron');
 const path = require('path');
-const { getShopUserAgent, applySessionChromeUserAgent } = require('./pdd-chrome-ua');
 
 let detailWindow = null;
 let detailView = null;
@@ -22,11 +21,12 @@ function getShopPartition(shopId) {
   return `persist:pdd-${id}`;
 }
 
-function setViewUserAgent(store, shopId, view) {
-  const ua = getShopUserAgent(store, shopId);
-  view.__pddUserAgent = ua;
-  if (ua) view.webContents.setUserAgent(ua);
-  applySessionChromeUserAgent(view.webContents.session, ua);
+function getShopUserAgent(store, shopId) {
+  const id = String(shopId || '').trim();
+  if (!id) return '';
+  const shops = store?.get('shops') || [];
+  const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
+  return String(shop?.userAgent || '').trim();
 }
 
 function sendState(payload = {}) {
@@ -93,7 +93,8 @@ function ensureView(store, shopId) {
   });
   activeShopId = nextShopId;
 
-  setViewUserAgent(store, nextShopId, detailView);
+  const userAgent = getShopUserAgent(store, nextShopId);
+  if (userAgent) detailView.webContents.setUserAgent(userAgent);
 
   detailView.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {
@@ -105,9 +106,7 @@ function ensureView(store, shopId) {
   detailView.webContents.setWindowOpenHandler(({ url }) => {
     if (url?.startsWith('http')) {
       if (isMerchantUrl(url)) {
-        const ua = detailView?.__pddUserAgent;
-        if (ua) detailView.webContents.loadURL(url, { userAgent: ua });
-        else detailView.webContents.loadURL(url);
+        detailView.webContents.loadURL(url);
       } else {
         shell.openExternal(url);
       }
@@ -151,7 +150,7 @@ function ensureView(store, shopId) {
   return detailView;
 }
 
-async function createAfterSaleDetailWindow() {
+async function createAfterSaleDetailWindow(parent) {
   if (detailWindow) {
     if (detailWindow.isMinimized()) detailWindow.restore();
     if (!detailWindow.isVisible()) detailWindow.show();
@@ -159,11 +158,13 @@ async function createAfterSaleDetailWindow() {
     return detailWindow;
   }
 
+  const validParent = parent && !parent.isDestroyed() ? parent : undefined;
   detailWindow = new BrowserWindow({
     width: 1240,
     height: 820,
     minWidth: 980,
     minHeight: 640,
+    parent: validParent,
     title: '售后详情',
     show: false,
     webPreferences: {
@@ -223,9 +224,7 @@ function loadAfterSaleDetailUrl(store, shopId, url) {
   const view = ensureView(store, targetShopId);
   detailWindow.setBrowserView(view);
   resizeView();
-  const ua = view?.__pddUserAgent;
-  if (ua) view.webContents.loadURL(targetUrl, { userAgent: ua });
-  else view.webContents.loadURL(targetUrl);
+  view.webContents.loadURL(targetUrl);
   return { ok: true };
 }
 

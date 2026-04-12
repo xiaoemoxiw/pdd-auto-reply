@@ -68,6 +68,7 @@ function registerTicketTodoDetailWindowIpc({
   store,
   getMainWindow
 }) {
+  let boundMainWindowFocus = false;
   ipcMain.handle('ticket-open-todo-detail-window', async (event, params = {}) => {
     try {
       const url = String(params?.url || '').trim() || buildTicketTodoDetailUrl(params);
@@ -81,6 +82,14 @@ function registerTicketTodoDetailWindowIpc({
         if (typeof win.setParentWindow === 'function') win.setParentWindow(null);
         if (typeof win.setAlwaysOnTop === 'function') win.setAlwaysOnTop(false);
       } catch {}
+      if (!boundMainWindowFocus && mainWindow && !mainWindow.isDestroyed()) {
+        boundMainWindowFocus = true;
+        mainWindow.on('focus', () => {
+          try {
+            if (typeof mainWindow.moveTop === 'function') mainWindow.moveTop();
+          } catch {}
+        });
+      }
 
       const res = loadTicketTodoDetailUrl(store, shopId, url);
       if (res && res.error) return res;

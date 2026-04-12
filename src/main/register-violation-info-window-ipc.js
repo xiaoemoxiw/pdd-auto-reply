@@ -34,7 +34,9 @@ function registerViolationInfoWindowIpc({
         if (!appealSn || !violationType) return { error: '缺少 appeal_sn 或 violation_type' };
       } catch {}
 
-      const win = await createViolationInfoWindow();
+      const mainWindow = getMainWindow?.();
+      const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+      const win = await createViolationInfoWindow(parent);
       if (!win || win.isDestroyed()) return { error: '详情窗口创建失败' };
 
       const res = loadViolationInfoUrl(store, shopId, url);
@@ -51,3 +53,4 @@ function registerViolationInfoWindowIpc({
 module.exports = {
   registerViolationInfoWindowIpc
 };
+

@@ -37,7 +37,9 @@ function registerAfterSaleDetailWindowIpc({
       if (!url) return { error: '缺少详情链接' };
       const shopId = String(params?.shopId || '').trim();
 
-      const win = await createAfterSaleDetailWindow();
+      const mainWindow = getMainWindow?.();
+      const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+      const win = await createAfterSaleDetailWindow(parent);
       if (!win || win.isDestroyed()) return { error: '详情窗口创建失败' };
 
       const res = loadAfterSaleDetailUrl(store, shopId, url);
@@ -87,3 +89,4 @@ function registerAfterSaleDetailWindowIpc({
 module.exports = {
   registerAfterSaleDetailWindowIpc
 };
+

@@ -6673,6 +6673,7 @@
   <link rel="stylesheet" href="./mail-api-module.css">
   <link rel="stylesheet" href="./invoice-api-module.css">
   <link rel="stylesheet" href="./violation-api-module.css">
+  <link rel="stylesheet" href="./deduction-api-module.css">
   <link rel="stylesheet" href="./ticket-api-module.css">
   <link rel="stylesheet" href="./qa-module.css">
   <link rel="stylesheet" href="./test-flow-module.css">
@@ -6789,6 +6790,14 @@
             <path d="M8 21h8"></path>
           </svg>
           <span>违规管理（接口对接）</span>
+        </div>
+        <div class="nav-item" data-view="deduction-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1v22"></path>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+          <span>扣款（接口对接）</span>
         </div>
         <div class="nav-item" data-view="ticket">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -7463,6 +7472,82 @@
               </div>
               <div class="violation-api-traffic-panel">
                 <div class="mail-api-traffic-list violation-api-traffic-list" id="violationApiTrafficList">
+                  <span class="mail-api-traffic-chip">暂无抓包</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="view-page" id="viewDeductionApi">
+        <div class="deduction-api-page">
+          <div class="page-toolbar">
+            <div class="balance-total">扣款接口对接</div>
+            <span class="spacer"></span>
+            <button class="btn btn-secondary" id="btnDeductionApiReloadTraffic">刷新抓包</button>
+            <button class="btn btn-secondary" id="btnDeductionApiClearTraffic">清空记录</button>
+          </div>
+          <div class="deduction-api-layout">
+            <div class="deduction-api-section deduction-api-section--list">
+              <div class="deduction-api-table-header">
+                <div class="deduction-api-table-title">
+                  <span>扣款列表</span>
+                  <span class="deduction-api-table-meta" id="deductionApiListMeta">0 条记录</span>
+                </div>
+                <div class="deduction-api-table-status" id="deductionApiListStatus">等待加载扣款数据</div>
+              </div>
+              <div class="deduction-api-filter-row">
+                <div class="deduction-api-filter-tabs" id="deductionApiFilterTabs">
+                  <button type="button" class="deduction-api-filter-btn active" data-deduction-filter="delayShip" id="deductionApiFilterDelayShip">
+                    延迟发货 <span class="deduction-api-filter-count" id="deductionApiCountDelayShip">0</span>
+                  </button>
+                  <button type="button" class="deduction-api-filter-btn" data-deduction-filter="outOfStock" id="deductionApiFilterOutOfStock">
+                    缺货扣款 <span class="deduction-api-filter-count" id="deductionApiCountOutOfStock">0</span>
+                  </button>
+                  <button type="button" class="deduction-api-filter-btn" data-deduction-filter="fakeShipTrack" id="deductionApiFilterFakeShipTrack">
+                    虚假发货（轨迹） <span class="deduction-api-filter-count" id="deductionApiCountFakeShipTrack">0</span>
+                  </button>
+                </div>
+                <div class="deduction-api-filter-tools">
+                  <button class="btn btn-primary" id="btnDeductionApiRefresh">刷新</button>
+                  <div class="deduction-api-pager" id="deductionApiPager">
+                    <button class="deduction-api-page-btn" id="btnDeductionApiPagePrev" disabled>&lt;</button>
+                    <div class="deduction-api-page-numbers" id="deductionApiPageNumbers"></div>
+                    <button class="deduction-api-page-btn" id="btnDeductionApiPageNext" disabled>&gt;</button>
+                  </div>
+                </div>
+              </div>
+              <div class="deduction-api-table-wrap">
+                <table class="data-table deduction-api-table">
+                  <thead>
+                    <tr>
+                      <th style="width:46px">序号</th>
+                      <th style="width:140px">店铺名称</th>
+                      <th style="width:170px">订单号</th>
+                      <th style="width:110px">商品ID</th>
+                      <th>商品名称</th>
+                      <th style="width:160px">承诺时间</th>
+                      <th style="width:110px">扣款金额</th>
+                      <th style="width:160px">扣款时间</th>
+                      <th style="min-width:240px">扣款原因</th>
+                    </tr>
+                  </thead>
+                  <tbody id="deductionApiList"></tbody>
+                </table>
+              </div>
+              <div class="deduction-api-table-footer">
+                <span class="deduction-api-table-meta" id="deductionApiFooterTotal">共 0 条</span>
+              </div>
+            </div>
+            <div class="deduction-api-section deduction-api-section--traffic">
+              <div class="deduction-api-table-header">
+                <div class="deduction-api-table-title">
+                  <span>接口抓包</span>
+                  <span class="deduction-api-table-meta" id="deductionApiTrafficSummary">0 条抓包记录</span>
+                </div>
+              </div>
+              <div class="deduction-api-traffic-panel">
+                <div class="mail-api-traffic-list" id="deductionApiTrafficList">
                   <span class="mail-api-traffic-chip">暂无抓包</span>
                 </div>
               </div>
@@ -8535,6 +8620,7 @@
   <script src="./mail-api-module.js"></script>
   <script src="./invoice-api-module.js"></script>
   <script src="./violation-api-module.js"></script>
+  <script src="./deduction-api-module.js"></script>
   <script src="./ticket-api-module.js"></script>
   <script src="./qa-module.js"></script>
   <script src="./shops-module.js"></script>
@@ -9023,6 +9109,7 @@
         'mail-api': 'viewMailApi',
         'invoice-api': 'viewInvoiceApi',
         'violation-api': 'viewViolationApi',
+        'deduction-api': 'viewDeductionApi',
         'ticket-api': 'viewTicketApi',
         shops: 'viewShops',
         qa: 'viewQA',
@@ -9045,6 +9132,7 @@
         || view === 'mail-api'
         || view === 'invoice-api'
         || view === 'violation-api'
+        || view === 'deduction-api'
         || view === 'ticket-api';
     }
 
@@ -9057,6 +9145,8 @@
         await loadInvoiceApiView(options);
       } else if (view === 'violation-api') {
         await loadViolationApiView(options);
+      } else if (view === 'deduction-api') {
+        await loadDeductionApiView(options);
       } else if (view === 'ticket-api') {
         await loadTicketApiView(options);
       } else if (view === 'shops') {

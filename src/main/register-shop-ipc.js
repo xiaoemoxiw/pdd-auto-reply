@@ -8,7 +8,8 @@ function registerShopIpc({
   destroyMailApiClient,
   destroyInvoiceApiClient,
   destroyTicketApiClient,
-  destroyViolationApiClient
+  destroyViolationApiClient,
+  destroyDeductionApiClient
 }) {
   ipcMain.handle('get-active-shop', () => {
     const shopManager = getShopManager();
@@ -70,6 +71,7 @@ function registerShopIpc({
     destroyInvoiceApiClient(shopId);
     destroyTicketApiClient(shopId);
     destroyViolationApiClient(shopId);
+    destroyDeductionApiClient(shopId);
     return shopManager.removeShop(shopId);
   });
 

@@ -4,55 +4,79 @@
   let violationApiList = [];
   let violationApiStatusFilter = '';
   let violationApiQuickFilter = 'pending';
+  let violationApiQuickFilterBeforeStatus = 'pending';
   let violationApiActiveId = '';
   let violationApiActiveDetail = null;
   let violationApiLastListResult = null;
   let violationApiSelectedRecord = null;
   let violationApiProgressMenuOpen = false;
-  const violationApiProgressOptions = [
-    {
-      value: '0',
-      label: '待申诉',
-      match(text = '') {
-        return text.includes('待申诉');
-      }
-    },
-    {
-      value: '1',
-      label: '平台处理中',
-      match(text = '') {
-        return text.includes('平台处理中');
-      }
-    },
-    {
-      value: '2',
-      label: '平台跟进中',
-      match(text = '') {
-        return text.includes('平台跟进中');
-      }
-    },
-    {
-      value: '3',
-      label: '待完善资料',
-      match(text = '') {
-        return text.includes('待完善资料');
-      }
-    },
-    {
-      value: '4',
-      label: '申诉成功',
-      match(text = '') {
-        return text.includes('申诉成功');
-      }
-    },
-    {
-      value: '5',
-      label: '超时关闭申诉',
-      match(text = '') {
-        return text.includes('超时关闭申诉') || text.includes('关闭申诉');
-      }
-    },
+  const violationApiProgressGroups = [
+    { label: '待申诉', codes: [0, 7] },
+    { label: '平台处理中', codes: [1, 8, 10, 16, 17, 27, 30] },
+    { label: '平台跟进中', codes: [34] },
+    { label: '待完善资料', codes: [2, 9, 11, 18, 19] },
+    { label: '申诉成功', codes: [3] },
+    { label: '申诉失败', codes: [4, 21] },
+    { label: '超时关闭申诉', codes: [5] },
+    { label: '已处理', codes: [6, 31] },
+    { label: '申诉终止', codes: [12, 26] },
+    { label: '确认违规，处理中', codes: [13, 25] },
+    { label: '未缴纳保证金', codes: [20] },
+    { label: '主动认罚', codes: [22] },
+    { label: '申诉完结', codes: [23] },
+    { label: '申诉部分成功', codes: [24] },
+    { label: '申述关闭', codes: [28] },
+    { label: '待商家处理', codes: [29] },
+    { label: '补缴成功', codes: [32] },
+    { label: '超时未缴纳', codes: [33] },
   ];
+
+  function getViolationProgressLabelFromCode(code) {
+    const num = Number(code);
+    if (!Number.isFinite(num)) return '';
+    const group = violationApiProgressGroups.find(item => item.codes.includes(num));
+    return group?.label || '';
+  }
+
+  const violationApiProgressOptions = violationApiProgressGroups.map(group => {
+    const value = group.label;
+    const label = group.label;
+    const codes = Array.isArray(group.codes) ? group.codes : [];
+    const normalizedLabel = String(label || '')
+      .replace(/[，,]/g, '')
+      .replace(/\s+/g, '');
+    return {
+      value,
+      label,
+      codes,
+      match(text = '', code) {
+        const num = Number(code);
+        if (Number.isFinite(num) && codes.includes(num)) return true;
+        const normalized = String(text || '')
+          .replace(/[，,]/g, '')
+          .replace(/\s+/g, '');
+        if (label === '申述关闭') return normalized.includes('申述关闭') || normalized.includes('申诉关闭');
+        return normalized.includes(normalizedLabel);
+      }
+    };
+  });
+
+  function getViolationProgressCodesByLabels(labels = []) {
+    const set = new Set();
+    labels.forEach(label => {
+      const group = violationApiProgressGroups.find(item => item.label === label);
+      const codes = Array.isArray(group?.codes) ? group.codes : [];
+      codes.forEach(code => {
+        const num = Number(code);
+        if (Number.isFinite(num)) set.add(num);
+      });
+    });
+    return set;
+  }
+
+  const violationApiQuickPendingCodes = getViolationProgressCodesByLabels(['待申诉']);
+  const violationApiQuickAppealingCodes = getViolationProgressCodesByLabels(['待完善资料']);
+  const violationApiQuickProcessingCodes = getViolationProgressCodesByLabels(['平台处理中', '平台跟进中', '确认违规，处理中']);
 
   function getEl(id) {
     return document.getElementById(id);
@@ -116,28 +140,6 @@
         return '';
       }
     }
-  }
-
-  function renderViolationApiResponseFields() {
-    const metaEl = getEl('violationApiResponseMeta');
-    const statusEl = getEl('violationApiResponseStatus');
-    const bodyEl = getEl('violationApiResponseBody');
-    if (!metaEl || !statusEl || !bodyEl) return;
-
-    if (!violationApiSelectedRecord?.violationNo) {
-      metaEl.textContent = '点击列表记录查看';
-      statusEl.textContent = '当前展示该记录在“列表接口”中的原始返回数据';
-      bodyEl.innerHTML = '<div class="violation-api-response-empty">点击上方列表中的一条记录，即可在这里查看接口返回字段</div>';
-      return;
-    }
-
-    const recordNo = String(violationApiSelectedRecord.violationNo || '').trim();
-    metaEl.textContent = recordNo ? `已选择：${recordNo}` : '已选择记录';
-    statusEl.textContent = '已加载列表接口返回数据';
-    const rawText = stringifySafely(violationApiSelectedRecord.raw || {}, 24000);
-    bodyEl.innerHTML = rawText
-      ? `<div class="violation-api-response-raw"><pre>${esc(rawText)}</pre></div>`
-      : '<div class="violation-api-response-empty">列表接口未返回可展示的数据</div>';
   }
 
   function getObjectStringValues(source = {}) {
@@ -228,18 +230,12 @@
       'appealStatus',
       'appeal_status'
     ]);
-    const appealStatusText = (() => {
+    const progressCode = (() => {
       const num = Number(appealStatus);
-      if (!Number.isFinite(num)) return '';
-      if (num === 0) return '待申诉';
-      if (num === 1) return '平台处理中';
-      if (num === 2) return '平台跟进中';
-      if (num === 3) return '待完善资料';
-      if (num === 4) return '申诉成功';
-      if (num === 5) return '超时关闭申诉';
-      return '';
+      return Number.isFinite(num) ? num : null;
     })();
-    const progress = String(appealStatusText || pickFirstValue(item, [
+    const progressTextFromCode = progressCode === null ? '' : getViolationProgressLabelFromCode(progressCode);
+    const progress = String(progressTextFromCode || pickFirstValue(item, [
       'statusDesc',
       'status_desc',
       'statusText',
@@ -261,6 +257,7 @@
       notifyTime,
       appealTime,
       processTime,
+      progressCode,
       progress,
       summary: rawValues.slice(0, 6).join(' · '),
       raw: item
@@ -288,7 +285,7 @@
   function dedupeViolationList(list = []) {
     const seen = new Set();
     return list.filter(item => {
-      const key = `${item.violationNo}::${item.violationType}::${item.notifyTime}`;
+      const key = `${item.shopId || ''}::${item.violationNo}::${item.violationType}::${item.notifyTime}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -310,16 +307,25 @@
   }
 
   function getViolationQuickType(item = {}) {
-    const text = `${item.progress || ''} ${item.violationType || ''}`.toLowerCase();
-    if (text.includes('平台处理') || text.includes('处理中') || text.includes('审核')) return 'processing';
-    if (text.includes('申诉') || text.includes('举证') || text.includes('整改') || text.includes('完善资料')) return 'appealing';
-    return 'pending';
+    const code = Number(item.progressCode);
+    if (Number.isFinite(code)) {
+      if (violationApiQuickProcessingCodes.has(code)) return 'processing';
+      if (violationApiQuickAppealingCodes.has(code)) return 'appealing';
+      if (violationApiQuickPendingCodes.has(code)) return 'pending';
+      return 'other';
+    }
+    const text = String(item.progress || '').trim();
+    if (!text) return 'other';
+    if (text.includes('待完善资料')) return 'appealing';
+    if (text.includes('平台处理中') || text.includes('平台跟进中') || text.includes('确认违规')) return 'processing';
+    if (text.includes('待申诉')) return 'pending';
+    return 'other';
   }
 
   function getViolationQuickCounts() {
     return violationApiList.reduce((acc, item) => {
       const type = getViolationQuickType(item);
-      acc[type] += 1;
+      if (type in acc) acc[type] += 1;
       return acc;
     }, { pending: 0, appealing: 0, processing: 0 });
   }
@@ -332,7 +338,7 @@
     return violationApiList.reduce((acc, item) => {
       const text = String(item.progress || '').trim();
       for (const option of violationApiProgressOptions) {
-        if (option.match(text)) {
+        if (option.match(text, item.progressCode)) {
           acc[option.value] += 1;
           break;
         }
@@ -369,19 +375,24 @@
     document.querySelectorAll('[data-violation-quick]').forEach(button => {
       button.classList.toggle('active', button.dataset.violationQuick === violationApiQuickFilter);
     });
+    getEl('violationApiProgressDropdownBtn')?.classList.toggle('active', !!violationApiStatusFilter);
   }
 
   function renderViolationProgressMenu() {
+    const counts = getViolationProgressCounts();
+    const total = violationApiList.length;
     const labelEl = getEl('violationApiProgressDropdownLabel');
     if (labelEl) {
       const active = violationApiProgressOptions.find(option => option.value === violationApiStatusFilter);
-      labelEl.textContent = active?.label || '选择所有进度类型';
+      if (active) {
+        labelEl.textContent = `${active.label} ${String(counts[active.value] ?? 0)}`;
+      } else {
+        labelEl.textContent = '选择所有进度';
+      }
     }
     const menu = getEl('violationApiProgressMenu');
     if (!menu) return;
-    const counts = getViolationProgressCounts();
-    const total = violationApiList.length;
-    const options = [{ value: '', label: '选择所有进度类型', count: total }].concat(
+    const options = [{ value: '', label: '选择所有进度', count: total }].concat(
       violationApiProgressOptions.map(option => ({ value: option.value, label: option.label, count: counts[option.value] || 0 }))
     );
     menu.innerHTML = options.map(option => {
@@ -397,6 +408,12 @@
       button.addEventListener('click', async () => {
         const nextValue = button.dataset.violationProgress || '';
         violationApiStatusFilter = nextValue;
+        if (nextValue) {
+          if (violationApiQuickFilter !== 'all') violationApiQuickFilterBeforeStatus = violationApiQuickFilter;
+          violationApiQuickFilter = 'all';
+        } else if (violationApiQuickFilter === 'all') {
+          violationApiQuickFilter = violationApiQuickFilterBeforeStatus || 'pending';
+        }
         closeViolationProgressMenu();
         renderViolationQuickSummary();
         await loadViolationApiList();
@@ -424,7 +441,7 @@
       if (violationApiStatusFilter) {
         const text = String(item.progress || '').trim();
         const option = violationApiProgressOptions.find(item => item.value === violationApiStatusFilter);
-        if (option && !option.match(text)) return false;
+        if (option && !option.match(text, item.progressCode)) return false;
       }
       return true;
     });
@@ -563,14 +580,10 @@
   function updateViolationApiBannerText() {
     const banner = getEl('violationApiBannerText');
     if (!banner) return;
-    if (!activeShopId) {
-      banner.textContent = '当前没有活跃店铺，请先切换店铺后再查看违规管理接口页。';
-      return;
-    }
     banner.textContent = `已加载违规管理列表 ${violationApiList.length} 条。`;
   }
 
-  async function loadViolationApiTraffic(shopId = activeShopId) {
+  async function loadViolationApiTraffic(shopId = API_ALL_SHOPS) {
     if (!shopId) {
       violationApiEntries = [];
       renderViolationApiTraffic();
@@ -609,40 +622,35 @@
   }
 
   async function loadViolationApiList() {
-    const shopName = getActiveShopName(activeShopId);
-    if (!activeShopId) {
-      violationApiLastListResult = null;
-      violationApiList = [];
-      violationApiSelectedRecord = null;
-      renderViolationQuickSummary();
-      renderViolationProgressMenu();
-      renderViolationApiList();
-      renderViolationApiDetail();
-      renderViolationApiResponseFields();
-      updateViolationApiBannerText();
-      return;
-    }
-
+    const shopId = API_ALL_SHOPS;
     const pageSize = 100;
     const maxPages = 5;
     try {
       let combinedList = [];
       let typeMap = {};
       let total = 0;
+      const failuresMap = new Map();
 
       for (let pageNo = 1; pageNo <= maxPages; pageNo += 1) {
-        const result = await window.pddApi.violationGetList({ shopId: activeShopId, pageNo, pageSize });
+        const result = await window.pddApi.violationGetList({ shopId, pageNo, pageSize });
         if (result?.error) {
           throw new Error(result.error);
         }
         if (result?.typeMap && typeof result.typeMap === 'object') {
           typeMap = result.typeMap;
         }
+        if (Array.isArray(result?.failures)) {
+          result.failures.forEach(item => {
+            const key = String(item?.shopId || '');
+            if (!key) return;
+            failuresMap.set(key, item);
+          });
+        }
         const list = Array.isArray(result?.list) ? result.list : [];
         combinedList = combinedList.concat(list);
-        if (!total) total = Number(result?.total || 0) || list.length;
-        if (combinedList.length >= total) break;
-        if (list.length < pageSize) break;
+        if (!total) total = Number(result?.total || 0) || 0;
+        if (total && combinedList.length >= total) break;
+        if (!list.length) break;
       }
 
       violationApiLastListResult = {
@@ -650,6 +658,7 @@
         loaded: combinedList.length,
         pageSize,
         typeMapSize: Object.keys(typeMap || {}).length,
+        failuresCount: failuresMap.size,
       };
 
       violationApiList = dedupeViolationList(combinedList.map((raw, index) => {
@@ -692,6 +701,8 @@
         })();
         const orderCountText = (() => {
           const rawValue = pickFirstValue(normalized.raw || {}, [
+            'violationInfo.violationOrderCount',
+            'violation_info.violation_order_count',
             'violationOrderCount',
             'violation_order_count',
             'orderCount',
@@ -723,10 +734,12 @@
           ]);
           return rawValue ? String(rawValue) : '';
         })();
+        const rawShopId = String(raw?.shopId || raw?.mallId || raw?.shop_id || raw?.mall_id || '').trim();
+        const rawShopName = String(raw?.shopName || raw?.mallName || raw?.shop_name || raw?.mall_name || '').trim();
         return {
           ...normalized,
-          shopId: activeShopId,
-          shopName: shopName || '',
+          shopId: rawShopId || activeShopId,
+          shopName: rawShopName || getActiveShopName(rawShopId || activeShopId) || '',
           fineText: fineText || '',
           orderCountText: orderCountText || '',
           reasonText: reasonText || '',
@@ -741,7 +754,6 @@
       renderViolationProgressMenu();
       renderViolationApiList();
       renderViolationApiDetail();
-      renderViolationApiResponseFields();
       updateViolationApiBannerText();
       return;
     }
@@ -751,7 +763,6 @@
     renderViolationProgressMenu();
     renderViolationApiList();
     updateViolationApiBannerText();
-    renderViolationApiResponseFields();
     const visibleList = getViolationVisibleList();
     if (violationApiActiveId && visibleList.some(item => String(item.violationNo) === String(violationApiActiveId))) {
       violationApiActiveDetail = visibleList.find(item => String(item.violationNo) === String(violationApiActiveId)) || violationApiActiveDetail;
@@ -766,7 +777,6 @@
     violationApiActiveId = '';
     violationApiActiveDetail = null;
     renderViolationApiDetail();
-    renderViolationApiResponseFields();
   }
 
   async function openViolationApiDetail(violationNo, options = {}) {
@@ -776,7 +786,6 @@
     violationApiSelectedRecord = violationApiActiveDetail || null;
     renderViolationApiList();
     renderViolationApiDetail();
-    renderViolationApiResponseFields();
 
     if (!options.skipTraffic) {
       await loadViolationApiTraffic();
@@ -788,6 +797,7 @@
     violationApiList = [];
     violationApiStatusFilter = '';
     violationApiQuickFilter = 'pending';
+    violationApiQuickFilterBeforeStatus = 'pending';
     violationApiActiveId = '';
     violationApiActiveDetail = null;
     violationApiLastListResult = null;
@@ -796,28 +806,20 @@
     renderViolationProgressMenu();
     renderViolationApiList();
     renderViolationApiDetail();
-    renderViolationApiResponseFields();
     renderViolationApiTraffic();
     updateViolationApiBannerText();
   }
 
   async function loadViolationApiView() {
     await refreshShopContext();
-    if (!activeShopId) {
-      resetViolationApiState();
-      return;
-    }
+    resetViolationApiState();
+    await loadViolationApiTraffic();
     await loadViolationApiList();
   }
 
   function bindViolationApiModule() {
     if (initialized) return;
     initialized = true;
-    getEl('btnViolationApiOpenDebug')?.addEventListener('click', async () => {
-      const result = await window.pddApi.openDebugWindow();
-      if (result?.error) addLog(`打开调试面板失败: ${result.error}`, 'error');
-    });
-    getEl('btnViolationApiRefreshPage')?.addEventListener('click', () => window.pddApi.reloadPdd());
     getEl('btnViolationApiReloadTraffic')?.addEventListener('click', async () => {
       await loadViolationApiTraffic();
       await loadViolationApiList();
@@ -839,6 +841,8 @@
       button.addEventListener('click', async () => {
         const nextFilter = button.dataset.violationQuick || 'pending';
         if (nextFilter === violationApiQuickFilter) return;
+        violationApiStatusFilter = '';
+        closeViolationProgressMenu();
         violationApiQuickFilter = nextFilter;
         renderViolationQuickSummary();
         renderViolationProgressMenu();

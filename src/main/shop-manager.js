@@ -204,9 +204,10 @@ class ShopManager {
       ? (record.tokenInfo.mallId ? `店铺 ${record.tokenInfo.mallId}` : previousName || `店铺 ${record.shopId.slice(-6)}`)
       : previousName;
     const hasRealShopName = this._hasRealShopName(previousName);
-    const inheritedFetchedAt = hasRealShopName ? Number(previousShop.shopInfoFetchedAt || 0) : 0;
-    const inheritedStatus = inheritedFetchedAt ? 'done' : 'pending';
     const previousInfoStatus = previousShop.shopInfoStatus || '';
+    const canInheritFetchedAt = hasRealShopName || ['done', 'partial'].includes(previousInfoStatus);
+    const inheritedFetchedAt = canInheritFetchedAt ? Number(previousShop.shopInfoFetchedAt || 0) : 0;
+    const inheritedStatus = inheritedFetchedAt ? 'done' : 'pending';
     const normalizedInfoStatus = previousInfoStatus === 'fetching'
       ? 'pending'
       : (inheritedFetchedAt ? previousInfoStatus || inheritedStatus : (
@@ -234,7 +235,9 @@ class ShopManager {
       shopInfoStatus: normalizedInfoStatus || 'pending',
       shopInfoFetchedAt: inheritedFetchedAt,
       shopInfoLastAttemptAt: Number(previousShop.shopInfoLastAttemptAt || 0),
-      shopInfoError: inheritedFetchedAt ? '' : (previousShop.shopInfoError || '')
+      shopInfoError: normalizedInfoStatus === 'failed' || normalizedInfoStatus === 'expired'
+        ? (previousShop.shopInfoError || '')
+        : ''
     };
   }
 
@@ -988,7 +991,7 @@ class ShopManager {
     return !!error?.authExpired || [40001, 43001, 43002].includes(code);
   }
 
-  _applyShopProfile(shopId, profile = {}) {
+  _applyShopProfile(shopId, profile = {}, options = {}) {
     if (!shopId || !profile || typeof profile !== 'object') return null;
     const shops = this.store.get('shops') || [];
     const shop = shops.find(item => item.id === shopId);
@@ -1014,13 +1017,25 @@ class ShopManager {
       shop.category = nextCategory;
       changed = true;
     }
-    shop.shopInfoStatus = 'done';
-    shop.shopInfoFetchedAt = Date.now();
-    shop.shopInfoError = '';
+    const nextInfoStatus = options.shopInfoStatus || 'done';
+    const nextInfoError = options.shopInfoError || '';
+    const fetchedAt = Number(options.shopInfoFetchedAt || Date.now()) || Date.now();
+    if (shop.shopInfoStatus !== nextInfoStatus) {
+      shop.shopInfoStatus = nextInfoStatus;
+      changed = true;
+    }
+    if (shop.shopInfoFetchedAt !== fetchedAt) {
+      shop.shopInfoFetchedAt = fetchedAt;
+      changed = true;
+    }
+    if (shop.shopInfoError !== nextInfoError) {
+      shop.shopInfoError = nextInfoError;
+      changed = true;
+    }
     if (shop.status !== 'online') {
       shop.status = 'online';
+      changed = true;
     }
-    changed = true;
     if (changed) {
       this.store.set('shops', shops);
       this.mainWindow?.webContents.send('shop-list-updated', { shops });
@@ -1040,15 +1055,25 @@ class ShopManager {
       shopInfoError: ''
     });
     try {
-      await client.initSession(true);
+      const initResult = await client.initSession(true);
       const profile = await client.getShopProfile(true);
-      const hasMallName = !!String(profile?.mallName || '').trim();
-      if (!hasMallName) {
-        throw new Error('接口未返回真实店铺名称');
+      const hasMallName = this._hasRealShopName(profile?.mallName || '');
+      const apiSuccessCount = Number(profile?.apiSuccessCount || 0);
+      const tokenUsable = apiSuccessCount > 0;
+      if (!tokenUsable) {
+        const errorMessage = initResult?.initialized
+          ? '网页登录已进入会话，但接口未验证通过'
+          : '店铺信息获取未完成';
+        throw new Error(errorMessage);
       }
-      const shop = this._applyShopProfile(shopId, profile);
+      const shopInfoStatus = hasMallName ? 'done' : 'partial';
+      const shopInfoError = hasMallName ? '' : '已验证接口 Token 可用，待补全店铺名称';
+      const shop = this._applyShopProfile(shopId, profile, {
+        shopInfoStatus,
+        shopInfoError
+      });
       if (shop) {
-        this.onLog(`[PDD助手] 已通过接口刷新店铺信息: ${shop.name || shop.id}`);
+        this.onLog(`[PDD助手] 已通过接口刷新店铺信息: ${shop.name || shop.id}${shopInfoStatus === 'partial' ? '（待补全店铺名称）' : ''}`);
       }
       return shop;
     } catch (error) {

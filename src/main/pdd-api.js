@@ -1974,6 +1974,18 @@ class PddApiClient extends EventEmitter {
     const serviceProfile = serviceProfileResult.status === 'fulfilled' ? serviceProfileResult.value : {};
     const mallInfo = mallInfoResult.status === 'fulfilled' ? mallInfoResult.value : {};
     const credentialInfo = credentialInfoResult.status === 'fulfilled' ? credentialInfoResult.value : {};
+    const resultEntries = [
+      ['userInfo', userInfoResult],
+      ['serviceProfile', serviceProfileResult],
+      ['mallInfo', mallInfoResult],
+      ['credentialInfo', credentialInfoResult]
+    ];
+    const apiResolvedSources = resultEntries
+      .filter(([, item]) => item?.status === 'fulfilled')
+      .map(([name]) => name);
+    const apiFailedSources = resultEntries
+      .filter(([, item]) => item?.status !== 'fulfilled')
+      .map(([name]) => name);
     return {
       mallId: mallInfo.mallId || credentialInfo.mallId || serviceProfile.mallId || userInfo.mallId || this._getMallId() || '',
       mallName: mallInfo.mallName || credentialInfo.mallName || serviceProfile.mallName || '',
@@ -1983,6 +1995,9 @@ class PddApiClient extends EventEmitter {
       logo: mallInfo.logo || serviceProfile.serviceAvatar || '',
       companyName: credentialInfo.companyName || '',
       merchantType: credentialInfo.merchantType || '',
+      apiSuccessCount: apiResolvedSources.length,
+      apiResolvedSources,
+      apiFailedSources,
     };
   }
 

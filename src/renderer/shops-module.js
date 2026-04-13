@@ -148,6 +148,7 @@
     if (status === 'fetching') return '店鋪信息獲取中';
     if (status === 'expired') return 'Token 已過期，接口不可用';
     if (status === 'failed') return '店鋪信息獲取失敗';
+    if (status === 'partial') return 'Token 可用，待獲取店鋪名稱';
     if (!shop?.shopInfoFetchedAt) return '店鋪信息待獲取';
     return '';
   }
@@ -176,7 +177,9 @@
       const isActive = shop.id === activeShopId;
       const shopInfoStatusText = getShopInfoStatusText(shop);
       const shopInfoErrorTitle = shop.shopInfoError ? ` title="${esc(shop.shopInfoError)}"` : '';
-      const refreshButtonTitle = shop.shopInfoError
+      const refreshButtonTitle = shop.shopInfoStatus === 'partial'
+        ? 'Token 可用，可继续获取店鋪名稱'
+        : shop.shopInfoError
         ? `重新獲取店鋪信息\n上次失敗：${shop.shopInfoError}`
         : '手動獲取店鋪信息';
       return `<tr>

@@ -22,8 +22,74 @@
     setTimeout(() => el.classList.remove('show'), 2000);
   }
 
+  function sanitizeRule(rule) {
+    if (!rule || typeof rule !== 'object') return null;
+    const { name, ...rest } = rule;
+    return rest;
+  }
+
+  function sanitizeRules(input) {
+    const arr = Array.isArray(input) ? input : [];
+    return arr.map(sanitizeRule).filter(Boolean);
+  }
+
+  function collectReplySegments(reply) {
+    if (Array.isArray(reply)) {
+      return reply
+        .flatMap(item => collectReplySegments(item))
+        .filter(Boolean);
+    }
+
+    const text = String(reply || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return [];
+
+    return text
+      .split(/\n\s*---\s*\n/g)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
+  function formatReplyForEditor(reply) {
+    return collectReplySegments(reply).join('\n\n---\n\n');
+  }
+
+  function renderQAReplySplitPreview(reply) {
+    const previewEl = getEl('qaReplySplitPreview');
+    if (!previewEl) return;
+
+    const rawText = String(reply || '').trim();
+    if (!rawText) {
+      previewEl.classList.remove('show');
+      previewEl.innerHTML = '';
+      return;
+    }
+
+    const segments = collectReplySegments(reply);
+    const summary = segments.length > 1
+      ? `预览拆分结果：当前会识别为 ${segments.length} 段回复，命中后随机发送其中一条。`
+      : '预览拆分结果：当前仅识别为 1 段回复；如需随机回复，请点击“插入分栏”后再填写下一段内容。';
+
+    previewEl.innerHTML = `
+      <div class="qa-reply-preview-title">${summary}</div>
+      <div class="qa-reply-preview-list">
+        ${segments.map((segment, index) => `
+          <div class="qa-reply-preview-item">
+            <div class="qa-reply-preview-label">回复 ${index + 1}</div>
+            <div class="qa-reply-preview-text">${esc(segment)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    previewEl.classList.add('show');
+  }
+
+  async function persistRules(nextRules) {
+    rules = sanitizeRules(nextRules);
+    await window.pddApi.saveRules(rules);
+  }
+
   async function loadRules() {
-    rules = await window.pddApi.getRules();
+    rules = sanitizeRules(await window.pddApi.getRules());
     shops = await window.pddApi.getShops();
     renderRules();
   }
@@ -42,14 +108,16 @@
     const matchTypeMap = { contains: '包含关键词', exact: '完全匹配', regex: '正则匹配' };
     tbody.innerHTML = rules.map((rule, index) => {
       const kwSummary = (rule.keywords || []).slice(0, 3).join('、') + (rule.keywords?.length > 3 ? '...' : '');
+      const replyText = formatReplyForEditor(rule.reply);
+      const replySummary = replyText.slice(0, 20) + (replyText.length > 20 ? '...' : '');
       const shopNames = rule.shops && rule.shops.length
         ? rule.shops.map(shopId => shops.find(shop => shop.id === shopId)?.name || shopId).join('、')
         : '全部';
       return `<tr>
         <td><input type="checkbox" data-id="${rule.id}" class="qa-check" ${selectedQAIds.has(rule.id) ? 'checked' : ''}></td>
         <td>${index + 1}</td>
-        <td>${esc(rule.name)}</td>
         <td title="${esc((rule.keywords || []).join('、'))}">${esc(kwSummary)}</td>
+        <td title="${esc(replyText)}">${esc(replySummary)}</td>
         <td>${matchTypeMap[rule.matchType] || rule.matchType}</td>
         <td title="${esc(shopNames)}">${esc(shopNames)}</td>
         <td>${rule.priority || 0}</td>
@@ -74,42 +142,112 @@
     const rule = ruleId ? rules.find(item => item.id === ruleId) : null;
 
     getEl('qaModalTitle').textContent = rule ? '编辑QA场景' : '添加QA场景';
-    getEl('qaName').value = rule?.name || '';
     getEl('qaMatchType').value = rule?.matchType || 'contains';
-    getEl('qaKeywords').value = (rule?.keywords || []).join('\n');
-    getEl('qaReply').value = rule?.reply || '';
+    if (rule?.requireAllGroups && rule.keywordGroups?.length) {
+      getEl('qaKeywords').value = rule.keywordGroups
+        .filter(group => group?.length)
+        .map(group => group.join('\n'))
+        .join('\n&\n');
+    } else if (rule?.keywordGroups?.length) {
+      getEl('qaKeywords').value = rule.keywordGroups.flat().join('\n');
+    } else {
+      getEl('qaKeywords').value = (rule?.keywords || []).join('\n');
+    }
+    getEl('qaReply').value = formatReplyForEditor(rule?.reply);
+    renderQAReplySplitPreview(getEl('qaReply').value);
     getEl('qaPriority').value = rule?.priority ?? 50;
     getEl('qaEnabled').value = rule ? String(rule.enabled) : 'true';
     getEl('qaProducts').value = (rule?.products || []).join(', ');
 
     const shopSelectEl = getEl('qaShopSelect');
+    const shopAllEl = getEl('qaShopSelectAll');
+    const shopCategoryEl = getEl('qaShopCategory');
     const selectedShops = new Set(rule?.shops || []);
-    shopSelectEl.innerHTML = shops.map(shop => `
-      <label class="checkbox-label"><input type="checkbox" value="${shop.id}" ${selectedShops.has(shop.id) ? 'checked' : ''}>${esc(shop.name)}</label>
-    `).join('');
+    const isAll = !rule?.shops || rule.shops.length === 0;
+    shopAllEl.checked = isAll;
+    if (shopCategoryEl) shopCategoryEl.value = '';
+    shopSelectEl.innerHTML = shops.map(shop => {
+      const checked = isAll || selectedShops.has(shop.id);
+      return `
+        <label class="qa-shop-item">
+          <input type="checkbox" class="qa-shop-check" value="${shop.id}" ${checked ? 'checked' : ''}>
+          <span class="qa-shop-name">${esc(shop.name)}</span>
+        </label>
+      `;
+    }).join('');
+
+    const shopMap = new Map((shops || []).map(shop => [shop.id, shop]));
+    const shopChecks = [...shopSelectEl.querySelectorAll('input.qa-shop-check')];
+    shopAllEl.onchange = () => {
+      if (shopCategoryEl) shopCategoryEl.value = '';
+      shopChecks.forEach(chk => { chk.checked = shopAllEl.checked; });
+    };
+    shopChecks.forEach(chk => {
+      chk.addEventListener('change', () => {
+        const allChecked = shopChecks.length > 0 && shopChecks.every(item => item.checked);
+        shopAllEl.checked = allChecked;
+      });
+    });
+
+    if (shopCategoryEl) {
+      shopCategoryEl.onchange = () => {
+        const category = String(shopCategoryEl.value || '').trim();
+        if (!category) return;
+        shopAllEl.checked = false;
+        let matchedCount = 0;
+        shopChecks.forEach(chk => {
+          const shop = shopMap.get(chk.value);
+          const hit = String(shop?.category || '').trim() === category;
+          chk.checked = hit;
+          if (hit) matchedCount += 1;
+        });
+        if (matchedCount === 0) qaToast('该类目下暂无店铺');
+      };
+    }
 
     showModal('modalQA');
   }
 
   async function saveQA() {
-    const name = getEl('qaName').value.trim();
-    if (!name) return alert('请输入场景名称');
+    const lines = getEl('qaKeywords').value.split('\n').map(keyword => keyword.trim()).filter(Boolean);
+    const keywordGroups = [];
+    let current = [];
+    let hasAnd = false;
+    for (const line of lines) {
+      if (line === '&' || line === '＆') {
+        hasAnd = true;
+        keywordGroups.push(current);
+        current = [];
+        continue;
+      }
+      current.push(line);
+    }
+    keywordGroups.push(current);
 
-    const keywords = getEl('qaKeywords').value.split('\n').map(keyword => keyword.trim()).filter(Boolean);
+    const hasEmptyGroup = hasAnd && keywordGroups.some(group => group.length === 0);
+    if (hasEmptyGroup) return alert('使用 & 组词时，& 前后都需要关键词');
+
+    const cleanedGroups = keywordGroups.filter(group => group.length > 0);
+    const keywords = cleanedGroups.flat();
     if (keywords.length === 0) return alert('请至少输入一个关键词');
 
     const reply = getEl('qaReply').value.trim();
     if (!reply) return alert('请输入回复内容');
 
-    const selectedShops = [...document.querySelectorAll('#qaShopSelect input:checked')].map(checkbox => checkbox.value);
+    const shopAllEl = getEl('qaShopSelectAll');
+    const selectedShops = shopAllEl.checked
+      ? []
+      : [...document.querySelectorAll('#qaShopSelect input.qa-shop-check:checked')].map(checkbox => checkbox.value);
+    if (!shopAllEl.checked && selectedShops.length === 0) return alert('请至少选择一个店铺或勾选应用到全部店铺');
     const productsStr = getEl('qaProducts').value.trim();
     const products = productsStr ? productsStr.split(/[,，]/).map(product => product.trim()).filter(Boolean) : [];
 
     const ruleData = {
       id: editingQAId || Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-      name,
       enabled: getEl('qaEnabled').value === 'true',
       keywords,
+      keywordGroups: cleanedGroups.length > 0 ? cleanedGroups : null,
+      requireAllGroups: hasAnd && cleanedGroups.length > 1 ? true : undefined,
       matchType: getEl('qaMatchType').value,
       reply,
       shops: selectedShops.length > 0 ? selectedShops : null,
@@ -124,7 +262,7 @@
       rules.push(ruleData);
     }
 
-    await window.pddApi.saveRules(rules);
+    await persistRules(rules);
     hideModal('modalQA');
     renderRules();
   }
@@ -132,7 +270,7 @@
   async function deleteRule(ruleId) {
     if (!confirm('确定删除此规则？')) return;
     rules = rules.filter(rule => rule.id !== ruleId);
-    await window.pddApi.saveRules(rules);
+    await persistRules(rules);
     renderRules();
   }
 
@@ -140,9 +278,44 @@
     if (selectedQAIds.size === 0) return alert('请先选择规则');
     if (!confirm(`确定删除 ${selectedQAIds.size} 条规则？`)) return;
     rules = rules.filter(rule => !selectedQAIds.has(rule.id));
-    await window.pddApi.saveRules(rules);
+    await persistRules(rules);
     selectedQAIds.clear();
     renderRules();
+  }
+
+  function getShopIdsByCategory(category) {
+    const cat = String(category || '').trim();
+    if (!cat || cat === '__all__') return null;
+    return (shops || [])
+      .filter(shop => String(shop?.category || '').trim() === cat)
+      .map(shop => shop.id);
+  }
+
+  async function applyShopCategoryToSelectedQA(category) {
+    if (selectedQAIds.size === 0) return alert('请先勾选要修改的规则');
+    const shopIds = getShopIdsByCategory(category);
+    if (Array.isArray(shopIds) && shopIds.length === 0) return alert('该类目下暂无店铺');
+
+    rules = rules.map(rule => {
+      if (!selectedQAIds.has(rule.id)) return rule;
+      return { ...rule, shops: shopIds && shopIds.length > 0 ? shopIds : null };
+    });
+    await persistRules(rules);
+    renderRules();
+    qaToast('已更新适用店铺');
+  }
+
+  function openApplyShopCategoryModal() {
+    if (selectedQAIds.size === 0) return alert('请先勾选要修改的规则');
+    const selectEl = getEl('qaApplyShopCategoryModal');
+    if (selectEl) selectEl.value = '__all__';
+    showModal('modalApplyShopCategory');
+  }
+
+  async function confirmApplyShopCategoryModal() {
+    const category = getEl('qaApplyShopCategoryModal')?.value;
+    await applyShopCategoryToSelectedQA(category);
+    hideModal('modalApplyShopCategory');
   }
 
   function importQA() {
@@ -155,8 +328,7 @@
       try {
         const imported = JSON.parse(await file.text());
         if (Array.isArray(imported)) {
-          rules = imported;
-          await window.pddApi.saveRules(rules);
+          await persistRules(imported);
           renderRules();
         }
       } catch {
@@ -167,7 +339,8 @@
   }
 
   function exportQA() {
-    const blob = new Blob([JSON.stringify(rules, null, 2)], { type: 'application/json' });
+    const exported = sanitizeRules(rules);
+    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'pdd-qa-rules.json';
@@ -177,9 +350,10 @@
 
   async function resetQA() {
     if (!confirm('确定恢复默认规则？当前规则将被覆盖。')) return;
-    rules = [];
-    await window.pddApi.saveRules(rules);
-    location.reload();
+    rules = sanitizeRules(await window.pddApi.resetRules());
+    selectedQAIds.clear();
+    renderRules();
+    qaToast('已恢复默认规则');
   }
 
   async function runRuleTest() {
@@ -434,17 +608,55 @@
       .slice(0, 5);
 
     getEl('qaModalTitle').textContent = '添加QA场景';
-    getEl('qaName').value = `来自未匹配: ${item.message.slice(0, 15)}`;
     getEl('qaMatchType').value = 'contains';
     getEl('qaKeywords').value = suggestedKeywords.join('\n');
     getEl('qaReply').value = '';
+    renderQAReplySplitPreview('');
     getEl('qaPriority').value = 50;
     getEl('qaEnabled').value = 'true';
     getEl('qaProducts').value = '';
     editingQAId = null;
 
     const shopSelectEl = getEl('qaShopSelect');
-    shopSelectEl.innerHTML = shops.map(shop => `<label class="checkbox-label"><input type="checkbox" value="${shop.id}">${esc(shop.name)}</label>`).join('');
+    const shopAllEl = getEl('qaShopSelectAll');
+    const shopCategoryEl = getEl('qaShopCategory');
+    if (shopCategoryEl) shopCategoryEl.value = '';
+    shopAllEl.checked = true;
+    shopSelectEl.innerHTML = shops.map(shop => `
+      <label class="qa-shop-item">
+        <input type="checkbox" class="qa-shop-check" value="${shop.id}" checked>
+        <span class="qa-shop-name">${esc(shop.name)}</span>
+      </label>
+    `).join('');
+
+    const shopChecks = [...shopSelectEl.querySelectorAll('input.qa-shop-check')];
+    shopAllEl.onchange = () => {
+      if (shopCategoryEl) shopCategoryEl.value = '';
+      shopChecks.forEach(chk => { chk.checked = shopAllEl.checked; });
+    };
+    shopChecks.forEach(chk => {
+      chk.addEventListener('change', () => {
+        const allChecked = shopChecks.length > 0 && shopChecks.every(item => item.checked);
+        shopAllEl.checked = allChecked;
+      });
+    });
+
+    if (shopCategoryEl) {
+      const shopMap = new Map((shops || []).map(shop => [shop.id, shop]));
+      shopCategoryEl.onchange = () => {
+        const category = String(shopCategoryEl.value || '').trim();
+        if (!category) return;
+        shopAllEl.checked = false;
+        let matchedCount = 0;
+        shopChecks.forEach(chk => {
+          const shop = shopMap.get(chk.value);
+          const hit = String(shop?.category || '').trim() === category;
+          chk.checked = hit;
+          if (hit) matchedCount += 1;
+        });
+        if (matchedCount === 0) qaToast('该类目下暂无店铺');
+      };
+    }
 
     showModal('modalQA');
     qaToast('已预填关键词，请补充回复内容');
@@ -538,6 +750,7 @@
       const value = textarea.value;
       const insert = '[img:https://example.com/image.jpg]';
       textarea.value = value.slice(0, pos) + insert + value.slice(pos);
+      renderQAReplySplitPreview(textarea.value);
       textarea.focus();
       textarea.setSelectionRange(pos + 5, pos + insert.length - 1);
     });
@@ -545,8 +758,9 @@
       const textarea = getEl('qaReply');
       const pos = textarea.selectionStart;
       const value = textarea.value;
-      const insert = '\n---\n';
+      const insert = '\n\n---\n\n';
       textarea.value = value.slice(0, pos) + insert + value.slice(pos);
+      renderQAReplySplitPreview(textarea.value);
       textarea.focus();
       textarea.setSelectionRange(pos + insert.length, pos + insert.length);
     });
@@ -556,13 +770,19 @@
       const value = textarea.value;
       const insert = '{time}';
       textarea.value = value.slice(0, pos) + insert + value.slice(pos);
+      renderQAReplySplitPreview(textarea.value);
       textarea.focus();
       textarea.setSelectionRange(pos, pos + insert.length);
+    });
+    getEl('qaReply')?.addEventListener('input', event => {
+      renderQAReplySplitPreview(event.target.value);
     });
     getEl('btnBatchDeleteQA')?.addEventListener('click', batchDeleteQA);
     getEl('btnImportQA')?.addEventListener('click', importQA);
     getEl('btnExportQA')?.addEventListener('click', exportQA);
     getEl('btnResetQA')?.addEventListener('click', resetQA);
+    getEl('btnApplyShopCategory')?.addEventListener('click', openApplyShopCategoryModal);
+    getEl('btnConfirmApplyShopCategory')?.addEventListener('click', confirmApplyShopCategoryModal);
     getEl('btnTestQA')?.addEventListener('click', () => {
       getEl('testMessage').value = '';
       getEl('testResult').innerHTML = '';

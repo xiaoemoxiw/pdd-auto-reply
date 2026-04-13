@@ -6489,6 +6489,52 @@
       color: #333;
     }
 
+    .qa-reply-preview {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border: 1px dashed #d9d9d9;
+      border-radius: 6px;
+      background: #fafafa;
+      display: none;
+    }
+
+    .qa-reply-preview.show {
+      display: block;
+    }
+
+    .qa-reply-preview-title {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .qa-reply-preview-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .qa-reply-preview-item {
+      background: #fff;
+      border: 1px solid #f0f0f0;
+      border-radius: 4px;
+      padding: 8px 10px;
+    }
+
+    .qa-reply-preview-label {
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 4px;
+    }
+
+    .qa-reply-preview-text {
+      font-size: 13px;
+      color: #333;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     /* ---- 教程链接 ---- */
     .tutorial-link {
       font-size: 12px;
@@ -7481,12 +7527,6 @@
       </div>
       <div class="view-page" id="viewDeductionApi">
         <div class="deduction-api-page">
-          <div class="page-toolbar">
-            <div class="balance-total">扣款接口对接</div>
-            <span class="spacer"></span>
-            <button class="btn btn-secondary" id="btnDeductionApiReloadTraffic">刷新抓包</button>
-            <button class="btn btn-secondary" id="btnDeductionApiClearTraffic">清空记录</button>
-          </div>
           <div class="deduction-api-layout">
             <div class="deduction-api-section deduction-api-section--list">
               <div class="deduction-api-table-header">
@@ -7538,19 +7578,10 @@
               <div class="deduction-api-table-footer">
                 <span class="deduction-api-table-meta" id="deductionApiFooterTotal">共 0 条</span>
               </div>
-            </div>
-            <div class="deduction-api-section deduction-api-section--traffic">
-              <div class="deduction-api-table-header">
-                <div class="deduction-api-table-title">
-                  <span>接口抓包</span>
-                  <span class="deduction-api-table-meta" id="deductionApiTrafficSummary">0 条抓包记录</span>
-                </div>
-              </div>
-              <div class="deduction-api-traffic-panel">
-                <div class="mail-api-traffic-list" id="deductionApiTrafficList">
-                  <span class="mail-api-traffic-chip">暂无抓包</span>
-                </div>
-              </div>
+              <details class="deduction-api-debug" id="deductionApiDebug">
+                <summary>列表返回数据</summary>
+                <pre class="deduction-api-debug-pre" id="deductionApiDebugPre">暂无数据</pre>
+              </details>
             </div>
           </div>
         </div>
@@ -7709,6 +7740,7 @@
             <button class="btn btn-secondary" id="btnExportQA">导出</button>
             <button class="btn btn-secondary" id="btnResetQA">恢复默认</button>
             <button class="btn btn-success" id="btnTestQA">测试规则</button>
+            <button class="btn btn-secondary" id="btnApplyShopCategory">应用类目店铺</button>
             <span class="spacer"></span>
             <button class="btn btn-danger btn-sm" id="btnBatchDeleteQA">批量删除</button>
           </div>
@@ -7718,8 +7750,8 @@
                 <tr>
                   <th style="width:36px"><input type="checkbox" id="qaSelectAll"></th>
                   <th style="width:40px">序号</th>
-                  <th>场景名称</th>
                   <th>关键词</th>
+                  <th>回复内容</th>
                   <th>匹配类型</th>
                   <th>适用店铺</th>
                   <th>优先级</th>
@@ -8090,31 +8122,65 @@
         </div>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">场景名称</label>
-          <input class="form-input" id="qaName" placeholder="如：欢迎语、发货时间">
-        </div>
-        <div class="form-group">
-          <label class="form-label">应用店铺</label>
-          <div class="checkbox-group" id="qaShopSelect"></div>
-          <div class="form-hint">不选则适用全部店铺</div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">指定商品（可选）</label>
-          <input class="form-input" id="qaProducts" placeholder="输入商品ID，多个用逗号分隔，留空则不限商品">
-          <div class="form-hint">仅当客户咨询指定商品时触发此规则</div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">匹配类型</label>
-          <select class="form-select" id="qaMatchType">
-            <option value="contains">包含关键词</option>
-            <option value="exact">完全匹配</option>
-            <option value="regex">正则匹配</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">触发关键词（每行一个）</label>
-          <textarea class="form-textarea" id="qaKeywords" placeholder="你好&#10;在吗&#10;有人吗"></textarea>
+        <div class="qa-modal-top-row">
+          <div class="qa-modal-col qa-modal-col-left">
+            <div class="form-group">
+              <label class="form-label">指定商品（可选）</label>
+              <input class="form-input" id="qaProducts" placeholder="输入商品ID，多个用逗号分隔，留空则不限商品">
+              <div class="form-hint">仅当客户咨询指定商品时触发此规则</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">匹配类型</label>
+              <select class="form-select" id="qaMatchType">
+                <option value="contains">包含关键词</option>
+                <option value="exact">完全匹配</option>
+                <option value="regex">正则匹配</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">触发关键词（每行一个，多个关键词组词 & 连接）</label>
+              <textarea class="form-textarea" id="qaKeywords" placeholder="你好&#10;在吗&#10;有人吗"></textarea>
+            </div>
+            <div class="form-group" style="display:flex;gap:16px">
+              <div style="flex:1">
+                <label class="form-label">优先级</label>
+                <input class="form-input" type="number" id="qaPriority" value="50" min="0" max="999">
+                <div class="form-hint">数字越大优先级越高</div>
+              </div>
+              <div style="flex:1">
+                <label class="form-label">状态</label>
+                <select class="form-select" id="qaEnabled">
+                  <option value="true">启用</option>
+                  <option value="false">禁用</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="qa-modal-col qa-modal-col-right">
+            <div class="qa-shop-panel">
+              <div style="display:flex;gap:8px;align-items:center">
+                <label class="qa-shop-all" style="margin:0">
+                  <input type="checkbox" id="qaShopSelectAll">
+                  应用到全部店铺
+                </label>
+                <select class="form-select" id="qaShopCategory" style="flex:1;padding:4px 8px;font-size:12px">
+                  <option value="">选择类目</option>
+                  <option value="水果生鲜">水果生鲜</option>
+                  <option value="美容个护">美容个护</option>
+                  <option value="家居生活">家居生活</option>
+                  <option value="服饰箱包">服饰箱包</option>
+                  <option value="母婴玩具">母婴玩具</option>
+                  <option value="食品保健">食品保健</option>
+                  <option value="虚拟商品">虚拟商品</option>
+                  <option value="运动户外">运动户外</option>
+                  <option value="数码电器">数码电器</option>
+                  <option value="家纺家具家装">家纺家具家装</option>
+                  <option value="汽配摩托">汽配摩托</option>
+                </select>
+              </div>
+              <div class="qa-shop-list" id="qaShopSelect"></div>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">回复内容</label>
@@ -8125,21 +8191,8 @@
           </div>
           <textarea class="form-textarea" id="qaReply" style="min-height:100px"
             placeholder="输入回复话术，支持变量：{time} {date}"></textarea>
-          <div class="form-hint">支持变量: {time} 当前时间、{date} 当前日期 | 图片: [img:URL] | 分栏: ---</div>
-        </div>
-        <div class="form-group" style="display:flex;gap:16px">
-          <div style="flex:1">
-            <label class="form-label">优先级</label>
-            <input class="form-input" type="number" id="qaPriority" value="50" min="0" max="999">
-            <div class="form-hint">数字越大优先级越高</div>
-          </div>
-          <div style="flex:1">
-            <label class="form-label">状态</label>
-            <select class="form-select" id="qaEnabled">
-              <option value="true">启用</option>
-              <option value="false">禁用</option>
-            </select>
-          </div>
+          <div class="form-hint">支持变量: {time} 当前时间、{date} 当前日期 | 图片: [img:URL] | 每段回复之间可点击“插入分栏”，命中后随机发送其中一条</div>
+          <div class="qa-reply-preview" id="qaReplySplitPreview"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -8163,6 +8216,40 @@
         </div>
         <button class="btn btn-success" id="btnRunTest" style="width:100%">开始测试</button>
         <div id="testResult"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态框：应用类目店铺 -->
+  <div class="modal-overlay" id="modalApplyShopCategory">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>应用类目店铺</h3>
+        <button class="modal-close" onclick="hideModal('modalApplyShopCategory')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">选择类目</label>
+          <select class="form-select" id="qaApplyShopCategoryModal">
+            <option value="__all__">全部店铺</option>
+            <option value="水果生鲜">水果生鲜</option>
+            <option value="美容个护">美容个护</option>
+            <option value="家居生活">家居生活</option>
+            <option value="服饰箱包">服饰箱包</option>
+            <option value="母婴玩具">母婴玩具</option>
+            <option value="食品保健">食品保健</option>
+            <option value="虚拟商品">虚拟商品</option>
+            <option value="运动户外">运动户外</option>
+            <option value="数码电器">数码电器</option>
+            <option value="家纺家具家装">家纺家具家装</option>
+            <option value="汽配摩托">汽配摩托</option>
+          </select>
+          <div class="form-hint">将所选 QA 规则的适用店铺批量改为该类目下的店铺</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="hideModal('modalApplyShopCategory')">取消</button>
+        <button class="btn btn-primary" id="btnConfirmApplyShopCategory">应用</button>
       </div>
     </div>
   </div>

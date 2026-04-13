@@ -32,6 +32,15 @@ function parseJsonSafely(text) {
   }
 }
 
+function parseTimeToMs(value) {
+  if (value === undefined || value === null || value === '') return 0;
+  const num = Number(value);
+  if (Number.isFinite(num) && num > 0) return num < 10_000_000_000 ? num * 1000 : num;
+  const date = new Date(String(value));
+  const ms = date.getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
 class DeductionApiClient {
   constructor(shopId, options = {}) {
     this.shopId = shopId;
@@ -305,7 +314,7 @@ class DeductionApiClient {
     const now = Date.now();
     const template = this._getTrafficRequestBody(urlPart) || {};
     const pageNum = Math.max(1, Number(params.pageNum || params.page_no || params.pageNo || 1));
-    const pageSize = Math.max(1, Number(params.pageSize || params.page_size || 50));
+    const pageSize = Math.max(1, Number(params.pageSize || params.page_size || 100));
     const endTime = Number(params.endTime || params.end_time || template.endTime || template.end_time || now);
     const startTime = Number(params.startTime || params.start_time || template.startTime || template.start_time || (endTime - 30 * 24 * 3600 * 1000));
     const orderSn = String(params.orderSn || params.order_sn || template.orderSn || template.order_sn || '').trim();
@@ -319,14 +328,45 @@ class DeductionApiClient {
     };
   }
 
+  _pickListItemSortTime(item) {
+    return parseTimeToMs(
+      item?.deductionTime
+      || item?.raw?.chargeTime
+      || item?.raw?.charge_time
+      || item?.raw?.deductionTime
+      || item?.raw?.deductTime
+      || item?.raw?.deduct_time
+      || item?.raw?.createdAt
+      || item?.raw?.created_at
+      || item?.shipTime
+      || item?.promiseTime
+    );
+  }
+
   async _getListBy(category, urlPart, params = {}) {
-    const body = this._buildListParams(params, urlPart);
-    const payload = await this._request('POST', urlPart, body);
-    const total = Number(payload?.result?.total || 0);
-    const list = Array.isArray(payload?.result?.data) ? payload.result.data : [];
+    const normalizedPageSize = Math.max(1, Number(params.pageSize || params.page_size || 100));
+    let pageNum = Math.max(1, Number(params.pageNum || params.page_no || params.pageNo || 1));
+    let total = 0;
+    const normalizedList = [];
+
+    while (true) {
+      const body = this._buildListParams({ ...params, pageNum, pageSize: normalizedPageSize }, urlPart);
+      const payload = await this._request('POST', urlPart, body);
+      const pageTotal = Number(payload?.result?.total || 0);
+      const pageList = Array.isArray(payload?.result?.data) ? payload.result.data : [];
+
+      if (!total) total = pageTotal;
+      if (!pageList.length) break;
+
+      normalizedList.push(...pageList.map(item => this._normalizeListItem(category, item)));
+      if (normalizedList.length >= pageTotal || pageList.length < normalizedPageSize) break;
+      pageNum += 1;
+    }
+
+    normalizedList.sort((a, b) => this._pickListItemSortTime(b) - this._pickListItemSortTime(a));
     return {
       total,
-      list: list.map(item => this._normalizeListItem(category, item))
+      list: normalizedList
     };
   }
 
@@ -369,4 +409,3 @@ module.exports = {
   OUT_OF_STOCK_LIST_URL,
   FAKE_SHIP_TRACK_LIST_URL
 };
-

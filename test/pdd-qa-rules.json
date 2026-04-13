@@ -1,0 +1,3058 @@
+[
+  {
+    "id": "mnwmftto2imxs",
+    "enabled": true,
+    "keywords": [
+      "改成",
+      "改为",
+      "调用",
+      "备注",
+      "注明",
+      "标注"
+    ],
+    "keywordGroups": [
+      [
+        "改成",
+        "改为",
+        "调用",
+        "备注",
+        "注明",
+        "标注"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！我会为您备注的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmgo0wgtrkf",
+    "enabled": true,
+    "keywords": [
+      "不放",
+      "不要",
+      "清单",
+      "卡片"
+    ],
+    "keywordGroups": [
+      [
+        "不放",
+        "不要"
+      ],
+      [
+        "清单",
+        "卡片"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "好的，亲！我会为您备注不放卡片清单的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmj4qqhzkhe",
+    "enabled": true,
+    "keywords": [
+      "没收到",
+      "没看到",
+      "没找到"
+    ],
+    "keywordGroups": [
+      [
+        "没收到",
+        "没看到",
+        "没找到"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲不要着急，这边为您查询，请耐心等待~如急用，可以查看物流信息先联系一下快递员会更快些噢~",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmjppxidczf",
+    "enabled": true,
+    "keywords": [
+      "商家同意退货"
+    ],
+    "keywordGroups": [
+      [
+        "商家同意退货"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，退货后请记得填写退货运单号，方便我们及时为您处理哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmkhmtye77p",
+    "enabled": true,
+    "keywords": [
+      "申请",
+      "未同意"
+    ],
+    "keywordGroups": [
+      [
+        "申请"
+      ],
+      [
+        "未同意"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，由于快递还在运输途中或已经签收，我们暂时不能同意您的退款，待与快递核实后我们会及时为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmlcpesx1th",
+    "enabled": true,
+    "keywords": [
+      "纠纷预警，请立即跟进"
+    ],
+    "keywordGroups": [
+      [
+        "纠纷预警，请立即跟进"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，有什么问题可以随时与我们联系，我们将竭诚为您服务！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmlvljxdw97",
+    "enabled": true,
+    "keywords": [
+      "商家导入中"
+    ],
+    "keywordGroups": [
+      [
+        "商家导入中"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，仓库正在准备发货哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmmg71gjc2v",
+    "enabled": true,
+    "keywords": [
+      "催处理售后"
+    ],
+    "keywordGroups": [
+      [
+        "催处理售后"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，稍安勿躁，我们的售后专员会及时为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmngev2zafj",
+    "enabled": true,
+    "keywords": [
+      "催发货",
+      "快点发",
+      "还不发"
+    ],
+    "keywordGroups": [
+      [
+        "催发货",
+        "快点发",
+        "还不发"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您的订单我们已经收到，仓库正在为您进行质量检查，确认无误后就会发出的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmupeq4gkn0",
+    "enabled": true,
+    "keywords": [
+      "那算了",
+      "晕",
+      "哦",
+      "喔",
+      "恩",
+      "嗯",
+      "奥",
+      "好",
+      "噢",
+      "晕!",
+      "晕！",
+      "哦!",
+      "喔!",
+      "恩!",
+      "嗯!",
+      "奥!",
+      "好!",
+      "噢!",
+      "噢噢!",
+      "奥奥!",
+      "哦哦!",
+      "喔喔!",
+      "!",
+      "嗯嗯!",
+      "好的!",
+      "哦！",
+      "喔！",
+      "恩！",
+      "嗯！",
+      "奥！",
+      "好！",
+      "噢！",
+      "噢噢！",
+      "奥奥！",
+      "哦哦！",
+      "喔喔！",
+      "嗯嗯！",
+      "好的！",
+      "好吧！",
+      "好的，",
+      "好的，亲",
+      "好的亲",
+      "那好吧",
+      "那好吧！",
+      "好吧",
+      "额!",
+      "恩！",
+      "额额!",
+      "是吗？",
+      "是吗?",
+      "是吗",
+      "额！",
+      "额额！",
+      "额",
+      "额额",
+      "好的"
+    ],
+    "keywordGroups": [
+      [
+        "那算了",
+        "晕",
+        "哦",
+        "喔",
+        "恩",
+        "嗯",
+        "奥",
+        "好",
+        "噢",
+        "晕!",
+        "晕！",
+        "哦!",
+        "喔!",
+        "恩!",
+        "嗯!",
+        "奥!",
+        "好!",
+        "噢!",
+        "噢噢!",
+        "奥奥!",
+        "哦哦!",
+        "喔喔!",
+        "!",
+        "嗯嗯!",
+        "好的!",
+        "哦！",
+        "喔！",
+        "恩！",
+        "嗯！",
+        "奥！",
+        "好！",
+        "噢！",
+        "噢噢！",
+        "奥奥！",
+        "哦哦！",
+        "喔喔！",
+        "嗯嗯！",
+        "好的！",
+        "好吧！",
+        "好的，",
+        "好的，亲",
+        "好的亲",
+        "那好吧",
+        "那好吧！",
+        "好吧",
+        "额!",
+        "恩！",
+        "额额!",
+        "是吗？",
+        "是吗?",
+        "是吗",
+        "额！",
+        "额额！",
+        "额",
+        "额额",
+        "好的"
+      ]
+    ],
+    "matchType": "exact",
+    "reply": "恩恩~",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwmzc19ebzii",
+    "enabled": true,
+    "keywords": [
+      "退款",
+      "退款吧",
+      "退了",
+      "退了吧",
+      "不要了",
+      "买错了"
+    ],
+    "keywordGroups": [
+      [
+        "退款",
+        "退款吧",
+        "退了",
+        "退了吧",
+        "不要了",
+        "买错了"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，如您未收到货，可直接申请仅退款（未成团状态不可取消），如已收到货，退款步骤-个人中心-待收货-申请退款-【我要退货退款】（不是 我要退款）-申请原因-选择第一个【多拍/拍错/不想要】或最后一个【其他】，退货申请会秒通过并自动发送地址给亲的哦。拒收平邮及到付哦！注意：申请通过后请及时填写退货单号，超时会自动关闭退款哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn0br1e5mqr",
+    "enabled": true,
+    "keywords": [
+      "麻烦了",
+      "感谢",
+      "谢谢"
+    ],
+    "keywordGroups": [
+      [
+        "麻烦了",
+        "感谢",
+        "谢谢"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "不客气的，亲！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn0zvtkp5gb",
+    "enabled": true,
+    "keywords": [
+      "哎",
+      "唉"
+    ],
+    "keywordGroups": [
+      [
+        "哎",
+        "唉"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "抱歉亲，不好意思哈!",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn1k6vbqqqg",
+    "enabled": true,
+    "keywords": [
+      "再拍一个",
+      "再拍一件",
+      "再买一个",
+      "再买一件"
+    ],
+    "keywordGroups": [
+      [
+        "再拍一个",
+        "再拍一件",
+        "再买一个",
+        "再买一件"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲。您直接拍下就可以",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn24utzvk1j",
+    "enabled": true,
+    "keywords": [
+      "待分享"
+    ],
+    "keywordGroups": [
+      [
+        "待分享"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "待分享是指：由您开团的订单，还未成团，没有拼单成功，等待您分享给其它买家后与您拼团成功，但您不必担心，一般都会在两小时内成团的哦！最晚24小时如还没有拼团成功，系统也会自动成团，并通知商家发货！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn6kq2bvc8f",
+    "enabled": true,
+    "keywords": [
+      "不到",
+      "没",
+      "不要",
+      "拒收",
+      "到不了",
+      "不发",
+      "不能到"
+    ],
+    "keywordGroups": [
+      [
+        "不到",
+        "没",
+        "不要",
+        "拒收",
+        "到不了",
+        "不发",
+        "不能到"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "不指定快递的，如过需要快递指定，请拍下留言，我们尽量给您按照您留言的快递发出，但是不能保证。望您理解，知悉，感谢您的支持!",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn75svohvph",
+    "enabled": true,
+    "keywords": [
+      "机器人"
+    ],
+    "keywordGroups": [
+      [
+        "机器人"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "您的问题我已经收到，不过现在有点小忙，稍等一会回复您哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn8fbtuekw0",
+    "enabled": true,
+    "keywords": [
+      "已联系卖家尽快为您发",
+      "还不",
+      "快点",
+      "发"
+    ],
+    "keywordGroups": [
+      [
+        "已联系卖家尽快为您发",
+        "还不",
+        "快点"
+      ],
+      [
+        "发"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "好的，亲！我们会尽快为您安排发货的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn8z7y98kzz",
+    "enabled": true,
+    "keywords": [
+      "物流投诉",
+      "我已提交投诉物流"
+    ],
+    "keywordGroups": [
+      [
+        "物流投诉",
+        "我已提交投诉物流"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您的诉求我们已经收到，请不要着急，我们马上联系快递加急处理！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwn9oytp3y3r",
+    "enabled": true,
+    "keywords": [
+      "当前用户来自"
+    ],
+    "keywordGroups": [
+      [
+        "当前用户来自"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您正在看的这款宝贝有货的哦，请问有什么可以帮到您？",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwna7yx4g3ym",
+    "enabled": true,
+    "keywords": [
+      "运费险",
+      "退货包运费",
+      "包退"
+    ],
+    "keywordGroups": [
+      [
+        "运费险",
+        "退货包运费",
+        "包退"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您拍下商品前，商品标题后显示【退货包运费】的，表示此商品有运费险，当您拍下后订单详情显示运费险生效中就表示此订单您享有运费险的。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwnblwwfy8vk",
+    "enabled": true,
+    "keywords": [
+      "催处理售后"
+    ],
+    "keywordGroups": [
+      [
+        "催处理售后"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，稍安勿躁，我们的售后专员会及时为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwncrwauylrl",
+    "enabled": true,
+    "keywords": [
+      "催发货"
+    ],
+    "keywordGroups": [
+      [
+        "催发货"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您的订单我们已经收到，仓库正在为您进行质量检查，确认无误后就会发出的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwo7y4z5c26v",
+    "enabled": true,
+    "keywords": [
+      "视频"
+    ],
+    "keywordGroups": [
+      [
+        "视频"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，麻烦您将问题拍照发给我，方便为您核实处理哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwocfopbw0og",
+    "enabled": true,
+    "keywords": [
+      "妳好",
+      "你好",
+      "您好",
+      "老板",
+      "店家",
+      "哈喽",
+      "嗨",
+      "亲",
+      "亲你好",
+      "亲，你好",
+      "在",
+      "在吗",
+      "在?",
+      "在？",
+      "在??",
+      "在？？",
+      "在???",
+      "在？？？",
+      "？",
+      "?",
+      "？",
+      "？？",
+      "??",
+      "？？？",
+      "???",
+      "？？？？",
+      "???",
+      "？？？？？",
+      "????",
+      "？？？？？？",
+      "??????",
+      "再",
+      "再?",
+      "再？",
+      "再??",
+      "再？？",
+      "再???",
+      "再？？？"
+    ],
+    "keywordGroups": [
+      [
+        "妳好",
+        "你好",
+        "您好",
+        "老板",
+        "店家",
+        "哈喽",
+        "嗨",
+        "亲",
+        "亲你好",
+        "亲，你好",
+        "在",
+        "在吗",
+        "在?",
+        "在？",
+        "在??",
+        "在？？",
+        "在???",
+        "在？？？",
+        "？",
+        "?",
+        "？",
+        "？？",
+        "??",
+        "？？？",
+        "???",
+        "？？？？",
+        "???",
+        "？？？？？",
+        "????",
+        "？？？？？？",
+        "??????",
+        "再",
+        "再?",
+        "再？",
+        "再??",
+        "再？？",
+        "再???",
+        "再？？？"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "在的，亲！很高兴能为您服务，请问有什么可以帮到您？",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwod7n996qzp",
+    "enabled": true,
+    "keywords": [
+      "生意兴隆",
+      "好生意",
+      "发财",
+      "合作愉快"
+    ],
+    "keywordGroups": [
+      [
+        "生意兴隆",
+        "好生意",
+        "发财",
+        "合作愉快"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "谢谢亲，欢迎下次光临！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoe79v4w6cy",
+    "enabled": true,
+    "keywords": [
+      "新疆",
+      "西藏",
+      "偏远",
+      "远",
+      "发",
+      "发货"
+    ],
+    "keywordGroups": [
+      [
+        "新疆",
+        "西藏",
+        "偏远",
+        "远"
+      ],
+      [
+        "发",
+        "发货"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，如果显示可以拍，都是可以发货的！请放心下单！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoem27bb3k3",
+    "enabled": true,
+    "keywords": [
+      "答复"
+    ],
+    "keywordGroups": [
+      [
+        "答复"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！有结果我们会第一时间答复您的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoeyovm6e90",
+    "enabled": true,
+    "keywords": [
+      "回复"
+    ],
+    "keywordGroups": [
+      [
+        "回复"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！稍等一下回复您！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwogqx8yf3kg",
+    "enabled": true,
+    "keywords": [
+      "说句话",
+      "说话",
+      "回话",
+      "回个话",
+      "听不懂吗"
+    ],
+    "keywordGroups": [
+      [
+        "说句话",
+        "说话",
+        "回话",
+        "回个话",
+        "听不懂吗"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "在的，亲！我正在想怎样回答您呢，能把问题具体再说一下吗？或者您可以优先看一下详情页和规格~",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwohx056dmba",
+    "enabled": true,
+    "keywords": [
+      "我想咨询",
+      "我想问"
+    ],
+    "keywordGroups": [
+      [
+        "我想咨询",
+        "我想问"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "在的，亲！很高兴能为您服务，请问您是想咨询什么问题呢？优先推荐看详情和规格~",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoixtsdzhep",
+    "enabled": true,
+    "keywords": [
+      "好了吗",
+      "可以了吗",
+      "查到了吗"
+    ],
+    "keywordGroups": [
+      [
+        "好了吗",
+        "可以了吗",
+        "查到了吗"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲稍等，正在为您核实处理！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwojp4no2rfq",
+    "enabled": true,
+    "keywords": [
+      "对不起",
+      "不好意思",
+      "抱歉"
+    ],
+    "keywordGroups": [
+      [
+        "对不起",
+        "不好意思",
+        "抱歉"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "没关系的，亲！·^_^·",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwok9osbbwg5",
+    "enabled": true,
+    "keywords": [
+      "佩服"
+    ],
+    "keywordGroups": [
+      [
+        "佩服"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "不敢当 害羞",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwokrfzyued7",
+    "enabled": true,
+    "keywords": [
+      "头一次遇到",
+      "第一次遇到",
+      "头一回遇到",
+      "第一回遇到"
+    ],
+    "keywordGroups": [
+      [
+        "头一次遇到",
+        "第一次遇到",
+        "头一回遇到",
+        "第一回遇到"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "人生会有许多第一次，而每一次都是一份经验的积累和阅历的丰富，有好也有坏，有喜亦有悲。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwolxdkta5h6",
+    "enabled": true,
+    "keywords": [
+      "哦",
+      "奥",
+      "噢",
+      "喔",
+      "好",
+      "恩",
+      "嗯",
+      "知道",
+      "好的"
+    ],
+    "keywordGroups": [
+      [
+        "哦",
+        "奥",
+        "噢",
+        "喔",
+        "好",
+        "恩",
+        "嗯"
+      ],
+      [
+        "知道",
+        "好的"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "好的，亲~",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwomf7vb3zor",
+    "enabled": true,
+    "keywords": [
+      "好的",
+      "谢"
+    ],
+    "keywordGroups": [
+      [
+        "好的"
+      ],
+      [
+        "谢"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "不客气的，亲！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwomv8k0jexa",
+    "enabled": true,
+    "keywords": [
+      "推荐",
+      "朋友"
+    ],
+    "keywordGroups": [
+      [
+        "推荐"
+      ],
+      [
+        "朋友"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "美好的事物总是想分享给更多的人，感谢亲对我们的支持！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwonc899fldt",
+    "enabled": true,
+    "keywords": [
+      "有货吗",
+      "有货?",
+      "还有货"
+    ],
+    "keywordGroups": [
+      [
+        "有货吗",
+        "有货?",
+        "还有货"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲：我们的库存是很充足得哦。放心好了。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwonnok9pqru",
+    "enabled": true,
+    "keywords": [
+      "再看看"
+    ],
+    "keywordGroups": [
+      [
+        "再看看"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲，您先看看，有什么问题可以随时咨询我哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoo3uuqo89j",
+    "enabled": true,
+    "keywords": [
+      "不明白",
+      "没明白",
+      "不懂"
+    ],
+    "keywordGroups": [
+      [
+        "不明白",
+        "没明白",
+        "不懂"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您是哪里不明白的，可以咨询我哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoorskqcrj3",
+    "enabled": true,
+    "keywords": [
+      "么回事",
+      "咋回事",
+      "怎么办",
+      "咋办"
+    ],
+    "keywordGroups": [
+      [
+        "么回事",
+        "咋回事",
+        "怎么办",
+        "咋办"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您不要着急，请把事情的具体情况和我说明一下，如果有图片也最好提供一下，我们会为您核实处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwop3t3l2abi",
+    "enabled": true,
+    "keywords": [
+      "什么情况"
+    ],
+    "keywordGroups": [
+      [
+        "什么情况"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "虽然我也不清楚什么情况，但我们会为您处理好的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoph1wpwyp9",
+    "enabled": true,
+    "keywords": [
+      "百搭吗"
+    ],
+    "keywordGroups": [
+      [
+        "百搭吗"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "百搭的",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwopvb0ja2f9",
+    "enabled": true,
+    "keywords": [
+      "拜托"
+    ],
+    "keywordGroups": [
+      [
+        "拜托"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲，我们定不负所托！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoqiqayh771",
+    "enabled": true,
+    "keywords": [
+      "包邮",
+      "运费"
+    ],
+    "keywordGroups": [
+      [
+        "包邮",
+        "运费"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，我们寄出的邮费是包的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnworklhbwhuk",
+    "enabled": true,
+    "keywords": [
+      "哪个",
+      "那个",
+      "色",
+      "好卖",
+      "好看",
+      "销",
+      "快",
+      "畅销",
+      "怎样"
+    ],
+    "keywordGroups": [
+      [
+        "哪个",
+        "那个",
+        "色"
+      ],
+      [
+        "好卖",
+        "好看",
+        "销",
+        "快",
+        "畅销",
+        "怎样"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，主图上的颜色一般都是卖得比较多的呢，也是比较好看、容易搭配的颜色！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnworzc9zkoqh",
+    "enabled": true,
+    "keywords": [
+      "没",
+      "懂"
+    ],
+    "keywordGroups": [
+      [
+        "没"
+      ],
+      [
+        "懂"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，您看下有哪里不懂的，可以咨询我哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwosbjym9rwf",
+    "enabled": true,
+    "keywords": [
+      "好看吗"
+    ],
+    "keywordGroups": [
+      [
+        "好看吗"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好看的，亲！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwoszdftaa87",
+    "enabled": true,
+    "keywords": [
+      "下次再",
+      "下次还",
+      "还会",
+      "买",
+      "拍"
+    ],
+    "keywordGroups": [
+      [
+        "下次再",
+        "下次还",
+        "还会"
+      ],
+      [
+        "买",
+        "拍"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "好的，亲！欢迎下次光临！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnwothq48w7eq",
+    "enabled": true,
+    "keywords": [
+      "颜色",
+      "设计",
+      "不"
+    ],
+    "keywordGroups": [
+      [
+        "颜色",
+        "设计"
+      ],
+      [
+        "不"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，这个设计还是不错的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx59sten6sd6",
+    "enabled": true,
+    "keywords": [
+      "平台",
+      "电话"
+    ],
+    "keywordGroups": [
+      [
+        "平台"
+      ],
+      [
+        "电话"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "平台客服电话：可以拨打消费者服务电话：021-53395288，服务时间为每日上午8:00至晚上21:30。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx5a2xdoc5z0",
+    "enabled": true,
+    "keywords": [
+      "价格",
+      "不"
+    ],
+    "keywordGroups": [
+      [
+        "价格"
+      ],
+      [
+        "不"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，价格以实际拍下后，支付显示的价格为准哦，平台有时候显示价格并不准确呢！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx5an4oyf9mv",
+    "enabled": true,
+    "keywords": [
+      "返回",
+      "退回",
+      "寄回",
+      "查收"
+    ],
+    "keywordGroups": [
+      [
+        "返回",
+        "退回",
+        "寄回"
+      ],
+      [
+        "查收"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "好的，亲！我们的售后专员会及时为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx5b0vuhgvth",
+    "enabled": true,
+    "keywords": [
+      "质量好",
+      "再买"
+    ],
+    "keywordGroups": [
+      [
+        "质量好"
+      ],
+      [
+        "再买"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "感谢支持，定不负所期！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx5batm2znkv",
+    "enabled": true,
+    "keywords": [
+      "收货",
+      "运费险"
+    ],
+    "keywordGroups": [
+      [
+        "收货"
+      ],
+      [
+        "运费险"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，确认收货前有效的，确认收货后运费险自动失效了哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx5cld92h5dt",
+    "enabled": true,
+    "keywords": [
+      "快递不正常",
+      "物流不正常",
+      "蜗牛",
+      "龟速",
+      "快递慢",
+      "快递太慢"
+    ],
+    "keywordGroups": [
+      [
+        "快递不正常",
+        "物流不正常",
+        "蜗牛",
+        "龟速",
+        "快递慢",
+        "快递太慢"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，最近物流确实慢得像蜗牛一样，给您带来不便，请多见谅，我们会帮您及时跟进，催促快递尽快派送的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx5ez2mpqo62",
+    "enabled": true,
+    "keywords": [
+      "物流",
+      "快递",
+      "驿站",
+      "单号",
+      "电话",
+      "号码",
+      "手机"
+    ],
+    "keywordGroups": [
+      [
+        "物流",
+        "快递",
+        "驿站"
+      ],
+      [
+        "单号",
+        "电话",
+        "号码",
+        "手机"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，您可以从物流信息上显示的派件电话联系！\n\n---\n\n亲，可查看物流上的电话自信联系会更快噢~",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6vnh0h4h4r",
+    "enabled": true,
+    "keywords": [
+      "核对地址"
+    ],
+    "keywordGroups": [
+      [
+        "核对地址"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您可以到个人中心，待发货，进入订单详情中自助确认或修改地址。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6w0ex3za3v",
+    "enabled": true,
+    "keywords": [
+      "能",
+      "可",
+      "调",
+      "换",
+      "改",
+      "吗"
+    ],
+    "keywordGroups": [
+      [
+        "能",
+        "可"
+      ],
+      [
+        "调",
+        "换",
+        "改"
+      ],
+      [
+        "吗"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，如订单还未发货，您可以直接发给我更换，如已经收到货需要换货，请您申请退货退款，并重新拍下想换的颜色尺码，这样您和我们同时寄出快递，换货时间会缩短一倍哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6wq9p7h58o",
+    "enabled": true,
+    "keywords": [
+      "地址",
+      "手机",
+      "电话",
+      "收货人",
+      "收件人",
+      "调",
+      "错",
+      "改"
+    ],
+    "keywordGroups": [
+      [
+        "地址",
+        "手机",
+        "电话",
+        "收货人",
+        "收件人"
+      ],
+      [
+        "调",
+        "错",
+        "改"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲,您可以到个人中心,待发货,进入订单详情中自助确认或修改地址（建议）！或者将正确的完整地址发送给我，这边为您修改！（仅限订单未发货状态）",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6x1ibhcdwq",
+    "enabled": true,
+    "keywords": [
+      "拒收"
+    ],
+    "keywordGroups": [
+      [
+        "拒收"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，请您向快递员说明“这个快递不要了，麻烦退回给寄件方”，拒收成功后，系统将自动退款。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6xt3skytji",
+    "enabled": true,
+    "keywords": [
+      "签收",
+      "没收",
+      "未收"
+    ],
+    "keywordGroups": [
+      [
+        "签收"
+      ],
+      [
+        "没收",
+        "未收"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，如物流显示签收，但您仍未收到货！有可能是下列原因：1、门卫/保安/前台/亲友代签收。2、快递柜、菜鸟驿站、超市、小卖部等附近快递代收点签收。3、快递公司提前录了签收，稍晚一些给您派送过去。4、您的地址属于乡镇，快递先录签收，之后转拖车送到，时效会晚两天！您可以根据平时网购的经验到指定地点自提，或根据物流信息上显示的派件电话联系，也可与快递官方客服联系，我们也会联系快递进行核实处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6y4nzwlty1",
+    "enabled": true,
+    "keywords": [
+      "丢件",
+      "掉件",
+      "丢了",
+      "弄丢"
+    ],
+    "keywordGroups": [
+      [
+        "丢件",
+        "掉件",
+        "丢了",
+        "弄丢"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，快递偶尔会有点慢，一般较少丢失，如果已确认丢件，我们会主动联系您申请退款的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6yl9puy4ph",
+    "enabled": true,
+    "keywords": [
+      "如何",
+      "怎么",
+      "怎样",
+      "拒收"
+    ],
+    "keywordGroups": [
+      [
+        "如何",
+        "怎么",
+        "怎样"
+      ],
+      [
+        "拒收"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "当您接到快递电话时，请您向快递员说明“这个快递不要了，麻烦退回给寄件方”，拒收成功后，系统将自动退款；如您没有接到快递电话，快递“被签收”时，您可以联系我们核实处理，但记得一定不要拿快递，否则需要自付邮费寄回的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6z5x7c551n",
+    "enabled": true,
+    "keywords": [
+      "没",
+      "未",
+      "显示",
+      "签收"
+    ],
+    "keywordGroups": [
+      [
+        "没",
+        "未"
+      ],
+      [
+        "显示"
+      ],
+      [
+        "签收"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，如物流显示签收，但您仍未收到货！有可能是下列原因：1、门卫/保安/前台/亲友代签收。2、快递柜、菜鸟驿站、超市、小卖部等附近快递代收点签收。3、快递公司提前录了签收，稍晚一些给您派送过去。4、您的地址属于乡镇，快递先录签收，之后转拖车送到，时效会晚两天！您可以根据平时网购的经验到指定地点自提，或根据物流信息上显示的派件电话联系，也可与快递官方客服联系，我们也会联系快递进行核实处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6zl2csb03k",
+    "enabled": true,
+    "keywords": [
+      "退款成功"
+    ],
+    "keywordGroups": [
+      [
+        "退款成功"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲,您的退款已办理成功,欢迎下次光临哦!",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx6zvt1xb45o",
+    "enabled": true,
+    "keywords": [
+      "重拍"
+    ],
+    "keywordGroups": [
+      [
+        "重拍"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，可直接申请退款，并重拍您想要的颜色尺码哦！（仅限订单未发货状态）",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx70790xkv9l",
+    "enabled": true,
+    "keywords": [
+      "怎么申请",
+      "申请退货",
+      "申请退款",
+      "怎么退"
+    ],
+    "keywordGroups": [
+      [
+        "怎么申请",
+        "申请退货",
+        "申请退款",
+        "怎么退"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，退货步骤-个人中心-待收货-申请退款-【我要退货退款】（不是 我要退款）-申请原因-选择第一个【多拍/拍错/不想要】或最后一个【其他】，退货申请会秒通过并自动发送地址给亲的哦。拒收平邮及到付哦！注意：申请通过后请及时填写退货单号，超时会自动关闭退款哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx70s6f80pwh",
+    "enabled": true,
+    "keywords": [
+      "退了吧",
+      "我退款"
+    ],
+    "keywordGroups": [
+      [
+        "退了吧",
+        "我退款"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，如您未收到货，可直接申请仅退款（未成团状态不可取消），如已收到货，退款步骤-个人中心-待收货-申请退款-【我要退货退款】（不是 我要退款）-申请原因-选择第一个【多拍/拍错/不想要】或最后一个【其他】，退货申请会秒通过并自动发送地址给亲的哦。拒收平邮及到付哦！注意：申请通过后请及时填写退货单号，超时会自动关闭退款哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7138hfwh44",
+    "enabled": true,
+    "keywords": [
+      "申请好了",
+      "申请了",
+      "已退款",
+      "申请了",
+      "已退款",
+      "退一下",
+      "要退",
+      "能退"
+    ],
+    "keywordGroups": [
+      [
+        "申请好了",
+        "申请了",
+        "已退款",
+        "申请了",
+        "已退款",
+        "退一下",
+        "要退",
+        "能退"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！您可以申请售后，我们的售后专员会及时为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx71dsxqbn1d",
+    "enabled": true,
+    "keywords": [
+      "要退",
+      "能退"
+    ],
+    "keywordGroups": [
+      [
+        "要退",
+        "能退"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，如订单未发货请申请退款；如订单已发货但未签收，请申请仅退款并拒收快递；如订单已签收，请申请退货退款！确认申请正确后，我们的售后专员将在24小时内处理您的售后申请哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx71pugpfqbn",
+    "enabled": true,
+    "keywords": [
+      "寄回了",
+      "寄过去了"
+    ],
+    "keywordGroups": [
+      [
+        "寄回了",
+        "寄过去了"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，如果您已经申请过退换货，请将退回单号正确填写至退款详情中，如未申请退换货，请提供您的退货单号我为您人工处理！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx720gyx5eee",
+    "enabled": true,
+    "keywords": [
+      "不适合",
+      "不合适",
+      "不喜欢",
+      "不满意",
+      "退",
+      "换"
+    ],
+    "keywordGroups": [
+      [
+        "不适合",
+        "不合适",
+        "不喜欢",
+        "不满意"
+      ],
+      [
+        "退",
+        "换"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，不合适或不喜欢可以退换货的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx72a5qwz142",
+    "enabled": true,
+    "keywords": [
+      "收到",
+      "换"
+    ],
+    "keywordGroups": [
+      [
+        "收到"
+      ],
+      [
+        "换"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，您申请退货退款，寄回衣服，再重新拍下您想要的款式-颜色-尺码，我们会第一时间帮您安排发出！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx72k6mw47cm",
+    "enabled": true,
+    "keywords": [
+      "取消",
+      "订单",
+      "拼单"
+    ],
+    "keywordGroups": [
+      [
+        "取消"
+      ],
+      [
+        "订单",
+        "拼单"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，订单待成团状态不可以取消哦，已成团未发货状态可以申请仅退款，如订单已发货，也暂时无法为您取消哦，您可以在拒收后申请退款，我们会及时为您处理的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx72w9ebegeu",
+    "enabled": true,
+    "keywords": [
+      "地址",
+      "呢",
+      "发我",
+      "发来",
+      "发过来",
+      "发下",
+      "给我",
+      "给下",
+      "退货",
+      "发"
+    ],
+    "keywordGroups": [
+      [
+        "地址"
+      ],
+      [
+        "呢",
+        "发我",
+        "发来",
+        "发过来",
+        "发下",
+        "给我",
+        "给下",
+        "退货",
+        "发"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，如您未收到货，可直接申请仅退款（未成团状态不可取消），如已收到货，退款步骤-个人中心-待收货-申请退款-【我要退货退款】（不是 我要退款）-申请原因-选择第一个【多拍/拍错/不想要】或最后一个【其他】，退货申请会秒通过并自动发送地址给亲的哦。拒收平邮及到付哦！注意：申请通过后请及时填写退货单号，超时会自动关闭退款哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx73em8f0o9a",
+    "enabled": true,
+    "keywords": [
+      "地址",
+      "退到",
+      "哪里",
+      "那里"
+    ],
+    "keywordGroups": [
+      [
+        "地址",
+        "退到"
+      ],
+      [
+        "哪里",
+        "那里"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，如您未收到货，可直接申请仅退款（未成团状态不可取消），如已收到货，退款步骤-个人中心-待收货-申请退款-【我要退货退款】（不是 我要退款）-申请原因-选择第一个【多拍/拍错/不想要】或最后一个【其他】，退货申请会秒通过并自动发送地址给亲的哦。拒收平邮及到付哦！注意：申请通过后请及时填写退货单号，超时会自动关闭退款哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx73po7paiet",
+    "enabled": true,
+    "keywords": [
+      "我要",
+      "我想",
+      "退货"
+    ],
+    "keywordGroups": [
+      [
+        "我要",
+        "我想"
+      ],
+      [
+        "退货"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，如您未收到货，可直接申请仅退款（未成团状态不可取消），如已收到货，退款步骤-个人中心-待收货-申请退款-【我要退货退款】（不是 我要退款）-申请原因-选择第一个【多拍/拍错/不想要】或最后一个【其他】，退货申请会秒通过并自动发送地址给亲的哦。拒收平邮及到付哦！注意：申请通过后请及时填写退货单号，超时会自动关闭退款哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx740aoh8wjp",
+    "enabled": true,
+    "keywords": [
+      "质量问题",
+      "退货",
+      "换货"
+    ],
+    "keywordGroups": [
+      [
+        "质量问题"
+      ],
+      [
+        "退货",
+        "换货"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，质量问题可以拍照给我们，售后专员会为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx74a6o87qd9",
+    "enabled": true,
+    "keywords": [
+      "什么时候",
+      "啥时候",
+      "几时",
+      "多久",
+      "退",
+      "到账"
+    ],
+    "keywordGroups": [
+      [
+        "什么时候",
+        "啥时候",
+        "几时",
+        "多久"
+      ],
+      [
+        "退",
+        "到账"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，请确认正确申请退款/退货退款，并填写寄回快递单号至退款物流中，我们的售后专员会及时为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx74khm3lfkv",
+    "enabled": true,
+    "keywords": [
+      "已",
+      "退货",
+      "货",
+      "回去"
+    ],
+    "keywordGroups": [
+      [
+        "已"
+      ],
+      [
+        "退货",
+        "货"
+      ],
+      [
+        "回去"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，退货后请及时填写退货物流哦，退货单号填写步骤-个人中心-我的订单-待收货-售后详情-填写退货信息，选择正确的退货快递，并把寄回来的单号填写进去，填写后我们的售后专员会及时为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx74thdfhr4j",
+    "enabled": true,
+    "keywords": [
+      "收",
+      "退货"
+    ],
+    "keywordGroups": [
+      [
+        "收"
+      ],
+      [
+        "退货"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，请将退货单号正确填写至退款详情-退货物流中，并查询到退货物流已经签收后，我们的售后专员会及时为您处理退款的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx75506x1rg1",
+    "enabled": true,
+    "keywords": [
+      "收到",
+      "收货",
+      "签收",
+      "调",
+      "换"
+    ],
+    "keywordGroups": [
+      [
+        "收到",
+        "收货",
+        "签收"
+      ],
+      [
+        "调",
+        "换"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，如果您已经收到货，想要换的话可以申请退货退款，并重新拍下您想要的颜色-款式-尺码哦，我们会及时为您发出的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx75e8945qdz",
+    "enabled": true,
+    "keywords": [
+      "收到",
+      "退货",
+      "了",
+      "吗"
+    ],
+    "keywordGroups": [
+      [
+        "收到"
+      ],
+      [
+        "退货"
+      ],
+      [
+        "了"
+      ],
+      [
+        "吗"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，您可以查询下退货物流单号，物流显示签收后的24小时内，我们的售后专员会及时为您处理的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx75rjg8qnao",
+    "enabled": true,
+    "keywords": [
+      "最多",
+      "申请"
+    ],
+    "keywordGroups": [
+      [
+        "最多"
+      ],
+      [
+        "申请"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，我这边尽力去帮您申请一下看看。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx763n8xabdz",
+    "enabled": true,
+    "keywords": [
+      "颜色",
+      "尺码",
+      "不",
+      "别",
+      "错",
+      "瑕疵",
+      "坏",
+      "不",
+      "没检查",
+      "看清"
+    ],
+    "keywordGroups": [
+      [
+        "颜色",
+        "尺码"
+      ],
+      [
+        "不",
+        "别"
+      ],
+      [
+        "错",
+        "瑕疵",
+        "坏",
+        "不",
+        "没检查",
+        "看清"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，发货前仓库会仔细检查，确认无误后发出哦",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx76dutotbph",
+    "enabled": true,
+    "keywords": [
+      "我在等",
+      "我再等",
+      "再等等",
+      "在等等",
+      "耐心等等"
+    ],
+    "keywordGroups": [
+      [
+        "我在等",
+        "我再等",
+        "再等等",
+        "在等等",
+        "耐心等等"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！您再等等，相信很快就会到的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx76nctu3lef",
+    "enabled": true,
+    "keywords": [
+      "48小时"
+    ],
+    "keywordGroups": [
+      [
+        "48小时"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，最晚成团后48小时内发货哦，发货之后根据收货地址不同，全国三至五天左右到货，如遇物流较慢的情况，到货时间可能会有延迟！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx76wk63bf2g",
+    "enabled": true,
+    "keywords": [
+      "收藏",
+      "截图"
+    ],
+    "keywordGroups": [
+      [
+        "收藏",
+        "截图"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，请将评价截图和店铺收藏截图一并发送给我，方便我为您核实处理哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx776g60mz6q",
+    "enabled": true,
+    "keywords": [
+      "五星",
+      "5星"
+    ],
+    "keywordGroups": [
+      [
+        "五星",
+        "5星"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "可以的，最好加上一些评价语哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx77f85fyyox",
+    "enabled": true,
+    "keywords": [
+      "切记",
+      "别忘了",
+      "记住",
+      "记得"
+    ],
+    "keywordGroups": [
+      [
+        "切记",
+        "别忘了",
+        "记住",
+        "记得"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲。我们一定会记得的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx77ngw902bc",
+    "enabled": true,
+    "keywords": [
+      "补差价",
+      "退差价"
+    ],
+    "keywordGroups": [
+      [
+        "补差价",
+        "退差价"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，订单未发货或已发货但未签收，因商家自身原因出现商品降价的，可在确认收货后联系客服返还差价，但不再享受其它优惠或返现！订单已发货且确认收货的，不再补退差价哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx77y9d8gooz",
+    "enabled": true,
+    "keywords": [
+      "拍了",
+      "已拍",
+      "拼了",
+      "已买",
+      "已下单",
+      "现在拍",
+      "买好了",
+      "下单了",
+      "下好单了",
+      "下好了",
+      "买好了",
+      "买完了",
+      "拍好了",
+      "拍完了",
+      "拍下了",
+      "购买了",
+      "已购买",
+      "买单了",
+      "拼单成功",
+      "拼好了"
+    ],
+    "keywordGroups": [
+      [
+        "拍了",
+        "已拍",
+        "拼了",
+        "已买",
+        "已下单",
+        "现在拍",
+        "买好了",
+        "下单了",
+        "下好单了",
+        "下好了",
+        "买好了",
+        "买完了",
+        "拍好了",
+        "拍完了",
+        "拍下了",
+        "购买了",
+        "已购买",
+        "买单了",
+        "拼单成功",
+        "拼好了"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！这边核实后会及时为您安排发出的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx79g2gxqr4c",
+    "enabled": true,
+    "keywords": [
+      "没",
+      "未",
+      "到账"
+    ],
+    "keywordGroups": [
+      [
+        "没",
+        "未"
+      ],
+      [
+        "到账"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "平台客服电话：可以拨打消费者服务电话：021-53395288，服务时间为每日上午8:00至晚上21:30。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7av7qeqfrw",
+    "enabled": true,
+    "keywords": [
+      "有毛病",
+      "有问题",
+      "坏了",
+      "坏的",
+      "用不了",
+      "怎么弄",
+      "怎么用",
+      "怎么装"
+    ],
+    "keywordGroups": [
+      [
+        "有毛病",
+        "有问题",
+        "坏了",
+        "坏的",
+        "用不了",
+        "怎么弄",
+        "怎么用",
+        "怎么装"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，具体是什么问题呢，麻烦拍照发给我为您核实哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7b5bqeviac",
+    "enabled": true,
+    "keywords": [
+      "同意一下",
+      "通过一下"
+    ],
+    "keywordGroups": [
+      [
+        "同意一下",
+        "通过一下"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！我们的售后专员会及时为您处理的。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7bo7jtt570",
+    "enabled": true,
+    "keywords": [
+      "你好？",
+      "你好，",
+      "老板在吗",
+      "客服在吗",
+      "在吗",
+      "在么",
+      "在没",
+      "在不",
+      "再吗",
+      "再么",
+      "再没",
+      "再不",
+      "再嘛",
+      "客服",
+      "人工",
+      "小姐",
+      "美女",
+      "老铁",
+      "妹子",
+      "说话",
+      "有人吗",
+      "有人嘛",
+      "有人没",
+      "有人么",
+      "人呢",
+      "有人吗",
+      "老板再吗",
+      "客服再吗",
+      "再吗",
+      "再么",
+      "再没",
+      "再不",
+      "再嘛",
+      "早上好",
+      "中午好",
+      "晚上好",
+      "周末好^你好",
+      "在吗",
+      "再吗"
+    ],
+    "keywordGroups": [
+      [
+        "你好？",
+        "你好，",
+        "老板在吗",
+        "客服在吗",
+        "在吗",
+        "在么",
+        "在没",
+        "在不",
+        "再吗",
+        "再么",
+        "再没",
+        "再不",
+        "再嘛",
+        "客服",
+        "人工",
+        "小姐",
+        "美女",
+        "老铁",
+        "妹子",
+        "说话",
+        "有人吗",
+        "有人嘛",
+        "有人没",
+        "有人么",
+        "人呢",
+        "有人吗",
+        "老板再吗",
+        "客服再吗",
+        "再吗",
+        "再么",
+        "再没",
+        "再不",
+        "再嘛",
+        "早上好",
+        "中午好",
+        "晚上好",
+        "周末好^你好"
+      ],
+      [
+        "在吗",
+        "再吗"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "在的，亲！很高兴能为您服务，请问有什么可以帮到您？\n\n---\n\n在的，亲，可以优先参考商品详情和规格噢~",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7devgxnc6w",
+    "enabled": true,
+    "keywords": [
+      "晚安",
+      "好梦"
+    ],
+    "keywordGroups": [
+      [
+        "晚安",
+        "好梦"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "晚安，亲。愿您好梦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7dn8uabcbo",
+    "enabled": true,
+    "keywords": [
+      "拜拜",
+      "再见",
+      "再会"
+    ],
+    "keywordGroups": [
+      [
+        "拜拜",
+        "再见",
+        "再会"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "( ^_^ )/~~拜拜，欢迎亲下次光临哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7dyhzmgu9c",
+    "enabled": true,
+    "keywords": [
+      "券"
+    ],
+    "keywordGroups": [
+      [
+        "券"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，券是有都有相应的使用条件的，由于是平台发送的，具体您可以联系平台哦。",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7e8izm2f93",
+    "enabled": true,
+    "keywords": [
+      "催",
+      "崔",
+      "快递"
+    ],
+    "keywordGroups": [
+      [
+        "催",
+        "崔"
+      ],
+      [
+        "快递"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，快递正在运输途中，我们会催促快递到了当地优先给您派送，请耐心等待下哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7go2wgxywp",
+    "enabled": true,
+    "keywords": [
+      "态度",
+      "什么玩意"
+    ],
+    "keywordGroups": [
+      [
+        "态度",
+        "什么玩意"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，本店坚持客户至上，服务第一的理念，您的满意是我们不懈的追求！但有时咨询量太大，会出现回复/解决问题不及时，请不要着急，您可以先留言，给我们一点时间，您的一字一句我们都会认真看完，并给您一个满意的答复！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7h0an7ecuw",
+    "enabled": true,
+    "keywords": [
+      "支付宝",
+      "微信"
+    ],
+    "keywordGroups": [
+      [
+        "支付宝",
+        "微信"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，拼多多要求商家只能使用平台的小额打款功能，打款到账后，会进入您的原支付账户，原路返回哦~",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7h9gmc9nw0",
+    "enabled": true,
+    "keywords": [
+      "活动"
+    ],
+    "keywordGroups": [
+      [
+        "活动"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，您可以多多关注我们店铺，不定时会有活动哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7hmdog50q3",
+    "enabled": true,
+    "keywords": [
+      "到付"
+    ],
+    "keywordGroups": [
+      [
+        "到付"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，由于快递到付的运费是寄付的两倍，所以平台不允许发到付，同时我们也拒收到付的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7huxgzpt79",
+    "enabled": true,
+    "keywords": [
+      "解释"
+    ],
+    "keywordGroups": [
+      [
+        "解释"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，解释就是掩饰，我们不需要掩饰，只想帮您解决问题哈！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7i54eeci6z",
+    "enabled": true,
+    "keywords": [
+      "拼单",
+      "拼团",
+      "免拼"
+    ],
+    "keywordGroups": [
+      [
+        "拼单",
+        "拼团",
+        "免拼"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，如拼团/拼单暂时没有成功，也不用担心，一般都会在两小时内成团的哦！最晚24小时如还没有拼团成功，系统也会自动成团，并通知商家发货！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7iedwnwjyj",
+    "enabled": true,
+    "keywords": [
+      "差评"
+    ],
+    "keywordGroups": [
+      [
+        "差评"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，差评并不是解决问题的办法，沟通才是最有效的哦，有任何问题欢迎与我们联系哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7ipa66zuai",
+    "enabled": true,
+    "keywords": [
+      "投诉",
+      "举报",
+      "骗"
+    ],
+    "keywordGroups": [
+      [
+        "投诉",
+        "举报",
+        "骗"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，投诉并不是解决问题的“万能药”，沟通才是最有效的解决方式哦，有任何问题欢迎与我们联系，我们一定给您一个满意的答复，如果您对我们的处理不满意，我们将服务到您满意为止！【但是】快递问题除外，快递属于三方服务，不论商家或平台，都需要和三方（也就是快递）沟通后才能答复您，这样难免时效上会慢一些，还望您能多多谅解",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7j2r7obkcv",
+    "enabled": true,
+    "keywords": [
+      "还不发",
+      "还没有发",
+      "好久发货"
+    ],
+    "keywordGroups": [
+      [
+        "还不发",
+        "还没有发",
+        "好久发货"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，我们会尽快为您发出的，快的成团后24小时内发货，慢的48小时内按顺序发货哦!",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7jbz1006te",
+    "enabled": true,
+    "keywords": [
+      "没",
+      "揽件"
+    ],
+    "keywordGroups": [
+      [
+        "没"
+      ],
+      [
+        "揽件"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，一般发货后24小时内就会有揽件信息的，最晚发货次日21：00前就会有的，您可以晚些时候再查哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7jlkt6ix0a",
+    "enabled": true,
+    "keywords": [
+      "明天",
+      "不到",
+      "退"
+    ],
+    "keywordGroups": [
+      [
+        "明天"
+      ],
+      [
+        "不到"
+      ],
+      [
+        "退"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，我们非常理解您此刻的心情，我们将尽最大努力，催促快递尽快为您派送，还望您多多理解！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7jv1xtj5ug",
+    "enabled": true,
+    "keywords": [
+      "一起买",
+      "同一时间买",
+      "一起拍",
+      "同一时间拍",
+      "一个星期前买",
+      "一周前买",
+      "上个星期买",
+      "上个星期拍",
+      "天前买",
+      "到了",
+      "号"
+    ],
+    "keywordGroups": [
+      [
+        "一起买",
+        "同一时间买",
+        "一起拍",
+        "同一时间拍",
+        "一个星期前买",
+        "一周前买",
+        "上个星期买",
+        "上个星期拍",
+        "天前买"
+      ],
+      [
+        "到了",
+        "号"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "亲，这边会为您持续跟进，并催促快递到了当地优先给您派送，今后我们也会甄选时效更快、服务更好的物流，减少类似情况的发生，给您带来的不便，请多见谅！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7k5r0lbdgr",
+    "enabled": true,
+    "keywords": [
+      "拍错",
+      "买错"
+    ],
+    "keywordGroups": [
+      [
+        "拍错",
+        "买错"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，请将正确的款式-颜色-尺码发给我，这边会为您备注的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7ket851sa7",
+    "enabled": true,
+    "keywords": [
+      "啥意思",
+      "么意思"
+    ],
+    "keywordGroups": [
+      [
+        "啥意思",
+        "么意思"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，有什么不明白的可以再问我哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7kmt7s5tz1",
+    "enabled": true,
+    "keywords": [
+      "我等你",
+      "抓紧",
+      "快点",
+      "赶紧"
+    ],
+    "keywordGroups": [
+      [
+        "我等你",
+        "抓紧",
+        "快点",
+        "赶紧"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！我们会尽快为您处理好的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7kvx3nz7q1",
+    "enabled": true,
+    "keywords": [
+      "不靠谱"
+    ],
+    "keywordGroups": [
+      [
+        "不靠谱"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "亲，今后我们会甄选靠谱的物流，减少类似情况的发生，给您带来不便，请多见谅！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7l3x23srn7",
+    "enabled": true,
+    "keywords": [
+      "送错",
+      "发错",
+      "地址"
+    ],
+    "keywordGroups": [
+      [
+        "送错",
+        "发错"
+      ],
+      [
+        "地址"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "好的，亲，我这边联系快递核实一下哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7ldci58vi7",
+    "enabled": true,
+    "keywords": [
+      "想再",
+      "还想",
+      "再来",
+      "拍",
+      "买"
+    ],
+    "keywordGroups": [
+      [
+        "想再",
+        "还想",
+        "再来"
+      ],
+      [
+        "拍",
+        "买"
+      ]
+    ],
+    "requireAllGroups": true,
+    "matchType": "contains",
+    "reply": "好的，亲。您直接拍下就可以的！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7lpodvozws",
+    "enabled": true,
+    "keywords": [
+      "好了",
+      "知道了",
+      "知道",
+      "了解",
+      "了解了",
+      "明白",
+      "明白了",
+      "对",
+      "对的",
+      "是",
+      "是的",
+      "是啊",
+      "好啊",
+      "对啊",
+      "对的",
+      "可以",
+      "可以的",
+      "可以了",
+      "可以"
+    ],
+    "keywordGroups": [
+      [
+        "好了",
+        "知道了",
+        "知道",
+        "了解",
+        "了解了",
+        "明白",
+        "明白了",
+        "对",
+        "对的",
+        "是",
+        "是的",
+        "是啊",
+        "好啊",
+        "对啊",
+        "对的",
+        "可以",
+        "可以的",
+        "可以了",
+        "可以"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "好的，亲！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  },
+  {
+    "id": "mnx7mcn9fx2xm",
+    "enabled": true,
+    "keywords": [
+      "发票",
+      "开票"
+    ],
+    "keywordGroups": [
+      [
+        "发票",
+        "开票"
+      ]
+    ],
+    "matchType": "contains",
+    "reply": "你好，请备注好开票信息，我们会陆续安排开出的哦！",
+    "shops": null,
+    "products": null,
+    "priority": 50
+  }
+]

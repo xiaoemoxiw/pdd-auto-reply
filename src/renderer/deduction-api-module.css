@@ -176,3 +176,32 @@
 .deduction-api-key-cell {
   color: #1677ff;
 }
+
+.deduction-api-debug {
+  margin: 10px 16px 14px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.deduction-api-debug > summary {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+}
+
+.deduction-api-debug-pre {
+  margin: 0;
+  padding: 10px 12px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #444;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 320px;
+  overflow: auto;
+  border-top: 1px solid #f0f0f0;
+}

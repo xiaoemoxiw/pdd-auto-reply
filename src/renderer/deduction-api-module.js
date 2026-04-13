@@ -1,11 +1,13 @@
 (function () {
   let initialized = false;
-  let deductionApiEntries = [];
   let deductionApiList = [];
   let deductionApiLastListResult = null;
+  let deductionApiCounts = null;
   let deductionApiFilter = 'delayShip';
   let deductionApiPageNo = 1;
-  const deductionApiPageSize = 30;
+  const deductionApiPageSize = 20;
+  let deductionApiLoading = false;
+  let deductionApiQueuedRefresh = false;
 
   function getEl(id) {
     return document.getElementById(id);
@@ -36,19 +38,15 @@
     console.error(message);
   }
 
-  function getDeductionTrafficType(entry) {
-    const url = String(entry?.fullUrl || entry?.url || '').toLowerCase();
-    const body = String(entry?.requestBody || '').toLowerCase();
-    const text = `${url} ${body}`;
-    if (text.includes('deduct') || text.includes('deduction')) return '扣款相关';
-    if (text.includes('penalty') || text.includes('fine')) return '罚金相关';
-    if (text.includes('punish')) return '处罚相关';
-    if (text.includes('reconciliation') || text.includes('settlement')) return '对账相关';
-    return '';
-  }
-
-  function isDeductionTrafficEntry(entry) {
-    return !!getDeductionTrafficType(entry);
+  function debounce(fn, waitMs = 300) {
+    let timer = null;
+    return function (...args) {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        fn.apply(this, args);
+      }, waitMs);
+    };
   }
 
   function getValueByKeys(obj, keys) {
@@ -60,6 +58,8 @@
   }
 
   function getDeductionCategory(item) {
+    const cat = String(item?.category || '').trim();
+    if (cat === 'delayShip' || cat === 'outOfStock' || cat === 'fakeShipTrack') return cat;
     const typeRaw = String(getValueByKeys(item, ['type', 'deductionType', 'deductType', 'penaltyType']) || '');
     const reasonRaw = String(getValueByKeys(item, ['reason', 'deductReason', 'deductionReason', 'remark', 'punishReason']) || '');
     const text = `${typeRaw} ${reasonRaw}`;
@@ -105,11 +105,14 @@
     const countOut = getEl('deductionApiCountOutOfStock');
     const countFake = getEl('deductionApiCountFakeShipTrack');
 
-    const countBy = { delayShip: 0, outOfStock: 0, fakeShipTrack: 0 };
-    for (const item of deductionApiList) {
-      const cat = getDeductionCategory(item);
-      if (countBy[cat] !== undefined) countBy[cat] += 1;
-    }
+    const countBy = deductionApiCounts || (() => {
+      const next = { delayShip: 0, outOfStock: 0, fakeShipTrack: 0 };
+      for (const item of deductionApiList) {
+        const cat = getDeductionCategory(item);
+        if (next[cat] !== undefined) next[cat] += 1;
+      }
+      return next;
+    })();
 
     if (countDelay) countDelay.textContent = String(countBy.delayShip || 0);
     if (countOut) countOut.textContent = String(countBy.outOfStock || 0);
@@ -146,33 +149,43 @@
     numbers.innerHTML = btns.join('');
   }
 
-  function renderDeductionApiTraffic() {
-    const container = getEl('deductionApiTrafficList');
-    if (!container) return;
-    const summary = getEl('deductionApiTrafficSummary');
-    if (summary) summary.textContent = `${deductionApiEntries.length} 条抓包记录`;
-    if (!deductionApiEntries.length) {
-      container.innerHTML = '<span class="mail-api-traffic-chip">暂无抓包</span>';
-      return;
+  function safePreview(value, level = 0) {
+    if (level >= 3) return value;
+    if (Array.isArray(value)) {
+      const slice = value.slice(0, 3).map(item => safePreview(item, level + 1));
+      if (value.length > 3) slice.push({ __more: value.length - 3 });
+      return slice;
     }
-    container.innerHTML = deductionApiEntries.slice(0, 18).map(entry => {
-      const typeTag = getDeductionTrafficType(entry);
-      const summary = `${typeTag} · ${entry.method || 'GET'} ${entry.url}`;
-      return `<span class="mail-api-traffic-chip" title="${esc(summary)}">${esc(summary)}</span>`;
-    }).join('');
+    if (value && typeof value === 'object') {
+      const keys = Object.keys(value).slice(0, 30);
+      const next = {};
+      for (const key of keys) {
+        next[key] = safePreview(value[key], level + 1);
+      }
+      if (Object.keys(value).length > 30) next.__more_keys = Object.keys(value).length - 30;
+      return next;
+    }
+    if (typeof value === 'string' && value.length > 600) return `${value.slice(0, 600)}...`;
+    return value;
   }
 
-  async function loadDeductionApiTraffic(shopId) {
-    const scopeShopId = String(shopId || activeShopId || API_ALL_SHOPS || '__all__').trim();
-    if (!window.pddApi || typeof window.pddApi.getApiTraffic !== 'function') {
-      deductionApiEntries = [];
-      renderDeductionApiTraffic();
-      return;
-    }
-    const list = await window.pddApi.getApiTraffic({ shopId: scopeShopId });
-    const normalized = Array.isArray(list) ? list.slice().reverse() : [];
-    deductionApiEntries = normalized.filter(isDeductionTrafficEntry);
-    renderDeductionApiTraffic();
+  function renderDeductionApiDebug() {
+    const pre = getEl('deductionApiDebugPre');
+    if (!pre) return;
+    const sample = Array.isArray(deductionApiList) && deductionApiList.length ? deductionApiList[0] : null;
+    const sampleKeys = sample && typeof sample === 'object' ? Object.keys(sample).sort() : [];
+    const raw = sample?.raw && typeof sample.raw === 'object' ? sample.raw : null;
+    const rawKeys = raw ? Object.keys(raw).sort() : [];
+    const snapshot = {
+      filter: deductionApiFilter,
+      totals: deductionApiCounts,
+      listLength: Array.isArray(deductionApiList) ? deductionApiList.length : 0,
+      lastResult: safePreview(deductionApiLastListResult),
+      sampleKeys,
+      sampleRawKeys: rawKeys,
+      sample: sample ? safePreview(sample) : null,
+    };
+    pre.textContent = JSON.stringify(snapshot, null, 2);
   }
 
   function renderDeductionApiTableHead(columns) {
@@ -342,6 +355,7 @@
     const footerTotal = getEl('deductionApiFooterTotal');
     const status = getEl('deductionApiListStatus');
     const listEl = getEl('deductionApiList');
+    const refreshBtn = getEl('btnDeductionApiRefresh');
     const filtered = getDeductionFilteredList();
     const total = filtered.length;
     const pageCount = Math.max(1, Math.ceil(total / deductionApiPageSize));
@@ -350,26 +364,42 @@
     const startIndex = (deductionApiPageNo - 1) * deductionApiPageSize;
     const pageItems = filtered.slice(startIndex, startIndex + deductionApiPageSize);
 
-    if (meta) meta.textContent = `${total} 条记录`;
+    if (meta) meta.textContent = deductionApiLoading ? '加载中…' : `${total} 条记录`;
     if (footerTotal) footerTotal.textContent = `共 ${total} 条`;
+    if (refreshBtn) refreshBtn.disabled = !!deductionApiLoading;
     if (status) {
-      status.textContent = deductionApiLastListResult?.error
-        ? String(deductionApiLastListResult.error)
-        : `已加载 ${deductionApiList.length} 条`;
+      status.textContent = deductionApiLoading
+        ? '加载中…'
+        : (deductionApiLastListResult?.error
+          ? String(deductionApiLastListResult.error)
+          : `已加载 ${deductionApiList.length} 条`);
     }
     renderDeductionApiFilterTabs();
     renderDeductionApiPager(total);
+    renderDeductionApiDebug();
     if (!listEl) return;
     const columns = getDeductionApiColumns(deductionApiFilter);
     renderDeductionApiTableHead(columns);
+    if (deductionApiLoading) {
+      listEl.innerHTML = `
+        <tr>
+          <td colspan="${esc(columns.length)}" style="padding:18px;color:#666;text-align:center;">
+            加载中…
+          </td>
+        </tr>
+      `;
+      renderDeductionApiDebug();
+      return;
+    }
     if (!total) {
       listEl.innerHTML = `
         <tr>
           <td colspan="${esc(columns.length)}" style="padding:18px;color:#999;text-align:center;">
-            暂无数据（可先进入相关平台页面触发扣款接口并观察右侧抓包）
+            暂无数据
           </td>
         </tr>
       `;
+      renderDeductionApiDebug();
       return;
     }
     listEl.innerHTML = pageItems.map((item, idx) => {
@@ -377,33 +407,54 @@
       const tds = columns.map(col => col.render(item, { displayIndex })).join('');
       return `<tr>${tds}</tr>`;
     }).join('');
+    renderDeductionApiDebug();
   }
 
   async function loadDeductionApiList() {
+    if (deductionApiLoading) {
+      deductionApiQueuedRefresh = true;
+      return;
+    }
     if (!window.pddApi || typeof window.pddApi.deductionGetList !== 'function') {
       deductionApiLastListResult = { error: '扣款列表接口未接入（缺少 pddApi.deductionGetList）' };
       deductionApiList = [];
+      deductionApiCounts = null;
       renderDeductionApiList();
       return;
     }
-    const shopId = String(activeShopId || API_ALL_SHOPS || '__all__').trim();
+    const shopId = String(API_ALL_SHOPS || '__all__').trim();
+    deductionApiLoading = true;
+    renderDeductionApiList();
     try {
       const result = await window.pddApi.deductionGetList({ shopId });
       deductionApiLastListResult = result;
       const list = result?.list || result?.data || result?.result || [];
       deductionApiList = Array.isArray(list) ? list : [];
+      if (result?.totals && typeof result.totals === 'object') {
+        deductionApiCounts = {
+          delayShip: Number(result.totals.delayShip || 0),
+          outOfStock: Number(result.totals.outOfStock || 0),
+          fakeShipTrack: Number(result.totals.fakeShipTrack || 0),
+        };
+      } else {
+        deductionApiCounts = null;
+      }
     } catch (error) {
       deductionApiLastListResult = { error: error?.message || String(error) };
       deductionApiList = [];
+      deductionApiCounts = null;
+    } finally {
+      deductionApiLoading = false;
     }
     deductionApiPageNo = 1;
     renderDeductionApiList();
+    if (deductionApiQueuedRefresh) {
+      deductionApiQueuedRefresh = false;
+      await loadDeductionApiList();
+    }
   }
 
   async function loadDeductionApiView(options = {}) {
-    if (!options?.keepCurrent) {
-      await loadDeductionApiTraffic(activeShopId || API_ALL_SHOPS || '__all__');
-    }
     await loadDeductionApiList();
   }
 
@@ -411,24 +462,11 @@
     if (initialized) return;
     initialized = true;
 
-    getEl('btnDeductionApiReloadTraffic')?.addEventListener('click', async () => {
-      await loadDeductionApiTraffic(activeShopId || API_ALL_SHOPS || '__all__');
-      addInfoLog('已刷新扣款抓包记录');
-    });
-    getEl('btnDeductionApiRefresh')?.addEventListener('click', async () => {
+    const handleRefresh = debounce(async () => {
       await loadDeductionApiList();
       addInfoLog('已刷新扣款列表');
-    });
-    getEl('btnDeductionApiClearTraffic')?.addEventListener('click', async () => {
-      if (!window.pddApi || typeof window.pddApi.clearApiTraffic !== 'function') {
-        addErrorLog('清空抓包失败：缺少 clearApiTraffic 能力');
-        return;
-      }
-      const shopId = String(activeShopId || API_ALL_SHOPS || '__all__').trim();
-      await window.pddApi.clearApiTraffic({ shopId });
-      await loadDeductionApiTraffic(shopId);
-      addInfoLog('已清空并刷新扣款抓包记录');
-    });
+    }, 350);
+    getEl('btnDeductionApiRefresh')?.addEventListener('click', handleRefresh);
 
     getEl('deductionApiFilterTabs')?.addEventListener('click', (event) => {
       const btn = event.target?.closest?.('button[data-deduction-filter]');

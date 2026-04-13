@@ -10,7 +10,7 @@
  *   keywordGroups: string[][] | undefined,// 关键词分组（优先使用）
  *   excludeKeywords: string[] | undefined,// 否定关键词，命中则跳过
  *   matchType: 'contains' | 'exact' | 'regex',
- *   reply: string,
+ *   reply: string | string[],
  *   shops: string[] | null,
  *   priority: number,
  *   minScore: number | undefined          // 最低匹配分（默认 5）
@@ -77,7 +77,7 @@ class ReplyEngine {
       }
     }
 
-    return bestRule ? this._buildReply(bestRule.reply, { message: msg }) : null;
+    return bestRule ? this._buildReply(this._resolveReplyTemplate(bestRule.reply), { message: msg }) : null;
   }
 
   _scoreRule(message, rule) {
@@ -89,6 +89,16 @@ class ReplyEngine {
       return this._scoreByGroups(lowerMsg, message, rule);
     }
 
+    const parsed = this._parseAndGroups(rule.keywords);
+    if (parsed.hasAnd) {
+      if (parsed.hasEmptyGroup) return 0;
+      return this._scoreByGroups(lowerMsg, message, {
+        ...rule,
+        keywordGroups: parsed.groups,
+        requireAllGroups: true
+      });
+    }
+
     return this._scoreLegacy(lowerMsg, message, rule);
   }
 
@@ -97,11 +107,33 @@ class ReplyEngine {
     return excludeKeywords.some(kw => lowerMsg.includes(kw.toLowerCase()));
   }
 
+  _parseAndGroups(keywords) {
+    const groups = [];
+    let current = [];
+    let hasAnd = false;
+    for (const kw of keywords || []) {
+      const t = String(kw).trim();
+      if (!t) continue;
+      if (t === '&' || t === '＆') {
+        hasAnd = true;
+        groups.push(current);
+        current = [];
+        continue;
+      }
+      current.push(t);
+    }
+    groups.push(current);
+    const hasEmptyGroup = hasAnd && groups.some(g => g.length === 0);
+    return { hasAnd, hasEmptyGroup, groups: groups.filter(g => g.length > 0) };
+  }
+
   _scoreByGroups(lowerMsg, rawMsg, rule) {
     let groupHits = 0;
+    let totalGroups = 0;
 
     for (const group of rule.keywordGroups) {
       if (!group?.length) continue;
+      totalGroups++;
       const hit = group.some(kw => {
         switch (rule.matchType) {
           case 'exact':
@@ -116,6 +148,7 @@ class ReplyEngine {
     }
 
     if (groupHits === 0) return 0;
+    if (rule.requireAllGroups === true && groupHits < totalGroups) return 0;
 
     let score = groupHits * SCORE.GROUP_HIT;
     if (rule.matchType === 'exact') score += SCORE.EXACT_BONUS;
@@ -169,10 +202,10 @@ class ReplyEngine {
 
     return {
       matched: true,
-      ruleName: bestRule.name,
+      ruleName: bestRule.name || bestRule.id || 'QA规则',
       ruleId: bestRule.id,
       score: Math.round(bestScore * 10) / 10,
-      reply: this._buildReply(bestRule.reply, { message: msg })
+      reply: this._buildReply(this._resolveReplyTemplate(bestRule.reply), { message: msg })
     };
   }
 
@@ -207,9 +240,9 @@ class ReplyEngine {
 
     if (bestRule) {
       return {
-        reply: this._buildReply(bestRule.reply, { message: msg }),
+        reply: this._buildReply(this._resolveReplyTemplate(bestRule.reply), { message: msg }),
         matched: true,
-        ruleName: bestRule.name,
+        ruleName: bestRule.name || bestRule.id || 'QA规则',
         ruleId: bestRule.id,
         score: Math.round(bestScore * 10) / 10
       };
@@ -283,8 +316,31 @@ class ReplyEngine {
     return texts[Math.floor(Math.random() * texts.length)];
   }
 
+  _resolveReplyTemplate(reply) {
+    const templates = this._extractReplyTemplates(reply);
+    return this._pickText(templates, 'random');
+  }
+
+  _extractReplyTemplates(reply) {
+    if (Array.isArray(reply)) {
+      return reply
+        .flatMap(item => this._extractReplyTemplates(item))
+        .filter(Boolean);
+    }
+
+    const text = String(reply || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return [];
+
+    const segments = text
+      .split(/\n\s*---\s*\n/g)
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    return segments.length > 0 ? segments : [text];
+  }
+
   _buildReply(template, context) {
-    return template
+    return String(template || '')
       .replace(/\{time\}/g, new Date().toLocaleTimeString('zh-CN'))
       .replace(/\{date\}/g, new Date().toLocaleDateString('zh-CN'));
   }

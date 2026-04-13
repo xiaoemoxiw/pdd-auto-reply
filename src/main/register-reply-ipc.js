@@ -7,6 +7,7 @@ function registerReplyIpc({
   ReplyEngine,
   getReplyEngine,
   setReplyEngine,
+  getDefaultRules,
   getAiIntentEngine,
   getShopManager
 }) {
@@ -26,6 +27,14 @@ function registerReplyIpc({
     const engine = getReplyEngine();
     if (engine) engine.updateRules(rules);
     return true;
+  });
+
+  ipcMain.handle('reset-rules', () => {
+    const rules = Array.isArray(getDefaultRules?.()) ? getDefaultRules() : [];
+    store.set('rules', rules);
+    const engine = getReplyEngine();
+    if (engine) engine.updateRules(rules);
+    return rules;
   });
 
   ipcMain.handle('get-auto-reply-enabled', () => store.get('autoReplyEnabled'));

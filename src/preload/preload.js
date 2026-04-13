@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   // 规则管理
   getRules: () => ipcRenderer.invoke('get-rules'),
   saveRules: (rules) => ipcRenderer.invoke('save-rules', rules),
+  resetRules: () => ipcRenderer.invoke('reset-rules'),
   testRule: (message) => ipcRenderer.invoke('test-rule', message),
 
   // 自动回复开关

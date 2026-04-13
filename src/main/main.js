@@ -36,6 +36,7 @@ const { registerLicenseIpc } = require('./register-license-ipc');
 const { isLicenseValid } = require('./license-store');
 const { registerViolationInfoWindowIpc } = require('./register-violation-info-window-ipc');
 const Store = require('electron-store');
+const DEFAULT_QA_RULES = require('../../test/pdd-qa-rules.json');
 
 app.disableHardwareAcceleration();
 configureChromiumLogging();
@@ -150,6 +151,7 @@ const fallbackCooldowns = new Map();
 const messageDedup = new Map(); // "shop|session|messageId" or "shop|session|message" -> timestamp
 // 发送去重：防止同一会话的同一自动回复在短时间内被并发重复发送
 const autoReplySendDedup = new Map(); // "shop|session|question|answer" -> timestamp
+const lastMatchedReplyAt = new Map(); // fallbackKey -> timestamp
 const embeddedPageActions = new Map(); // shopId -> last action
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
@@ -175,91 +177,13 @@ const MOCK_GROUPS = [
   { id: 'group_3', name: '3美妆母婴' }
 ];
 
-const MOCK_RULES = [
-  {
-    id: 'qa_1', name: '欢迎语', enabled: true, matchType: 'contains', priority: 100, shops: null,
-    keywords: ['你好', '在吗', '在不在', '有人吗', 'hello', '嗨', '您好', '亲'],
-    keywordGroups: [['你好', '在吗', '在不在', '有人吗', 'hello', '嗨', '您好', '亲', '请问']],
-    excludeKeywords: [],
-    reply: '亲，您好！欢迎光临本店，请问有什么可以帮您的呢？'
-  },
-  {
-    id: 'qa_2', name: '发货时间', enabled: true, matchType: 'contains', priority: 80, shops: null,
-    keywords: ['发货', '寄出', '时间', '多久', '几天'],
-    keywordGroups: [
-      ['发货', '寄出', '发', '寄'],
-      ['什么时候', '多久', '几天', '时间', '啥时候', '多长时间']
-    ],
-    excludeKeywords: ['已发货', '已经发了'],
-    reply: '亲，拍下后48小时内为您安排发货哦，一般2-3天可以收到~'
-  },
-  {
-    id: 'qa_3', name: '退换货政策', enabled: true, matchType: 'contains', priority: 70, shops: null,
-    keywords: ['退货', '换货', '退款', '不想要了', '退换'],
-    keywordGroups: [
-      ['退货', '退款', '退换', '退回', '换货', '不想要', '不要了']
-    ],
-    excludeKeywords: ['不退', '不用退', '不需要退', '不换了'],
-    reply: '亲，本店支持7天无理由退换货。如需退换，请在订单页面申请，我们会尽快为您处理~'
-  },
-  {
-    id: 'qa_4', name: '优惠活动', enabled: true, matchType: 'contains', priority: 60, shops: null,
-    keywords: ['优惠', '打折', '便宜', '优惠券', '满减'],
-    keywordGroups: [
-      ['优惠', '打折', '便宜点', '少点', '满减', '优惠券', '券', '活动', '折扣']
-    ],
-    excludeKeywords: [],
-    reply: '亲，目前店铺有满99减10的活动哦，收藏店铺还可以领取5元优惠券呢~'
-  },
-  {
-    id: 'qa_5', name: '售后问题', enabled: true, matchType: 'contains', priority: 90, shops: null,
-    keywords: ['投诉', '质量问题', '坏了', '破损', '有问题'],
-    keywordGroups: [
-      ['投诉', '质量问题', '坏了', '破损', '有问题', '瑕疵', '损坏', '不好用', '出问题']
-    ],
-    excludeKeywords: ['没问题', '没有问题', '质量不错'],
-    reply: '亲，非常抱歉给您带来不好的体验。请您提供订单号和问题照片，我们会第一时间为您处理~'
-  },
-  {
-    id: 'qa_6', name: '商品咨询', enabled: false, matchType: 'contains', priority: 50, shops: null,
-    keywords: ['尺码', '颜色', '材质', '规格', '大小'],
-    keywordGroups: [
-      ['尺码', '颜色', '材质', '规格', '大小', '尺寸', '型号', '重量']
-    ],
-    excludeKeywords: [],
-    reply: '亲，商品详情页有详细的规格说明哦，如果还有疑问请告诉我具体想了解哪款商品~'
-  },
-  {
-    id: 'qa_7', name: '物流查询', enabled: true, matchType: 'contains', priority: 75, shops: null,
-    keywords: ['快递', '物流', '到哪了', '单号'],
-    keywordGroups: [
-      ['快递', '物流', '运单', '包裹'],
-      ['到哪', '查', '单号', '进度', '到了吗', '到了没', '在哪']
-    ],
-    excludeKeywords: [],
-    reply: '亲，请提供一下您的订单号，我帮您查询物流信息哦~'
-  },
-  {
-    id: 'qa_8', name: '品质口感咨询', enabled: true, matchType: 'contains', priority: 85, shops: null,
-    keywords: ['品质好吗', '好吃吗', '口感好吗', '甜吗', '新鲜吗'],
-    keywordGroups: [
-      ['品质好吗', '品质怎么样', '质量好吗', '质量怎么样'],
-      ['好吃吗', '口感好吗', '口感怎么样', '甜吗', '新鲜吗', '味道怎么样']
-    ],
-    excludeKeywords: ['不好吃', '不新鲜', '质量不好', '品质差'],
-    reply: '亲，咱家商品品质和口感都不错呢，大多数顾客反馈都很好，您可以放心拍下哦~'
-  },
-  {
-    id: 'qa_9', name: '历史订单咨询', enabled: true, matchType: 'contains', priority: 88, shops: null,
-    keywords: ['之前买过', '以前买过', '我2月份买的', '我上次买的', '老订单'],
-    keywordGroups: [
-      ['之前买过', '以前买过', '上次买的', '之前下单', '以前下单', '老顾客'],
-      ['1月份买的', '2月份买的', '3月份买的', '上个月买的', '前几天买的', '之前买的']
-    ],
-    excludeKeywords: ['现在买', '现在下单', '准备买', '想买'],
-    reply: '亲，麻烦您提供一下对应订单号或订单截图，我帮您核实之前购买的商品信息哦~'
+function cloneRuleSet(rules = []) {
+  try {
+    return JSON.parse(JSON.stringify(Array.isArray(rules) ? rules : []));
+  } catch {
+    return Array.isArray(rules) ? rules.map(rule => ({ ...rule })) : [];
   }
-];
+}
 
 const MOCK_QUICK_PHRASES = [
   { id: 'qp_1', text: '亲，您好！请问有什么可以帮您？', category: '欢迎' },
@@ -1142,8 +1066,9 @@ function startNetworkMonitor(view, shopId) {
       handleNewCustomerMessage({
         message: msg.text,
         customer: msg.customer,
-        conversationId: msg.conversationId || Date.now().toString(),
-        source: 'network-monitor'
+        conversationId: msg.conversationId || '',
+        source: 'network-monitor',
+        shopId
       });
     }
   });
@@ -2356,6 +2281,7 @@ registerReplyIpc({
   setReplyEngine: engine => {
     replyEngine = engine;
   },
+  getDefaultRules: () => cloneRuleSet(DEFAULT_QA_RULES),
   getAiIntentEngine: () => aiIntentEngine,
   getShopManager: () => shopManager
 });
@@ -2822,6 +2748,19 @@ async function handleNewCustomerMessage(data) {
       source,
     };
 
+    const markMatchedReply = () => {
+      if (!result.matched) return;
+      const keys = buildFallbackKeyVariants(data, { includeShop: true });
+      const ts = Date.now();
+      for (const key of keys) lastMatchedReplyAt.set(key, ts);
+      if (lastMatchedReplyAt.size > 500) {
+        const cutoff = ts - 10 * 60 * 1000;
+        for (const [key, timestamp] of lastMatchedReplyAt) {
+          if (timestamp < cutoff) lastMatchedReplyAt.delete(key);
+        }
+      }
+    };
+
     if (source === 'api-polling') {
       if (!data.shopId) {
         throw new Error('接口自动回复缺少店铺信息');
@@ -2842,6 +2781,7 @@ async function handleNewCustomerMessage(data) {
       };
       mainWindow?.webContents.send('auto-reply-sent', apiReplyData);
       sendToDebug('auto-reply-sent', apiReplyData);
+      markMatchedReply();
       return;
     }
 
@@ -2858,10 +2798,13 @@ async function handleNewCustomerMessage(data) {
     });
     mainWindow?.webContents.send('auto-reply-sent', replyData);
     sendToDebug('auto-reply-sent', replyData);
+    markMatchedReply();
   };
 
   if (result.matched) {
-    cancelPendingFallback(fallbackKey);
+    for (const key of buildFallbackKeyVariants(data, { includeShop: true })) {
+      cancelPendingFallback(key);
+    }
     await doSend();
   } else {
     // ---- 兜底回复流程 ----
@@ -2935,11 +2878,30 @@ async function handleNewCustomerMessage(data) {
       delayMs: delay,
       source,
     });
+    const scheduledAt = Date.now();
     const timer = setTimeout(async () => {
       pendingFallbacks.delete(fallbackKey);
       pendingFallbackMeta.delete(fallbackKey);
 
       try {
+        const lastMatchedAt = lastMatchedReplyAt.get(fallbackKey);
+        if (lastMatchedAt && lastMatchedAt > scheduledAt) {
+          mainWindow?.webContents.send('fallback-skipped', {
+            customer: data.customer,
+            message: data.message,
+            reason: '已命中关键词/AI',
+            shopId: data.shopId || shopManager?.getActiveShopId() || '',
+          });
+          sendToDebug('fallback-skipped', {
+            shopId: data.shopId || shopManager?.getActiveShopId() || '',
+            sessionId: data.sessionId || data.conversationId || '',
+            customer: data.customer || '',
+            message: data.message || '',
+            reason: 'matched-after-schedule',
+            source,
+          });
+          return;
+        }
         mainWindow?.webContents.send('fallback-triggered', {
           shopId: data.shopId || shopManager?.getActiveShopId() || '',
           sessionId: data.sessionId || data.conversationId || '',
@@ -3004,7 +2966,7 @@ async function handleNewCustomerMessage(data) {
     pendingFallbacks.set(fallbackKey, timer);
     pendingFallbackMeta.set(fallbackKey, {
       messageKey: fallbackMessageKey,
-      createdAt: Date.now(),
+      createdAt: scheduledAt,
     });
   }
 }
@@ -3019,11 +2981,40 @@ ipcMain.on('new-customer-message', (event, data) => {
 });
 
 function buildFallbackKey(data = {}) {
-  return [
-    String(data?.shopId || '').trim(),
-    String(data?.sessionId || data?.conversationId || '').trim(),
-    String(data?.customer || '').trim(),
-  ].join('|');
+  return buildFallbackKeyVariants(data, { includeShop: true })[0];
+}
+
+function buildFallbackKeyVariants(data = {}, { includeShop = false } = {}) {
+  const shopId = String(data?.shopId || '').trim();
+  const rawConversationId = String(data?.sessionId || data?.conversationId || '').trim();
+  const rawCustomer = String(data?.customer || '').trim();
+
+  const isEphemeralId = (value) => {
+    if (!value) return true;
+    if (!/^\d{13}$/.test(value)) return false;
+    const ts = Number(value);
+    if (!Number.isFinite(ts)) return false;
+    const delta = Math.abs(Date.now() - ts);
+    return delta <= 30 * 60 * 1000;
+  };
+
+  const conversationId = isEphemeralId(rawConversationId) ? '' : rawConversationId;
+  const customer = ['客户', '未知客户'].includes(rawCustomer) ? '' : rawCustomer;
+  const shopKey = [shopId, '__shop__'].join('|');
+
+  const candidates = [];
+  if (conversationId) candidates.push([shopId, `c:${conversationId}`].join('|'));
+  if (customer) candidates.push([shopId, `u:${customer}`].join('|'));
+
+  const primaryKey = candidates[0] || shopKey;
+  const keys = [primaryKey];
+  for (const key of candidates) {
+    if (key !== primaryKey) keys.push(key);
+  }
+  if ((includeShop || primaryKey === shopKey) && shopKey !== primaryKey) {
+    keys.push(shopKey);
+  }
+  return [...new Set(keys)];
 }
 
 function cancelPendingFallback(fallbackKey) {
@@ -3046,18 +3037,6 @@ function appendUnmatchedLog(data) {
   // 保留最近 N 条
   if (log.length > UNMATCHED_LOG_MAX) log.length = UNMATCHED_LOG_MAX;
   store.set('unmatchedLog', log);
-}
-
-function ensureBuiltInRules(rules = []) {
-  const normalized = Array.isArray(rules) ? [...rules] : [];
-  const builtInRuleIds = ['qa_8', 'qa_9'];
-  for (const ruleId of builtInRuleIds) {
-    const hasRule = normalized.some(rule => String(rule?.id || '') === ruleId);
-    if (hasRule) continue;
-    const builtInRule = MOCK_RULES.find(rule => rule.id === ruleId);
-    if (builtInRule) normalized.push({ ...builtInRule });
-  }
-  return normalized;
 }
 
 function ensureDefaultReplyConfig(config = null) {
@@ -3103,14 +3082,10 @@ function initMockData() {
   if (!store.get('shopGroups') || store.get('shopGroups').length === 0) {
     store.set('shopGroups', MOCK_GROUPS);
   }
+  const hasPersistedRules = Object.prototype.hasOwnProperty.call(store.store || {}, 'rules');
   const currentRules = store.get('rules');
-  if (!Array.isArray(currentRules) || currentRules.length === 0) {
-    store.set('rules', MOCK_RULES);
-  } else {
-    const mergedRules = ensureBuiltInRules(currentRules);
-    if (mergedRules.length !== currentRules.length) {
-      store.set('rules', mergedRules);
-    }
+  if (!hasPersistedRules || !Array.isArray(currentRules)) {
+    store.set('rules', cloneRuleSet(DEFAULT_QA_RULES));
   }
   const currentDefaultReply = store.get('defaultReply');
   const mergedDefaultReply = ensureDefaultReplyConfig(currentDefaultReply);

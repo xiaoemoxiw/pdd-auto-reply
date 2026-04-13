@@ -7227,72 +7227,59 @@
         </div>
       </div>
       <div class="view-page" id="viewMailApi">
-        <div class="page-toolbar">
-          <div class="balance-total">站内信接口对接</div>
-          <div class="mail-api-toolbar-stats">
-            <span class="mail-api-toolbar-chip">总数 <strong id="mailApiTotalNum">-</strong></span>
-            <span class="mail-api-toolbar-chip">未读 <strong id="mailApiUnreadNum">-</strong></span>
-            <span class="mail-api-toolbar-chip">消息盒子 <strong id="mailApiMsgBoxCount">-</strong></span>
-            <span class="mail-api-toolbar-chip">普通总量 <strong id="mailApiNormalTotal">-</strong></span>
-          </div>
-          <span class="spacer"></span>
-          <button class="btn btn-secondary" id="btnMailApiRefreshList">刷新列表</button>
-          <button class="btn btn-secondary" id="btnMailApiRefreshDetail">刷新详情</button>
-          <button class="btn btn-secondary" id="btnMailApiRefreshPage">刷新站内信页</button>
-          <button class="btn btn-secondary" id="btnMailApiReloadTraffic" style="display:none;">刷新抓包</button>
-          <button class="btn btn-secondary" id="btnMailApiOpenDebug">调试窗口</button>
-          <button class="btn btn-secondary" id="btnMailApiClearTraffic" style="display:none;">清空记录</button>
-        </div>
-        <div class="mail-api-layout">
-          <div class="mail-api-pane mail-api-sidebar">
-            <div class="mail-api-pane-header">
-              <span class="mail-api-pane-title">分类</span>
-              <span class="mail-api-pane-subtitle" id="mailApiHeaderMeta">等待加载站内信数据</span>
-            </div>
-            <div class="mail-api-category-list" id="mailApiCategoryList"></div>
-          </div>
-          <div class="mail-api-pane mail-api-list-pane">
-            <div class="mail-api-pane-header">
-              <span class="mail-api-pane-title" id="mailApiListTitle">站内信列表</span>
-              <span class="mail-api-pane-subtitle" id="mailApiListMeta">0 条消息</span>
-            </div>
-            <div class="mail-api-list-toolbar">
-              <input class="search-box" id="mailApiKeyword" placeholder="搜索标题或内容摘要">
-              <label class="mail-api-filter-toggle">
-                <input type="checkbox" id="mailApiUnreadOnly">
-                <span>只看未读</span>
-              </label>
-              <span class="mail-api-list-status" id="mailApiListStatus">点击左侧分类后加载列表</span>
-            </div>
-            <div class="mail-api-list-box" id="mailApiList"></div>
-          </div>
-          <div class="mail-api-pane mail-api-detail-pane">
-            <div class="mail-api-pane-header">
-              <span class="mail-api-pane-title">详情预览</span>
-              <span class="mail-api-pane-subtitle" id="mailApiDetailMeta">点击左侧列表打开详情</span>
-            </div>
-            <div class="mail-api-detail-head" id="mailApiDetailHead">
-              <div class="mail-api-detail-title">请选择一条站内信</div>
-              <div class="mail-api-detail-meta">
-                <span>分类：-</span>
-                <span>时间：-</span>
+        <div class="mail-api-page">
+          <div class="mail-api-board">
+            <div class="mail-api-filter-bar">
+              <div class="mail-api-filter-group">
+                <button class="mail-api-status-btn active" id="btnMailApiFilterAll" type="button">
+                  <span>全部</span>
+                  <strong id="mailApiAllCount">0</strong>
+                </button>
+                <button class="mail-api-status-btn" id="btnMailApiFilterUnread" type="button">
+                  <span>未读</span>
+                  <strong id="mailApiUnreadCount">0</strong>
+                </button>
+                <button class="mail-api-status-btn" id="btnMailApiFilterRead" type="button">
+                  <span>已读</span>
+                  <strong id="mailApiReadCount">0</strong>
+                </button>
+              </div>
+              <div class="mail-api-action-group">
+                <button class="btn btn-secondary" id="btnMailApiMarkRead">标为已读</button>
+                <button class="btn btn-secondary" id="btnMailApiRefreshList">刷新</button>
+              </div>
+              <div class="mail-api-pager">
+                <button class="mail-api-page-btn" id="btnMailApiPrevPage" type="button">‹</button>
+                <span class="mail-api-page-indicator" id="mailApiPageIndicator">1 / 1</span>
+                <button class="mail-api-page-btn" id="btnMailApiNextPage" type="button">›</button>
               </div>
             </div>
-            <div class="mail-api-detail-panel" id="mailApiDetailPanel">
-              <div class="mail-api-detail-empty">请选择一条站内信查看详情</div>
+            <div class="mail-api-table-toolbar">
+              <span class="mail-api-table-title">站内信列表</span>
+              <span class="mail-api-table-meta" id="mailApiHeaderMeta">等待加载站内信数据</span>
+              <span class="mail-api-table-meta" id="mailApiListMeta">0 条消息</span>
             </div>
-            <div class="mail-api-detail-footer">
-              <div class="mail-api-detail-actions">
-                <button class="btn btn-secondary" id="btnMailApiPrev">上一条</button>
-                <button class="btn btn-secondary" id="btnMailApiNext">下一条</button>
-                <button class="btn btn-secondary" id="btnMailApiBackToMail">切回站内信页</button>
-              </div>
-              <div class="mail-api-traffic-box" style="display:none;">
-                <div class="mail-api-traffic-summary" id="mailApiTrafficSummary">0 条抓包记录</div>
-                <div class="mail-api-traffic-list" id="mailApiTrafficList">
-                  <span class="mail-api-traffic-chip">暂无抓包</span>
-                </div>
-              </div>
+            <div class="mail-api-table-wrap">
+              <table class="mail-api-table">
+                <thead>
+                  <tr>
+                    <th class="mail-api-col-checkbox">
+                      <input type="checkbox" id="mailApiSelectAll">
+                    </th>
+                    <th class="mail-api-col-index">序号</th>
+                    <th class="mail-api-col-shop">店铺名称</th>
+                    <th>主题</th>
+                    <th class="mail-api-col-time">时间</th>
+                  </tr>
+                </thead>
+                <tbody id="mailApiList">
+                  <tr>
+                    <td colspan="5">
+                      <div class="mail-api-list-empty">等待加载站内信数据</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

@@ -29,6 +29,7 @@ const { registerApiIpc } = require('./register-api-ipc');
 const { registerReplyIpc } = require('./register-reply-ipc');
 const { registerDebugIpc } = require('./register-debug-ipc');
 const { registerEmbeddedViewIpc } = require('./register-embedded-view-ipc');
+const { registerMailDetailWindowIpc } = require('./register-mail-detail-window-ipc');
 const { registerAfterSaleDetailWindowIpc } = require('./register-aftersale-detail-window-ipc');
 const { registerInvoiceOrderDetailWindowIpc } = require('./register-invoice-order-detail-window-ipc');
 const { registerTicketTodoDetailWindowIpc } = require('./register-ticket-todo-detail-window-ipc');
@@ -2323,6 +2324,12 @@ registerEmbeddedViewIpc({
 });
 
 registerAfterSaleDetailWindowIpc({
+  ipcMain,
+  store,
+  getMainWindow: () => mainWindow
+});
+
+registerMailDetailWindowIpc({
   ipcMain,
   store,
   getMainWindow: () => mainWindow

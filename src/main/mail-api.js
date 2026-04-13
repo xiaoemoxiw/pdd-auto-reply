@@ -246,12 +246,15 @@ class MailApiClient {
     const pageNum = Math.max(1, Number(params.pageNum || 1));
     const size = Math.max(1, Number(params.size || 40));
     const contentType = Number(params.contentType ?? -1);
+    const hasReadStatus = params.readStatus === 0 || params.readStatus === 1 || params.readStatus === '0' || params.readStatus === '1';
+    const readStatus = hasReadStatus ? Number(params.readStatus) : undefined;
     const bodies = contentType === -1
       ? [{ pageNum, size }, { pageNum, size, contentType: -1 }]
       : [{ pageNum, size, contentType }];
+    const requestBodies = bodies.map(body => (readStatus === undefined ? body : { ...body, readStatus }));
     let payload = null;
     let lastError = null;
-    for (const body of bodies) {
+    for (const body of requestBodies) {
       try {
         const nextPayload = await this._request('POST', '/newjersy/api/innerMessage/queryMsgListForMerchant', body);
         const nextResult = nextPayload?.result || {};

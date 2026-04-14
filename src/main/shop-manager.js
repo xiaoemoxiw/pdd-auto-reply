@@ -1,4 +1,4 @@
-const { BrowserView, session, dialog, shell } = require('electron');
+const { BrowserView, BrowserWindow, session, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -1091,21 +1091,6 @@ class ShopManager {
       mainCookieContextUpdatedAt: Number(shop.mainCookieContextUpdatedAt || 0),
     });
 
-    const win = new BrowserWindow({
-      width: 1200,
-      height: 800,
-      show: false,
-      webPreferences: {
-        partition: this._getPartition(shopId),
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-
-    if (shop?.userAgent) {
-      win.webContents.setUserAgent(shop.userAgent);
-    }
-
     let result = {
       ready: false,
       cookieNames: [],
@@ -1114,8 +1099,24 @@ class ShopManager {
       hasRckk: false,
       currentUrl: '',
     };
+    let win = null;
 
     try {
+      win = new BrowserWindow({
+        width: 1200,
+        height: 800,
+        show: false,
+        webPreferences: {
+          partition: this._getPartition(shopId),
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      });
+
+      if (shop?.userAgent) {
+        win.webContents.setUserAgent(shop.userAgent);
+      }
+
       await win.loadURL(PDD_HOME_URL);
       const deadline = Date.now() + waitTimeoutMs;
       while (Date.now() < deadline) {
@@ -1166,7 +1167,7 @@ class ShopManager {
         error: message,
       };
     } finally {
-      if (!win.isDestroyed()) {
+      if (win && !win.isDestroyed()) {
         win.destroy();
       }
     }

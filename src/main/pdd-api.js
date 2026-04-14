@@ -1121,12 +1121,14 @@ class PddApiClient extends EventEmitter {
     const cookieMap = await this._getCookieMap();
     const cookieNames = Object.keys(cookieMap).sort();
     const mainCookieString = this._buildMainCookieString(cookieMap);
+    const hasRequiredMainCookies = !!(cookieMap.PASS_ID && cookieMap._nano_fp && cookieMap.rckk);
     return {
       hasPassId: !!cookieMap.PASS_ID,
       hasNanoFp: !!cookieMap._nano_fp,
       hasRckk: !!cookieMap.rckk,
       hasVerifyAuthToken: !!cookieMap['msfe-pc-cookie-captcha-token'],
-      usesWhitelistCookieString: !!mainCookieString,
+      hasRequiredMainCookies,
+      usesWhitelistCookieString: !!(mainCookieString && hasRequiredMainCookies),
       cookieNameCount: cookieNames.length,
       cookieNames,
     };
@@ -1138,7 +1140,8 @@ class PddApiClient extends EventEmitter {
     const cookieMap = await this._getCookieMap();
     const fullCookie = this._serializeCookieMap(cookieMap, Object.keys(cookieMap));
     const mainCookie = this._buildMainCookieString(cookieMap);
-    const cookie = mainCookie || fullCookie;
+    const hasRequiredMainCookies = !!(cookieMap.PASS_ID && cookieMap._nano_fp && cookieMap.rckk);
+    const cookie = hasRequiredMainCookies ? mainCookie : fullCookie;
     const headers = {
       accept: '*/*',
       'accept-language': 'zh-CN,zh;q=0.9',
@@ -1167,6 +1170,13 @@ class PddApiClient extends EventEmitter {
     if (cookieMap.rckk) headers.etag = cookieMap.rckk;
     if (cookieMap['msfe-pc-cookie-captcha-token']) {
       headers.VerifyAuthToken = cookieMap['msfe-pc-cookie-captcha-token'];
+    }
+    if (!hasRequiredMainCookies) {
+      this._log('[API] 请求关键 Cookie 缺失', {
+        hasPassId: !!cookieMap.PASS_ID,
+        hasNanoFp: !!cookieMap._nano_fp,
+        hasRckk: !!cookieMap.rckk,
+      });
     }
 
     return headers;

@@ -47,6 +47,7 @@ class PddApiClient extends EventEmitter {
     this._getOrderPriceUpdateTemplate = options.getOrderPriceUpdateTemplate || (() => null);
     this._setOrderPriceUpdateTemplate = options.setOrderPriceUpdateTemplate || null;
     this._getSmallPaymentSubmitTemplate = options.getSmallPaymentSubmitTemplate || (() => null);
+    this._refreshMainCookieContext = options.refreshMainCookieContext || null;
   }
 
   _log(message, extra) {
@@ -1089,11 +1090,55 @@ class PddApiClient extends EventEmitter {
     }, {});
   }
 
+  _getMainCookieWhitelist() {
+    return [
+      'PASS_ID',
+      '_nano_fp',
+      'rckk',
+      'api_uid',
+      '_bee',
+      'ru1k',
+      '_f77',
+      'ru2k',
+      '_a42',
+      'JSESSIONID',
+      'msfe-pc-cookie-captcha-token',
+    ];
+  }
+
+  _serializeCookieMap(cookieMap = {}, cookieNames = []) {
+    return cookieNames
+      .filter(name => name && cookieMap[name] !== undefined && cookieMap[name] !== null && cookieMap[name] !== '')
+      .map(name => `${name}=${cookieMap[name]}`)
+      .join('; ');
+  }
+
+  _buildMainCookieString(cookieMap = {}) {
+    return this._serializeCookieMap(cookieMap, this._getMainCookieWhitelist());
+  }
+
+  async _getMainCookieContextSummary() {
+    const cookieMap = await this._getCookieMap();
+    const cookieNames = Object.keys(cookieMap).sort();
+    const mainCookieString = this._buildMainCookieString(cookieMap);
+    return {
+      hasPassId: !!cookieMap.PASS_ID,
+      hasNanoFp: !!cookieMap._nano_fp,
+      hasRckk: !!cookieMap.rckk,
+      hasVerifyAuthToken: !!cookieMap['msfe-pc-cookie-captcha-token'],
+      usesWhitelistCookieString: !!mainCookieString,
+      cookieNameCount: cookieNames.length,
+      cookieNames,
+    };
+  }
+
   async _buildHeaders(extraHeaders = {}) {
     const tokenInfo = this._getTokenInfo();
     const shop = this._getShopInfo();
-    const cookie = await this._getCookieString();
     const cookieMap = await this._getCookieMap();
+    const fullCookie = this._serializeCookieMap(cookieMap, Object.keys(cookieMap));
+    const mainCookie = this._buildMainCookieString(cookieMap);
+    const cookie = mainCookie || fullCookie;
     const headers = {
       accept: '*/*',
       'accept-language': 'zh-CN,zh;q=0.9',
@@ -1125,6 +1170,48 @@ class PddApiClient extends EventEmitter {
     }
 
     return headers;
+  }
+
+  async _prepareRequestHeaders(extraHeaders = {}, options = {}) {
+    let mainCookieContext = await this._getMainCookieContextSummary();
+    const shop = this._getShopInfo();
+    const shouldEnsureMainCookieContext = shop?.loginMethod === 'token'
+      && options.ensureMainCookieContext !== false
+      && (!mainCookieContext.hasPassId || !mainCookieContext.hasNanoFp);
+    if (shouldEnsureMainCookieContext) {
+      await this._maybeRefreshMainCookieContext('missing-main-cookie-context', {
+        summary: mainCookieContext,
+      });
+      mainCookieContext = await this._getMainCookieContextSummary();
+    }
+    const headers = await this._buildHeaders(extraHeaders);
+    return { headers, mainCookieContext };
+  }
+
+  async _maybeRefreshMainCookieContext(reason = 'manual', payload = {}) {
+    if (typeof this._refreshMainCookieContext !== 'function') return null;
+    const shop = this._getShopInfo();
+    if (shop?.loginMethod !== 'token') return null;
+    this._log('[API] 刷新主 Cookie 上下文', {
+      reason,
+      ...(payload && typeof payload === 'object' ? payload : {}),
+    });
+    return this._refreshMainCookieContext({
+      shopId: this.shopId,
+      reason,
+      ...(payload && typeof payload === 'object' ? payload : {}),
+    });
+  }
+
+  _shouldRetryWithMainCookieContextRefresh(error, options = {}) {
+    if (options.mainCookieContextRetried) return false;
+    if (typeof this._refreshMainCookieContext !== 'function') return false;
+    const shop = this._getShopInfo();
+    if (shop?.loginMethod !== 'token') return false;
+    if (error?.authExpired) return true;
+    const statusCode = Number(error?.statusCode || 0);
+    const errorCode = Number(error?.errorCode || 0);
+    return [401, 403, 419].includes(statusCode) || this._isAuthError(errorCode);
   }
 
   _guessMimeType(filePath = '') {
@@ -1652,6 +1739,7 @@ class PddApiClient extends EventEmitter {
         });
       }
       const cookieNamesAfter = await this._listCookieNames();
+      const mainCookieContext = await this._getMainCookieContextSummary();
       return {
         initialized: settled,
         url: finalUrl,
@@ -1660,6 +1748,7 @@ class PddApiClient extends EventEmitter {
         addedCookieNames: cookieNamesAfter.filter(item => !cookieNamesBefore.includes(item)),
         userAgentUsed: shop?.userAgent || this._getTokenInfo()?.userAgent || '',
         bootstrapStatus,
+        mainCookieContext,
       };
     } finally {
       monitor.stop();
@@ -1667,155 +1756,245 @@ class PddApiClient extends EventEmitter {
     }
   }
 
-  async _request(method, urlPath, body, extraHeaders = {}) {
-    const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-    const headers = await this._buildHeaders(extraHeaders);
-    const shop = this._getShopInfo();
-    if (shop?.loginMethod === 'token' && !headers['X-PDD-Token']) {
-      const error = new Error('当前店铺未恢复 Token，请重新导入 Token');
-      throw this._markAuthExpired(error, {
-        errorMsg: error.message,
-        authState: 'token_missing',
-        source: 'missing-token',
-      });
-    }
-    const options = { method, headers };
+  async _request(method, urlPath, body, extraHeaders = {}, options = {}) {
+    const attempt = async (attemptOptions = {}) => {
+      const suppressAuthExpired = attemptOptions.suppressAuthExpired === undefined
+        ? !!options.suppressAuthExpired
+        : !!attemptOptions.suppressAuthExpired;
+      const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
+      const { headers } = await this._prepareRequestHeaders(extraHeaders, attemptOptions);
+      const shop = this._getShopInfo();
+      if (shop?.loginMethod === 'token' && !headers['X-PDD-Token']) {
+        const error = new Error('当前店铺未恢复 Token，请重新导入 Token');
+        if (suppressAuthExpired) {
+          error.authExpired = true;
+          error.authState = 'token_missing';
+          throw error;
+        }
+        throw this._markAuthExpired(error, {
+          errorMsg: error.message,
+          authState: 'token_missing',
+          source: 'missing-token',
+        });
+      }
+      const requestOptions = { method, headers };
 
-    if (body !== undefined && body !== null) {
-      options.body = typeof body === 'string' ? body : JSON.stringify(body);
-    }
+      if (body !== undefined && body !== null) {
+        requestOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
+      }
 
-    const response = await this._getSession().fetch(url, options);
-    const text = await response.text();
-    this._log(`[API] ${method} ${url} -> ${response.status}`);
+      const response = await this._getSession().fetch(url, requestOptions);
+      const text = await response.text();
+      this._log(`[API] ${method} ${url} -> ${response.status}`);
 
-    let payload = text;
-    try {
-      payload = JSON.parse(text);
-    } catch {}
+      let payload = text;
+      try {
+        payload = JSON.parse(text);
+      } catch {}
 
-    if (this._isLoginPageResponse(response, text)) {
-      const error = new Error('网页登录已失效，请重新登录或重新导入 Token');
-      error.statusCode = response.status;
-      error.payload = payload;
-      throw this._markAuthExpired(error, {
-        statusCode: response.status,
-        errorMsg: error.message,
-        authState: 'expired',
-        source: 'login-page',
-      });
-    }
-
-    if (!response.ok) {
-      const message = typeof payload === 'object'
-        ? payload?.error_msg || payload?.message || `HTTP ${response.status}`
-        : `HTTP ${response.status}: ${String(text).slice(0, 200)}`;
-      const error = new Error(message);
-      error.statusCode = response.status;
-      error.payload = payload;
-      if ([401, 403, 419].includes(Number(response.status))) {
+      if (this._isLoginPageResponse(response, text)) {
+        const error = new Error('网页登录已失效，请重新登录或重新导入 Token');
+        error.statusCode = response.status;
+        error.payload = payload;
+        if (suppressAuthExpired) {
+          error.authExpired = true;
+          error.authState = 'expired';
+          throw error;
+        }
         throw this._markAuthExpired(error, {
           statusCode: response.status,
-          errorMsg: message,
+          errorMsg: error.message,
           authState: 'expired',
-          source: 'http-status',
+          source: 'login-page',
         });
       }
-      throw error;
-    }
 
-    const businessError = this._normalizeBusinessError(payload);
-    if (businessError) {
-      const error = new Error(businessError.message);
-      error.errorCode = businessError.code;
-      error.payload = payload;
-      if (this._isAuthError(businessError.code)) {
-        throw this._markAuthExpired(error, {
-          errorCode: businessError.code,
-          errorMsg: businessError.message,
-          authState: 'expired',
-          source: 'business-code',
-        });
+      if (!response.ok) {
+        const message = typeof payload === 'object'
+          ? payload?.error_msg || payload?.message || `HTTP ${response.status}`
+          : `HTTP ${response.status}: ${String(text).slice(0, 200)}`;
+        const error = new Error(message);
+        error.statusCode = response.status;
+        error.payload = payload;
+        if ([401, 403, 419].includes(Number(response.status))) {
+          if (suppressAuthExpired) {
+            error.authExpired = true;
+            error.authState = 'expired';
+            throw error;
+          }
+          throw this._markAuthExpired(error, {
+            statusCode: response.status,
+            errorMsg: message,
+            authState: 'expired',
+            source: 'http-status',
+          });
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    this._authExpired = false;
-    return payload;
-  }
+      const businessError = this._normalizeBusinessError(payload);
+      if (businessError) {
+        const error = new Error(businessError.message);
+        error.errorCode = businessError.code;
+        error.payload = payload;
+        if (this._isAuthError(businessError.code)) {
+          if (suppressAuthExpired) {
+            error.authExpired = true;
+            error.authState = 'expired';
+            throw error;
+          }
+          throw this._markAuthExpired(error, {
+            errorCode: businessError.code,
+            errorMsg: businessError.message,
+            authState: 'expired',
+            source: 'business-code',
+          });
+        }
+        throw error;
+      }
 
-  async _requestRaw(method, urlPath, body, extraHeaders = {}) {
-    const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-    const headers = await this._buildHeaders(extraHeaders);
-    const isCrossOrigin = this._isCrossOriginUrl(url);
-    if (isCrossOrigin) {
-      delete headers.cookie;
-      delete headers.pddid;
-      delete headers.etag;
-      delete headers['sec-fetch-site'];
-      headers['sec-fetch-site'] = 'cross-site';
-    }
-    const shop = this._getShopInfo();
-    if (shop?.loginMethod === 'token' && !headers['X-PDD-Token']) {
-      const error = new Error('当前店铺未恢复 Token，请重新导入 Token');
-      throw this._markAuthExpired(error, {
-        errorMsg: error.message,
-        authState: 'token_missing',
-        source: 'missing-token',
-      });
-    }
-    const options = { method, headers };
-    if (body instanceof FormData) {
-      delete options.headers['content-type'];
-      delete options.headers['Content-Type'];
-    }
-    if (body !== undefined && body !== null) {
-      options.body = body;
-    }
-    const response = await this._getSession().fetch(url, options);
-    const text = await response.text();
-    this._log(`[API] ${method} ${url} -> ${response.status}`);
+      this._authExpired = false;
+      return payload;
+    };
 
-    let payload = text;
     try {
-      payload = JSON.parse(text);
-    } catch {}
-
-    if (this._isLoginPageResponse(response, text)) {
-      const error = new Error('网页登录已失效，请重新登录或重新导入 Token');
-      error.statusCode = response.status;
-      error.payload = payload;
-      throw this._markAuthExpired(error, {
-        statusCode: response.status,
-        errorMsg: error.message,
-        authState: 'expired',
-        source: 'login-page',
+      const shop = this._getShopInfo();
+      const deferAuthExpired = typeof this._refreshMainCookieContext === 'function' && shop?.loginMethod === 'token';
+      return await attempt({
+        ensureMainCookieContext: true,
+        mainCookieContextRetried: false,
+        suppressAuthExpired: deferAuthExpired ? true : options.suppressAuthExpired,
+      });
+    } catch (error) {
+      if (!this._shouldRetryWithMainCookieContextRefresh(error, options)) {
+        throw error;
+      }
+      await this._maybeRefreshMainCookieContext('request-auth-retry', {
+        urlPath,
+        method,
+        statusCode: Number(error?.statusCode || 0),
+        errorCode: Number(error?.errorCode || 0),
+      });
+      return attempt({
+        ensureMainCookieContext: true,
+        mainCookieContextRetried: true,
+        suppressAuthExpired: options.suppressAuthExpired,
       });
     }
-
-    if (!response.ok) {
-      const message = typeof payload === 'object'
-        ? payload?.error_msg || payload?.message || `HTTP ${response.status}`
-        : `HTTP ${response.status}: ${String(text).slice(0, 200)}`;
-      const error = new Error(message);
-      error.statusCode = response.status;
-      error.payload = payload;
-      throw error;
-    }
-
-    const businessError = this._normalizeBusinessError(payload);
-    if (businessError) {
-      const error = new Error(businessError.message);
-      error.errorCode = businessError.code;
-      error.payload = payload;
-      throw error;
-    }
-
-    return payload;
   }
 
-  async _post(urlPath, body, extraHeaders) {
-    return this._request('POST', urlPath, body, extraHeaders);
+  async _requestRaw(method, urlPath, body, extraHeaders = {}, options = {}) {
+    const attempt = async (attemptOptions = {}) => {
+      const suppressAuthExpired = attemptOptions.suppressAuthExpired === undefined
+        ? !!options.suppressAuthExpired
+        : !!attemptOptions.suppressAuthExpired;
+      const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
+      const { headers } = await this._prepareRequestHeaders(extraHeaders, attemptOptions);
+      const isCrossOrigin = this._isCrossOriginUrl(url);
+      if (isCrossOrigin) {
+        delete headers.cookie;
+        delete headers.pddid;
+        delete headers.etag;
+        delete headers['sec-fetch-site'];
+        headers['sec-fetch-site'] = 'cross-site';
+      }
+      const shop = this._getShopInfo();
+      if (shop?.loginMethod === 'token' && !headers['X-PDD-Token']) {
+        const error = new Error('当前店铺未恢复 Token，请重新导入 Token');
+        if (suppressAuthExpired) {
+          error.authExpired = true;
+          error.authState = 'token_missing';
+          throw error;
+        }
+        throw this._markAuthExpired(error, {
+          errorMsg: error.message,
+          authState: 'token_missing',
+          source: 'missing-token',
+        });
+      }
+      const requestOptions = { method, headers };
+      if (body instanceof FormData) {
+        delete requestOptions.headers['content-type'];
+        delete requestOptions.headers['Content-Type'];
+      }
+      if (body !== undefined && body !== null) {
+        requestOptions.body = body;
+      }
+      const response = await this._getSession().fetch(url, requestOptions);
+      const text = await response.text();
+      this._log(`[API] ${method} ${url} -> ${response.status}`);
+
+      let payload = text;
+      try {
+        payload = JSON.parse(text);
+      } catch {}
+
+      if (this._isLoginPageResponse(response, text)) {
+        const error = new Error('网页登录已失效，请重新登录或重新导入 Token');
+        error.statusCode = response.status;
+        error.payload = payload;
+        if (suppressAuthExpired) {
+          error.authExpired = true;
+          error.authState = 'expired';
+          throw error;
+        }
+        throw this._markAuthExpired(error, {
+          statusCode: response.status,
+          errorMsg: error.message,
+          authState: 'expired',
+          source: 'login-page',
+        });
+      }
+
+      if (!response.ok) {
+        const message = typeof payload === 'object'
+          ? payload?.error_msg || payload?.message || `HTTP ${response.status}`
+          : `HTTP ${response.status}: ${String(text).slice(0, 200)}`;
+        const error = new Error(message);
+        error.statusCode = response.status;
+        error.payload = payload;
+        throw error;
+      }
+
+      const businessError = this._normalizeBusinessError(payload);
+      if (businessError) {
+        const error = new Error(businessError.message);
+        error.errorCode = businessError.code;
+        error.payload = payload;
+        throw error;
+      }
+
+      return payload;
+    };
+
+    try {
+      const shop = this._getShopInfo();
+      const deferAuthExpired = typeof this._refreshMainCookieContext === 'function' && shop?.loginMethod === 'token';
+      return await attempt({
+        ensureMainCookieContext: true,
+        mainCookieContextRetried: false,
+        suppressAuthExpired: deferAuthExpired ? true : options.suppressAuthExpired,
+      });
+    } catch (error) {
+      if (!this._shouldRetryWithMainCookieContextRefresh(error, options)) {
+        throw error;
+      }
+      await this._maybeRefreshMainCookieContext('request-raw-auth-retry', {
+        urlPath,
+        method,
+        statusCode: Number(error?.statusCode || 0),
+        errorCode: Number(error?.errorCode || 0),
+      });
+      return attempt({
+        ensureMainCookieContext: true,
+        mainCookieContextRetried: true,
+        suppressAuthExpired: options.suppressAuthExpired,
+      });
+    }
+  }
+
+  async _post(urlPath, body, extraHeaders, options) {
+    return this._request('POST', urlPath, body, extraHeaders, options);
   }
 
   async _requestOrderRemarkApi(urlPath, body = {}) {
@@ -1889,17 +2068,17 @@ class PddApiClient extends EventEmitter {
     };
   }
 
-  async getUserInfo() {
+  async getUserInfo(options = {}) {
     try {
-      const payload = await this._post('/janus/api/userinfo', {}, this._getShopInfoRequestHeaders('mall'));
+      const payload = await this._post('/janus/api/userinfo', {}, this._getShopInfoRequestHeaders('mall'), options);
       return this._parseUserInfo(payload);
     } catch (error) {
-      const payload = await this._post('/janus/api/new/userinfo', {}, this._getShopInfoRequestHeaders('mall'));
+      const payload = await this._post('/janus/api/new/userinfo', {}, this._getShopInfoRequestHeaders('mall'), options);
       return this._parseUserInfo(payload);
     }
   }
 
-  async getServiceProfile(force = false) {
+  async getServiceProfile(force = false, options = {}) {
     if (this._serviceProfileCache && !force) {
       return this._serviceProfileCache;
     }
@@ -1913,7 +2092,7 @@ class PddApiClient extends EventEmitter {
     }
 
     try {
-      const payload = await this._request('GET', '/chats/userinfo/realtime?get_response=true');
+      const payload = await this._request('GET', '/chats/userinfo/realtime?get_response=true', null, {}, options);
       const profile = this._parseServiceProfile(payload);
       this._serviceProfileCache = profile;
       return profile;
@@ -1950,13 +2129,13 @@ class PddApiClient extends EventEmitter {
     };
   }
 
-  async getMallInfo() {
-    const payload = await this._request('GET', '/earth/api/mallInfo/commonMallInfo', null, this._getShopInfoRequestHeaders('mall'));
+  async getMallInfo(options = {}) {
+    const payload = await this._request('GET', '/earth/api/mallInfo/commonMallInfo', null, this._getShopInfoRequestHeaders('mall'), options);
     return this._parseMallInfo(payload);
   }
 
-  async getCredentialInfo() {
-    const payload = await this._request('GET', '/earth/api/mallInfo/queryFinalCredentialNew', null, this._getShopInfoRequestHeaders('credential'));
+  async getCredentialInfo(options = {}) {
+    const payload = await this._request('GET', '/earth/api/mallInfo/queryFinalCredentialNew', null, this._getShopInfoRequestHeaders('credential'), options);
     return this._parseCredentialInfo(payload);
   }
 
@@ -1964,11 +2143,12 @@ class PddApiClient extends EventEmitter {
     if (force) {
       this._serviceProfileCache = null;
     }
+    const requestOptions = { suppressAuthExpired: true };
     const [userInfoResult, serviceProfileResult, mallInfoResult, credentialInfoResult] = await Promise.allSettled([
-      this.getUserInfo(),
-      this.getServiceProfile(force),
-      this.getMallInfo(),
-      this.getCredentialInfo()
+      this.getUserInfo(requestOptions),
+      this.getServiceProfile(force, requestOptions),
+      this.getMallInfo(requestOptions),
+      this.getCredentialInfo(requestOptions)
     ]);
     const userInfo = userInfoResult.status === 'fulfilled' ? userInfoResult.value : {};
     const serviceProfile = serviceProfileResult.status === 'fulfilled' ? serviceProfileResult.value : {};
@@ -1986,6 +2166,12 @@ class PddApiClient extends EventEmitter {
     const apiFailedSources = resultEntries
       .filter(([, item]) => item?.status !== 'fulfilled')
       .map(([name]) => name);
+    const apiAuthFailedSources = resultEntries
+      .filter(([, item]) => item?.status === 'rejected' && (item.reason?.authExpired || this._isAuthError(item.reason?.errorCode)))
+      .map(([name]) => name);
+    if (apiResolvedSources.length > 0) {
+      this._authExpired = false;
+    }
     return {
       mallId: mallInfo.mallId || credentialInfo.mallId || serviceProfile.mallId || userInfo.mallId || this._getMallId() || '',
       mallName: mallInfo.mallName || credentialInfo.mallName || serviceProfile.mallName || '',
@@ -1998,6 +2184,8 @@ class PddApiClient extends EventEmitter {
       apiSuccessCount: apiResolvedSources.length,
       apiResolvedSources,
       apiFailedSources,
+      apiAuthFailedCount: apiAuthFailedSources.length,
+      apiAuthFailedSources,
     };
   }
 
@@ -8931,6 +9119,7 @@ class PddApiClient extends EventEmitter {
   async getTokenStatus() {
     const tokenInfo = this._getTokenInfo();
     const shop = this._getShopInfo();
+    const mainCookieContext = await this._getMainCookieContextSummary();
     const tokenMissing = shop?.loginMethod === 'token' && !tokenInfo?.raw;
     let serviceProfile = null;
     if (tokenInfo?.raw) {
@@ -8955,6 +9144,7 @@ class PddApiClient extends EventEmitter {
       mallName: serviceProfile?.mallName || this._getShopInfo()?.name || '',
       serviceName: serviceProfile?.serviceName || '',
       serviceAvatar: serviceProfile?.serviceAvatar || '',
+      mainCookieContext,
     };
   }
 

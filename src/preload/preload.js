@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   addShopByQRCode: () => ipcRenderer.invoke('add-shop-by-qrcode'),
   removeShop: (shopId) => ipcRenderer.invoke('remove-shop', shopId),
   refreshShopProfile: (shopId) => ipcRenderer.invoke('refresh-shop-profile', shopId),
+  refreshMainCookieContext: (params) => ipcRenderer.invoke('refresh-main-cookie-context', params),
 
   // 视图切换
   switchView: (view) => ipcRenderer.invoke('switch-view', view),

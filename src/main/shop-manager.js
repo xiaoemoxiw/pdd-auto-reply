@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
+const PDD_HOME_URL = 'https://mms.pinduoduo.com/home';
 const PDD_LOGIN_URL = 'https://mms.pinduoduo.com/login';
 const PDD_BASE_URL = 'https://mms.pinduoduo.com';
 
@@ -192,6 +193,24 @@ class ShopManager {
     return true;
   }
 
+  _getAvailabilityStatus(shop = {}) {
+    return shop.availabilityStatus || shop.status || 'offline';
+  }
+
+  _getShopNameStatus(shop = {}) {
+    if (shop.shopNameStatus) return shop.shopNameStatus;
+    return this._hasRealShopName(shop.name || '') ? 'resolved' : 'pending';
+  }
+
+  _normalizeShopInfoStatus(status = '', fallback = 'pending') {
+    const normalized = String(status || '').trim();
+    if (normalized === 'expired') return 'failed';
+    if (['pending', 'fetching', 'done', 'partial', 'failed'].includes(normalized)) {
+      return normalized;
+    }
+    return fallback;
+  }
+
   _buildShopFromTokenRecord(record, previousShop = {}) {
     const previousName = previousShop.name || '';
     const autoNames = [
@@ -204,18 +223,22 @@ class ShopManager {
       ? (record.tokenInfo.mallId ? `店铺 ${record.tokenInfo.mallId}` : previousName || `店铺 ${record.shopId.slice(-6)}`)
       : previousName;
     const hasRealShopName = this._hasRealShopName(previousName);
-    const previousInfoStatus = previousShop.shopInfoStatus || '';
+    const previousInfoStatus = this._normalizeShopInfoStatus(previousShop.shopInfoStatus || '');
     const canInheritFetchedAt = hasRealShopName || ['done', 'partial'].includes(previousInfoStatus);
     const inheritedFetchedAt = canInheritFetchedAt ? Number(previousShop.shopInfoFetchedAt || 0) : 0;
     const inheritedStatus = inheritedFetchedAt ? 'done' : 'pending';
     const normalizedInfoStatus = previousInfoStatus === 'fetching'
       ? 'pending'
       : (inheritedFetchedAt ? previousInfoStatus || inheritedStatus : (
-        ['expired', 'failed'].includes(previousInfoStatus) ? previousInfoStatus : inheritedStatus
+        previousInfoStatus === 'failed' ? previousInfoStatus : inheritedStatus
       ));
+    const previousAvailabilityStatus = this._getAvailabilityStatus(previousShop);
     const normalizedShopStatus = inheritedFetchedAt
-      ? (previousShop.status || 'online')
-      : ((previousShop.status === 'expired' || previousInfoStatus === 'expired') ? 'expired' : 'offline');
+      ? (previousAvailabilityStatus || 'online')
+      : (previousAvailabilityStatus === 'expired' ? 'expired' : 'offline');
+    const normalizedShopNameStatus = hasRealShopName
+      ? 'resolved'
+      : (inheritedFetchedAt ? 'missing' : 'pending');
 
     return {
       id: record.shopId,
@@ -225,6 +248,8 @@ class ShopManager {
       group: previousShop.group || '',
       remark: previousShop.remark || '',
       status: normalizedShopStatus,
+      availabilityStatus: normalizedShopStatus,
+      shopNameStatus: normalizedShopNameStatus,
       loginMethod: 'token',
       userAgent: record.tokenInfo.userAgent || previousShop.userAgent || '',
       bindTime: previousShop.bindTime || record.bindTime,
@@ -235,7 +260,7 @@ class ShopManager {
       shopInfoStatus: normalizedInfoStatus || 'pending',
       shopInfoFetchedAt: inheritedFetchedAt,
       shopInfoLastAttemptAt: Number(previousShop.shopInfoLastAttemptAt || 0),
-      shopInfoError: normalizedInfoStatus === 'failed' || normalizedInfoStatus === 'expired'
+      shopInfoError: normalizedInfoStatus === 'failed'
         ? (previousShop.shopInfoError || '')
         : ''
     };
@@ -253,11 +278,11 @@ class ShopManager {
 
   isSelectableShop(shop) {
     if (!shop?.id) return false;
-    return !(shop.loginMethod === 'token' && shop.status === 'expired');
+    return !(shop.loginMethod === 'token' && this._getAvailabilityStatus(shop) === 'expired');
   }
 
   isUserSelectableShop(shop) {
-    return this.isSelectableShop(shop) && shop?.status === 'online';
+    return this.isSelectableShop(shop) && this._getAvailabilityStatus(shop) === 'online';
   }
 
   getPreferredActiveShopId(shops = this.getShopList(), preferredShopId = '') {
@@ -409,7 +434,9 @@ class ShopManager {
         remark: next.remark || '',
         category: next.category || shop.category,
         balance: Number(next.balance || 0),
-        status: next.status || shop.status
+        status: next.status || shop.status,
+        availabilityStatus: next.availabilityStatus || next.status || shop.availabilityStatus || shop.status,
+        shopNameStatus: next.shopNameStatus || shop.shopNameStatus || (this._hasRealShopName(next.name || shop.name || '') ? 'resolved' : 'pending')
       };
     });
     this.store.set('shops', merged);
@@ -691,7 +718,6 @@ class ShopManager {
       const created = createdCount > 0;
       if (targetShop) {
         this.switchTo(targetShop.id);
-        this._detectShopName(targetShop.id);
       }
       for (const shopId of importedShopIds) {
         if (!createdShopIds.includes(shopId)) continue;
@@ -806,12 +832,18 @@ class ShopManager {
       mallId: mallId || '',
       group: '',
       remark: '',
-      status: 'online',
+      status: 'offline',
+      availabilityStatus: 'offline',
+      shopNameStatus: 'pending',
       loginMethod: 'token',
       userAgent: tokenData.userAgent || '',
       bindTime: new Date().toISOString().split('T')[0],
       category: '待分类',
-      balance: 0
+      balance: 0,
+      shopInfoStatus: 'pending',
+      shopInfoFetchedAt: 0,
+      shopInfoLastAttemptAt: 0,
+      shopInfoError: ''
     };
 
     shops.push(shop);
@@ -821,8 +853,6 @@ class ShopManager {
 
     this.switchTo(shopId);
 
-    // 页面加载后尝试检测店铺名称
-    this._detectShopName(shopId);
     this._fetchAndApplyShopProfile(shopId).catch(() => {});
 
     this.mainWindow.webContents.send('shop-added', { shop });
@@ -848,7 +878,11 @@ class ShopManager {
     const shop = shops.find(s => s.id === shopId);
     if (shop && tokenData.userAgent) {
       shop.userAgent = tokenData.userAgent;
-      shop.status = 'online';
+      shop.status = 'offline';
+      shop.availabilityStatus = 'offline';
+      if (!shop.shopNameStatus) {
+        shop.shopNameStatus = this._hasRealShopName(shop.name || '') ? 'resolved' : 'pending';
+      }
       this.store.set('shops', shops);
     }
 
@@ -891,6 +925,8 @@ class ShopManager {
       group: '',
       remark: '',
       status: 'offline',
+      availabilityStatus: 'offline',
+      shopNameStatus: 'pending',
       loginMethod: 'qrcode',
       userAgent: '',
       bindTime: new Date().toISOString().split('T')[0],
@@ -919,54 +955,18 @@ class ShopManager {
     const view = this.views.get(shopId);
     if (shop) {
       shop.status = 'online';
+      shop.availabilityStatus = 'online';
       shop.name = `新店铺 ${shopId.slice(-6)}`;
+      shop.shopNameStatus = 'pending';
       shop.userAgent = view?.webContents.getUserAgent() || shop.userAgent || '';
       this.store.set('shops', shops);
     }
 
-    this._detectShopName(shopId);
     this._fetchAndApplyShopProfile(shopId).catch(() => {});
 
     this.mainWindow.webContents.send('shop-login-success', { shopId, shop });
     this.mainWindow.webContents.send('shop-list-updated', { shops: this.store.get('shops') });
     this.onLog(`[PDD助手] 扫码登录成功: shopId=${shopId}`);
-  }
-
-  // 从页面上检测店铺名称
-  _detectShopName(shopId) {
-    const view = this.views.get(shopId);
-    if (!view) return;
-
-    const detect = () => {
-      view.webContents.executeJavaScript(`
-        (function() {
-          // 尝试从页面 title 或常见位置获取店铺名
-          var mallName = '';
-          // 拼多多商家后台通常在 cookie 或页面某处有店铺名称
-          var el = document.querySelector('.shop-name, .mall-name, [class*="shopName"], [class*="mallName"]');
-          if (el) mallName = el.textContent.trim();
-          if (!mallName) {
-            var title = document.title || '';
-            if (title && !title.includes('登录') && !title.includes('拼多多商家后台')) mallName = title;
-          }
-          return mallName;
-        })()
-      `).then(name => {
-        if (name) this._updateShopName(shopId, name);
-      }).catch(() => {});
-    };
-
-    setTimeout(detect, 3000);
-    setTimeout(detect, 8000);
-  }
-
-  _updateShopName(shopId, name) {
-    const shops = this.store.get('shops') || [];
-    const shop = shops.find(s => s.id === shopId);
-    if (!shop || (shop.name && !shop.name.startsWith('店铺 ') && !shop.name.startsWith('新店铺 ') && shop.name !== '扫码登录中...')) return;
-    shop.name = name;
-    this.store.set('shops', shops);
-    this.mainWindow.webContents.send('shop-list-updated', { shops });
   }
 
   _updateShopInfoState(shopId, patch = {}) {
@@ -977,6 +977,14 @@ class ShopManager {
     for (const [key, value] of Object.entries(patch)) {
       if (shop[key] === value) continue;
       shop[key] = value;
+      changed = true;
+    }
+    if (patch.status && !patch.availabilityStatus && shop.availabilityStatus !== patch.status) {
+      shop.availabilityStatus = patch.status;
+      changed = true;
+    }
+    if (patch.availabilityStatus && !patch.status && shop.status !== patch.availabilityStatus) {
+      shop.status = patch.availabilityStatus;
       changed = true;
     }
     if (changed) {
@@ -1017,8 +1025,9 @@ class ShopManager {
       shop.category = nextCategory;
       changed = true;
     }
-    const nextInfoStatus = options.shopInfoStatus || 'done';
+    const nextInfoStatus = this._normalizeShopInfoStatus(options.shopInfoStatus || 'done', 'done');
     const nextInfoError = options.shopInfoError || '';
+    const nextShopNameStatus = options.shopNameStatus || (this._hasRealShopName(nextName) ? 'resolved' : 'missing');
     const fetchedAt = Number(options.shopInfoFetchedAt || Date.now()) || Date.now();
     if (shop.shopInfoStatus !== nextInfoStatus) {
       shop.shopInfoStatus = nextInfoStatus;
@@ -1032,6 +1041,14 @@ class ShopManager {
       shop.shopInfoError = nextInfoError;
       changed = true;
     }
+    if (shop.shopNameStatus !== nextShopNameStatus) {
+      shop.shopNameStatus = nextShopNameStatus;
+      changed = true;
+    }
+    if (shop.availabilityStatus !== 'online') {
+      shop.availabilityStatus = 'online';
+      changed = true;
+    }
     if (shop.status !== 'online') {
       shop.status = 'online';
       changed = true;
@@ -1041,6 +1058,118 @@ class ShopManager {
       this.mainWindow?.webContents.send('shop-list-updated', { shops });
     }
     return shop;
+  }
+
+  _updateMainCookieContextState(shopId, patch = {}) {
+    if (!shopId || !patch || typeof patch !== 'object') return null;
+    const shops = this.store.get('shops') || [];
+    const shop = shops.find(item => item.id === shopId);
+    if (!shop) return null;
+    let changed = false;
+    for (const [key, value] of Object.entries(patch)) {
+      if (shop[key] === value) continue;
+      shop[key] = value;
+      changed = true;
+    }
+    if (changed) {
+      this.store.set('shops', shops);
+      this.mainWindow?.webContents.send('shop-list-updated', { shops });
+    }
+    return shop;
+  }
+
+  async _hydrateMainCookieContext(shopId, options = {}) {
+    const shop = this._getShop(shopId);
+    if (!shopId || !shop) return null;
+    const ses = session.fromPartition(this._getPartition(shopId));
+    const waitTimeoutMs = Math.max(3000, Number(options.waitTimeoutMs || 15000));
+    const pollIntervalMs = Math.max(250, Number(options.pollIntervalMs || 500));
+
+    this._updateMainCookieContextState(shopId, {
+      mainCookieContextReady: false,
+      mainCookieContextError: '',
+      mainCookieContextUpdatedAt: Number(shop.mainCookieContextUpdatedAt || 0),
+    });
+
+    const win = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      show: false,
+      webPreferences: {
+        partition: this._getPartition(shopId),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    if (shop?.userAgent) {
+      win.webContents.setUserAgent(shop.userAgent);
+    }
+
+    let result = {
+      ready: false,
+      cookieNames: [],
+      hasPassId: false,
+      hasNanoFp: false,
+      hasRckk: false,
+      currentUrl: '',
+    };
+
+    try {
+      await win.loadURL(PDD_HOME_URL);
+      const deadline = Date.now() + waitTimeoutMs;
+      while (Date.now() < deadline) {
+        const cookies = await ses.cookies.get({ domain: '.pinduoduo.com' });
+        const cookieNames = cookies.map(item => item.name);
+        const hasPassId = cookieNames.includes('PASS_ID');
+        const hasNanoFp = cookieNames.includes('_nano_fp');
+        const hasRckk = cookieNames.includes('rckk');
+        result = {
+          ready: hasPassId && hasNanoFp,
+          cookieNames,
+          hasPassId,
+          hasNanoFp,
+          hasRckk,
+          currentUrl: win.webContents.getURL(),
+        };
+        if (result.ready) break;
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+      }
+
+      this._updateMainCookieContextState(shopId, {
+        mainCookieContextReady: result.ready,
+        mainCookieContextUpdatedAt: Date.now(),
+        mainCookieContextError: result.ready ? '' : '主站 Cookie 上下文未完整建立',
+      });
+      this.onLog(
+        `[PDD助手] 主 Cookie 上下文${result.ready ? '已建立' : '未完整建立'}: ${shop.name || shopId}`,
+        {
+          shopId,
+          hasPassId: result.hasPassId,
+          hasNanoFp: result.hasNanoFp,
+          hasRckk: result.hasRckk,
+          cookieNames: result.cookieNames,
+          url: result.currentUrl,
+        }
+      );
+      return result;
+    } catch (error) {
+      const message = error?.message || String(error);
+      this._updateMainCookieContextState(shopId, {
+        mainCookieContextReady: false,
+        mainCookieContextUpdatedAt: Date.now(),
+        mainCookieContextError: message,
+      });
+      this.onLog(`[PDD助手] 主 Cookie 上下文初始化失败: ${shop.name || shopId}, ${message}`);
+      return {
+        ...result,
+        error: message,
+      };
+    } finally {
+      if (!win.isDestroyed()) {
+        win.destroy();
+      }
+    }
   }
 
   async _fetchAndApplyShopProfile(shopId) {
@@ -1055,12 +1184,20 @@ class ShopManager {
       shopInfoError: ''
     });
     try {
+      await this._hydrateMainCookieContext(shopId);
       const initResult = await client.initSession(true);
       const profile = await client.getShopProfile(true);
       const hasMallName = this._hasRealShopName(profile?.mallName || '');
       const apiSuccessCount = Number(profile?.apiSuccessCount || 0);
+      const apiAuthFailedCount = Number(profile?.apiAuthFailedCount || 0);
       const tokenUsable = apiSuccessCount > 0;
       if (!tokenUsable) {
+        if (apiAuthFailedCount > 0) {
+          const error = new Error('接口认证已失效');
+          error.authExpired = true;
+          error.errorCode = 43001;
+          throw error;
+        }
         const errorMessage = initResult?.initialized
           ? '网页登录已进入会话，但接口未验证通过'
           : '店铺信息获取未完成';
@@ -1070,7 +1207,8 @@ class ShopManager {
       const shopInfoError = hasMallName ? '' : '已验证接口 Token 可用，待补全店铺名称';
       const shop = this._applyShopProfile(shopId, profile, {
         shopInfoStatus,
-        shopInfoError
+        shopInfoError,
+        shopNameStatus: hasMallName ? 'resolved' : 'missing'
       });
       if (shop) {
         this.onLog(`[PDD助手] 已通过接口刷新店铺信息: ${shop.name || shop.id}${shopInfoStatus === 'partial' ? '（待补全店铺名称）' : ''}`);
@@ -1079,9 +1217,9 @@ class ShopManager {
     } catch (error) {
       const authExpired = this._isAuthExpiredError(error);
       this._updateShopInfoState(shopId, {
-        shopInfoStatus: authExpired ? 'expired' : 'failed',
+        shopInfoStatus: 'failed',
         shopInfoError: error.message || String(error),
-        ...(authExpired ? { status: 'expired' } : {})
+        ...(authExpired ? { status: 'expired', availabilityStatus: 'expired' } : {})
       });
       this.onLog(`[PDD助手] 通过接口获取店铺信息失败: ${shopId}, ${error.message || error}`);
       return null;
@@ -1090,6 +1228,15 @@ class ShopManager {
         this._shopInfoFetchingShopId = '';
       }
     }
+  }
+
+  async refreshMainCookieContext(shopId, options = {}) {
+    const targetShopId = shopId || this.getActiveShopId();
+    if (!targetShopId) {
+      return { success: false, error: '未找到店铺' };
+    }
+    const result = await this._hydrateMainCookieContext(targetShopId, options);
+    return { success: !!result?.ready, shopId: targetShopId, result };
   }
 
   async refreshShopProfile(shopId) {
@@ -1107,14 +1254,20 @@ class ShopManager {
         success: false,
         shopId: targetShopId,
         error: nextShop?.shopInfoError || '店铺信息获取失败',
-        status: nextShop?.shopInfoStatus || 'failed'
+        status: nextShop?.shopInfoStatus || 'failed',
+        shopInfoStatus: nextShop?.shopInfoStatus || 'failed',
+        availabilityStatus: nextShop?.availabilityStatus || nextShop?.status || 'offline',
+        shopNameStatus: nextShop?.shopNameStatus || 'pending'
       };
     }
     return {
       success: true,
       shopId: targetShopId,
       shop,
-      status: nextShop?.shopInfoStatus || 'done'
+      status: nextShop?.shopInfoStatus || 'done',
+      shopInfoStatus: nextShop?.shopInfoStatus || 'done',
+      availabilityStatus: nextShop?.availabilityStatus || nextShop?.status || 'online',
+      shopNameStatus: nextShop?.shopNameStatus || 'resolved'
     };
   }
 

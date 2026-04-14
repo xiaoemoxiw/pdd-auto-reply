@@ -9347,7 +9347,8 @@
     });
 
     function isHeaderSelectableShop(shop) {
-      return !!shop?.id && shop.status === 'online';
+      const availabilityStatus = shop?.availabilityStatus || shop?.status;
+      return !!shop?.id && availabilityStatus === 'online';
     }
 
     function renderShopDropdown() {
@@ -9358,8 +9359,9 @@
       }
       shopDropdownList.innerHTML = visibleShops.map(s => {
         const methodLabel = s.loginMethod === 'qrcode' ? '扫码' : s.loginMethod === 'token' ? 'Token' : '';
+        const availabilityStatus = s.availabilityStatus || s.status || 'offline';
         return `<div class="shop-dropdown-item ${s.id === activeShopId ? 'active' : ''}" data-shop-id="${s.id}" title="${esc(s.name)}">
-          <span class="item-dot ${s.status || 'offline'}"></span>
+          <span class="item-dot ${availabilityStatus}"></span>
           <span class="item-name" title="${esc(s.name)}">${esc(s.name)}</span>
           ${methodLabel ? `<span class="item-method">${methodLabel}</span>` : ''}
         </div>`;
@@ -9388,8 +9390,9 @@
       const nameEl = document.getElementById('shopSwitcherName');
       const dotEl = document.getElementById('shopSwitcherDot');
       if (shop) {
+        const availabilityStatus = shop.availabilityStatus || shop.status || 'offline';
         nameEl.textContent = shop.name || '未命名店铺';
-        dotEl.className = 'shop-dot ' + (shop.status || 'offline');
+        dotEl.className = 'shop-dot ' + availabilityStatus;
         activeShopId = shop.id;
       } else {
         nameEl.textContent = '未选择店铺';
@@ -11255,7 +11258,8 @@
     }
 
     function isSelectableShop(shop) {
-      return !!shop?.id && !(shop.loginMethod === 'token' && shop.status === 'expired');
+      const availabilityStatus = shop?.availabilityStatus || shop?.status;
+      return !!shop?.id && !(shop.loginMethod === 'token' && availabilityStatus === 'expired');
     }
 
     function getDefaultApiSelectedShopId() {
@@ -13101,6 +13105,11 @@
       tbody.innerHTML = filtered.map((s, i) => {
         const groupName = shopGroups.find(g => g.id === s.group)?.name || '未分组';
         const statusMap = { online: '登录成功', offline: '已离线', expired: '已过期' };
+        const availabilityStatus = s.availabilityStatus || s.status || 'offline';
+        const shopNameStatus = s.shopNameStatus || (s.name && !/^店铺 |^新店铺 |^扫码登录中\.\.\.$/.test(s.name) ? 'resolved' : 'pending');
+        const shopNameHint = shopNameStatus === 'resolved'
+          ? ''
+          : '<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;background:#fff4e5;color:#b26a00;font-size:11px;line-height:18px;">名称待补</span>';
         const isActive = s.id === activeShopId;
         return `<tr>
           <td><input type="checkbox" data-id="${s.id}" class="shop-check" ${selectedShopIds.has(s.id) ? 'checked' : ''}></td>
@@ -13108,13 +13117,14 @@
           <td>
             <a href="#" class="shop-name-link" data-shop-id="${s.id}" style="color:${isActive ? '#e02e24' : '#1890ff'};cursor:pointer;text-decoration:none;font-weight:${isActive ? '600' : 'normal'}" title="点击切换到此店铺">${esc(s.name)}</a>
             ${isActive ? '<span style="font-size:11px;color:#e02e24;margin-left:4px">(当前)</span>' : ''}
+            ${shopNameHint}
           </td>
           <td title="${esc(s.tokenFileName || '')}">${esc(s.tokenFileName) || '<span style="color:#ccc">-</span>'}</td>
           <td>${esc(groupName)}</td>
           <td title="${esc(s.remark)}">${esc(s.remark) || '<span style="color:#ccc">-</span>'}</td>
           <td>${s.bindTime}</td>
           <td>${esc(s.category)}</td>
-          <td><span class="status-tag ${s.status}">${statusMap[s.status] || s.status}</span></td>
+          <td><span class="status-tag ${availabilityStatus}">${statusMap[availabilityStatus] || availabilityStatus}</span></td>
           <td style="text-align:right;font-weight:500">${(s.balance || 0).toFixed(2)}</td>
           <td><button class="btn btn-sm btn-secondary" onclick="openRemarkModal('${s.id}')">备注</button></td>
         </tr>`;

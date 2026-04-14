@@ -86,6 +86,19 @@ function registerShopIpc({
     }
   });
 
+  ipcMain.handle('refresh-main-cookie-context', async (event, params = {}) => {
+    const shopManager = getShopManager();
+    if (!shopManager) return { success: false, error: '店铺管理器未初始化' };
+    const shopId = params?.shopId || shopManager.getActiveShopId();
+    if (!shopId) return { success: false, error: '没有活跃店铺' };
+    try {
+      return await shopManager.refreshMainCookieContext(shopId, params);
+    } catch (error) {
+      console.error('[PDD助手] 手动刷新主 Cookie 上下文失败:', error.message);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('import-token-file', async () => {
     const shopManager = getShopManager();
     if (!shopManager) return { error: '店铺管理器未初始化' };

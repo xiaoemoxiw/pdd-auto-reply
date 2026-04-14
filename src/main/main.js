@@ -1217,6 +1217,9 @@ function getApiClient(shopId) {
     getSmallPaymentSubmitTemplate() {
       return store.get(`apiSmallPaymentSubmitTemplate.${shopId}`) || null;
     },
+    refreshMainCookieContext(payload = {}) {
+      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
+    },
     requestInPddPage(request) {
       return requestViaPddPage(shopId, request);
     },
@@ -1929,8 +1932,11 @@ function updateShopStatus(shopId, status) {
   if (!shopId || !status) return;
   const shops = getStoredShops();
   const target = shops.find(item => item.id === shopId);
-  if (!target || target.status === status) return;
+  if (!target) return;
+  const currentStatus = target.availabilityStatus || target.status;
+  if (currentStatus === status && target.status === status) return;
   target.status = status;
+  target.availabilityStatus = status;
   store.set('shops', shops);
   if (status === 'expired' && shopManager?.getActiveShopId() === shopId) {
     const shouldShowView = !!mainWindow && isEmbeddedPddView(currentView);
@@ -1949,7 +1955,8 @@ function hasRecoveredApiToken(shopId) {
 
 function isApiReadyShop(shop) {
   if (!shop?.id) return false;
-  if (shop.status === 'expired' || shop.status === 'invalid') return false;
+  const availabilityStatus = shop.availabilityStatus || shop.status || '';
+  if (availabilityStatus === 'expired' || availabilityStatus === 'invalid') return false;
   if (shop.loginMethod !== 'token') return true;
   return hasRecoveredApiToken(shop.id);
 }

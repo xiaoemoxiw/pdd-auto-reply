@@ -1,8 +1,8 @@
-const { BrowserWindow, BrowserView, shell } = require('electron');
+const { BrowserWindow, shell } = require('electron');
+const { appendWindowCloseDebugLog } = require('./window-close-debug-log');
 
-let infoWindow = null;
-let infoView = null;
-let activeShopId = '';
+const infoWindowContexts = new Map();
+const infoWindowKeyToId = new Map();
 
 function isMerchantUrl(url) {
   try {
@@ -29,58 +29,234 @@ function getShopUserAgent(store, shopId) {
   return ua || fallback;
 }
 
-function resizeView() {
-  if (!infoWindow || infoWindow.isDestroyed()) return;
-  if (!infoView) return;
-  const bounds = infoWindow.getContentBounds();
-  const width = Math.max(0, bounds.width);
-  const height = Math.max(0, bounds.height);
-  infoView.setBounds({ x: 0, y: 0, width, height });
+function getDisplayPath(url) {
+  const text = String(url || '').trim();
+  if (!text) return '';
+  try {
+    const parsed = new URL(text);
+    return `${parsed.pathname || '/'}${parsed.search || ''}${parsed.hash || ''}`;
+  } catch {
+    return text;
+  }
 }
 
-function destroyView() {
-  if (infoView) {
-    try {
-      const wc = infoView.webContents;
-      wc.removeAllListeners();
-      wc.close({ waitForBeforeUnload: false });
-    } catch {}
-  }
-  infoView = null;
-  activeShopId = '';
+async function injectPathOverlay(win, url) {
+  if (!win || win.isDestroyed()) return;
+  const displayPath = getDisplayPath(url);
+  if (!displayPath) return;
+  try {
+    await win.webContents.executeJavaScript(`
+      (() => {
+        const displayPath = ${JSON.stringify(displayPath)};
+        const overlayId = '__pddViolationPathOverlay';
+        const backBtnId = '__pddViolationPathOverlayBackBtn';
+        const inputId = '__pddViolationPathOverlayInput';
+        let overlay = document.getElementById(overlayId);
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = overlayId;
+          Object.assign(overlay.style, {
+            position: 'fixed',
+            top: '10px',
+            left: '76px',
+            right: '220px',
+            zIndex: '2147483647',
+            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          });
+          const backBtn = document.createElement('button');
+          backBtn.id = backBtnId;
+          backBtn.type = 'button';
+          backBtn.textContent = '←';
+          backBtn.title = '返回上一页';
+          Object.assign(backBtn.style, {
+            width: '32px',
+            minWidth: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            border: '1px solid #d9dce3',
+            background: 'rgba(255,255,255,0.96)',
+            color: '#111827',
+            fontSize: '14px',
+            lineHeight: '30px',
+            textAlign: 'center',
+            boxShadow: '0 2px 8px rgba(15, 23, 42, 0.12)',
+            pointerEvents: 'auto',
+            cursor: 'pointer'
+          });
+          backBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            try {
+              history.back();
+            } catch {}
+          });
+          const input = document.createElement('input');
+          input.id = inputId;
+          input.readOnly = true;
+          input.tabIndex = -1;
+          Object.assign(input.style, {
+            width: '100%',
+            height: '32px',
+            padding: '0 12px',
+            borderRadius: '8px',
+            border: '1px solid #d9dce3',
+            background: 'rgba(255,255,255,0.96)',
+            color: '#111827',
+            fontSize: '12px',
+            lineHeight: '32px',
+            boxShadow: '0 2px 8px rgba(15, 23, 42, 0.12)',
+            pointerEvents: 'auto'
+          });
+          overlay.appendChild(backBtn);
+          overlay.appendChild(input);
+          const mount = document.body || document.documentElement;
+          if (!mount) return false;
+          mount.appendChild(overlay);
+        }
+        const backBtn = document.getElementById(backBtnId);
+        const input = document.getElementById(inputId);
+        if (!backBtn || !input) return false;
+        const canGoBack = history.length > 1;
+        backBtn.disabled = !canGoBack;
+        backBtn.style.opacity = canGoBack ? '1' : '0.45';
+        backBtn.style.cursor = canGoBack ? 'pointer' : 'not-allowed';
+        input.value = displayPath;
+        input.title = displayPath;
+        return true;
+      })()
+    `, true);
+  } catch {}
 }
 
-function ensureView(store, shopId) {
-  const nextShopId = String(shopId || '').trim();
-  if (infoView && activeShopId && activeShopId === nextShopId) {
-    return infoView;
+function resolveContext(target) {
+  if (!target) return null;
+  if (target.window && target.window.webContents) {
+    return infoWindowContexts.get(target.window.webContents.id) || null;
   }
-  destroyView();
+  if (target.webContents && typeof target.setBrowserView === 'function') {
+    return infoWindowContexts.get(target.webContents.id) || null;
+  }
+  return null;
+}
 
-  infoView = new BrowserView({
+function removeContextReuseKey(context) {
+  if (!context?.reuseKey) return;
+  const currentId = infoWindowKeyToId.get(context.reuseKey);
+  if (currentId === context.windowId) {
+    infoWindowKeyToId.delete(context.reuseKey);
+  }
+  context.reuseKey = '';
+}
+
+function setContextReuseKey(context, reuseKey) {
+  if (!context) return;
+  const nextKey = String(reuseKey || '').trim();
+  if ((context.reuseKey || '') === nextKey) return;
+  removeContextReuseKey(context);
+  if (!nextKey) return;
+  infoWindowKeyToId.set(nextKey, context.windowId);
+  context.reuseKey = nextKey;
+}
+
+function cleanupContext(context) {
+  if (!context || context.cleanedUp) return;
+  context.cleanedUp = true;
+  removeContextReuseKey(context);
+  const windowId = context.windowId;
+  if (windowId) {
+    infoWindowContexts.delete(windowId);
+  }
+}
+
+function getContextByReuseKey(reuseKey) {
+  const key = String(reuseKey || '').trim();
+  if (!key) return null;
+  const windowId = infoWindowKeyToId.get(key);
+  if (!windowId) return null;
+  const context = infoWindowContexts.get(windowId) || null;
+  const win = context?.window;
+  if (!context || !win || win.isDestroyed()) {
+    if (key) infoWindowKeyToId.delete(key);
+    if (context) cleanupContext(context);
+    return null;
+  }
+  return context;
+}
+
+async function createViolationInfoWindow(options = {}) {
+  const reuseKey = String(options?.reuseKey || '').trim();
+  const existingContext = getContextByReuseKey(reuseKey);
+  if (existingContext?.window && !existingContext.window.isDestroyed()) {
+    if (existingContext.window.isMinimized()) existingContext.window.restore();
+    if (!existingContext.window.isVisible()) existingContext.window.show();
+    existingContext.window.focus();
+    return { win: existingContext.window, reused: true };
+  }
+
+  const shopId = String(options?.shopId || '').trim();
+  const win = new BrowserWindow({
+    width: 1240,
+    height: 820,
+    minWidth: 980,
+    minHeight: 640,
+    title: '违规详情',
+    show: false,
     webPreferences: {
+      partition: getShopPartition(shopId),
       contextIsolation: true,
       nodeIntegration: false,
-      partition: getShopPartition(nextShopId),
       webgl: false
     }
   });
-  activeShopId = nextShopId;
 
-  const userAgent = getShopUserAgent(store, nextShopId);
-  if (userAgent) infoView.webContents.setUserAgent(userAgent);
+  const context = {
+    windowId: win.webContents.id,
+    window: win,
+    activeShopId: shopId,
+    reuseKey: '',
+    cleanedUp: false
+  };
+  infoWindowContexts.set(context.windowId, context);
+  setContextReuseKey(context, reuseKey);
+  appendWindowCloseDebugLog({
+    source: 'violation-info-window',
+    event: 'created',
+    windowId: context.windowId,
+    reuseKey,
+    shopId
+  });
 
-  infoView.webContents.on('will-navigate', (event, url) => {
+  const userAgent = getShopUserAgent(options?.store, shopId);
+  if (userAgent) win.webContents.setUserAgent(userAgent);
+
+  win.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {
       event.preventDefault();
       shell.openExternal(url);
     }
   });
 
-  infoView.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.on('did-finish-load', () => {
+    injectPathOverlay(win, win.webContents.getURL());
+  });
+
+  win.webContents.on('did-navigate', (_event, nextUrl) => {
+    injectPathOverlay(win, nextUrl);
+  });
+
+  win.webContents.on('did-navigate-in-page', (_event, nextUrl) => {
+    injectPathOverlay(win, nextUrl);
+  });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
     if (url?.startsWith('http')) {
       if (isMerchantUrl(url)) {
-        infoView.webContents.loadURL(url);
+        const ua = getShopUserAgent(options?.store, context.activeShopId);
+        if (ua) win.webContents.loadURL(url, { userAgent: ua });
+        else win.webContents.loadURL(url);
       } else {
         shell.openExternal(url);
       }
@@ -88,88 +264,49 @@ function ensureView(store, shopId) {
     return { action: 'deny' };
   });
 
-  if (infoWindow && !infoWindow.isDestroyed()) {
-    infoWindow.setBrowserView(infoView);
-    infoView.setAutoResize({ width: true, height: true });
-    resizeView();
-  }
-
-  return infoView;
-}
-
-async function createViolationInfoWindow(parent) {
-  if (infoWindow) {
-    if (infoWindow.isMinimized()) infoWindow.restore();
-    if (!infoWindow.isVisible()) infoWindow.show();
-    infoWindow.focus();
-    return infoWindow;
-  }
-
-  const validParent = parent && !parent.isDestroyed() ? parent : undefined;
-  infoWindow = new BrowserWindow({
-    width: 1240,
-    height: 820,
-    minWidth: 980,
-    minHeight: 640,
-    parent: validParent,
-    title: '违规详情',
-    show: false,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+  win.on('close', () => {
+    appendWindowCloseDebugLog({
+      source: 'violation-info-window',
+      event: 'close',
+      windowId: context.windowId,
+      reuseKey: context.reuseKey,
+      aliveCount: infoWindowContexts.size
+    });
   });
 
-  try {
-    await infoWindow.loadURL('about:blank');
-  } catch (err) {
-    if (infoWindow && !infoWindow.isDestroyed()) {
-      infoWindow.destroy();
-    }
-    infoWindow = null;
-    throw err;
-  }
-
-  infoWindow.on('resize', () => {
-    resizeView();
+  win.on('closed', () => {
+    appendWindowCloseDebugLog({
+      source: 'violation-info-window',
+      event: 'closed',
+      windowId: context.windowId,
+      reuseKey: context.reuseKey,
+      aliveCountBeforeCleanup: infoWindowContexts.size
+    });
+    cleanupContext(context);
   });
 
-  infoWindow.on('closed', () => {
-    destroyView();
-    infoWindow = null;
-  });
-
-  if (infoWindow && !infoWindow.isDestroyed()) {
-    infoWindow.show();
-    infoWindow.focus();
-  }
-
-  return infoWindow;
+  return { win, reused: false };
 }
 
-function getViolationInfoWindow() {
-  return infoWindow;
-}
-
-function loadViolationInfoUrl(store, shopId, url) {
-  if (!infoWindow || infoWindow.isDestroyed()) {
+function loadViolationInfoUrl(target, store, shopId, url) {
+  const context = resolveContext(target) || target;
+  const win = context?.window;
+  if (!context || !win || win.isDestroyed()) {
     return { error: '详情窗口不可用' };
   }
-  const targetShopId = String(shopId || '').trim() || activeShopId;
+  const targetShopId = String(shopId || '').trim() || context.activeShopId;
   const targetUrl = String(url || '').trim();
   if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'))) {
     return { error: '无效链接' };
   }
-  const view = ensureView(store, targetShopId);
-  infoWindow.setBrowserView(view);
-  resizeView();
-  view.webContents.loadURL(targetUrl);
+  context.activeShopId = targetShopId;
+  const ua = getShopUserAgent(store, targetShopId);
+  if (ua) win.webContents.loadURL(targetUrl, { userAgent: ua });
+  else win.webContents.loadURL(targetUrl);
   return { ok: true };
 }
 
 module.exports = {
   createViolationInfoWindow,
-  getViolationInfoWindow,
   loadViolationInfoUrl
 };
-

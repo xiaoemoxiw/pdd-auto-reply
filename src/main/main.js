@@ -36,8 +36,29 @@ const { registerTicketTodoDetailWindowIpc } = require('./register-ticket-todo-de
 const { registerLicenseIpc } = require('./register-license-ipc');
 const { isLicenseValid } = require('./license-store');
 const { registerViolationInfoWindowIpc } = require('./register-violation-info-window-ipc');
+const { appendWindowCloseDebugLog, getWindowCloseDebugLogPath } = require('./window-close-debug-log');
 const Store = require('electron-store');
 const DEFAULT_QA_RULES = require('../../test/pdd-qa-rules.json');
+
+process.on('uncaughtException', (error) => {
+  appendWindowCloseDebugLog({
+    source: 'process',
+    event: 'uncaught-exception',
+    message: error?.message || String(error),
+    stack: error?.stack || ''
+  });
+  console.error('[main uncaughtException]', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  appendWindowCloseDebugLog({
+    source: 'process',
+    event: 'unhandled-rejection',
+    message: reason?.message || String(reason),
+    stack: reason?.stack || ''
+  });
+  console.error('[main unhandledRejection]', reason);
+});
 
 app.disableHardwareAcceleration();
 configureChromiumLogging();
@@ -2264,6 +2285,12 @@ function createMainWindow() {
     }
   });
 
+  appendWindowCloseDebugLog({
+    source: 'main-window',
+    event: 'created',
+    windowId: mainWindow.webContents.id,
+    logPath: getWindowCloseDebugLogPath()
+  });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
   mainWindow.on('resize', () => {
@@ -2285,7 +2312,20 @@ function createMainWindow() {
     } catch {}
   });
 
+  mainWindow.on('close', () => {
+    appendWindowCloseDebugLog({
+      source: 'main-window',
+      event: 'close',
+      windowId: mainWindow.webContents.id
+    });
+  });
+
   mainWindow.on('closed', () => {
+    appendWindowCloseDebugLog({
+      source: 'main-window',
+      event: 'closed',
+      windowId: mainWindow?.webContents?.id || null
+    });
     mainWindow = null;
     shopManager = null;
   });
@@ -3595,7 +3635,14 @@ app.on('before-quit', () => {
 });
 
 app.on('window-all-closed', () => {
-  app.quit();
+  appendWindowCloseDebugLog({
+    source: 'app',
+    event: 'window-all-closed',
+    platform: process.platform
+  });
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('activate', () => {

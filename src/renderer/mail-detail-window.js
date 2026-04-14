@@ -8,13 +8,16 @@
   const statusText = document.getElementById('statusText');
 
   let lastUrl = '';
-  let isEditingUrl = false;
 
-  function normalizeUrl(input) {
-    const raw = String(input || '').trim();
-    if (!raw) return '';
-    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-    return `https://${raw.replace(/^\/+/, '')}`;
+  function getDisplayPath(url) {
+    const text = String(url || '').trim();
+    if (!text) return '';
+    try {
+      const parsed = new URL(text);
+      return `${parsed.pathname || '/'}${parsed.search || ''}${parsed.hash || ''}`;
+    } catch {
+      return text;
+    }
   }
 
   function applyState(state = {}) {
@@ -27,9 +30,10 @@
     btnBack.disabled = !canGoBack;
     btnForward.disabled = !canGoForward;
 
-    if (!isEditingUrl && url && url !== lastUrl) {
+    if (url && url !== lastUrl) {
       lastUrl = url;
-      urlInput.value = url;
+      urlInput.value = getDisplayPath(url);
+      urlInput.title = url;
     }
 
     if (errorDescription) {
@@ -75,22 +79,6 @@
   });
   btnReload.addEventListener('click', () => {
     api && api.reload();
-  });
-
-  urlInput.addEventListener('focus', () => {
-    isEditingUrl = true;
-  });
-  urlInput.addEventListener('blur', () => {
-    isEditingUrl = false;
-    if (lastUrl) urlInput.value = lastUrl;
-  });
-  urlInput.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    const url = normalizeUrl(urlInput.value);
-    if (!url) return;
-    isEditingUrl = false;
-    lastUrl = url;
-    api && api.navigate(url);
   });
 
   window.addEventListener('resize', () => {

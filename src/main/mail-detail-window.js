@@ -1,11 +1,10 @@
 const { BrowserWindow, BrowserView, shell } = require('electron');
 const path = require('path');
 
-let detailWindow = null;
-let detailView = null;
-let activeShopId = '';
-let toolbarHeight = 44;
+const detailWindowContexts = new Map();
+const detailWindowKeyToId = new Map();
 const sessionChromeUaMap = new WeakMap();
+const DEFAULT_TOOLBAR_HEIGHT = 44;
 const DEFAULT_CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
@@ -71,13 +70,78 @@ function getShopUserAgent(store, shopId) {
   return isChromeLike ? ua : DEFAULT_CHROME_UA;
 }
 
-function sendState(payload = {}) {
-  if (!detailWindow || detailWindow.isDestroyed()) return;
-  detailWindow.webContents.send('mail-detail-window-state', payload);
+function resolveContext(target) {
+  if (!target) return null;
+  if (target.window && target.window.webContents) {
+    return detailWindowContexts.get(target.window.webContents.id) || null;
+  }
+  if (target.webContents && typeof target.setBrowserView === 'function') {
+    return detailWindowContexts.get(target.webContents.id) || null;
+  }
+  return null;
 }
 
-function getViewState() {
-  if (!detailView) {
+function removeContextReuseKey(context) {
+  if (!context?.reuseKey) return;
+  const currentId = detailWindowKeyToId.get(context.reuseKey);
+  if (currentId === context.window?.webContents?.id) {
+    detailWindowKeyToId.delete(context.reuseKey);
+  }
+  context.reuseKey = '';
+}
+
+function setContextReuseKey(context, reuseKey) {
+  if (!context) return;
+  const nextKey = String(reuseKey || '').trim();
+  if ((context.reuseKey || '') === nextKey) return;
+  removeContextReuseKey(context);
+  if (!nextKey) return;
+  detailWindowKeyToId.set(nextKey, context.window.webContents.id);
+  context.reuseKey = nextKey;
+}
+
+function cleanupContext(context) {
+  if (!context || context.cleanedUp) return;
+  context.cleanedUp = true;
+  removeContextReuseKey(context);
+  destroyView(context);
+  const windowId = context.window?.webContents?.id;
+  if (windowId) {
+    detailWindowContexts.delete(windowId);
+  }
+}
+
+function getContextByReuseKey(reuseKey) {
+  const key = String(reuseKey || '').trim();
+  if (!key) return null;
+  const windowId = detailWindowKeyToId.get(key);
+  if (!windowId) return null;
+  const context = detailWindowContexts.get(windowId) || null;
+  const win = context?.window;
+  if (!context || !win || win.isDestroyed()) {
+    if (key) detailWindowKeyToId.delete(key);
+    if (context) cleanupContext(context);
+    return null;
+  }
+  return context;
+}
+
+function getMailDetailWindowContextByWebContents(webContents) {
+  const win = BrowserWindow.fromWebContents(webContents);
+  return resolveContext(win);
+}
+
+function sendState(target, payload = {}) {
+  const context = resolveContext(target) || target;
+  const win = context?.window;
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send('mail-detail-window-state', payload);
+}
+
+function getViewState(target) {
+  const context = resolveContext(target) || target;
+  const view = context?.view;
+  if (!view) {
     return {
       url: '',
       title: '',
@@ -86,7 +150,7 @@ function getViewState() {
       isLoading: false
     };
   }
-  const wc = detailView.webContents;
+  const wc = view.webContents;
   return {
     url: wc.getURL(),
     title: wc.getTitle(),
@@ -96,36 +160,44 @@ function getViewState() {
   };
 }
 
-function resizeView() {
-  if (!detailWindow || detailWindow.isDestroyed()) return;
-  if (!detailView) return;
-  const bounds = detailWindow.getContentBounds();
-  const top = Math.max(0, Number(toolbarHeight || 0));
+function resizeView(target) {
+  const context = resolveContext(target) || target;
+  const win = context?.window;
+  const view = context?.view;
+  if (!win || win.isDestroyed() || !view) return;
+  const bounds = win.getContentBounds();
+  const top = Math.max(0, Number(context.toolbarHeight || 0));
   const width = Math.max(0, bounds.width);
   const height = Math.max(0, bounds.height - top);
-  detailView.setBounds({ x: 0, y: top, width, height });
+  view.setBounds({ x: 0, y: top, width, height });
 }
 
-function destroyView() {
-  if (detailView) {
+function destroyView(target) {
+  const context = resolveContext(target) || target;
+  const view = context?.view;
+  if (view) {
     try {
-      const wc = detailView.webContents;
+      const wc = view.webContents;
       wc.removeAllListeners();
       wc.close({ waitForBeforeUnload: false });
     } catch {}
   }
-  detailView = null;
-  activeShopId = '';
+  if (context) {
+    context.view = null;
+    context.activeShopId = '';
+  }
 }
 
-function ensureView(store, shopId) {
+function ensureView(target, store, shopId) {
+  const context = resolveContext(target) || target;
+  if (!context) return null;
   const nextShopId = String(shopId || '').trim();
-  if (detailView && activeShopId && activeShopId === nextShopId) {
-    return detailView;
+  if (context.view && context.activeShopId && context.activeShopId === nextShopId) {
+    return context.view;
   }
-  destroyView();
+  destroyView(context);
 
-  detailView = new BrowserView({
+  context.view = new BrowserView({
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -133,26 +205,28 @@ function ensureView(store, shopId) {
       webgl: false
     }
   });
-  activeShopId = nextShopId;
+  context.activeShopId = nextShopId;
 
+  const view = context.view;
   const userAgent = getShopUserAgent(store, nextShopId);
-  detailView.__pddUserAgent = userAgent;
-  if (userAgent) detailView.webContents.setUserAgent(userAgent);
-  applySessionChromeUserAgent(detailView.webContents.session, userAgent);
+  view.__pddUserAgent = userAgent;
+  if (userAgent) view.webContents.setUserAgent(userAgent);
+  applySessionChromeUserAgent(view.webContents.session, userAgent);
 
-  detailView.webContents.on('will-navigate', (event, url) => {
+  view.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {
       event.preventDefault();
       shell.openExternal(url);
     }
   });
 
-  detailView.webContents.setWindowOpenHandler(({ url }) => {
+  view.webContents.setWindowOpenHandler(({ url }) => {
+    const currentView = context.view;
     if (url?.startsWith('http')) {
       if (isMerchantUrl(url)) {
-        const ua = detailView?.__pddUserAgent;
-        if (ua) detailView.webContents.loadURL(url, { userAgent: ua });
-        else detailView.webContents.loadURL(url);
+        const ua = currentView?.__pddUserAgent;
+        if (ua) currentView?.webContents.loadURL(url, { userAgent: ua });
+        else currentView?.webContents.loadURL(url);
       } else {
         shell.openExternal(url);
       }
@@ -160,50 +234,54 @@ function ensureView(store, shopId) {
     return { action: 'deny' };
   });
 
-  detailView.webContents.on('did-start-loading', () => {
-    sendState(getViewState());
+  view.webContents.on('did-start-loading', () => {
+    sendState(context, getViewState(context));
   });
 
-  detailView.webContents.on('did-finish-load', () => {
-    sendState(getViewState());
+  view.webContents.on('did-finish-load', () => {
+    sendState(context, getViewState(context));
   });
 
-  detailView.webContents.on('did-navigate', () => {
-    sendState(getViewState());
+  view.webContents.on('did-navigate', () => {
+    sendState(context, getViewState(context));
   });
 
-  detailView.webContents.on('did-navigate-in-page', () => {
-    sendState(getViewState());
+  view.webContents.on('did-navigate-in-page', () => {
+    sendState(context, getViewState(context));
   });
 
-  detailView.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+  view.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (errorCode === -3 || isMainFrame === false) return;
-    sendState({
-      ...getViewState(),
+    sendState(context, {
+      ...getViewState(context),
       errorCode,
       errorDescription: errorDescription || '页面加载失败',
-      url: validatedURL || (detailView ? detailView.webContents.getURL() : '')
+      url: validatedURL || (context.view ? context.view.webContents.getURL() : '')
     });
   });
 
-  if (detailWindow && !detailWindow.isDestroyed()) {
-    detailWindow.setBrowserView(detailView);
-    detailView.setAutoResize({ width: true, height: true });
-    resizeView();
-    sendState(getViewState());
+  const win = context.window;
+  if (win && !win.isDestroyed()) {
+    win.setBrowserView(view);
+    view.setAutoResize({ width: true, height: true });
+    resizeView(context);
+    sendState(context, getViewState(context));
   }
 
-  return detailView;
+  return view;
 }
 
-async function createMailDetailWindow() {
-  if (detailWindow) {
-    if (detailWindow.isMinimized()) detailWindow.restore();
-    if (!detailWindow.isVisible()) detailWindow.show();
-    return detailWindow;
+async function createMailDetailWindow(options = {}) {
+  const reuseKey = String(options?.reuseKey || '').trim();
+  const existingContext = getContextByReuseKey(reuseKey);
+  if (existingContext?.window && !existingContext.window.isDestroyed()) {
+    if (existingContext.window.isMinimized()) existingContext.window.restore();
+    if (!existingContext.window.isVisible()) existingContext.window.show();
+    existingContext.window.focus();
+    return { win: existingContext.window, reused: true };
   }
 
-  detailWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1240,
     height: 820,
     minWidth: 980,
@@ -217,78 +295,93 @@ async function createMailDetailWindow() {
     }
   });
 
+  const context = {
+    window: win,
+    view: null,
+    activeShopId: '',
+    toolbarHeight: DEFAULT_TOOLBAR_HEIGHT,
+    reuseKey: '',
+    cleanedUp: false
+  };
+  detailWindowContexts.set(win.webContents.id, context);
+  setContextReuseKey(context, reuseKey);
+
   try {
-    await detailWindow.loadFile(path.join(__dirname, '..', 'renderer', 'mail-detail-window.html'));
+    await win.loadFile(path.join(__dirname, '..', 'renderer', 'mail-detail-window.html'));
   } catch (err) {
-    if (detailWindow && !detailWindow.isDestroyed()) {
-      detailWindow.destroy();
+    cleanupContext(context);
+    if (!win.isDestroyed()) {
+      win.destroy();
     }
-    detailWindow = null;
     throw err;
   }
 
-  detailWindow.on('resize', () => {
-    resizeView();
+  win.on('resize', () => {
+    resizeView(context);
   });
 
-  detailWindow.on('closed', () => {
-    destroyView();
-    detailWindow = null;
+  win.on('closed', () => {
+    cleanupContext(context);
   });
 
-  return detailWindow;
+  return { win, reused: false };
 }
 
-function getMailDetailWindow() {
-  return detailWindow;
-}
-
-function setMailDetailToolbarHeight(height) {
+function setMailDetailToolbarHeight(target, height) {
+  const context = resolveContext(target) || target;
+  if (!context) return { error: '无效窗口' };
   const next = Number(height);
-  if (!Number.isFinite(next) || next <= 0) return;
-  toolbarHeight = Math.min(160, Math.max(32, Math.round(next)));
-  resizeView();
+  if (!Number.isFinite(next) || next <= 0) return { error: '无效高度' };
+  context.toolbarHeight = Math.min(160, Math.max(32, Math.round(next)));
+  resizeView(context);
+  return { ok: true };
 }
 
-function loadMailDetailUrl(store, shopId, url) {
-  if (!detailWindow || detailWindow.isDestroyed()) {
+function loadMailDetailUrl(target, store, shopId, url) {
+  const context = resolveContext(target) || target;
+  const win = context?.window;
+  if (!context || !win || win.isDestroyed()) {
     return { error: '详情窗口不可用' };
   }
-  const targetShopId = String(shopId || '').trim() || activeShopId;
+  const targetShopId = String(shopId || '').trim() || context.activeShopId;
   const targetUrl = String(url || '').trim();
   if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'))) {
     return { error: '无效链接' };
   }
-  const view = ensureView(store, targetShopId);
-  detailWindow.setBrowserView(view);
-  resizeView();
-  const ua = view?.__pddUserAgent;
+  const view = ensureView(context, store, targetShopId);
+  if (!view) return { error: '详情视图创建失败' };
+  win.setBrowserView(view);
+  resizeView(context);
+  const ua = view.__pddUserAgent;
   if (ua) view.webContents.loadURL(targetUrl, { userAgent: ua });
   else view.webContents.loadURL(targetUrl);
   return { ok: true };
 }
 
-function goBack() {
-  if (!detailView) return { error: '页面未就绪' };
-  if (detailView.webContents.canGoBack()) detailView.webContents.goBack();
+function goBack(target) {
+  const context = resolveContext(target) || target;
+  if (!context?.view) return { error: '页面未就绪' };
+  if (context.view.webContents.canGoBack()) context.view.webContents.goBack();
   return { ok: true };
 }
 
-function goForward() {
-  if (!detailView) return { error: '页面未就绪' };
-  if (detailView.webContents.canGoForward()) detailView.webContents.goForward();
+function goForward(target) {
+  const context = resolveContext(target) || target;
+  if (!context?.view) return { error: '页面未就绪' };
+  if (context.view.webContents.canGoForward()) context.view.webContents.goForward();
   return { ok: true };
 }
 
-function reload() {
-  if (!detailView) return { error: '页面未就绪' };
-  detailView.webContents.reload();
+function reload(target) {
+  const context = resolveContext(target) || target;
+  if (!context?.view) return { error: '页面未就绪' };
+  context.view.webContents.reload();
   return { ok: true };
 }
 
 module.exports = {
   createMailDetailWindow,
-  getMailDetailWindow,
+  getMailDetailWindowContextByWebContents,
   setMailDetailToolbarHeight,
   loadMailDetailUrl,
   goBack,

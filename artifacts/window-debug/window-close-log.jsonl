@@ -1,0 +1,38 @@
+{"time":"2026-04-14T13:52:11.719Z","source":"main-window","event":"created","windowId":1,"logPath":"/Users/hlh/code/pdd-auto-reply/artifacts/window-debug/window-close-log.jsonl"}
+{"time":"2026-04-14T13:52:30.244Z","source":"violation-info-window","event":"created","windowId":3,"reuseKey":"appeal:250917046605848568:type:46"}
+{"time":"2026-04-14T13:52:32.774Z","source":"violation-info-window","event":"close","windowId":3,"reuseKey":"appeal:250917046605848568:type:46","aliveCount":1}
+{"time":"2026-04-14T13:55:42.025Z","source":"main-window","event":"created","windowId":1,"logPath":"/Users/hlh/code/pdd-auto-reply/artifacts/window-debug/window-close-log.jsonl"}
+{"time":"2026-04-14T13:56:09.157Z","source":"violation-info-window","event":"created","windowId":3,"reuseKey":"appeal:250917046605848568:type:46"}
+{"time":"2026-04-14T13:56:13.296Z","source":"violation-info-window","event":"close","windowId":3,"reuseKey":"appeal:250917046605848568:type:46","aliveCount":1}
+{"time":"2026-04-14T14:01:47.596Z","source":"main-window","event":"created","windowId":1,"logPath":"/Users/hlh/code/pdd-auto-reply/artifacts/window-debug/window-close-log.jsonl"}
+{"time":"2026-04-14T14:02:40.879Z","source":"violation-info-window","event":"created","windowId":3,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","shopId":"shop_504805789"}
+{"time":"2026-04-14T14:02:53.244Z","source":"violation-info-window","event":"close","windowId":3,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCount":1}
+{"time":"2026-04-14T14:15:40.294Z","source":"main-window","event":"created","windowId":1,"logPath":"/Users/hlh/code/pdd-auto-reply/artifacts/window-debug/window-close-log.jsonl"}
+{"time":"2026-04-14T14:26:32.791Z","source":"main-window","event":"created","windowId":1,"logPath":"/Users/hlh/code/pdd-auto-reply/artifacts/window-debug/window-close-log.jsonl"}
+{"time":"2026-04-14T14:33:40.221Z","source":"violation-info-window","event":"created","windowId":3,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","shopId":"shop_504805789"}
+{"time":"2026-04-14T14:33:45.829Z","source":"violation-info-window","event":"close","windowId":3,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCount":1}
+{"time":"2026-04-14T14:33:45.832Z","source":"violation-info-window","event":"closed","windowId":3,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCountBeforeCleanup":1}
+{"time":"2026-04-14T14:33:47.815Z","source":"violation-info-window","event":"created","windowId":4,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","shopId":"shop_504805789"}
+{"time":"2026-04-14T14:33:51.621Z","source":"violation-info-window","event":"created","windowId":5,"reuseKey":"shop:shop_504805789:appeal:250916046493247533:type:46","shopId":"shop_504805789"}
+{"time":"2026-04-14T14:33:53.715Z","source":"violation-info-window","event":"close","windowId":5,"reuseKey":"shop:shop_504805789:appeal:250916046493247533:type:46","aliveCount":2}
+{"time":"2026-04-14T14:33:53.843Z","source":"violation-info-window","event":"closed","windowId":5,"reuseKey":"shop:shop_504805789:appeal:250916046493247533:type:46","aliveCountBeforeCleanup":2}
+{"time":"2026-04-14T14:33:56.587Z","source":"violation-info-window","event":"close","windowId":4,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCount":1}
+{"time":"2026-04-14T14:33:56.590Z","source":"violation-info-window","event":"closed","windowId":4,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCountBeforeCleanup":1}
+{"time":"2026-04-14T14:34:00.376Z","source":"violation-info-window","event":"created","windowId":6,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","shopId":"shop_504805789"}
+{"time":"2026-04-14T14:44:02.101Z","source":"violation-info-window","event":"close","windowId":6,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCount":1}
+{"time":"2026-04-14T14:44:02.111Z","source":"violation-info-window","event":"closed","windowId":6,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCountBeforeCleanup":1}
+{"time":"2026-04-14T14:44:03.282Z","source":"violation-info-window","event":"created","windowId":7,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","shopId":"shop_504805789"}
+{"time":"2026-04-14T14:44:25.801Z","source":"violation-info-window","event":"close","windowId":7,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCount":1}
+{"time":"2026-04-14T14:44:25.804Z","source":"violation-info-window","event":"closed","windowId":7,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCountBeforeCleanup":1}
+{"time":"2026-04-14T14:44:27.777Z","source":"main-window","event":"close","windowId":1}
+{"time":"2026-04-14T14:56:11.573Z","source":"main-window","event":"created","windowId":1,"logPath":"/Users/hlh/code/pdd-auto-reply/artifacts/window-debug/window-close-log.jsonl"}
+{"time":"2026-04-14T18:32:01.969Z","source":"violation-info-window","event":"created","windowId":3,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","shopId":"shop_504805789"}
+{"time":"2026-04-14T18:32:24.832Z","source":"violation-info-window","event":"close","windowId":3,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCount":1}
+{"time":"2026-04-14T18:32:24.837Z","source":"violation-info-window","event":"closed","windowId":3,"reuseKey":"shop:shop_504805789:appeal:250917046605848568:type:46","aliveCountBeforeCleanup":1}
+{"time":"2026-04-14T18:49:12.166Z","source":"main-window","event":"close","windowId":1}
+{"time":"2026-04-14T18:54:30.871Z","source":"main-window","event":"created","windowId":1,"logPath":"/Users/hlh/code/pdd-auto-reply/artifacts/window-debug/window-close-log.jsonl"}
+{"time":"2026-04-14T18:59:05.070Z","source":"main-window","event":"created","windowId":1,"logPath":"/Users/hlh/code/pdd-auto-reply/artifacts/window-debug/window-close-log.jsonl"}
+{"time":"2026-04-14T19:10:09.078Z","source":"process","event":"uncaught-exception","message":"Object has been destroyed","stack":"TypeError: Object has been destroyed\n    at removeContextReuseKey (/Users/hlh/code/pdd-auto-reply/src/main/mail-detail-window.js:87:35)\n    at cleanupContext (/Users/hlh/code/pdd-auto-reply/src/main/mail-detail-window.js:106:3)\n    at BrowserWindow.<anonymous> (/Users/hlh/code/pdd-auto-reply/src/main/mail-detail-window.js:324:5)\n    at BrowserWindow.emit (node:events:530:35)"}
+{"time":"2026-04-14T19:10:09.114Z","source":"process","event":"uncaught-exception","message":"Object has been destroyed","stack":"TypeError: Object has been destroyed\n    at BrowserView._BrowserView_onDestroy (node:electron/js2c/browser_init:2:9534)\n    at Object.onceWrapper (node:events:633:26)\n    at WebContents.emit (node:events:518:28)"}
+{"time":"2026-04-14T19:10:10.596Z","source":"process","event":"uncaught-exception","message":"Object has been destroyed","stack":"TypeError: Object has been destroyed\n    at removeContextReuseKey (/Users/hlh/code/pdd-auto-reply/src/main/mail-detail-window.js:87:35)\n    at cleanupContext (/Users/hlh/code/pdd-auto-reply/src/main/mail-detail-window.js:106:3)\n    at BrowserWindow.<anonymous> (/Users/hlh/code/pdd-auto-reply/src/main/mail-detail-window.js:324:5)\n    at BrowserWindow.emit (node:events:530:35)"}
+{"time":"2026-04-14T19:10:10.603Z","source":"process","event":"uncaught-exception","message":"Object has been destroyed","stack":"TypeError: Object has been destroyed\n    at BrowserView._BrowserView_onDestroy (node:electron/js2c/browser_init:2:9534)\n    at Object.onceWrapper (node:events:633:26)\n    at WebContents.emit (node:events:518:28)"}

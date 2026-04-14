@@ -232,6 +232,9 @@ let violationApiClients = new Map();
 let deductionApiClients = new Map();
 let apiTrafficStore = new Map();
 let apiSessionStore = new Map();
+const apiPendingRendererSessionUpdates = new Map();
+const apiRendererSessionWarmupShops = new Set();
+let apiPendingRendererSessionUpdateTimer = null;
 let rendererWatcher = null;
 let rendererReloadTimer = null;
 let mainAppBootstrapped = false;
@@ -523,6 +526,8 @@ function detectChatPage(view, shopId) {
 const networkMsgDedup = new Map(); // text -> timestamp
 const apiSessionTrafficSnapshot = new Map();
 const apiTrafficMessageSnapshot = new Set();
+const API_RENDERER_SESSION_UPDATE_BATCH_DELAY_MS = 180;
+const API_RENDERER_SESSION_UPDATE_INITIAL_DELAY_MS = 900;
 
 function buildApiSessionTrafficSignature(sessions = []) {
   if (!Array.isArray(sessions)) return '';
@@ -538,7 +543,13 @@ function buildApiSessionTrafficSignature(sessions = []) {
 function setApiSessionSnapshot(shopId, sessions = [], source = 'runtime') {
   if (!shopId) return [];
   const normalized = Array.isArray(sessions)
-    ? sessions.filter(item => item && item.sessionId)
+    ? sessions
+      .filter(item => item && item.sessionId)
+      .map(item => ({
+        ...item,
+        shopId,
+        shopName: item?.shopName || item?.mallName || getShopDisplayName(shopId),
+      }))
     : [];
   if (normalized.length === 0) {
     const existing = apiSessionStore.get(shopId) || [];
@@ -554,6 +565,60 @@ function setApiSessionSnapshot(shopId, sessions = [], source = 'runtime') {
 function getApiSessionSnapshot(shopId) {
   if (!shopId) return [];
   return apiSessionStore.get(shopId) || [];
+}
+
+function getApiRendererSessionUpdateDelay() {
+  for (const shopId of apiPendingRendererSessionUpdates.keys()) {
+    if (!apiRendererSessionWarmupShops.has(shopId)) {
+      return API_RENDERER_SESSION_UPDATE_INITIAL_DELAY_MS;
+    }
+  }
+  return API_RENDERER_SESSION_UPDATE_BATCH_DELAY_MS;
+}
+
+function flushPendingRendererApiSessionUpdates() {
+  if (apiPendingRendererSessionUpdateTimer) {
+    clearTimeout(apiPendingRendererSessionUpdateTimer);
+    apiPendingRendererSessionUpdateTimer = null;
+  }
+  if (!apiPendingRendererSessionUpdates.size) return;
+  const pendingItems = Array.from(apiPendingRendererSessionUpdates.values());
+  apiPendingRendererSessionUpdates.clear();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  pendingItems.forEach(item => {
+    if (!item?.shopId || !Array.isArray(item?.sessions)) return;
+    apiRendererSessionWarmupShops.add(item.shopId);
+    mainWindow.webContents.send('api-session-updated', {
+      shopId: item.shopId,
+      sessions: item.sessions,
+    });
+    sendToDebug('api-session-updated', {
+      shopId: item.shopId,
+      count: item.sessions.length,
+      source: item.source || 'batched',
+      batched: true,
+    });
+  });
+}
+
+function scheduleRendererApiSessionUpdateFlush() {
+  if (apiPendingRendererSessionUpdateTimer) return;
+  apiPendingRendererSessionUpdateTimer = setTimeout(() => {
+    flushPendingRendererApiSessionUpdates();
+  }, getApiRendererSessionUpdateDelay());
+}
+
+function enqueueRendererApiSessionUpdate(shopId, sessions = [], source = 'runtime') {
+  if (!shopId || !Array.isArray(sessions)) return;
+  const normalizedSessions = sessions
+    .filter(item => item && item.sessionId)
+    .map(item => ({
+      ...item,
+      shopId,
+      shopName: item?.shopName || item?.mallName || getShopDisplayName(shopId),
+    }));
+  apiPendingRendererSessionUpdates.set(shopId, { shopId, sessions: normalizedSessions, source });
+  scheduleRendererApiSessionUpdateFlush();
 }
 
 function extractApiSessionsFromTraffic(shopId) {
@@ -593,8 +658,7 @@ function pushApiSessionsFromTraffic(shopId, entry) {
     client._sessionCache = sessions;
     setApiSessionSnapshot(shopId, sessions, 'traffic');
     updateShopStatus(shopId, 'online');
-    mainWindow?.webContents.send('api-session-updated', { shopId, sessions });
-    sendToDebug('api-session-updated', { shopId, count: sessions.length, source: 'traffic' });
+    enqueueRendererApiSessionUpdate(shopId, sessions, 'traffic');
     if (isVerboseRuntimeLoggingEnabled()) {
       console.log(`[PDD接口:${shopId}] 已从页面抓包同步会话: ${sessions.length}`);
     }
@@ -646,7 +710,35 @@ function extractTrafficNotifyMessages(notifyPayload = {}) {
 }
 
 function normalizeTrafficNotifyText(value = '') {
-  return String(value || '').replace(/\s+/g, ' ').trim();
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).replace(/\s+/g, ' ').trim();
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeTrafficNotifyText(item)).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
+  if (typeof value === 'object') {
+    const preferredText = normalizeTrafficNotifyText(
+      value.text
+      || value.content
+      || value.message
+      || value.msg
+      || value.title
+      || value.label
+      || value.name
+      || value.desc
+      || value.value
+      || ''
+    );
+    if (preferredText) return preferredText;
+    return Object.values(value)
+      .map(item => normalizeTrafficNotifyText(item))
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  return '';
 }
 
 function extractTrafficNotifyEntryText(entry = {}) {
@@ -817,14 +909,28 @@ function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {})
   const fromRole = String(rawMessage?.from?.role || '').trim();
   const toRole = String(rawMessage?.to?.role || '').trim();
   const isFromBuyer = fromRole === 'user' || toRole === 'mall_cs' || toRole === 'mall';
+  const messageData = rawMessage?.data && typeof rawMessage.data === 'object' ? rawMessage.data : {};
   const sessionId = String(
-    (
+    rawMessage?.session_id
+    || rawMessage?.sessionId
+    || rawMessage?.conversation_id
+    || rawMessage?.conversationId
+    || rawMessage?.chat_id
+    || rawMessage?.chatId
+    || messageData?.session_id
+    || messageData?.sessionId
+    || messageData?.conversation_id
+    || messageData?.conversationId
+    || messageData?.chat_id
+    || messageData?.chatId
+    || (
       isFromBuyer
         ? (rawMessage?.from?.uid || rawMessage?.to?.uid || '')
         : (rawMessage?.to?.uid || rawMessage?.from?.uid || '')
     )
-    || rawMessage?.data?.user_id
-    || rawMessage?.data?.customer_id
+    || messageData?.user_id
+    || messageData?.uid
+    || messageData?.customer_id
     || rawMessage?.buyer_id
     || rawMessage?.customer_id
   ).trim();
@@ -846,10 +952,20 @@ function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {})
   const refundStatusUpdate = buildRefundStatusUpdateFromNotify(rawMessage);
   const normalizedContent = content || normalizeTrafficNotifyText(refundStatusUpdate?.displayText || '');
   if (!normalizedContent && !refundCard && !refundStatusUpdate) return null;
+  const customerId = String(
+    messageData?.customer_id
+    || messageData?.buyer_id
+    || messageData?.user_id
+    || messageData?.uid
+    || rawMessage?.buyer_id
+    || rawMessage?.customer_id
+    || (isFromBuyer ? rawMessage?.from?.uid : rawMessage?.to?.uid)
+    || ''
+  ).trim();
   return {
     shopId,
     sessionId,
-    customer: String(rawMessage?.to?.uid || rawMessage?.from?.uid || '').trim(),
+    customer: customerId,
     messageId: String(rawMessage?.msg_id || rawMessage?.message_id || ''),
     timestamp: Number(rawMessage?.ts || 0) * 1000 || Date.now(),
     isFromBuyer,
@@ -888,10 +1004,22 @@ function extractApiTrafficReadMarkUpdate(shopId, entry) {
 function updateApiSessionSnapshotWithMessages(shopId, messages = []) {
   if (!shopId || !Array.isArray(messages) || !messages.length) return null;
   const currentSessions = getApiSessionSnapshot(shopId);
-  if (!currentSessions.length) return null;
+  const existingMap = new Map(
+    currentSessions
+      .filter(session => session && session.sessionId)
+      .map(session => [String(session.sessionId), session])
+  );
   let changed = false;
+  const groupedMessages = new Map();
+  messages.forEach(message => {
+    const sessionId = String(message?.sessionId || '').trim();
+    if (!sessionId) return;
+    const bucket = groupedMessages.get(sessionId) || [];
+    bucket.push(message);
+    groupedMessages.set(sessionId, bucket);
+  });
   const nextSessions = currentSessions.map(session => {
-    const matched = messages.filter(message => String(message?.sessionId || '') === String(session?.sessionId || ''));
+    const matched = groupedMessages.get(String(session?.sessionId || '')) || [];
     if (!matched.length) return session;
     const latest = matched.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0)).slice(-1)[0];
     changed = true;
@@ -899,11 +1027,35 @@ function updateApiSessionSnapshotWithMessages(shopId, messages = []) {
       ...session,
       lastMessage: String(latest?.content || latest?.refundCard?.title || session?.lastMessage || '').trim(),
       lastMessageTime: Number(latest?.timestamp || session?.lastMessageTime || 0),
+      unreadCount: Math.max(Number(session?.unreadCount || 0) || 0, latest?.isFromBuyer ? 1 : 0),
     };
   });
+  groupedMessages.forEach((matched, sessionId) => {
+    if (existingMap.has(sessionId) || !matched.length) return;
+    const latest = matched.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0)).slice(-1)[0];
+    changed = true;
+    nextSessions.unshift({
+      shopId,
+      sessionId,
+      customerId: String(latest?.customer || sessionId).trim(),
+      customerName: String(latest?.customer || '').trim(),
+      shopName: getShopDisplayName(shopId),
+      lastMessage: String(latest?.content || latest?.refundCard?.title || '').trim() || '新消息',
+      lastMessageTime: Number(latest?.timestamp || Date.now()),
+      unreadCount: latest?.isFromBuyer ? 1 : 0,
+      waitTime: 0,
+      isTimeout: false,
+      lastMessageActor: latest?.isFromBuyer ? 'buyer' : 'seller',
+      lastMessageIsFromBuyer: latest?.isFromBuyer === true,
+      raw: latest?.raw || {},
+    });
+  });
   if (!changed) return null;
-  setApiSessionSnapshot(shopId, nextSessions, 'traffic-notify');
-  return nextSessions;
+  const sortedSessions = nextSessions
+    .slice()
+    .sort((a, b) => Number(b?.lastMessageTime || 0) - Number(a?.lastMessageTime || 0));
+  setApiSessionSnapshot(shopId, sortedSessions, 'traffic-notify');
+  return sortedSessions;
 }
 
 function pushApiMessagesFromTraffic(shopId, entry) {
@@ -933,8 +1085,7 @@ function pushApiMessagesFromTraffic(shopId, entry) {
   if (!dedupedMessages.length) return;
   const nextSessions = updateApiSessionSnapshotWithMessages(shopId, dedupedMessages);
   if (nextSessions) {
-    mainWindow?.webContents.send('api-session-updated', { shopId, sessions: nextSessions });
-    sendToDebug('api-session-updated', { shopId, count: nextSessions.length, source: 'traffic-notify' });
+    enqueueRendererApiSessionUpdate(shopId, nextSessions, 'traffic-notify');
   }
   dedupedMessages.forEach(message => {
     const refundCardStateDebug = buildRefundCardStateDebugPayload(message);
@@ -958,6 +1109,7 @@ function pushApiMessagesFromTraffic(shopId, entry) {
       shopId,
       sessionId: message.sessionId,
       customer: message.customer,
+      session: nextSessions?.find(item => String(item?.sessionId || '') === String(message.sessionId || '')) || null,
       source: 'traffic-notify',
       messages: [message],
     };
@@ -1240,9 +1392,7 @@ function getApiClient(shopId) {
     if (Array.isArray(stableSessions) && stableSessions.length >= 0) {
       updateShopStatus(shopId, 'online');
     }
-    const payload = { shopId, sessions: stableSessions };
-    mainWindow?.webContents.send('api-session-updated', payload);
-    sendToDebug('api-session-updated', { shopId, count: stableSessions.length });
+    enqueueRendererApiSessionUpdate(shopId, stableSessions, 'polling');
   });
 
   client.on('newMessage', payload => {
@@ -1752,6 +1902,8 @@ function destroyApiClient(shopId) {
   apiClients.delete(shopId);
   apiSessionTrafficSnapshot.delete(shopId);
   apiSessionStore.delete(shopId);
+  apiPendingRendererSessionUpdates.delete(shopId);
+  apiRendererSessionWarmupShops.delete(shopId);
 }
 
 function getMailApiClient(shopId) {
@@ -1955,11 +2107,18 @@ function isApiReadyShop(shop) {
   return hasRecoveredApiToken(shop.id);
 }
 
+function isApiDisplayableShop(shop) {
+  if (!shop?.id) return false;
+  return shop.status === 'online' || isApiReadyShop(shop);
+}
+
 function getApiShopList(shopId, options = {}) {
-  const { apiReadyOnly = false } = options;
+  const { apiReadyOnly = false, displayableOnly = false } = options;
   const shops = getStoredShops().filter(item => item?.id);
   if (shopId === API_ALL_SHOPS) {
-    return apiReadyOnly ? shops.filter(isApiReadyShop) : shops;
+    if (apiReadyOnly) return shops.filter(isApiReadyShop);
+    if (displayableOnly) return shops.filter(isApiDisplayableShop);
+    return shops;
   }
   return shops.filter(item => item.id === shopId);
 }
@@ -1981,10 +2140,21 @@ function decorateApiSession(shopId, session) {
 
 async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
   const client = getApiClient(shopId);
-  let sessions = await client.getSessionList(page, pageSize);
-  if (sessions.length > 0) {
-    setApiSessionSnapshot(shopId, sessions, 'request');
-    return sessions;
+  let sessions = [];
+  let requestError = null;
+  try {
+    sessions = await client.getSessionList(page, pageSize);
+    if (sessions.length > 0) {
+      setApiSessionSnapshot(shopId, sessions, 'request');
+      return sessions;
+    }
+  } catch (error) {
+    requestError = error;
+    sendToDebug('api-session-request-failed', {
+      shopId,
+      message: error?.message || '获取会话失败',
+      fallback: 'traffic-or-snapshot',
+    });
   }
   const trafficSessions = extractApiSessionsFromTraffic(shopId);
   if (page === 1 && trafficSessions.length > 0) {
@@ -2003,11 +2173,14 @@ async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
   if (page === 1 && retriedTrafficSessions.length > 0) {
     return retriedTrafficSessions.slice(0, pageSize);
   }
+  if (requestError) {
+    throw requestError;
+  }
   return sessions;
 }
 
 async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
-  const targetShops = getApiShopList(shopId, { apiReadyOnly: shopId === API_ALL_SHOPS });
+  const targetShops = getApiShopList(shopId, { displayableOnly: shopId === API_ALL_SHOPS });
   if (!targetShops.length) {
     if (shopId === API_ALL_SHOPS) {
       const skippedShops = getApiShopList(API_ALL_SHOPS).filter(shop => !isApiReadyShop(shop));
@@ -2891,7 +3064,7 @@ async function handleNewCustomerMessage(data) {
       pendingFallbackMeta.delete(fallbackKey);
 
       try {
-        const lastMatchedAt = lastMatchedReplyAt.get(fallbackKey);
+        const lastMatchedAt = getLatestMatchedReplyAt(data);
         if (lastMatchedAt && lastMatchedAt > scheduledAt) {
           mainWindow?.webContents.send('fallback-skipped', {
             customer: data.customer,
@@ -3022,6 +3195,16 @@ function buildFallbackKeyVariants(data = {}, { includeShop = false } = {}) {
     keys.push(shopKey);
   }
   return [...new Set(keys)];
+}
+
+function getLatestMatchedReplyAt(data = {}) {
+  const keys = buildFallbackKeyVariants(data, { includeShop: true });
+  let latestMatchedAt = 0;
+  for (const key of keys) {
+    const matchedAt = Number(lastMatchedReplyAt.get(key) || 0);
+    if (matchedAt > latestMatchedAt) latestMatchedAt = matchedAt;
+  }
+  return latestMatchedAt;
 }
 
 function cancelPendingFallback(fallbackKey) {

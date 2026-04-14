@@ -498,7 +498,7 @@ function registerApiIpc({
     }
   });
 
-  ipcMain.handle('api-start-polling', (event, params = {}) => {
+  ipcMain.handle('api-start-polling', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
     if (shopId === API_ALL_SHOPS) {
@@ -507,7 +507,33 @@ function registerApiIpc({
         return { error: '显示所有店铺时，没有已恢复 Token 的店铺可用于接口轮询' };
       }
       targetShops.forEach(shop => getApiClient(shop.id).startPolling());
-      return { ok: true, shopId, count: targetShops.length };
+      const bootstrapResults = await Promise.allSettled(targetShops.map(async shop => {
+        const sessions = await getApiClient(shop.id).getSessionList(1, 100);
+        const normalizedSessions = Array.isArray(sessions)
+          ? sessions
+            .filter(item => item && item.sessionId)
+            .map(item => ({
+              ...item,
+              shopId: shop.id,
+              shopName: item?.shopName || item?.mallName || shop.name || '未知店铺',
+            }))
+          : [];
+        if (normalizedSessions.length) {
+          getMainWindow()?.webContents.send('api-session-updated', {
+            shopId: shop.id,
+            sessions: normalizedSessions,
+          });
+        }
+        return {
+          shopId: shop.id,
+          count: normalizedSessions.length,
+        };
+      }));
+      const successCount = bootstrapResults.filter(item => item.status === 'fulfilled').length;
+      const sessionCount = bootstrapResults.reduce((sum, item) => (
+        item.status === 'fulfilled' ? sum + Number(item.value?.count || 0) : sum
+      ), 0);
+      return { ok: true, shopId, count: targetShops.length, bootstrapCount: successCount, sessionCount };
     }
     getApiClient(shopId).startPolling();
     return { ok: true, shopId };

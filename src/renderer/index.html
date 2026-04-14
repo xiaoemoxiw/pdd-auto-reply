@@ -4000,6 +4000,21 @@
       padding-right: 4px;
     }
 
+    .api-message-robot-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 3px;
+      background: rgba(76, 107, 232, 0.12);
+      color: #4c6be8;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1;
+    }
+
     .api-message-row {
       display: flex;
       align-items: flex-end;
@@ -7210,8 +7225,7 @@
             </div>
             <div class="api-side-shell">
               <div class="api-side-tabs">
-                <button class="api-side-tab active" data-api-side-tab="sync">接口同步状态</button>
-                <button class="api-side-tab" data-api-side-tab="personal">个人订单</button>
+                <button class="api-side-tab active" data-api-side-tab="personal">个人订单</button>
                 <button class="api-side-tab" data-api-side-tab="aftersale">售后订单</button>
                 <button class="api-side-tab" data-api-side-tab="pending">店铺待支付</button>
               </div>
@@ -8883,7 +8897,7 @@
     let apiOpenSessionPendingKey = '';
     let apiSyncStateEntries = [];
     let apiSessionTab = 'latest';
-    let apiSideTab = 'sync';
+    let apiSideTab = 'personal';
     let apiSessionKeyword = '';
     let apiPinnedSearchSessionKey = '';
     let apiStarredSessions = [];
@@ -8966,6 +8980,7 @@
       applyApiReadMarkUpdate,
       refreshApiAfterMessageSent,
       mergeApiSessionsForShop,
+      upsertApiSession,
       setApiPinnedSearchSession(session = null) {
         const normalized = session ? buildApiSession(session) : null;
         apiPinnedSearchSessionKey = normalized?.sessionKey || '';
@@ -10689,6 +10704,16 @@
       return 0;
     }
 
+    function getApiSessionVisibleStartMs() {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      return startOfToday - 24 * 60 * 60 * 1000;
+    }
+
+    function isApiSessionWithinRecentDays(session = {}) {
+      return getApiTimeMs(session.lastMessageTime) >= getApiSessionVisibleStartMs();
+    }
+
     function getApiSessionLastMessageActor(session = {}) {
       const actor = String(session.lastMessageActor || '').toLowerCase();
       if (actor) return actor;
@@ -11235,6 +11260,25 @@
       return `${sessionOrShopId || ''}::${maybeSessionId || ''}`;
     }
 
+    function getApiSessionDedupKey(session = {}) {
+      const raw = session?.raw && typeof session.raw === 'object' ? session.raw : {};
+      const shopId = String(session?.shopId || '').trim();
+      const identity = String(
+        session?.customerId
+        || session?.userUid
+        || raw?.customer_id
+        || raw?.buyer_id
+        || raw?.user_info?.uid
+        || session?.sessionId
+        || session?.explicitSessionId
+        || session?.conversationId
+        || session?.chatId
+        || session?.rawId
+        || ''
+      ).trim();
+      return `${shopId}::${identity}`;
+    }
+
     function getApiSelectedShop() {
       const shopId = getApiScopeShopId();
       if (!shopId || shopId === API_ALL_SHOPS) return null;
@@ -11242,7 +11286,7 @@
     }
 
     function isSelectableShop(shop) {
-      return !!shop?.id && !(shop.loginMethod === 'token' && shop.status === 'expired');
+      return !!shop?.id && shop.status === 'online';
     }
 
     function getDefaultApiSelectedShopId() {
@@ -11255,6 +11299,7 @@
     function syncApiSelectedShopId() {
       const currentShop = shops.find(item => item.id === apiSelectedShopId) || null;
       const currentValid = apiSelectedShopId === API_ALL_SHOPS || isSelectableShop(currentShop);
+      if (currentValid && apiSelectedShopId === API_ALL_SHOPS) return;
       if (apiSelectedShopIdPinned && currentValid) return;
       const defaultShopId = getDefaultApiSelectedShopId();
       apiSelectedShopIdPinned = false;
@@ -11330,6 +11375,7 @@
         shopId,
         mallName,
         customerName,
+        dedupKey: getApiSessionDedupKey({ ...session, shopId }),
         isShopMember: typeof session.isShopMember === 'boolean'
           ? session.isShopMember
           : (typeof session.is_shop_member === 'boolean'
@@ -11338,7 +11384,7 @@
               ? session.raw.is_shop_member
               : null)),
         shopName: preferredShopName || mallName || shop?.name || '未命名店铺',
-        sessionKey: session.sessionKey || getApiSessionKey(shopId, session.sessionId),
+        sessionKey: getApiSessionKey(shopId, session.sessionId),
         lastMessageActor,
         lastMessageIsFromBuyer: session.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer',
       };
@@ -11478,6 +11524,44 @@
       ].join('::');
     }
 
+    function getApiSessionRealtimeSortTime(session = {}) {
+      const normalized = buildApiSession(session);
+      return Number(normalized.updatedAt || normalized.lastMessageTime || 0) || 0;
+    }
+
+    function hasApiSessionRealtimeChange(existingSession = null, nextSession = null) {
+      if (!existingSession) return true;
+      return getApiSessionSyncSignature(existingSession) !== getApiSessionSyncSignature(nextSession);
+    }
+
+    function dedupeApiSessions(list = []) {
+      const map = new Map();
+      (Array.isArray(list) ? list : []).forEach(session => {
+        const normalized = buildApiSession(session);
+        if (!normalized.shopId || !normalized.sessionId) return;
+        const dedupKey = normalized.dedupKey || getApiSessionDedupKey(normalized);
+        const existing = map.get(dedupKey);
+        if (!existing) {
+          map.set(dedupKey, normalized);
+          return;
+        }
+        const existingTime = Number(existing.lastMessageTime || 0) || 0;
+        const incomingTime = Number(normalized.lastMessageTime || 0) || 0;
+        const primary = incomingTime >= existingTime ? normalized : existing;
+        const secondary = primary === normalized ? existing : normalized;
+        map.set(dedupKey, buildApiSession({
+          ...secondary,
+          ...primary,
+          customerName: primary.customerName || secondary.customerName || '',
+          customerAvatar: primary.customerAvatar || secondary.customerAvatar || '',
+          lastMessage: primary.lastMessage || secondary.lastMessage || '',
+          unreadCount: Math.max(Number(existing.unreadCount || 0) || 0, Number(normalized.unreadCount || 0) || 0),
+          waitTime: Math.max(Number(existing.waitTime || 0) || 0, Number(normalized.waitTime || 0) || 0),
+        }));
+      });
+      return Array.from(map.values());
+    }
+
     function updateApiActiveSessionSyncSignature(session = getApiActiveSession()) {
       apiActiveSessionSyncSignature = session?.sessionId ? getApiSessionSyncSignature(session) : '';
     }
@@ -11613,11 +11697,11 @@
     }
 
     function getApiScopedSessions() {
-      let list = apiSessions.map(item => buildApiSession(item));
+      let list = dedupeApiSessions(apiSessions);
       if (apiSelectedShopId !== API_ALL_SHOPS) {
         list = list.filter(item => item.shopId === apiSelectedShopId);
       }
-      return list;
+      return list.filter(isApiSessionWithinRecentDays);
     }
 
     function sortLatestApiSessions(list = []) {
@@ -11626,8 +11710,8 @@
         const aPinned = !!pinnedKey && a.sessionKey === pinnedKey;
         const bPinned = !!pinnedKey && b.sessionKey === pinnedKey;
         if (aPinned !== bPinned) return aPinned ? -1 : 1;
-        const unreadDiff = Number(b.unreadCount || 0) - Number(a.unreadCount || 0);
-        if (unreadDiff !== 0) return unreadDiff;
+        const realtimeDiff = getApiSessionRealtimeSortTime(b) - getApiSessionRealtimeSortTime(a);
+        if (realtimeDiff !== 0) return realtimeDiff;
         return Number(b.lastMessageTime || 0) - Number(a.lastMessageTime || 0);
       });
     }
@@ -11676,6 +11760,7 @@
         list = list.filter(item => item.shopId === apiSelectedShopId);
       }
       return list
+        .filter(isApiSessionWithinRecentDays)
         .sort((a, b) => Number(b.updatedAt || b.lastMessageTime || 0) - Number(a.updatedAt || a.lastMessageTime || 0));
     }
 
@@ -11684,10 +11769,31 @@
     }
 
     function mergeApiSessionsForShop(shopId, sessions = []) {
-      const nextSessions = Array.isArray(sessions) ? sessions.map(item => buildApiSession(item)) : [];
-      apiSessions = apiSessions
+      const currentSessions = dedupeApiSessions(apiSessions.filter(item => item.shopId === shopId));
+      const currentMap = new Map(currentSessions.map(item => [item.dedupKey || getApiSessionDedupKey(item), item]));
+      const hadExistingSessions = apiSessions.length > 0;
+      const now = Date.now();
+      const nextSessions = (Array.isArray(sessions) ? dedupeApiSessions(sessions) : []).map(session => {
+        const dedupKey = getApiSessionDedupKey(session);
+        const existing = currentMap.get(dedupKey) || null;
+        const hasRealtimeChange = hasApiSessionRealtimeChange(existing, session);
+        const shouldPromote = hasRealtimeChange && (!!existing || hadExistingSessions);
+        return buildApiSession({
+          ...(existing || {}),
+          ...session,
+          customerName: session.customerName || existing?.customerName || '',
+          customerAvatar: session.customerAvatar || existing?.customerAvatar || '',
+          lastMessage: session.lastMessage || existing?.lastMessage || '',
+          unreadCount: Math.max(Number(existing?.unreadCount || 0) || 0, Number(session.unreadCount || 0) || 0),
+          waitTime: Math.max(Number(existing?.waitTime || 0) || 0, Number(session.waitTime || 0) || 0),
+          updatedAt: shouldPromote
+            ? now
+            : (existing?.updatedAt || session.updatedAt || session.lastMessageTime || 0),
+        });
+      });
+      apiSessions = dedupeApiSessions(apiSessions
         .filter(item => item.shopId !== shopId)
-        .concat(nextSessions);
+        .concat(nextSessions));
       const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
       const matchedSession = nextSessions.find(item => item.sessionKey === currentKey);
       if (matchedSession) {
@@ -11695,11 +11801,43 @@
       }
     }
 
+    function upsertApiSession(session = {}) {
+      const normalized = buildApiSession(session);
+      if (!normalized.shopId || !normalized.sessionId) return null;
+      const targetKey = normalized.sessionKey || getApiSessionKey(normalized);
+      const targetDedupKey = normalized.dedupKey || getApiSessionDedupKey(normalized);
+      const existing = apiSessions.find(item => (item.dedupKey || getApiSessionDedupKey(item)) === targetDedupKey) || null;
+      const merged = buildApiSession({
+        ...(existing || {}),
+        ...normalized,
+        customerName: normalized.customerName || existing?.customerName || '',
+        customerAvatar: normalized.customerAvatar || existing?.customerAvatar || '',
+        lastMessage: normalized.lastMessage || existing?.lastMessage || '',
+        unreadCount: Math.max(Number(existing?.unreadCount || 0) || 0, Number(normalized.unreadCount || 0) || 0),
+        waitTime: Math.max(Number(existing?.waitTime || 0) || 0, Number(normalized.waitTime || 0) || 0),
+        updatedAt: Date.now(),
+      });
+      apiSessions = dedupeApiSessions([
+        merged,
+        ...apiSessions.filter(item => (item.dedupKey || getApiSessionDedupKey(item)) !== targetDedupKey),
+      ]);
+      apiStarredSessions = apiStarredSessions.map(item => (
+        (item.dedupKey || getApiSessionDedupKey(item)) === targetDedupKey
+          ? buildApiSession({ ...item, ...merged })
+          : item
+      ));
+      if (getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId) === targetKey) {
+        setApiActiveSessionSnapshot(merged);
+      }
+      return merged;
+    }
+
     function renderApiShopFilter() {
       const select = document.getElementById('apiShopFilter');
       syncApiSelectedShopId();
+      const selectableShops = shops.filter(isSelectableShop);
       const options = [`<option value="${API_ALL_SHOPS}">显示所有店铺</option>`]
-        .concat(shops.map(shop => `<option value="${esc(shop.id)}">${esc(shop.name || '未命名店铺')}</option>`));
+        .concat(selectableShops.map(shop => `<option value="${esc(shop.id)}">${esc(shop.name || '未命名店铺')}</option>`));
       select.innerHTML = options.join('');
       select.value = getApiScopeShopId();
     }
@@ -12401,7 +12539,7 @@
         if (!options.silentStatus) {
           recordApiSyncState('拉取会话', `范围：${getApiScopeShopId() === API_ALL_SHOPS ? '显示所有店铺' : getApiScopeShopId() || '未选择店铺'}`);
         }
-        const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 50 });
+        const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 100 });
         if (!Array.isArray(result)) {
           apiSessionLoadError = result?.error || '获取接口会话失败';
           renderApiSessions();
@@ -12442,17 +12580,34 @@
         const nextScopeShopId = getApiScopeShopId();
         const pinnedSearchSession = getApiPinnedSearchSession();
         const nextSessions = (result.length ? result : fallbackTrafficSessions).map(item => buildApiSession(item));
+        const nextSessionShopIds = new Set(nextSessions.map(item => String(item?.shopId || '')).filter(Boolean));
+        const shouldMergeAllShopSessions = nextScopeShopId === API_ALL_SHOPS
+          && apiLastLoadedSessionScope === API_ALL_SHOPS
+          && apiSessions.length > 0
+          && nextSessionShopIds.size > 0;
         const shouldPreserveExisting = !nextSessions.length
           && apiSessions.length > 0
           && (
             options.keepCurrent
-            || !!apiPinnedSearchSessionKey
             || apiLastLoadedSessionScope === nextScopeShopId
             || !apiLastLoadedSessionScope
           );
-        apiSessions = shouldPreserveExisting ? apiSessions : nextSessions;
+        if (shouldPreserveExisting) {
+          apiSessions = dedupeApiSessions(apiSessions);
+        } else if (shouldMergeAllShopSessions) {
+          apiSessions = dedupeApiSessions(
+            apiSessions
+              .filter(item => !nextSessionShopIds.has(String(item?.shopId || '')))
+              .concat(nextSessions)
+          );
+        } else {
+          apiSessions = dedupeApiSessions(nextSessions);
+        }
         if (pinnedSearchSession && !apiSessions.some(item => item.sessionKey === pinnedSearchSession.sessionKey)) {
           apiSessions = [pinnedSearchSession].concat(apiSessions);
+        }
+        if (!apiSessionKeyword) {
+          apiPinnedSearchSessionKey = '';
         }
         apiLastLoadedSessionScope = nextScopeShopId;
         const currentKey = getApiSessionKey(apiActiveSessionShopId, apiActiveSessionId);
@@ -12617,7 +12772,6 @@
         clearTimeout(apiPostSendRefreshTimer);
         apiPostSendRefreshTimer = null;
       }
-      await loadApiSessions({ keepCurrent: true, silentStatus: true });
       const isCurrentSession = String(payload?.sessionId || '') === String(apiActiveSessionId || '')
         && String(payload?.shopId || '') === String(apiActiveSessionShopId || '');
       if (isCurrentSession && apiActiveSessionId) {
@@ -12630,7 +12784,6 @@
       apiPostSendRefreshTimer = setTimeout(async () => {
         if (currentView !== 'chat-api') return;
         if (payload?.shopId && apiSelectedShopId !== API_ALL_SHOPS && payload.shopId !== apiSelectedShopId) return;
-        await loadApiSessions({ keepCurrent: true, silentStatus: true });
         const stillCurrentSession = String(payload?.sessionId || '') === String(apiActiveSessionId || '')
           && String(payload?.shopId || '') === String(apiActiveSessionShopId || '');
         if (stillCurrentSession && apiActiveSessionId) {
@@ -12664,11 +12817,15 @@
         const stopped = await stopApiPollingScope(apiPollingScope);
         if (!stopped) return false;
       }
-      if (apiPolling && apiPollingScope === scope) {
+      const isAllShopsScope = scope === API_ALL_SHOPS;
+      if (apiPolling && apiPollingScope === scope && !isAllShopsScope) {
         recordApiSyncState('轮询已就绪', scope === API_ALL_SHOPS ? '显示所有店铺' : scope);
         return true;
       }
-      recordApiSyncState('启动轮询', scope === API_ALL_SHOPS ? '显示所有店铺' : scope);
+      recordApiSyncState(
+        apiPolling && apiPollingScope === scope && isAllShopsScope ? '补齐轮询' : '启动轮询',
+        scope === API_ALL_SHOPS ? '显示所有店铺' : scope
+      );
       const result = await window.pddApi.apiStartPolling({ shopId: scope });
       if (result?.error) {
         recordApiSyncState('轮询失败', result.error);
@@ -12683,6 +12840,10 @@
 
     async function retryInitialApiSessions(keepCurrent = false) {
       if (currentView !== 'chat-api') return;
+      if (apiSessions.length > 0) {
+        setApiHint(`已自动同步 ${apiSessions.length} 条接口会话`);
+        return;
+      }
       apiInitialLoadRetryCount += 1;
       recordApiSyncState('自动重试', `第 ${apiInitialLoadRetryCount} 次`);
       await loadApiTraffic(getApiStatusShopId(true));
@@ -12711,6 +12872,7 @@
       [1500, 3200, 5200, 8000, 11000, 15000].forEach((delay, index) => {
         const timer = setTimeout(async () => {
           if (currentView !== 'chat-api') return;
+          if (apiSessions.length > 0) return;
           recordApiSyncState('延迟补刷', `第 ${index + 1} 轮，延迟 ${delay}ms`);
           if (!apiSessions.length) {
             setApiHint(withApiTrafficDiag(`正在同步接口会话（补刷 ${index + 1}）...`));
@@ -12766,6 +12928,7 @@
         renderApiShopHeader();
         const pollingScope = getApiScopeShopId();
         const reuseCachedSessions = !!options.keepCurrent
+          && !options.forceRefreshSessions
           && !apiSessionLoadError
           && apiSessions.length > 0
           && apiLastLoadedSessionScope === pollingScope;
@@ -12813,7 +12976,7 @@
             retryInitialApiSessions(options.keepCurrent);
           }, 1200);
         }
-        if (!reuseCachedSessions) {
+        if (!reuseCachedSessions && (!Array.isArray(sessions) || sessions.length === 0)) {
           scheduleApiWarmupRefreshes(options.keepCurrent);
         }
         const pendingOrderSn = String(window.__pendingOpenApiChatOrderSn || '').trim();
@@ -12916,7 +13079,7 @@
         await window.pddApi.reloadPdd();
       }
       if (currentView === 'chat-api') {
-        loadApiChatView({ keepCurrent: true });
+        await loadApiChatView({ keepCurrent: true, forceRefreshSessions: true });
       }
       if (currentView === 'mail-api') {
         loadMailApiView();
@@ -12951,7 +13114,7 @@
         updateBalanceTotal();
       }
       if (currentView === 'chat-api') {
-        loadApiChatView({ keepCurrent: true });
+        await loadApiChatView({ keepCurrent: true, forceRefreshSessions: true });
       }
       if (currentView === 'mail-api') {
         loadMailApiView();

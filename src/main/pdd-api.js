@@ -1349,9 +1349,16 @@ class PddApiClient extends EventEmitter {
     );
   }
 
+  _isRobotManagedTextMessage(item = {}) {
+    const templateName = String(item?.template_name || item?.templateName || '').trim();
+    const showAuto = item?.show_auto === true || item?.showAuto === true;
+    return templateName === 'mall_robot_text_msg' || showAuto;
+  }
+
   _isSystemNoticeMessage(item = {}) {
     const sourceText = this._extractMessageText(item);
     if (this._isRefundDefaultSellerNoteText(sourceText)) return false;
+    if (this._isRobotManagedTextMessage(item)) return false;
     const messageType = Number(
       item?.type
       ?? item?.msg_type
@@ -2002,7 +2009,7 @@ class PddApiClient extends EventEmitter {
   }
 
   _extractSessionPreviewText(item) {
-    return this._extractMessageText({
+    const previewSource = {
       content: item?.last_msg,
       text: item?.last_message,
       msg_content: item?.latest_msg,
@@ -2015,7 +2022,16 @@ class PddApiClient extends EventEmitter {
       ext: {
         text: item?.snippet,
       },
-    });
+      template_name: item?.last_msg?.template_name || item?.last_message?.template_name || item?.latest_msg?.template_name || item?.template_name,
+      templateName: item?.last_msg?.templateName || item?.last_message?.templateName || item?.latest_msg?.templateName || item?.templateName,
+      show_auto: item?.last_msg?.show_auto ?? item?.last_message?.show_auto ?? item?.latest_msg?.show_auto ?? item?.show_auto,
+      showAuto: item?.last_msg?.showAuto ?? item?.last_message?.showAuto ?? item?.latest_msg?.showAuto ?? item?.showAuto,
+      biz_context: item?.last_msg?.biz_context || item?.last_message?.biz_context || item?.latest_msg?.biz_context || item?.biz_context,
+      bizContext: item?.last_msg?.bizContext || item?.last_message?.bizContext || item?.latest_msg?.bizContext || item?.bizContext,
+      push_biz_context: item?.last_msg?.push_biz_context || item?.last_message?.push_biz_context || item?.latest_msg?.push_biz_context || item?.push_biz_context,
+      pushBizContext: item?.last_msg?.pushBizContext || item?.last_message?.pushBizContext || item?.latest_msg?.pushBizContext || item?.pushBizContext,
+    };
+    return this._extractMessageText(previewSource, { sessionRef: item });
   }
 
   _extractSessionPreviewTime(item) {
@@ -2035,6 +2051,60 @@ class PddApiClient extends EventEmitter {
       item?.content?.time,
     ];
     return candidates.find(value => value !== undefined && value !== null && value !== '') || 0;
+  }
+
+  _getSessionDedupKey(session = {}) {
+    if (!session || typeof session !== 'object') return '';
+    return String(
+      session.customerId
+      || session.userUid
+      || session.raw?.customer_id
+      || session.raw?.buyer_id
+      || session.raw?.user_info?.uid
+      || session.sessionId
+      || session.explicitSessionId
+      || session.conversationId
+      || session.chatId
+      || session.rawId
+      || ''
+    ).trim();
+  }
+
+  _mergeSessionEntries(existing = {}, incoming = {}) {
+    const existingTime = Number(existing?.lastMessageTime || 0) || 0;
+    const incomingTime = Number(incoming?.lastMessageTime || 0) || 0;
+    const preferIncoming = incomingTime >= existingTime;
+    const primary = preferIncoming ? incoming : existing;
+    const secondary = preferIncoming ? existing : incoming;
+    return {
+      ...secondary,
+      ...primary,
+      customerName: primary.customerName || secondary.customerName || '',
+      customerAvatar: primary.customerAvatar || secondary.customerAvatar || '',
+      lastMessage: primary.lastMessage || secondary.lastMessage || '',
+      lastMessageActor: primary.lastMessageActor || secondary.lastMessageActor || '',
+      unreadCount: Math.max(Number(existing?.unreadCount || 0) || 0, Number(incoming?.unreadCount || 0) || 0),
+      waitTime: Math.max(Number(existing?.waitTime || 0) || 0, Number(incoming?.waitTime || 0) || 0),
+      groupNumber: Math.max(Number(existing?.groupNumber || 0) || 0, Number(incoming?.groupNumber || 0) || 0),
+      group_number: Math.max(Number(existing?.group_number || 0) || 0, Number(incoming?.group_number || 0) || 0),
+      raw: primary.raw || secondary.raw || null,
+    };
+  }
+
+  _dedupeSessionList(sessions = []) {
+    const map = new Map();
+    (Array.isArray(sessions) ? sessions : []).forEach(session => {
+      if (!session || typeof session !== 'object') return;
+      const dedupKey = this._getSessionDedupKey(session);
+      if (!dedupKey) return;
+      const existing = map.get(dedupKey);
+      if (!existing) {
+        map.set(dedupKey, session);
+        return;
+      }
+      map.set(dedupKey, this._mergeSessionEntries(existing, session));
+    });
+    return Array.from(map.values());
   }
 
   _extractSessionCreatedTime(item) {
@@ -2105,6 +2175,18 @@ class PddApiClient extends EventEmitter {
       && date.getDate() === now.getDate();
   }
 
+  _getRecentSessionStartMs() {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return startOfToday - 24 * 60 * 60 * 1000;
+  }
+
+  _isWithinRecentTwoDaysTimestamp(value) {
+    const ms = this._normalizeTimestampMs(value);
+    if (!ms) return false;
+    return ms >= this._getRecentSessionStartMs();
+  }
+
   _hasPendingReplySession(session = {}) {
     const lastMessageActor = String(session?.lastMessageActor || '').toLowerCase();
     const lastMessageIsFromBuyer = session?.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer';
@@ -2120,11 +2202,16 @@ class PddApiClient extends EventEmitter {
   }
 
   _filterDisplaySessions(sessions = []) {
-    return sessions.filter(session => (
-      this._isTodayTimestamp(session?.lastMessageTime)
-      || this._isTodayTimestamp(session?.createdAt)
-      || this._hasPendingReplySession(session)
-    ));
+    return sessions
+      .filter(session => (
+        this._isWithinRecentTwoDaysTimestamp(session?.lastMessageTime)
+        || this._isWithinRecentTwoDaysTimestamp(session?.createdAt)
+      ))
+      .sort((a, b) => {
+        const leftTime = this._normalizeTimestampMs(a?.lastMessageTime || a?.createdAt || 0);
+        const rightTime = this._normalizeTimestampMs(b?.lastMessageTime || b?.createdAt || 0);
+        return rightTime - leftTime;
+      });
   }
 
   _pickPendingBuyerMessage(messages = [], buyerIds = [], sessionMeta = {}) {
@@ -2288,7 +2375,7 @@ class PddApiClient extends EventEmitter {
       payload?.list ||
       [];
 
-    return list.map(item => {
+    const sessions = list.map(item => {
       const identity = this._parseSessionIdentity(item);
       const lastMessageActor = this._extractSessionLastMessageActor(item);
       const customerName = this._extractSessionCustomerName(item);
@@ -2324,6 +2411,7 @@ class PddApiClient extends EventEmitter {
         raw: item,
       };
     });
+    return this._dedupeSessionList(sessions);
   }
 
   _describeSessionListPayload(payload) {
@@ -2705,7 +2793,43 @@ class PddApiClient extends EventEmitter {
     return this._getMessageActor(item) === 'buyer';
   }
 
-  _extractMessageText(item) {
+  _extractPendingConfirmMessageText(sessionRef, item = {}, fallbackText = '', options = {}) {
+    const raw = item && typeof item === 'object' ? item : {};
+    const templateName = String(raw?.template_name || raw?.templateName || '').trim();
+    const showAuto = raw?.show_auto === true || raw?.showAuto === true;
+    if (templateName !== 'mall_robot_text_msg' && !showAuto) return '';
+
+    const normalizedFallback = this._normalizeComparableMessageText(fallbackText);
+    const fallbackLooksBroken = !normalizedFallback
+      || /^\d+$/.test(normalizedFallback)
+      || normalizedFallback.length <= 4;
+    const pendingInfo = options?.latestTrusteeshipInfo && typeof options.latestTrusteeshipInfo === 'object'
+      ? options.latestTrusteeshipInfo
+      : this._getLatestTrusteeshipStateInfo(sessionRef);
+    const pendingConfirmData = pendingInfo?.pendingConfirmData;
+    const showText = this._normalizeComparableMessageText(pendingConfirmData?.showText || '');
+    if (!showText) return '';
+
+    const consumerMessageId = String(
+      raw?.biz_context?.consumer_msg_id
+      || raw?.bizContext?.consumer_msg_id
+      || raw?.bizContext?.consumerMsgId
+      || raw?.push_biz_context?.consumer_msg_id
+      || raw?.pushBizContext?.consumer_msg_id
+      || ''
+    ).trim();
+    const referenceConsumerMessageId = String(
+      pendingConfirmData?.referenceConsumerMessageId
+      || pendingConfirmData?.refConsumerMessageId
+      || ''
+    ).trim();
+    if (consumerMessageId && referenceConsumerMessageId && consumerMessageId === referenceConsumerMessageId) {
+      return showText;
+    }
+    return fallbackLooksBroken ? showText : '';
+  }
+
+  _extractMessageText(item, options = {}) {
     const candidates = [
       item?.content,
       item?.text,
@@ -2717,8 +2841,12 @@ class PddApiClient extends EventEmitter {
       item?.extra?.text,
       item?.ext?.text,
     ];
+    let directText = '';
     for (const value of candidates) {
-      if (typeof value === 'string' && value.trim()) return value;
+      if (typeof value === 'string' && value.trim()) {
+        directText = value;
+        break;
+      }
       if (value && typeof value === 'object') {
         const nestedText = [
           value.text,
@@ -2727,12 +2855,21 @@ class PddApiClient extends EventEmitter {
           value.msg,
           value.title,
         ].find(entry => typeof entry === 'string' && entry.trim());
-        if (nestedText) return nestedText;
+        if (nestedText) {
+          directText = nestedText;
+          break;
+        }
       }
     }
-    const structuredText = this._extractStructuredMessageText(item);
-    if (structuredText) return structuredText;
-    return '';
+    const structuredText = directText ? '' : this._extractStructuredMessageText(item);
+    const extractedText = String(directText || structuredText || '').trim();
+    const pendingConfirmText = this._extractPendingConfirmMessageText(
+      options?.sessionRef,
+      item,
+      extractedText,
+      options
+    );
+    return pendingConfirmText || extractedText;
   }
 
   _extractStructuredMessageEntryText(entry) {
@@ -3574,15 +3711,17 @@ class PddApiClient extends EventEmitter {
   _parseMessages(payload, sessionRef = null) {
     const list = this._findMessageArray(payload);
     const readMark = this._getLatestConversationReadMark(sessionRef, payload);
+    const latestTrusteeshipInfo = sessionRef ? this._getLatestTrusteeshipStateInfo(sessionRef) : null;
 
     return list.map(item => ({
       actor: this._getMessageActor(item),
       messageId: item.msg_id || item.message_id || item.id || '',
       sessionId: item.session_id || item.conversation_id || item.chat_id || item?.to?.uid || item?.from?.uid || '',
-      content: this._extractMessageText(item),
+      content: this._extractMessageText(item, { sessionRef, latestTrusteeshipInfo }),
       msgType: item.msg_type || item.message_type || item.content_type || item.type || 1,
       isFromBuyer: this._isBuyerMessage(item),
       isSystem: this._getMessageActor(item) === 'system',
+      isRobotManaged: this._isRobotManagedTextMessage(item),
       senderName: this._extractMessageSenderName(item),
       senderId: item.from_uid || item.sender_id || item.from_id || item?.from?.uid || '',
       timestamp: item.send_time || item.time || item.ts || item.timestamp || item.created_at || 0,
@@ -8822,13 +8961,17 @@ class PddApiClient extends EventEmitter {
     if (!this._polling) return;
 
     try {
-      const sessions = await this.getSessionList(1, 20);
+      const sessions = await this.getSessionList(1, 100);
       this.emit('sessionUpdated', sessions);
 
       const targets = sessions
         .filter(item => item.sessionId)
-        .sort((a, b) => Number(b.unreadCount || 0) - Number(a.unreadCount || 0))
-        .slice(0, 5);
+        .sort((a, b) => {
+          const unreadDiff = Number(b.unreadCount || 0) - Number(a.unreadCount || 0);
+          if (unreadDiff !== 0) return unreadDiff;
+          return this._normalizeTimestampMs(b?.lastMessageTime) - this._normalizeTimestampMs(a?.lastMessageTime);
+        })
+        .slice(0, 20);
 
       if (!this._pollBootstrapDone) {
         const bootstrapTargets = sessions

@@ -1,6 +1,6 @@
 const {
   createTicketTodoDetailWindow,
-  getTicketTodoDetailWindow,
+  getTicketTodoDetailWindowContextByWebContents,
   setTicketTodoDetailToolbarHeight,
   loadTicketTodoDetailUrl,
   goBack,
@@ -22,10 +22,20 @@ function buildTicketTodoDetailUrl(params = {}) {
   return `https://mms.pinduoduo.com/aftersales/work_order/tododetail?order_sn=${encodeURIComponent(orderSn)}`;
 }
 
-function isDetailWindowSender(event) {
-  const win = getTicketTodoDetailWindow();
-  if (!win || win.isDestroyed()) return false;
-  return win.webContents && event.sender && win.webContents.id === event.sender.id;
+function getDetailWindowContext(event) {
+  if (!event?.sender) return null;
+  return getTicketTodoDetailWindowContextByWebContents(event.sender);
+}
+
+function buildDetailWindowReuseKey(params = {}, url = '') {
+  const instanceId = String(params?.instanceId || params?.id || params?.todoId || params?.detailRequestId || '').trim();
+  if (instanceId) return `instance:${instanceId}`;
+  const orderSn = String(params?.orderSn || params?.orderNo || params?.order_sn || '').trim();
+  if (orderSn) return `order:${orderSn}`;
+  const ticketNo = String(params?.ticketNo || params?.ticket_no || '').trim();
+  if (ticketNo) return `ticket:${ticketNo}`;
+  const finalUrl = String(url || '').trim();
+  return finalUrl ? `url:${finalUrl}` : '';
 }
 
 function placeWindowRelativeToMain(mainWindow, win) {
@@ -73,57 +83,76 @@ function registerTicketTodoDetailWindowIpc({
       const url = String(params?.url || '').trim() || buildTicketTodoDetailUrl(params);
       if (!url) return { error: '缺少订单号或详情链接' };
       const shopId = String(params?.shopId || '').trim();
+      const orderSn = String(params?.orderSn || params?.orderNo || params?.order_sn || '').trim();
+      const ticketNo = String(params?.ticketNo || params?.ticket_no || '').trim();
 
       const mainWindow = getMainWindow?.();
-      const win = await createTicketTodoDetailWindow();
+      const { win, reused } = await createTicketTodoDetailWindow({
+        reuseKey: buildDetailWindowReuseKey(params, url)
+      });
       if (!win || win.isDestroyed()) return { error: '详情窗口创建失败' };
       try {
         if (typeof win.setParentWindow === 'function') win.setParentWindow(null);
         if (typeof win.setAlwaysOnTop === 'function') win.setAlwaysOnTop(false);
       } catch {}
 
-      const res = loadTicketTodoDetailUrl(store, shopId, url);
+      if (orderSn) {
+        win.setTitle(`工单处理 - ${orderSn}`);
+      } else if (ticketNo) {
+        win.setTitle(`工单处理 - ${ticketNo}`);
+      } else {
+        win.setTitle('工单处理');
+      }
+
+      const res = loadTicketTodoDetailUrl(win, store, shopId, url);
       if (res && res.error) return res;
-      placeWindowRelativeToMain(mainWindow, win);
+      if (!reused) {
+        placeWindowRelativeToMain(mainWindow, win);
+      }
       win.show();
       win.focus();
-      return { ok: true };
+      return { ok: true, reused: reused === true };
     } catch (err) {
       return { error: err?.message || String(err) };
     }
   });
 
   ipcMain.handle('ticket-todo-detail-set-toolbar-height', async (event, params = {}) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    setTicketTodoDetailToolbarHeight(params?.height);
-    return { ok: true };
+    const context = getDetailWindowContext(event);
+    if (!context) return { error: '无效窗口' };
+    return setTicketTodoDetailToolbarHeight(context, params?.height);
   });
 
   ipcMain.handle('ticket-todo-detail-navigate', async (event, params = {}) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
+    const context = getDetailWindowContext(event);
+    if (!context) return { error: '无效窗口' };
     const url = String(params?.url || params || '').trim();
-    const res = loadTicketTodoDetailUrl(store, '', url);
+    const res = loadTicketTodoDetailUrl(context, store, '', url);
     return res && res.error ? res : { ok: true };
   });
 
   ipcMain.handle('ticket-todo-detail-back', async (event) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    return goBack();
+    const context = getDetailWindowContext(event);
+    if (!context) return { error: '无效窗口' };
+    return goBack(context);
   });
 
   ipcMain.handle('ticket-todo-detail-forward', async (event) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    return goForward();
+    const context = getDetailWindowContext(event);
+    if (!context) return { error: '无效窗口' };
+    return goForward(context);
   });
 
   ipcMain.handle('ticket-todo-detail-reload', async (event) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    return reload();
+    const context = getDetailWindowContext(event);
+    if (!context) return { error: '无效窗口' };
+    return reload(context);
   });
 
   ipcMain.handle('ticket-todo-detail-get-state', async (event) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    return { ok: true, state: getViewState() };
+    const context = getDetailWindowContext(event);
+    if (!context) return { error: '无效窗口' };
+    return { ok: true, state: getViewState(context) };
   });
 }
 

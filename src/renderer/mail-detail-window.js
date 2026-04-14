@@ -1,5 +1,5 @@
 ;(function () {
-  const api = window.afterSaleDetailWindowApi;
+  const api = window.mailDetailWindowApi;
   const toolbar = document.getElementById('toolbar');
   const btnBack = document.getElementById('btnBack');
   const btnForward = document.getElementById('btnForward');

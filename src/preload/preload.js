@@ -157,6 +157,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   // 调试窗口
   openDebugWindow: () => ipcRenderer.invoke('open-debug-window'),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  openMailDetailWindow: (params) => ipcRenderer.invoke('mail-open-detail-window', params),
   openAfterSaleDetailWindow: (params) => ipcRenderer.invoke('aftersale-open-detail-window', params),
   openInvoiceOrderDetailWindow: (params) => ipcRenderer.invoke('invoice-open-order-detail-window', params),
   openTicketTodoDetailWindow: (params) => ipcRenderer.invoke('ticket-open-todo-detail-window', params),

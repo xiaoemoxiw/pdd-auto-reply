@@ -1,6 +1,6 @@
 const {
   createAfterSaleDetailWindow,
-  getAfterSaleDetailWindow,
+  getAfterSaleDetailWindowContextByWebContents,
   setAfterSaleDetailToolbarHeight,
   loadAfterSaleDetailUrl,
   goBack,
@@ -20,15 +20,22 @@ function buildAfterSaleDetailUrl(params = {}) {
   return `https://mms.pinduoduo.com/aftersales-ssr/detail?id=${id}`;
 }
 
-function isDetailWindowSender(event) {
-  const win = getAfterSaleDetailWindow();
-  if (!win || win.isDestroyed()) return false;
-  return win.webContents && event.sender && win.webContents.id === event.sender.id;
+function buildAfterSaleDetailWindowReuseKey(params = {}, url = '') {
+  const shopId = String(params?.shopId || params?.shop_id || '').trim();
+  const instanceId = String(params?.instanceId || '').trim();
+  const orderNo = String(params?.orderNo || params?.orderSn || '').trim();
+  if (shopId && instanceId && orderNo) return `shop:${shopId}:instance:${instanceId}:order:${orderNo}`;
+  if (instanceId && orderNo) return `instance:${instanceId}:order:${orderNo}`;
+  if (shopId && instanceId) return `shop:${shopId}:instance:${instanceId}`;
+  if (instanceId) return `instance:${instanceId}`;
+  const targetUrl = String(url || '').trim();
+  return shopId && targetUrl ? `shop:${shopId}:url:${targetUrl}` : (targetUrl ? `url:${targetUrl}` : '');
 }
 
 function registerAfterSaleDetailWindowIpc({
   ipcMain,
-  store
+  store,
+  getMainWindow
 }) {
   ipcMain.handle('aftersale-open-detail-window', async (event, params = {}) => {
     try {
@@ -36,53 +43,54 @@ function registerAfterSaleDetailWindowIpc({
       if (!url) return { error: '缺少详情链接' };
       const shopId = String(params?.shopId || '').trim();
 
-      const win = await createAfterSaleDetailWindow();
+      const mainWindow = getMainWindow?.();
+      const { win, reused } = await createAfterSaleDetailWindow({
+        reuseKey: buildAfterSaleDetailWindowReuseKey(params, url)
+      });
       if (!win || win.isDestroyed()) return { error: '详情窗口创建失败' };
-      try {
-        if (typeof win.setParentWindow === 'function') win.setParentWindow(null);
-      } catch {}
 
-      const res = loadAfterSaleDetailUrl(store, shopId, url);
+      const res = loadAfterSaleDetailUrl(win, store, shopId, url);
       if (res && res.error) return res;
+      if (!reused && mainWindow && !mainWindow.isDestroyed()) {
+        try {
+          const [mainX, mainY] = mainWindow.getPosition();
+          win.setPosition(mainX + 56, mainY + 56);
+        } catch {}
+      }
       win.show();
       win.focus();
-      return { ok: true };
+      return { ok: true, reused: reused === true };
     } catch (err) {
       return { error: err?.message || String(err) };
     }
   });
 
   ipcMain.handle('aftersale-detail-set-toolbar-height', async (event, params = {}) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    setAfterSaleDetailToolbarHeight(params?.height);
-    return { ok: true };
+    return setAfterSaleDetailToolbarHeight(getAfterSaleDetailWindowContextByWebContents(event.sender), params?.height);
   });
 
   ipcMain.handle('aftersale-detail-navigate', async (event, params = {}) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
+    const context = getAfterSaleDetailWindowContextByWebContents(event.sender);
+    if (!context?.window || context.window.isDestroyed()) return { error: '无效窗口' };
     const url = String(params?.url || params || '').trim();
-    const res = loadAfterSaleDetailUrl(store, '', url);
+    const res = loadAfterSaleDetailUrl(context, store, '', url);
     return res && res.error ? res : { ok: true };
   });
 
   ipcMain.handle('aftersale-detail-back', async (event) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    return goBack();
+    return goBack(getAfterSaleDetailWindowContextByWebContents(event.sender));
   });
 
   ipcMain.handle('aftersale-detail-forward', async (event) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    return goForward();
+    return goForward(getAfterSaleDetailWindowContextByWebContents(event.sender));
   });
 
   ipcMain.handle('aftersale-detail-reload', async (event) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    return reload();
+    return reload(getAfterSaleDetailWindowContextByWebContents(event.sender));
   });
 
   ipcMain.handle('aftersale-detail-get-state', async (event) => {
-    if (!isDetailWindowSender(event)) return { error: '无效窗口' };
-    return { ok: true, state: getViewState() };
+    return { ok: true, state: getViewState(getAfterSaleDetailWindowContextByWebContents(event.sender)) };
   });
 }
 

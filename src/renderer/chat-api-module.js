@@ -3,6 +3,10 @@
   let apiPendingReplyTicker = null;
   let apiPendingReplySignature = '';
   let apiActivePendingReplySignature = '';
+  let apiSessionListRenderSignature = '';
+  let apiPendingSessionUpdateTimer = null;
+  let apiPendingSessionUpdateNeedsTrafficRefresh = false;
+  let apiPendingSessionUpdateHint = '';
   let apiRefundOrderCandidates = [];
   let apiRefundSelectedOrder = null;
   let apiRefundAllowOrderReselect = true;
@@ -64,6 +68,8 @@
   const API_REFUND_DEFAULT_NOTE = '亲亲，这边帮您申请退款，您看可以吗？若同意可以点击下方卡片按钮哦～';
   const API_RETURN_REFUND_DEFAULT_NOTE = '亲亲，这边帮您申请退货退款，您看可以吗？若同意可以点击下方卡片按钮哦～';
   const API_RESEND_DEFAULT_NOTE = '亲亲，这边帮您申请补寄，您看可以吗？若同意可以点击下方卡片按钮哦～';
+  const API_SESSION_UPDATE_BATCH_DELAY_MS = 320;
+  const API_SESSION_INITIAL_BATCH_DELAY_MS = 1200;
   const API_SMALL_PAYMENT_NOTE_MAX_LENGTH = 60;
   const API_SMALL_PAYMENT_MAX_TIMES = 3;
   const API_ORDER_REMARK_MAX_LENGTH = 300;
@@ -103,6 +109,8 @@
     previewAmount: 0,
     hasChange: false,
   };
+  const apiPendingSessionUpdates = new Map();
+  const apiPendingSessionUpserts = new Map();
 
   function getRuntime() {
     return window.__chatApiModuleAccess || {};
@@ -179,6 +187,11 @@
 
   function getVisibleApiSessions() {
     return callRuntime('getVisibleApiSessions') || [];
+  }
+
+  function getOnlineApiShops() {
+    const state = getState();
+    return (state.shops || []).filter(shop => !!shop?.id && shop.status === 'online');
   }
 
   function hasApiPendingReply(session = {}) {
@@ -1478,9 +1491,8 @@
       setApiHint(`已定位会话：${localTarget.customerName || localTarget.customerId || localTarget.sessionId}`);
       return;
     }
-    const scopeShopId = state.apiSelectedShopId || state.apiActiveSessionShopId || state.activeShopId || state.API_ALL_SHOPS;
     const result = await window.pddApi.apiFindSessionByOrderSn({
-      shopId: scopeShopId,
+      shopId: state.API_ALL_SHOPS,
       orderSn: rawKeyword,
       pageSize: 50,
       pageLimit: 4,
@@ -1490,7 +1502,7 @@
         setApiHint(result.error);
         return;
       }
-      setApiHint(normalizedKeyword ? '未找到对应订单会话，可先刷新会话再尝试搜索' : '请输入订单号');
+      setApiHint(normalizedKeyword ? '未查询到相关会话！' : '请输入订单号');
       return;
     }
     prependApiSearchSession(result);
@@ -1610,6 +1622,10 @@
 
   function mergeApiSessionsForShop(shopId, sessions = []) {
     return callRuntime('mergeApiSessionsForShop', shopId, sessions);
+  }
+
+  function upsertApiSession(session = {}) {
+    return callRuntime('upsertApiSession', session);
   }
 
   function setApiPinnedSearchSession(session = null) {
@@ -2475,6 +2491,7 @@
     if (isApiRefundDefaultSellerNoteText(source)) return false;
     if (extractApiRefundCard(message)) return false;
     if (isApiInviteOrderTemplateMessage(message)) return false;
+    if (isApiRobotManagedMessage(message)) return false;
     if (String(message.actor || '').toLowerCase() === 'system' || message.isSystem) return true;
     const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
     const messageType = Number(raw?.type ?? message?.type ?? -1);
@@ -2496,6 +2513,15 @@
       /订单已超承诺发货时间/,
       /请人工跟进/,
     ].some(pattern => pattern.test(source));
+  }
+
+  function isApiRobotManagedMessage(message = {}) {
+    if (!message || message.isFromBuyer) return false;
+    if (message?.isRobotManaged === true) return true;
+    const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
+    const templateName = String(raw?.template_name || raw?.templateName || '').trim();
+    const showAuto = raw?.show_auto === true || raw?.showAuto === true;
+    return templateName === 'mall_robot_text_msg' || showAuto;
   }
 
   function isApiRefundDefaultSellerNoteText(text = '') {
@@ -5999,6 +6025,7 @@
           ? `<img src="${esc(buyerAvatar)}" alt="">`
           : esc((state.apiActiveSessionName || '客户').slice(0, 2));
         const senderName = isBuyer ? '' : getApiSellerDisplayName(message, activeSession);
+        const isRobotManaged = !isBuyer && isApiRobotManagedMessage(message);
         const sellerText = senderName.slice(0, 4) || '主账号';
         const divider = shouldShowApiMessageDivider(message.timestamp, previousTimestamp)
           ? `<div class="api-message-divider">${esc(formatApiDateTime(message.timestamp))}</div>`
@@ -6048,7 +6075,10 @@
           : (serviceAvatar ? `<img src="${esc(serviceAvatar)}" alt="">` : esc(sellerText));
         const readState = isBuyer ? '' : getApiMessageReadState(message);
         const statusText = readState === 'read' ? '已读' : readState === 'unread' ? '未读' : '';
-        const metaHtml = isBuyer ? '' : `<div class="api-message-meta"><span class="api-message-sender">${esc(senderName)}</span></div>`;
+        const metaHtml = isBuyer ? '' : `<div class="api-message-meta">
+          ${isRobotManaged ? '<span class="api-message-robot-badge">机器人</span>' : ''}
+          <span class="api-message-sender">${esc(senderName)}</span>
+        </div>`;
         const imageUrl = getApiImageMessageUrl(message);
         const refundCard = !isBuyer ? extractApiRefundCard(message, activeSession) : null;
         const inviteOrderCard = !isBuyer ? extractApiInviteOrderCard(message) : null;
@@ -6099,7 +6129,7 @@
             </div>
           </div>`;
         }
-        return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}">
+        return `${divider}<div class="api-message-item ${isBuyer ? 'buyer' : 'service'}${isRobotManaged ? ' robot-managed' : ''}">
           <div class="api-message-avatar">${avatarHtml}</div>
           <div class="api-message-body">
             ${metaHtml}
@@ -6365,6 +6395,135 @@
     return sessions.map(session => `${getApiSessionKey(session)}:${formatApiPendingReplyText(session)}`).join('||');
   }
 
+  function buildApiSessionListRenderSignature(state, sessions, extra = {}) {
+    const activeKey = getApiSessionKey(state.apiActiveSessionShopId, state.apiActiveSessionId);
+    const sessionSignature = sessions.map(session => [
+      getApiSessionKey(session),
+      getApiTimeMs(session.lastMessageTime),
+      Number(session.unreadCount || 0),
+      session.lastMessageActor || '',
+      session.lastMessage || '',
+      session.customerName || '',
+      session.shopName || '',
+      getApiSessionGroupNumber(session),
+      formatApiPendingReplyText(session),
+    ].join('::')).join('||');
+    return [
+      state.apiSessionTab || 'latest',
+      state.apiSelectedShopId || '',
+      state.apiSessionKeyword || '',
+      activeKey,
+      extra.latestCount || 0,
+      extra.starredCount || 0,
+      extra.unreadTotal || 0,
+      state.apiSessionLoadError || '',
+      sessionSignature,
+    ].join('###');
+  }
+
+  function buildApiSessionItemRenderSignature(session = {}, state = {}) {
+    const active = getApiSessionKey(session) === getApiSessionKey(state.apiActiveSessionShopId, state.apiActiveSessionId);
+    const unread = Number(session.unreadCount || 0);
+    const pendingReplyText = formatApiPendingReplyText(session);
+    return [
+      getApiSessionKey(session),
+      active ? 1 : 0,
+      unread,
+      session.customerName || '',
+      session.customerId || '',
+      session.customerAvatar || '',
+      session.shopName || '',
+      session.lastMessage || '',
+      getApiTimeMs(session.lastMessageTime),
+      getApiSessionGroupNumber(session),
+      pendingReplyText,
+    ].join('###');
+  }
+
+  function buildApiSessionItemHtml(session = {}, state = {}) {
+    const active = getApiSessionKey(session) === getApiSessionKey(state.apiActiveSessionShopId, state.apiActiveSessionId);
+    const unread = Number(session.unreadCount || 0);
+    const pendingReply = hasApiPendingReply(session);
+    const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
+    const groupNumber = getApiSessionGroupNumber(session);
+    const orderTagHtml = groupNumber >= 1
+      ? `<span class="api-session-order-tag">订单 ${esc(String(groupNumber))}</span>`
+      : '';
+    const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
+    return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-key="${esc(getApiSessionKey(session))}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
+      <div class="api-session-avatar">${avatarHtml}</div>
+      <div class="api-session-main">
+        <div class="api-session-item-title">
+          <div class="api-session-item-info-row">
+            <div class="api-session-item-name">
+              <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
+              ${orderTagHtml}
+            </div>
+            <div class="api-session-shop">
+              <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
+            </div>
+          </div>
+          <div class="api-session-time-group">
+            <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
+          </div>
+        </div>
+        <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
+        ${pendingReplyText ? `<span class="api-session-item-wait">${esc(pendingReplyText)}</span>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function createApiSessionItemNode(session = {}, state = {}) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = buildApiSessionItemHtml(session, state).trim();
+    const node = wrapper.firstElementChild;
+    if (!node) return null;
+    node.dataset.renderSignature = buildApiSessionItemRenderSignature(session, state);
+    node.onclick = async () => {
+      await openApiSession(node.dataset.sessionId, node.dataset.customerName, node.dataset.shopId);
+    };
+    return node;
+  }
+
+  function patchApiSessionListDom(container, sessions, state) {
+    const existingItems = Array.from(container.querySelectorAll('.api-session-item'));
+    container.querySelectorAll('.api-empty').forEach(node => node.remove());
+    const existingMap = new Map(existingItems.map(item => [item.dataset.sessionKey || '', item]));
+    const desiredKeys = new Set();
+
+    sessions.forEach((session, index) => {
+      const sessionKey = getApiSessionKey(session);
+      desiredKeys.add(sessionKey);
+      let node = existingMap.get(sessionKey) || null;
+      const nextSignature = buildApiSessionItemRenderSignature(session, state);
+
+      if (!node || node.dataset.renderSignature !== nextSignature) {
+        const nextNode = createApiSessionItemNode(session, state);
+        if (!nextNode) return;
+        if (node) {
+          node.replaceWith(nextNode);
+        }
+        node = nextNode;
+      } else {
+        node.dataset.customerName = String(session.customerName || '');
+        node.onclick = async () => {
+          await openApiSession(node.dataset.sessionId, node.dataset.customerName, node.dataset.shopId);
+        };
+      }
+
+      const anchor = container.children[index] || null;
+      if (anchor !== node) {
+        container.insertBefore(node, anchor);
+      }
+    });
+
+    existingItems.forEach(item => {
+      const sessionKey = item.dataset.sessionKey || '';
+      if (desiredKeys.has(sessionKey)) return;
+      item.remove();
+    });
+  }
+
   function buildApiActivePendingReplySignature() {
     const state = getState();
     if (state.currentView !== 'chat-api' || !state.apiHasUserSelectedSession) return '';
@@ -6402,11 +6561,12 @@
     const avatarEl = document.getElementById('apiShopAvatar');
     const selectedShop = getApiSelectedShop();
     const sessionShop = (state.shops || []).find(item => item.id === state.apiActiveSessionShopId) || null;
+    const onlineShops = getOnlineApiShops();
     const title = state.apiSelectedShopId === state.API_ALL_SHOPS
       ? '全部店铺会话'
       : (selectedShop?.name || '未命名店铺');
     const meta = state.apiSelectedShopId === state.API_ALL_SHOPS
-      ? `已接入 ${state.shops?.length || 0} 家店铺，左侧展示所有店铺的咨询客户会话`
+      ? `当前已登录成功 ${onlineShops.length} 家店铺，左侧展示全部店铺的新消息会话`
       : `当前筛选 ${selectedShop?.name || '店铺'}，右侧优先展示当前会话所属店铺信息`;
     document.getElementById('apiShopName').textContent = title;
     document.getElementById('apiShopHeaderMeta').textContent = meta;
@@ -6431,6 +6591,106 @@
     await loadApiTraffic(getApiStatusShopId(true));
   }
 
+  async function refreshApiSessionListAfterRealtimeUpdate() {
+    const state = getState();
+    if (state.apiSessionKeyword || state.apiSessionTab === 'starred') {
+      await syncApiSelectionWithFilter();
+    } else {
+      renderApiSessions();
+    }
+    callRuntime('renderApiSideCards');
+  }
+
+  function getApiSessionUpdateBatchDelay(state = getState()) {
+    const currentCount = Number(state?.apiSessions?.length || 0) || 0;
+    return currentCount > 0 ? API_SESSION_UPDATE_BATCH_DELAY_MS : API_SESSION_INITIAL_BATCH_DELAY_MS;
+  }
+
+  async function flushPendingApiSessionUpdates() {
+    if (apiPendingSessionUpdateTimer) {
+      clearTimeout(apiPendingSessionUpdateTimer);
+      apiPendingSessionUpdateTimer = null;
+    }
+    if (!apiPendingSessionUpdates.size && !apiPendingSessionUpserts.size) return;
+    const pendingPayloads = Array.from(apiPendingSessionUpdates.values());
+    const pendingUpserts = Array.from(apiPendingSessionUpserts.values());
+    const shouldRefreshTraffic = apiPendingSessionUpdateNeedsTrafficRefresh;
+    const pendingHint = apiPendingSessionUpdateHint;
+    apiPendingSessionUpdates.clear();
+    apiPendingSessionUpserts.clear();
+    apiPendingSessionUpdateNeedsTrafficRefresh = false;
+    apiPendingSessionUpdateHint = '';
+    pendingPayloads.forEach(payload => {
+      if (!Array.isArray(payload?.sessions)) return;
+      mergeApiSessionsForShop(payload.shopId, payload.sessions);
+    });
+    pendingUpserts.forEach(session => {
+      upsertApiSession(session);
+    });
+    await refreshApiSessionListAfterRealtimeUpdate();
+    if (shouldRefreshTraffic && getState().currentView === 'chat-api') {
+      await loadApiTraffic(getApiStatusShopId(true));
+    }
+    if (pendingHint) {
+      setApiHint(pendingHint);
+    }
+  }
+
+  function schedulePendingApiSessionUpdates() {
+    if (apiPendingSessionUpdateTimer) return;
+    apiPendingSessionUpdateTimer = setTimeout(() => {
+      flushPendingApiSessionUpdates().catch(error => {
+        emitRendererDebug('chat-api', 'flushPendingApiSessionUpdates error', {
+          message: error?.message || String(error || ''),
+        });
+      });
+    }, getApiSessionUpdateBatchDelay());
+  }
+
+  function shouldBatchApiSessionUpdate(payload, state = getState()) {
+    return !!payload?.shopId
+      && payload.shopId !== state.API_ALL_SHOPS
+      && state.apiSelectedShopId === state.API_ALL_SHOPS;
+  }
+
+  function queuePendingApiSessionUpdate(payload) {
+    if (!payload?.shopId || !Array.isArray(payload?.sessions)) return false;
+    apiPendingSessionUpdates.set(payload.shopId, {
+      shopId: payload.shopId,
+      sessions: payload.sessions,
+    });
+    if (getState().currentView === 'chat-api') {
+      apiPendingSessionUpdateNeedsTrafficRefresh = true;
+    }
+    schedulePendingApiSessionUpdates();
+    return true;
+  }
+
+  function queuePendingApiSessionUpsert(session = {}, hint = '') {
+    const normalizedShopId = String(session?.shopId || '').trim();
+    const normalizedSessionId = String(session?.sessionId || '').trim();
+    if (!normalizedShopId || !normalizedSessionId) return false;
+    const sessionKey = getApiSessionKey(normalizedShopId, normalizedSessionId);
+    apiPendingSessionUpserts.set(sessionKey, {
+      ...session,
+      shopId: normalizedShopId,
+      sessionId: normalizedSessionId,
+    });
+    if (hint) {
+      apiPendingSessionUpdateHint = hint;
+    }
+    if (getState().currentView === 'chat-api') {
+      apiPendingSessionUpdateNeedsTrafficRefresh = true;
+    }
+    schedulePendingApiSessionUpdates();
+    return true;
+  }
+
+  function hasRenderableApiIncomingMessage(message = {}) {
+    const text = String(message?.content ?? message?.text ?? '').trim();
+    return !!(text || message?.refundCard || message?.refundStatusUpdate);
+  }
+
   function renderApiSessions() {
     const container = document.getElementById('apiSessionList');
     try {
@@ -6449,12 +6709,18 @@
         visibleCount: sessions.length,
         keyword: state.apiSessionKeyword || ''
       });
-      const unreadTotal = getApiScopedSessions().reduce((sum, item) => sum + Number(item.unreadCount || 0), 0);
+      const scopedSessions = getApiScopedSessions();
+      const unreadTotal = scopedSessions.reduce((sum, item) => sum + Number(item.unreadCount || 0), 0);
+      const renderSignature = buildApiSessionListRenderSignature(state, sessions, {
+        latestCount: latestSessions.length,
+        starredCount: starredSessions.length,
+        unreadTotal,
+      });
       document.getElementById('apiLatestSessionCount').textContent = String(latestSessions.length);
       document.getElementById('apiStarredSessionCount').textContent = String(starredSessions.length);
       document.getElementById('apiSessionSummary').textContent = state.apiSessionTab === 'starred'
         ? `已收藏 ${starredSessions.length} 条会话`
-        : `${sessions.length}/${getApiScopedSessions().length} 条会话`;
+        : `${sessions.length}/${scopedSessions.length} 条会话`;
       document.getElementById('apiTodoHint').textContent = unreadTotal > 0
         ? `当前有 ${unreadTotal} 条未读待处理消息`
         : (state.apiSessionTab === 'starred' ? '当前没有收藏会话' : '当前没有待处理接口会话');
@@ -6465,53 +6731,24 @@
         const emptyText = state.apiSessionTab === 'starred'
           ? '暂无收藏会话，可在右侧按钮中添加收藏。'
           : (state.apiSessionLoadError || '暂无接口会话数据，请先操作嵌入网页或刷新接口会话。');
+        if (apiSessionListRenderSignature === renderSignature) {
+          return;
+        }
         container.innerHTML = `<div class="api-empty">${esc(emptyText)}</div>`;
+        apiSessionListRenderSignature = renderSignature;
         apiPendingReplySignature = '';
         emitRendererDebug('chat-api', 'renderApiSessions empty-dom', { htmlLength: container.innerHTML.length });
         return;
       }
 
-      container.innerHTML = sessions.map(session => {
-        const active = getApiSessionKey(session) === getApiSessionKey(state.apiActiveSessionShopId, state.apiActiveSessionId);
-        const unread = Number(session.unreadCount || 0);
-        const pendingReply = hasApiPendingReply(session);
-        const pendingReplyText = pendingReply ? formatApiPendingReplyText(session) : '';
-        const groupNumber = getApiSessionGroupNumber(session);
-        const orderTagHtml = groupNumber >= 1
-          ? `<span class="api-session-order-tag">订单 ${esc(String(groupNumber))}</span>`
-          : '';
-        const avatarHtml = session.customerAvatar ? `<img src="${esc(session.customerAvatar)}" alt="">` : '';
-        return `<div class="api-session-item ${active ? 'active' : ''} ${pendingReply ? 'reply-pending' : ''} ${unread > 0 ? 'has-unread' : ''}" data-session-id="${esc(session.sessionId)}" data-shop-id="${esc(session.shopId)}" data-customer-name="${esc(session.customerName || '')}">
-          <div class="api-session-avatar">${avatarHtml}</div>
-          <div class="api-session-main">
-            <div class="api-session-item-title">
-              <div class="api-session-item-info-row">
-                <div class="api-session-item-name">
-                  <span class="api-session-item-name-text">${esc(session.customerName || session.customerId || '未知客户')}</span>
-                  ${orderTagHtml}
-                </div>
-                <div class="api-session-shop">
-                  <span class="api-session-shop-tag">${esc(session.shopName || '未命名店铺')}</span>
-                </div>
-              </div>
-              <div class="api-session-time-group">
-                <span class="api-session-item-time">${formatApiListTime(session.lastMessageTime)}</span>
-              </div>
-            </div>
-            <div class="api-session-item-text">${renderApiPddEmojiHtml(session.lastMessage || '暂无消息')}</div>
-            ${pendingReplyText ? `<span class="api-session-item-wait">${esc(pendingReplyText)}</span>` : ''}
-          </div>
-        </div>`;
-      }).join('');
+      if (apiSessionListRenderSignature === renderSignature) {
+        return;
+      }
+      patchApiSessionListDom(container, sessions, state);
+      apiSessionListRenderSignature = renderSignature;
       emitRendererDebug('chat-api', 'renderApiSessions dom-ready', {
         itemCount: container.querySelectorAll('.api-session-item').length,
         htmlLength: container.innerHTML.length
-      });
-
-      container.querySelectorAll('.api-session-item').forEach(item => {
-        item.addEventListener('click', async () => {
-          await openApiSession(item.dataset.sessionId, item.dataset.customerName, item.dataset.shopId);
-        });
       });
       apiPendingReplySignature = buildApiPendingReplySignature(sessions);
       container.querySelectorAll('.api-session-star').forEach(button => {
@@ -6716,12 +6953,13 @@
       beforeCount: state.apiSessions?.length || 0
     });
     if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
-    if (Array.isArray(payload?.sessions) && payload.sessions.length > 0) {
-      mergeApiSessionsForShop(payload.shopId, payload.sessions);
+    if (shouldBatchApiSessionUpdate(payload, state)) {
+      queuePendingApiSessionUpdate(payload);
+      return;
     }
     if (Array.isArray(payload?.sessions)) {
-      await syncApiSelectionWithFilter();
-      callRuntime('renderApiSideCards');
+      mergeApiSessionsForShop(payload.shopId, payload.sessions);
+      await refreshApiSessionListAfterRealtimeUpdate();
     }
     if (getState().currentView === 'chat-api') {
       await loadApiTraffic(getApiStatusShopId(true));
@@ -6732,21 +6970,77 @@
     const state = getState();
     if (payload?.shopId && state.apiSelectedShopId !== state.API_ALL_SHOPS && payload.shopId !== state.apiSelectedShopId) return;
     recordApiSyncState('轮询新消息', `会话：${payload?.customer || payload?.sessionId || '未知会话'}`);
-    await loadApiTraffic(getApiStatusShopId(true));
     const nextState = getState();
     const isCurrentSession = String(payload?.sessionId || '') === String(nextState.apiActiveSessionId)
       && String(payload?.shopId || '') === String(nextState.apiActiveSessionShopId || '');
-    const incomingMessages = Array.isArray(payload?.messages) ? payload.messages : [];
+    const fallbackIncomingMessage = payload?.text
+      ? [{
+        messageId: payload?.messageId || '',
+        text: payload.text,
+        content: payload.text,
+        timestamp: payload?.timestamp || Date.now(),
+        isFromBuyer: true,
+        senderName: payload?.customer || payload?.session?.customerName || '',
+        raw: payload?.raw && typeof payload.raw === 'object' ? payload.raw : {},
+      }]
+      : [];
+    const incomingMessages = Array.isArray(payload?.messages) && payload.messages.length
+      ? payload.messages
+      : fallbackIncomingMessage;
+    if (!isCurrentSession && payload?.shopId && payload?.sessionId) {
+      const nextSession = {
+        ...(payload?.session && typeof payload.session === 'object' ? payload.session : {}),
+        shopId: payload.shopId,
+        sessionId: payload.sessionId,
+        customerName: payload?.customer || payload?.session?.customerName || '',
+        customerId: payload?.customerId || payload?.session?.customerId || payload?.session?.userUid || '',
+        lastMessage: payload?.text || payload?.session?.lastMessage || '',
+        lastMessageTime: payload?.timestamp || payload?.session?.lastMessageTime || Date.now(),
+        unreadCount: Math.max(Number(payload?.session?.unreadCount || 0) || 0, 1),
+      };
+      if (state.apiSelectedShopId === state.API_ALL_SHOPS) {
+        queuePendingApiSessionUpsert(nextSession, `收到接口新消息：${payload?.customer || '未知客户'}`);
+        return;
+      }
+      upsertApiSession(nextSession);
+      await refreshApiSessionListAfterRealtimeUpdate();
+      await loadApiTraffic(getApiStatusShopId(true));
+      setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
+      return;
+    }
     if (isCurrentSession && incomingMessages.length) {
+      await loadApiTraffic(getApiStatusShopId(true));
+      upsertApiSession({
+        ...(payload?.session && typeof payload.session === 'object' ? payload.session : {}),
+        shopId: payload.shopId || nextState.apiActiveSessionShopId,
+        sessionId: payload.sessionId || nextState.apiActiveSessionId,
+        customerName: payload?.customer || payload?.session?.customerName || nextState.apiActiveSessionName || '',
+        customerId: payload?.customerId || payload?.session?.customerId || payload?.session?.userUid || '',
+        lastMessage: payload?.text || payload?.session?.lastMessage || '',
+        lastMessageTime: payload?.timestamp || payload?.session?.lastMessageTime || Date.now(),
+        unreadCount: 0,
+        lastMessageActor: 'buyer',
+        lastMessageIsFromBuyer: true,
+      });
+      await refreshApiSessionListAfterRealtimeUpdate();
+      let appendedCount = 0;
       incomingMessages.forEach(message => {
-        callRuntime('appendApiIncomingMessage', {
+        if (!hasRenderableApiIncomingMessage(message)) return;
+        const appended = callRuntime('appendApiIncomingMessage', {
           ...message,
           shopId: payload.shopId || message?.shopId || nextState.apiActiveSessionShopId,
           sessionId: payload.sessionId || message?.sessionId || nextState.apiActiveSessionId,
         });
+        if (appended) appendedCount += 1;
       });
-    } else if (!isCurrentSession) {
-      await loadApiSessions({ keepCurrent: true });
+      if (appendedCount === 0) {
+        await openApiSession(
+          payload.sessionId || nextState.apiActiveSessionId,
+          payload?.customer || payload?.session?.customerName || nextState.apiActiveSessionName || '',
+          payload.shopId || nextState.apiActiveSessionShopId,
+          { silentStatus: true, preserveMessages: true, forceRefresh: true }
+        );
+      }
     }
     setApiHint(`收到接口新消息：${payload?.customer || '未知客户'}`);
   }

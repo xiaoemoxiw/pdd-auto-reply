@@ -3,7 +3,47 @@ const path = require('path');
 
 const detailWindowContexts = new Map();
 const detailWindowKeyToId = new Map();
+const sessionChromeUaMap = new WeakMap();
 const DEFAULT_TOOLBAR_HEIGHT = 44;
+const DEFAULT_CHROME_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
+function applySessionChromeUserAgent(ses, userAgent) {
+  if (!ses) return;
+  const ua = String(userAgent || '').trim();
+  if (!ua) return;
+  try {
+    if (typeof ses.setUserAgent === 'function') {
+      ses.setUserAgent(ua);
+    }
+  } catch {}
+
+  const existing = sessionChromeUaMap.get(ses);
+  if (existing) {
+    existing.ua = ua;
+    return;
+  }
+  sessionChromeUaMap.set(ses, { ua });
+  if (!ses.webRequest || typeof ses.webRequest.onBeforeSendHeaders !== 'function') return;
+
+  ses.webRequest.onBeforeSendHeaders((details, callback) => {
+    const headers = details?.requestHeaders || {};
+    const targetUrl = String(details?.url || '');
+    try {
+      const hostname = new URL(targetUrl).hostname;
+      if (!hostname.endsWith('.pinduoduo.com')) return callback({ requestHeaders: headers });
+    } catch {
+      return callback({ requestHeaders: headers });
+    }
+    const current = sessionChromeUaMap.get(ses);
+    const nextUa = current?.ua || ua;
+    headers['User-Agent'] = nextUa;
+    headers['sec-ch-ua'] = '"Chromium";v="122", "Google Chrome";v="122", "Not(A:Brand";v="99"';
+    headers['sec-ch-ua-mobile'] = '?0';
+    headers['sec-ch-ua-platform'] = '"Windows"';
+    callback({ requestHeaders: headers });
+  });
+}
 
 function isMerchantUrl(url) {
   try {
@@ -21,13 +61,13 @@ function getShopPartition(shopId) {
 }
 
 function getShopUserAgent(store, shopId) {
-  const fallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
   const id = String(shopId || '').trim();
-  if (!id) return fallback;
   const shops = store?.get('shops') || [];
   const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
   const ua = String(shop?.userAgent || '').trim();
-  return ua || fallback;
+  const lower = ua.toLowerCase();
+  const isChromeLike = ua && lower.includes('chrome/') && !lower.includes('electron/');
+  return isChromeLike ? ua : DEFAULT_CHROME_UA;
 }
 
 function resolveContext(target) {
@@ -86,7 +126,7 @@ function getContextByReuseKey(reuseKey) {
   return context;
 }
 
-function getAfterSaleDetailWindowContextByWebContents(webContents) {
+function getMailDetailWindowContextByWebContents(webContents) {
   const win = BrowserWindow.fromWebContents(webContents);
   return resolveContext(win);
 }
@@ -95,7 +135,7 @@ function sendState(target, payload = {}) {
   const context = resolveContext(target) || target;
   const win = context?.window;
   if (!win || win.isDestroyed()) return;
-  win.webContents.send('aftersale-detail-state', payload);
+  win.webContents.send('mail-detail-window-state', payload);
 }
 
 function getViewState(target) {
@@ -169,7 +209,9 @@ function ensureView(target, store, shopId) {
 
   const view = context.view;
   const userAgent = getShopUserAgent(store, nextShopId);
+  view.__pddUserAgent = userAgent;
   if (userAgent) view.webContents.setUserAgent(userAgent);
+  applySessionChromeUserAgent(view.webContents.session, userAgent);
 
   view.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {
@@ -182,7 +224,9 @@ function ensureView(target, store, shopId) {
     const currentView = context.view;
     if (url?.startsWith('http')) {
       if (isMerchantUrl(url)) {
-        currentView?.webContents.loadURL(url);
+        const ua = currentView?.__pddUserAgent;
+        if (ua) currentView?.webContents.loadURL(url, { userAgent: ua });
+        else currentView?.webContents.loadURL(url);
       } else {
         shell.openExternal(url);
       }
@@ -227,7 +271,7 @@ function ensureView(target, store, shopId) {
   return view;
 }
 
-async function createAfterSaleDetailWindow(options = {}) {
+async function createMailDetailWindow(options = {}) {
   const reuseKey = String(options?.reuseKey || '').trim();
   const existingContext = getContextByReuseKey(reuseKey);
   if (existingContext?.window && !existingContext.window.isDestroyed()) {
@@ -242,10 +286,10 @@ async function createAfterSaleDetailWindow(options = {}) {
     height: 820,
     minWidth: 980,
     minHeight: 640,
-    title: '售后详情',
+    title: '站内信详情',
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, '..', 'preload', 'aftersale-detail-window-preload.js'),
+      preload: path.join(__dirname, '..', 'preload', 'mail-detail-window-preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -263,7 +307,7 @@ async function createAfterSaleDetailWindow(options = {}) {
   setContextReuseKey(context, reuseKey);
 
   try {
-    await win.loadFile(path.join(__dirname, '..', 'renderer', 'aftersale-detail-window.html'));
+    await win.loadFile(path.join(__dirname, '..', 'renderer', 'mail-detail-window.html'));
   } catch (err) {
     cleanupContext(context);
     if (!win.isDestroyed()) {
@@ -283,7 +327,7 @@ async function createAfterSaleDetailWindow(options = {}) {
   return { win, reused: false };
 }
 
-function setAfterSaleDetailToolbarHeight(target, height) {
+function setMailDetailToolbarHeight(target, height) {
   const context = resolveContext(target) || target;
   if (!context) return { error: '无效窗口' };
   const next = Number(height);
@@ -293,7 +337,7 @@ function setAfterSaleDetailToolbarHeight(target, height) {
   return { ok: true };
 }
 
-function loadAfterSaleDetailUrl(target, store, shopId, url) {
+function loadMailDetailUrl(target, store, shopId, url) {
   const context = resolveContext(target) || target;
   const win = context?.window;
   if (!context || !win || win.isDestroyed()) {
@@ -308,7 +352,9 @@ function loadAfterSaleDetailUrl(target, store, shopId, url) {
   if (!view) return { error: '详情视图创建失败' };
   win.setBrowserView(view);
   resizeView(context);
-  view.webContents.loadURL(targetUrl);
+  const ua = view.__pddUserAgent;
+  if (ua) view.webContents.loadURL(targetUrl, { userAgent: ua });
+  else view.webContents.loadURL(targetUrl);
   return { ok: true };
 }
 
@@ -334,10 +380,10 @@ function reload(target) {
 }
 
 module.exports = {
-  createAfterSaleDetailWindow,
-  getAfterSaleDetailWindowContextByWebContents,
-  setAfterSaleDetailToolbarHeight,
-  loadAfterSaleDetailUrl,
+  createMailDetailWindow,
+  getMailDetailWindowContextByWebContents,
+  setMailDetailToolbarHeight,
+  loadMailDetailUrl,
   goBack,
   goForward,
   reload,

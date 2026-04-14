@@ -18,6 +18,7 @@ function registerApiIpc({
   getTicketApiClient,
   getViolationApiClient,
   getDeductionApiClient,
+  getApiShopAvailabilityStatus,
   setApiTrafficEntries
 }) {
   const verboseLogging = process.env.NODE_ENV === 'development' || process.env.PDD_VERBOSE_LOG === '1';
@@ -162,7 +163,7 @@ function registerApiIpc({
             ...session,
             shopId: shop.id,
             shopName: session.shopName || shop.name || '未知店铺',
-            shopStatus: shop.status || '',
+            shopStatus: getApiShopAvailabilityStatus(shop),
           };
         }
       } catch (error) {

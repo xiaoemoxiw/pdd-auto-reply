@@ -2107,7 +2107,7 @@ function updateShopStatus(shopId, status) {
   const shops = getStoredShops();
   const target = shops.find(item => item.id === shopId);
   if (!target) return;
-  const currentStatus = target.availabilityStatus || target.status;
+  const currentStatus = getApiShopAvailabilityStatus(target);
   if (currentStatus === status && target.status === status) return;
   target.status = status;
   target.availabilityStatus = status;
@@ -2127,9 +2127,13 @@ function hasRecoveredApiToken(shopId) {
   return !!global.__pddTokens?.[shopId]?.raw;
 }
 
+function getApiShopAvailabilityStatus(shop) {
+  return shop?.availabilityStatus || shop?.status || '';
+}
+
 function isApiReadyShop(shop) {
   if (!shop?.id) return false;
-  const availabilityStatus = shop.availabilityStatus || shop.status || '';
+  const availabilityStatus = getApiShopAvailabilityStatus(shop);
   if (availabilityStatus === 'expired' || availabilityStatus === 'invalid') return false;
   if (shop.loginMethod !== 'token') return true;
   return hasRecoveredApiToken(shop.id);
@@ -2137,7 +2141,7 @@ function isApiReadyShop(shop) {
 
 function isApiDisplayableShop(shop) {
   if (!shop?.id) return false;
-  return shop.status === 'online' || isApiReadyShop(shop);
+  return getApiShopAvailabilityStatus(shop) === 'online' || isApiReadyShop(shop);
 }
 
 function getApiShopList(shopId, options = {}) {
@@ -2162,7 +2166,7 @@ function decorateApiSession(shopId, session) {
     shopId,
     mallName,
     shopName: shopName || mallName || shop?.name || '未知店铺',
-    shopStatus: shop?.status || '',
+    shopStatus: getApiShopAvailabilityStatus(shop),
   };
 }
 
@@ -2486,6 +2490,7 @@ registerApiIpc({
   getTicketApiClient,
   getViolationApiClient,
   getDeductionApiClient,
+  getApiShopAvailabilityStatus,
   setApiTrafficEntries: (shopId, entries) => {
     apiTrafficStore.set(shopId, entries);
   }

@@ -189,9 +189,8 @@
     return callRuntime('getVisibleApiSessions') || [];
   }
 
-  function getOnlineApiShops() {
-    const state = getState();
-    return (state.shops || []).filter(shop => !!shop?.id && shop.status === 'online');
+  function getApiSelectableShops() {
+    return callRuntime('getApiSelectableShops') || [];
   }
 
   function hasApiPendingReply(session = {}) {
@@ -6561,12 +6560,12 @@
     const avatarEl = document.getElementById('apiShopAvatar');
     const selectedShop = getApiSelectedShop();
     const sessionShop = (state.shops || []).find(item => item.id === state.apiActiveSessionShopId) || null;
-    const onlineShops = getOnlineApiShops();
+    const selectableShops = getApiSelectableShops();
     const title = state.apiSelectedShopId === state.API_ALL_SHOPS
       ? '全部店铺会话'
       : (selectedShop?.name || '未命名店铺');
     const meta = state.apiSelectedShopId === state.API_ALL_SHOPS
-      ? `当前已登录成功 ${onlineShops.length} 家店铺，左侧展示全部店铺的新消息会话`
+      ? `当前可用 ${selectableShops.length} 家店铺，左侧展示全部店铺的新消息会话`
       : `当前筛选 ${selectedShop?.name || '店铺'}，右侧优先展示当前会话所属店铺信息`;
     document.getElementById('apiShopName').textContent = title;
     document.getElementById('apiShopHeaderMeta').textContent = meta;

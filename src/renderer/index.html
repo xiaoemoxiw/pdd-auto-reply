@@ -8956,6 +8956,8 @@
       getApiSessionKey,
       getApiActiveSession,
       getApiSelectedShop,
+      isApiSelectableShop,
+      getApiSelectableShops,
       getApiScopedSessions,
       getLatestApiSessionsForDisplay,
       getStarredApiSessionsForDisplay,
@@ -9349,7 +9351,7 @@
     });
 
     function isHeaderSelectableShop(shop) {
-      const availabilityStatus = shop?.availabilityStatus || shop?.status;
+      const availabilityStatus = getShopAvailabilityStatus(shop);
       return !!shop?.id && availabilityStatus === 'online';
     }
 
@@ -9361,7 +9363,7 @@
       }
       shopDropdownList.innerHTML = visibleShops.map(s => {
         const methodLabel = s.loginMethod === 'qrcode' ? '扫码' : s.loginMethod === 'token' ? 'Token' : '';
-        const availabilityStatus = s.availabilityStatus || s.status || 'offline';
+        const availabilityStatus = getShopAvailabilityStatus(s);
         return `<div class="shop-dropdown-item ${s.id === activeShopId ? 'active' : ''}" data-shop-id="${s.id}" title="${esc(s.name)}">
           <span class="item-dot ${availabilityStatus}"></span>
           <span class="item-name" title="${esc(s.name)}">${esc(s.name)}</span>
@@ -9392,7 +9394,7 @@
       const nameEl = document.getElementById('shopSwitcherName');
       const dotEl = document.getElementById('shopSwitcherDot');
       if (shop) {
-        const availabilityStatus = shop.availabilityStatus || shop.status || 'offline';
+        const availabilityStatus = getShopAvailabilityStatus(shop);
         nameEl.textContent = shop.name || '未命名店铺';
         dotEl.className = 'shop-dot ' + availabilityStatus;
         activeShopId = shop.id;
@@ -11288,11 +11290,23 @@
       return shops.find(item => item.id === shopId) || null;
     }
 
-    function isSelectableShop(shop) {
-      const availabilityStatus = shop?.availabilityStatus || shop?.status;
+    function getShopAvailabilityStatus(shop) {
+      return shop?.availabilityStatus || shop?.status || 'offline';
+    }
+
+    function isApiSelectableShop(shop) {
+      const availabilityStatus = getShopAvailabilityStatus(shop);
       if (!shop?.id) return false;
       if (availabilityStatus === 'expired' || availabilityStatus === 'invalid') return false;
       return shop.loginMethod !== 'token' || availabilityStatus === 'online' || !!shop?.tokenFileName;
+    }
+
+    function getApiSelectableShops() {
+      return shops.filter(isApiSelectableShop);
+    }
+
+    function isSelectableShop(shop) {
+      return isApiSelectableShop(shop);
     }
 
     function getDefaultApiSelectedShopId() {
@@ -13257,7 +13271,7 @@
       tbody.innerHTML = filtered.map((s, i) => {
         const groupName = shopGroups.find(g => g.id === s.group)?.name || '未分组';
         const statusMap = { online: '登录成功', offline: '已离线', expired: '已过期' };
-        const availabilityStatus = s.availabilityStatus || s.status || 'offline';
+        const availabilityStatus = getShopAvailabilityStatus(s);
         const shopNameStatus = s.shopNameStatus || (s.name && !/^店铺 |^新店铺 |^扫码登录中\.\.\.$/.test(s.name) ? 'resolved' : 'pending');
         const shopNameHint = shopNameStatus === 'resolved'
           ? ''

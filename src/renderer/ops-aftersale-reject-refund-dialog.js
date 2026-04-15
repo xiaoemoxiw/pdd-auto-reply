@@ -770,24 +770,153 @@
 
     const style = document.createElement('style');
     style.textContent = `
-      .ops-aftersale-reject-modal { width: 680px; max-width: calc(100vw - 40px); }
-      .ops-aftersale-reject-body { display: flex; flex-direction: column; gap: 14px; }
-      .ops-aftersale-reject-status { color: #666; font-size: 13px; }
-      .ops-aftersale-reject-error { color: #d4380d; font-size: 13px; }
-      .ops-aftersale-reject-tip { color: #666; font-size: 12px; line-height: 1.6; background: #fafafa; border-radius: 8px; padding: 10px 12px; }
-      .ops-aftersale-reject-group-title { font-size: 13px; font-weight: 600; color: #333; margin-bottom: 8px; }
-      .ops-aftersale-reject-solutions { display: flex; flex-wrap: wrap; gap: 8px; }
-      .ops-aftersale-reject-solution { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 8px; cursor: pointer; background: #fff; }
-      .ops-aftersale-reject-solution.is-active { border-color: #1890ff; background: #e6f4ff; }
-      .ops-aftersale-reject-solution input { margin: 0; }
-      .ops-aftersale-reject-solution-text { font-size: 13px; color: #333; }
-      .ops-aftersale-reject-empty { color: #999; font-size: 13px; }
-      .ops-aftersale-reject-input { width: 100%; border: 1px solid #d9d9d9; border-radius: 8px; padding: 8px 10px; font-size: 13px; box-sizing: border-box; }
-      .ops-aftersale-reject-textarea { width: 100%; min-height: 132px; resize: vertical; border: 1px solid #d9d9d9; border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.6; box-sizing: border-box; }
-      .ops-aftersale-reject-help { margin-top: 6px; color: #999; font-size: 12px; }
-      .ops-aftersale-reject-select { width: 100%; height: 36px; border: 1px solid #d9d9d9; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff; }
-      .ops-aftersale-reject-footer { display: flex; justify-content: flex-end; gap: 10px; }
-      .ops-aftersale-reject-cancel { border: 1px solid #d9d9d9; background: #fff; color: #333; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
+      .ops-aftersale-reject-modal {
+        width: 560px;
+        max-width: calc(100vw - 40px);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .ops-aftersale-reject-modal .modal-header {
+        padding: 14px 20px;
+        background: #f2f2f2;
+        border-bottom: 1px solid #dcdcdc;
+      }
+      .ops-aftersale-reject-modal .modal-header h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        color: #555;
+      }
+      .ops-aftersale-reject-modal .modal-close {
+        color: #8c8c8c;
+        font-size: 28px;
+        line-height: 1;
+      }
+      .ops-aftersale-reject-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 22px 24px 10px;
+      }
+      .ops-aftersale-reject-status,
+      .ops-aftersale-reject-error,
+      .ops-aftersale-reject-tip {
+        margin-left: 92px;
+      }
+      .ops-aftersale-reject-status {
+        color: #666;
+        font-size: 13px;
+      }
+      .ops-aftersale-reject-error {
+        color: #d4380d;
+        font-size: 13px;
+      }
+      .ops-aftersale-reject-tip {
+        color: #666;
+        font-size: 12px;
+        line-height: 1.6;
+        background: #fafafa;
+        border: 1px solid #efefef;
+        border-radius: 4px;
+        padding: 8px 10px;
+      }
+      .ops-aftersale-reject-form-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .ops-aftersale-reject-form-label {
+        width: 80px;
+        padding-top: 8px;
+        color: #666;
+        font-size: 13px;
+        line-height: 20px;
+        text-align: right;
+        flex: 0 0 auto;
+      }
+      .ops-aftersale-reject-form-control {
+        flex: 1;
+        min-width: 0;
+      }
+      .ops-aftersale-reject-solutions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding-top: 2px;
+      }
+      .ops-aftersale-reject-solution {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+        cursor: pointer;
+        background: #fff;
+      }
+      .ops-aftersale-reject-solution.is-active {
+        border-color: #1890ff;
+        background: #e6f4ff;
+      }
+      .ops-aftersale-reject-solution input {
+        margin: 0;
+      }
+      .ops-aftersale-reject-solution-text {
+        font-size: 13px;
+        color: #333;
+      }
+      .ops-aftersale-reject-empty {
+        color: #999;
+        font-size: 13px;
+        line-height: 34px;
+      }
+      .ops-aftersale-reject-input,
+      .ops-aftersale-reject-select,
+      .ops-aftersale-reject-textarea {
+        width: 100%;
+        border: 1px solid #cfcfcf;
+        border-radius: 4px;
+        box-sizing: border-box;
+        font-size: 13px;
+        color: #333;
+        background: #fff;
+      }
+      .ops-aftersale-reject-input,
+      .ops-aftersale-reject-select {
+        height: 38px;
+        padding: 0 12px;
+      }
+      .ops-aftersale-reject-textarea {
+        min-height: 112px;
+        resize: vertical;
+        padding: 10px 12px;
+        line-height: 1.6;
+      }
+      .ops-aftersale-reject-help {
+        margin-top: 6px;
+        color: #999;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .ops-aftersale-reject-footer {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        padding: 4px 24px 24px;
+      }
+      .ops-aftersale-reject-cancel {
+        min-width: 92px;
+        height: 36px;
+        border: 1px solid #d9d9d9;
+        background: #fff;
+        color: #666;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .ops-aftersale-reject-footer .ops-aftersale-btn {
+        min-width: 138px;
+        height: 36px;
+      }
     `;
     document.head.appendChild(style);
 
@@ -804,34 +933,46 @@
           <div class="ops-aftersale-reject-status" id="opsAftersaleRejectRefundStatus" hidden></div>
           <div class="ops-aftersale-reject-error" id="opsAftersaleRejectRefundError" hidden></div>
           <div class="ops-aftersale-reject-tip" id="opsAftersaleRejectRefundTip">提交后会按当前售后标准化流程向消费者发送协商方案。</div>
-          <div id="opsAftersaleRejectRefundSolutionsGroup">
-            <div class="ops-aftersale-reject-group-title">协商方案</div>
-            <div class="ops-aftersale-reject-solutions" id="opsAftersaleRejectRefundSolutions"></div>
+          <div class="ops-aftersale-reject-form-row" id="opsAftersaleRejectRefundSolutionsGroup">
+            <div class="ops-aftersale-reject-form-label">协商方案</div>
+            <div class="ops-aftersale-reject-form-control">
+              <div class="ops-aftersale-reject-solutions" id="opsAftersaleRejectRefundSolutions"></div>
+            </div>
           </div>
-          <div id="opsAftersaleRejectRefundAmountRow" style="display:none;">
-            <div class="ops-aftersale-reject-group-title">退款金额</div>
-            <input class="ops-aftersale-reject-input" id="opsAftersaleRejectRefundAmount" type="number" min="0" step="0.01" placeholder="请输入协商退款金额（元）" />
-            <div class="ops-aftersale-reject-help" id="opsAftersaleRejectRefundAmountHint"></div>
+          <div class="ops-aftersale-reject-form-row" id="opsAftersaleRejectRefundAmountRow" style="display:none;">
+            <div class="ops-aftersale-reject-form-label">退款金额</div>
+            <div class="ops-aftersale-reject-form-control">
+              <input class="ops-aftersale-reject-input" id="opsAftersaleRejectRefundAmount" type="number" min="0" step="0.01" placeholder="请输入协商退款金额（元）" />
+              <div class="ops-aftersale-reject-help" id="opsAftersaleRejectRefundAmountHint"></div>
+            </div>
           </div>
-          <div id="opsAftersaleRejectRefundWordsGroup">
-            <div class="ops-aftersale-reject-group-title">协商话术</div>
-            <textarea class="ops-aftersale-reject-textarea" id="opsAftersaleRejectRefundWords" placeholder="提交后将自动发送给消费者"></textarea>
-            <div class="ops-aftersale-reject-help">提交后，此话术将自动发送给消费者。</div>
+          <div class="ops-aftersale-reject-form-row" id="opsAftersaleRejectRefundWordsGroup">
+            <div class="ops-aftersale-reject-form-label">协商说明</div>
+            <div class="ops-aftersale-reject-form-control">
+              <textarea class="ops-aftersale-reject-textarea" id="opsAftersaleRejectRefundWords" placeholder="提交后将自动发送给消费者"></textarea>
+              <div class="ops-aftersale-reject-help">提交后，此话术将自动发送给消费者。</div>
+            </div>
           </div>
-          <div id="opsAftersaleRejectRefundStep3ReasonGroup" style="display:none;">
-            <div class="ops-aftersale-reject-group-title">驳回原因</div>
-            <select class="ops-aftersale-reject-select" id="opsAftersaleRejectRefundReasonSelect"></select>
-            <div id="opsAftersaleRejectRefundSuggestion" style="display:none;"></div>
+          <div class="ops-aftersale-reject-form-row" id="opsAftersaleRejectRefundStep3ReasonGroup" style="display:none;">
+            <div class="ops-aftersale-reject-form-label">驳回原因</div>
+            <div class="ops-aftersale-reject-form-control">
+              <select class="ops-aftersale-reject-select" id="opsAftersaleRejectRefundReasonSelect"></select>
+              <div id="opsAftersaleRejectRefundSuggestion" style="display:none;"></div>
+            </div>
           </div>
-          <div id="opsAftersaleRejectRefundStep3DescGroup" style="display:none;">
-            <div class="ops-aftersale-reject-group-title">补充说明</div>
-            <textarea class="ops-aftersale-reject-textarea" id="opsAftersaleRejectRefundStep3Desc" placeholder="请输入第三次驳回的补充说明"></textarea>
-            <div class="ops-aftersale-reject-help" id="opsAftersaleRejectRefundDescHint"></div>
+          <div class="ops-aftersale-reject-form-row" id="opsAftersaleRejectRefundStep3DescGroup" style="display:none;">
+            <div class="ops-aftersale-reject-form-label">驳回说明</div>
+            <div class="ops-aftersale-reject-form-control">
+              <textarea class="ops-aftersale-reject-textarea" id="opsAftersaleRejectRefundStep3Desc" placeholder="请输入第三次驳回的补充说明"></textarea>
+              <div class="ops-aftersale-reject-help" id="opsAftersaleRejectRefundDescHint"></div>
+            </div>
           </div>
-          <div id="opsAftersaleRejectRefundStep3ProofGroup" style="display:none;">
-            <div class="ops-aftersale-reject-group-title">凭证图片 URL</div>
-            <textarea class="ops-aftersale-reject-textarea" id="opsAftersaleRejectRefundImageUrls" placeholder="可粘贴图片 URL，一行一个"></textarea>
-            <div class="ops-aftersale-reject-help" id="opsAftersaleRejectRefundProofHint"></div>
+          <div class="ops-aftersale-reject-form-row" id="opsAftersaleRejectRefundStep3ProofGroup" style="display:none;">
+            <div class="ops-aftersale-reject-form-label">凭证图片</div>
+            <div class="ops-aftersale-reject-form-control">
+              <textarea class="ops-aftersale-reject-textarea" id="opsAftersaleRejectRefundImageUrls" placeholder="可粘贴图片 URL，一行一个"></textarea>
+              <div class="ops-aftersale-reject-help" id="opsAftersaleRejectRefundProofHint"></div>
+            </div>
           </div>
         </div>
         <div class="modal-footer ops-aftersale-reject-footer">

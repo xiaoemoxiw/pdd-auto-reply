@@ -12,6 +12,13 @@ const REFUND_LIST_URL = '/mercury/mms/afterSales/queryList';
 const REFUND_COUNT_URL = '/mercury/mms/afterSales/queryCount';
 const REFUND_GROUP_COUNT_URL = '/mercury/mms/afterSales/queryGroupCount';
 const AGREE_REFUND_PRECHECK_URL = '/mercury/mms/afterSales/agreeRefundPreCheck';
+const REJECT_REFUND_PRECHECK_URL = '/mercury/mms/afterSales/rejectRefundPreCheck';
+const REJECT_REFUND_GET_FORM_INFO_URL = '/mercury/mms/afterSales/rejectRefundGetFormInfo';
+const REJECT_REFUND_SUBMIT_FORM_DATA_URL = '/mercury/mms/afterSales/rejectRefundSubmitFormData';
+const REJECT_REFUND_NEGOTIATE_INFO_URL = '/mercury/negotiate/mms/afterSales/getRejectNegotiateInfo';
+const REJECT_REFUND_REASONS_URL = '/mercury/mms/afterSales/rejectRefundReasons';
+const REJECT_REFUND_VALIDATE_URL = '/mercury/mms/afterSales/rejectRefund/validate';
+const MERCHANT_AFTERSALES_REFUSE_URL = '/mercury/merchant/afterSales/refuse';
 const REGION_GET_URL = '/latitude/order/region/get';
 const SHIPPING_COMPANY_LIST_URL = '/express_base/shipping_list/mms';
 
@@ -833,6 +840,233 @@ class TicketApiClient {
     const payload = await this._request('POST', urlPath, body);
     const result = isPlainObject(payload?.result) ? payload.result : {};
     return { ok: true, id, orderSn, result, payload };
+  }
+
+  async rejectRefundPreCheck(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法进行驳回退款预检查');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法进行驳回退款预检查');
+
+    const versionRaw = pickValue(params, ['version'], '');
+    const version = Number(versionRaw || 0);
+    if (!Number.isFinite(version) || version <= 0) throw new Error('缺少版本号，无法进行驳回退款预检查');
+
+    const invokeTypeRaw = pickValue(params, ['invokeType', 'invoke_type'], 0);
+    const invokeType = Number(invokeTypeRaw || 0);
+    const urlPath = REJECT_REFUND_PRECHECK_URL;
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+
+    body.orderSn = orderSn;
+    body.afterSalesId = id;
+    body.version = version;
+    body.invokeType = Number.isFinite(invokeType) ? invokeType : 0;
+
+    const payload = await this._request('POST', urlPath, body);
+    const result = isPlainObject(payload?.result) ? payload.result : {};
+    return { ok: true, id, orderSn, version, result, payload };
+  }
+
+  async rejectRefundGetFormInfo(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id', 'bizId', 'biz_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法获取驳回退款表单');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法获取驳回退款表单');
+
+    const bizTypeRaw = pickValue(params, ['bizType', 'biz_type'], 2);
+    const bizType = Number(bizTypeRaw || 0);
+    const urlPath = REJECT_REFUND_GET_FORM_INFO_URL;
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+
+    body.bizType = Number.isFinite(bizType) && bizType > 0 ? bizType : 2;
+    body.bizId = String(pickValue(params, ['bizId', 'biz_id'], String(id)) || String(id)).trim() || String(id);
+    body.orderSn = orderSn;
+    body.afterSalesId = id;
+
+    const payload = await this._request('POST', urlPath, body);
+    const result = isPlainObject(payload?.result) ? payload.result : {};
+    return { ok: true, id, orderSn, result, payload };
+  }
+
+  async getRejectRefundNegotiateInfo(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法获取驳回退款协商信息');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法获取驳回退款协商信息');
+
+    const key = String(pickValue(params, ['key'], 'ProMultiSolution') || 'ProMultiSolution').trim() || 'ProMultiSolution';
+    const urlPath = REJECT_REFUND_NEGOTIATE_INFO_URL;
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+
+    body.orderSn = orderSn;
+    body.afterSalesId = id;
+    body.key = key;
+
+    const payload = await this._request('POST', urlPath, body);
+    const result = isPlainObject(payload?.result) ? payload.result : {};
+    return { ok: true, id, orderSn, result, payload };
+  }
+
+  async rejectRefundSubmit(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id', 'bizId', 'biz_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法提交驳回退款');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法提交驳回退款');
+
+    const formName = String(pickValue(params, ['formName', 'form_name'], '') || '').trim();
+    if (!formName) throw new Error('缺少表单名，无法提交驳回退款');
+
+    const formDataList = Array.isArray(params?.formDataList) ? params.formDataList : [];
+    if (!formDataList.length) throw new Error('缺少表单内容，无法提交驳回退款');
+
+    const bizTypeRaw = pickValue(params, ['bizType', 'biz_type'], 10);
+    const bizType = Number(bizTypeRaw || 0);
+    const urlPath = REJECT_REFUND_SUBMIT_FORM_DATA_URL;
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+
+    body.formName = formName;
+    body.formDataList = formDataList;
+    body.orderSn = orderSn;
+    body.afterSalesId = id;
+    body.bizType = Number.isFinite(bizType) && bizType > 0 ? bizType : 10;
+    body.bizId = String(pickValue(params, ['bizId', 'biz_id'], String(id)) || String(id)).trim() || String(id);
+
+    const payload = await this._request('POST', urlPath, body);
+    return { ok: true, id, orderSn, payload };
+  }
+
+  async rejectRefundGetReasons(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法获取驳回原因');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法获取驳回原因');
+
+    const urlPath = REJECT_REFUND_REASONS_URL;
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+
+    body.orderSn = orderSn;
+    body.afterSalesId = id;
+    body.uid = params?.uid ?? body.uid ?? null;
+
+    if (params.rejectPopupWindowType !== undefined) {
+      const rejectPopupWindowType = Number(params.rejectPopupWindowType || 0);
+      if (Number.isFinite(rejectPopupWindowType) && rejectPopupWindowType > 0) {
+        body.rejectPopupWindowType = rejectPopupWindowType;
+      }
+    }
+    if (params.withHandlingSuggestion !== undefined) {
+      body.withHandlingSuggestion = !!params.withHandlingSuggestion;
+    }
+    if (params.withRejectRequirements !== undefined) {
+      body.withRejectRequirements = !!params.withRejectRequirements;
+    }
+    if (params.rejectReasonCode !== undefined && params.rejectReasonCode !== null && params.rejectReasonCode !== '') {
+      const rejectReasonCode = Number(params.rejectReasonCode || 0);
+      if (Number.isFinite(rejectReasonCode) && rejectReasonCode > 0) {
+        body.rejectReasonCode = rejectReasonCode;
+      }
+    }
+
+    const payload = await this._request('POST', urlPath, body);
+    const result = Array.isArray(payload?.result) ? payload.result : [];
+    return { ok: true, id, orderSn, result, payload };
+  }
+
+  async rejectRefundValidate(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法校验第三次驳回');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法校验第三次驳回');
+
+    const version = Number(pickValue(params, ['version'], 0) || 0);
+    if (!Number.isFinite(version) || version <= 0) throw new Error('缺少版本号，无法校验第三次驳回');
+
+    const reason = String(pickValue(params, ['reason'], '') || '').trim();
+    if (!reason) throw new Error('缺少驳回原因文案，无法校验第三次驳回');
+
+    const operateDesc = String(pickValue(params, ['operateDesc', 'operate_desc'], '') || '').trim();
+    if (!operateDesc) throw new Error('缺少补充说明，无法校验第三次驳回');
+
+    const rejectReasonCode = Number(pickValue(params, ['rejectReasonCode', 'reject_reason_code'], 0) || 0);
+    if (!Number.isFinite(rejectReasonCode) || rejectReasonCode <= 0) throw new Error('缺少驳回原因编码，无法校验第三次驳回');
+
+    const urlPath = REJECT_REFUND_VALIDATE_URL;
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+
+    body.reason = reason;
+    body.operateDesc = operateDesc;
+    body.images = Array.isArray(params?.images) ? params.images : [];
+    body.shipImages = Array.isArray(params?.shipImages) ? params.shipImages : [];
+    body.consumerReason = String(pickValue(params, ['consumerReason', 'consumer_reason'], '') || '');
+    body.requiredRejectDescs = Array.isArray(params?.requiredRejectDescs) ? params.requiredRejectDescs : [];
+    body.rejectReasonCode = rejectReasonCode;
+    body.id = id;
+    body.mallId = params?.mallId ?? body.mallId ?? null;
+    body.version = version;
+    body.orderSn = orderSn;
+    body.requiredProofs = Array.isArray(params?.requiredProofs) ? params.requiredProofs : [];
+
+    const payload = await this._request('POST', urlPath, body);
+    return { ok: true, id, orderSn, payload };
+  }
+
+  async merchantAfterSalesRefuse(params = {}) {
+    const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
+    const id = Number(idRaw || 0);
+    if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法提交第三次驳回');
+
+    const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
+    if (!orderSn) throw new Error('缺少订单号，无法提交第三次驳回');
+
+    const version = Number(pickValue(params, ['version'], 0) || 0);
+    if (!Number.isFinite(version) || version <= 0) throw new Error('缺少版本号，无法提交第三次驳回');
+
+    const reason = String(pickValue(params, ['reason'], '') || '').trim();
+    if (!reason) throw new Error('缺少驳回原因文案，无法提交第三次驳回');
+
+    const operateDesc = String(pickValue(params, ['operateDesc', 'operate_desc'], '') || '').trim();
+    if (!operateDesc) throw new Error('缺少补充说明，无法提交第三次驳回');
+
+    const rejectReasonCode = Number(pickValue(params, ['rejectReasonCode', 'reject_reason_code'], 0) || 0);
+    if (!Number.isFinite(rejectReasonCode) || rejectReasonCode <= 0) throw new Error('缺少驳回原因编码，无法提交第三次驳回');
+
+    const urlPath = MERCHANT_AFTERSALES_REFUSE_URL;
+    const template = this._getTrafficRequestBody(urlPath);
+    const body = isPlainObject(template) ? JSON.parse(JSON.stringify(template)) : {};
+
+    body.reason = reason;
+    body.operateDesc = operateDesc;
+    body.images = Array.isArray(params?.images) ? params.images : [];
+    body.shipImages = Array.isArray(params?.shipImages) ? params.shipImages : [];
+    body.consumerReason = String(pickValue(params, ['consumerReason', 'consumer_reason'], '') || '');
+    body.requiredRejectDescs = Array.isArray(params?.requiredRejectDescs) ? params.requiredRejectDescs : [];
+    body.rejectReasonCode = rejectReasonCode;
+    body.id = id;
+    body.mallId = params?.mallId ?? body.mallId ?? null;
+    body.version = version;
+    body.orderSn = orderSn;
+    body.requiredProofs = Array.isArray(params?.requiredProofs) ? params.requiredProofs : [];
+
+    const payload = await this._request('POST', urlPath, body);
+    return { ok: true, id, orderSn, payload };
   }
 
   // ====== 以下为原有工单(客服处理) API (Strickland) ======

@@ -748,7 +748,7 @@ window.registerOpsCenterView({
     };
     if (!window.__opsAftersaleRefreshBound) {
       window.__opsAftersaleRefreshBound = true;
-      window.addEventListener('ops-aftersale-approved-return', async (event) => {
+      const handleAftersaleChanged = async (event) => {
         try {
           const targetInstanceId = String(event?.detail?.id || '').trim();
           const shouldOptimisticRemove = !!event?.detail?.optimisticRemove;
@@ -765,7 +765,9 @@ window.registerOpsCenterView({
             await wait(800);
           }
         } catch {}
-      });
+      };
+      window.addEventListener('ops-aftersale-approved-return', handleAftersaleChanged);
+      window.addEventListener('ops-aftersale-rejected-refund', handleAftersaleChanged);
     }
 
     const refreshBtn = element.querySelector('#btnAftersaleRefresh');
@@ -959,7 +961,31 @@ window.registerOpsCenterView({
             window.opsCenterToast?.('当前记录缺少售后单ID');
             return;
           }
-          window.opsCenterToast?.('驳回退款入口已预留');
+          const orderNo = String(legacyActionLink.dataset.order || '').trim();
+          const shopId = String(legacyActionLink.dataset.shop || '').trim();
+          const version = String(legacyActionLink.dataset.version || '').trim();
+          if (!orderNo) {
+            window.opsCenterToast?.('当前记录缺少订单号');
+            return;
+          }
+          if (!shopId) {
+            window.opsCenterToast?.('当前记录缺少店铺信息');
+            return;
+          }
+          if (!version) {
+            window.opsCenterToast?.('当前记录缺少版本号');
+            return;
+          }
+          if (typeof window.openOpsAfterSaleRejectRefundDialog === 'function') {
+            window.openOpsAfterSaleRejectRefundDialog({
+              instanceId,
+              orderNo,
+              shopId,
+              version: Number(version),
+            })?.catch?.(() => {});
+          } else {
+            window.opsCenterToast?.('驳回退款弹窗未加载');
+          }
           return;
         }
         if (action === 'detail') {

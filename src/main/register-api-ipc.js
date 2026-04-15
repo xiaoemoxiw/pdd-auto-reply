@@ -1301,6 +1301,174 @@ function registerApiIpc({
     }
   });
 
+  ipcMain.handle('aftersale-reject-refund-precheck', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    const version = Number(params.version ?? 0);
+    if (!Number.isFinite(version) || version <= 0) return { error: '缺少版本号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundPreCheck(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-reject-refund-get-form-info', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? params.bizId
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundGetFormInfo(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-reject-refund-get-negotiate-info', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRejectRefundNegotiateInfo(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-reject-refund-submit', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundSubmit(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-reject-refund-get-reasons', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundGetReasons(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-reject-refund-validate', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    const version = Number(params.version ?? 0);
+    if (!Number.isFinite(version) || version <= 0) return { error: '缺少版本号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundValidate(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
+  ipcMain.handle('aftersale-merchant-refuse', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const instanceId = String(
+      params.instanceId
+      ?? params.afterSalesId
+      ?? params.after_sales_id
+      ?? params.id
+      ?? ''
+    ).trim();
+    if (!instanceId) return { error: '缺少售后单ID' };
+    const orderSn = String(params.orderSn ?? params.order_sn ?? params.orderNo ?? params.order_no ?? '').trim();
+    if (!orderSn) return { error: '缺少订单号' };
+    const version = Number(params.version ?? 0);
+    if (!Number.isFinite(version) || version <= 0) return { error: '缺少版本号' };
+    try {
+      const forwardedParams = { ...params };
+      if ('shopId' in forwardedParams) delete forwardedParams.shopId;
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).merchantAfterSalesRefuse(forwardedParams));
+    } catch (error) {
+      return { error: buildApiErrorMessage(error) };
+    }
+  });
+
   ipcMain.handle('aftersale-get-overview', async (event, params = {}) => {
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };

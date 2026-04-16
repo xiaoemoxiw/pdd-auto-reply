@@ -10,6 +10,8 @@
   let mailApiPageNum = 1;
   let mailApiTotalCount = 0;
   let mailApiSelectedIds = new Set();
+  let mailApiKnownMessageIds = new Set();
+  let mailApiHasNotificationBaseline = false;
 
   function getEl(id) {
     return document.getElementById(id);
@@ -58,6 +60,54 @@
 
   function clearMailApiSelection() {
     mailApiSelectedIds = new Set();
+  }
+
+  function rememberMailApiMessageIds(items = []) {
+    (Array.isArray(items) ? items : []).forEach(item => {
+      const messageId = String(item?.messageId || '').trim();
+      if (messageId) mailApiKnownMessageIds.add(messageId);
+    });
+    if (mailApiKnownMessageIds.size > 800) {
+      const trimmed = Array.from(mailApiKnownMessageIds).slice(-500);
+      mailApiKnownMessageIds = new Set(trimmed);
+    }
+  }
+
+  async function notifyNewMailItems(items = []) {
+    const nextItems = (Array.isArray(items) ? items : [])
+      .filter(item => Number(item?.readStatus) === 0)
+      .filter(item => !mailApiKnownMessageIds.has(String(item?.messageId || '').trim()));
+    rememberMailApiMessageIds(items);
+    if (!mailApiHasNotificationBaseline) {
+      mailApiHasNotificationBaseline = true;
+      return;
+    }
+    if (!nextItems.length || !window.pddApi?.showDesktopNotification) return;
+    const title = nextItems.length === 1
+      ? '新站内信提醒'
+      : `发现 ${nextItems.length} 条新的站内信`;
+    const subtitle = nextItems.length === 1
+      ? `${String(nextItems[0]?.shopName || getMailApiScopeLabel() || '店铺').trim() || '店铺'} · 站内信`
+      : '';
+    const body = nextItems.slice(0, 2).map(item => {
+      const shopName = String(item?.shopName || '').trim();
+      const subject = String(item?.title || '未命名站内信').trim();
+      return shopName ? `店铺：${shopName}\n新会话信息：${subject}` : `新会话信息：${subject}`;
+    }).join('\n');
+    const uniqueKey = `mail-list:${nextItems.map(item => String(item?.messageId || '').trim()).filter(Boolean).join('|')}`;
+    try {
+      await window.pddApi.showDesktopNotification({
+        title,
+        subtitle,
+        body: body || '请及时查看',
+        silent: false,
+        uniqueKey,
+        cooldownMs: 15000,
+        payload: {
+          type: 'mail-list',
+        },
+      });
+    } catch {}
   }
 
   function getMailApiSelectedUnreadCount() {
@@ -205,6 +255,8 @@
     mailApiPageNum = 1;
     mailApiStatusFilter = 'all';
     clearMailApiSelection();
+    mailApiKnownMessageIds = new Set();
+    mailApiHasNotificationBaseline = false;
     renderMailApiOverview();
     renderMailApiList();
   }
@@ -258,6 +310,7 @@
 
     mailApiAllList = Array.isArray(result.list) ? result.list : [];
     mailApiFailures = Array.isArray(result.failures) ? result.failures : [];
+    await notifyNewMailItems(mailApiAllList);
     if (isMailApiAllScope()) {
       mailApiTotalCount = Number(result.totalCount || mailApiAllList.length || 0);
       const totalPages = getMailApiTotalPages();

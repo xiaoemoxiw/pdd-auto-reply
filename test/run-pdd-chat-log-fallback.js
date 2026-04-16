@@ -4,7 +4,7 @@ const { app, session } = require('electron');
 const { PddApiClient } = require('../src/main/pdd-api');
 const { getApiTrafficLogPath } = require('../src/main/api-traffic-path');
 
-app.setName('元尾巴 · 拼多多客服助手');
+app.setName('多多尾巴');
 
 const TOKEN_PATH = path.join(__dirname, 'tokens', 'sample-token.json');
 const SHOP_ID = 'shop_504805789';

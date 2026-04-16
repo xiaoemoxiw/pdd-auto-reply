@@ -1,12 +1,15 @@
 {
   "name": "pdd-auto-reply",
-  "productName": "元尾巴 · 拼多多客服助手",
-  "version": "0.1.0",
-  "description": "元尾巴 · 拼多多客服自动回复工具",
+  "productName": "多多尾巴",
+  "version": "0.1.1",
+  "description": "多多尾巴 · 拼多多客服自动回复工具",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
+    "version:patch": "node tools/bump-version.js patch",
+    "build:win:raw": "electron-builder --win nsis --x64",
+    "build:win": "pnpm version:patch && pnpm build:win:raw",
     "smoke:api": "electron test/run-pdd-api-smoke.js",
     "snapshot:api-traffic": "electron tools/snapshot-api-traffic.js",
     "rebuild:api-traffic-index": "electron tools/rebuild-api-traffic-index.js",
@@ -17,8 +20,45 @@
   },
   "author": "",
   "license": "MIT",
+  "build": {
+    "appId": "com.yuanweiba.pdd-auto-reply",
+    "productName": "多多尾巴",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "test/pdd-qa-rules.json",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        "dir"
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^26.0.12"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",

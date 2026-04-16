@@ -1568,7 +1568,7 @@
     const genderEl = document.getElementById('apiChatGender');
     if (orderCountEl) {
       const orderCount = session ? Math.max(0, getApiSessionGroupNumber(session)) : 0;
-      if (orderCount >= 1) {
+      if (orderCount > 1) {
         orderCountEl.textContent = `下单数 ${orderCount}`;
         orderCountEl.hidden = false;
       } else {
@@ -3471,7 +3471,7 @@
       if (info?.transferDesc) {
         permissionText.textContent = info.transferDesc;
       } else if (info && info.submitTemplateReady === false) {
-        permissionText.textContent = '尚未捕获真实提交模板，可先在嵌入网页完成一次小额打款后再回到接口页继续对齐';
+        permissionText.textContent = '尚未捕获真实提交模板，可先在后台页面完成一次小额打款后再回到接口页继续对齐';
       } else if (info?.submitTemplateReady) {
         const recognizedCount = Number(info?.submitTemplateMeta?.recognizedCount || 0) || 0;
         permissionText.textContent = recognizedCount > 0
@@ -3752,7 +3752,7 @@
       );
       const reasonText = apiSmallPaymentState?.info?.transferDesc || '';
       if (!reasonText && apiSmallPaymentState?.info?.submitTemplateReady === false) {
-        setApiHint('当前店铺尚未捕获小额打款真实提交模板，请先在嵌入网页完成一次小额打款');
+        setApiHint('当前店铺尚未捕获小额打款真实提交模板，请先在后台页面完成一次小额打款');
         showApiSideOrderToast('未捕获真实提交模板');
       } else if (!window.pddApi?.apiSubmitSmallPayment) {
         setApiHint('当前版本缺少小额打款提交能力');
@@ -3774,8 +3774,8 @@
             await window.pddApi.navigatePdd(submitResult.cashierUrl);
           }
           closeApiSmallPaymentModal({ silent: true });
-          showApiSideOrderToast('已跳转到嵌入网页收银台');
-          setApiHint('已创建小额打款，请在嵌入网页收银台完成支付');
+          showApiSideOrderToast('已跳转到后台收银台');
+          setApiHint('已创建小额打款，请在后台收银台完成支付');
           await callRuntime('switchView', 'chat');
         } else {
           setApiHint('小额打款已提交成功');
@@ -5007,7 +5007,7 @@
       ? `<div class="api-goods-card-price-row"><span class="api-goods-card-price">${esc(card.priceText)}</span><span class="api-goods-card-group">${esc(card.groupText ? `/${card.groupText}` : '')}</span></div>`
       : (card.groupText ? `<div class="api-goods-card-price-row"><span class="api-goods-card-group">${esc(card.groupText)}</span></div>` : '');
     const specItems = card.specItems?.length ? card.specItems : buildApiGoodsSpecFallbackItems(card);
-    return `<div class="api-message-bubble api-goods-card-bubble">
+    return `<div class="api-message-bubble api-goods-card-bubble api-goods-card-clickable" data-goods-id="${esc(card.goodsId || '')}" data-goods-url="${esc(card.url || '')}" data-goods-title="${esc(card.title || '')}">
       <div class="api-goods-card-top">
         <span class="api-goods-card-id">${esc(goodsIdLabel)}</span>
         ${card.goodsId ? `<button class="api-goods-card-copy" type="button" data-goods-id="${esc(card.goodsId)}">复制</button>` : ''}
@@ -5986,7 +5986,7 @@
         }
         container.innerHTML = renderApiEmptyStateHtml({
           title: '暂无接口会话',
-          subtitle: '请先点击“接口连通测试”或刷新接口会话'
+          subtitle: '请先点击“店铺管理”授权店铺登录或点击左侧会话'
         });
         return;
       }
@@ -6181,6 +6181,46 @@
             showApiSideOrderToast('已复制到剪切板！');
           } catch {
             showApiSideOrderToast('复制失败，请稍后重试');
+          }
+        });
+      });
+      container.querySelectorAll('.api-goods-card-clickable').forEach(cardEl => {
+        cardEl.addEventListener('click', async event => {
+          const target = event.target;
+          if (target instanceof Element && target.closest('.api-goods-card-copy, .api-goods-card-spec')) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          const state = getState();
+          const shopId = String(state.apiActiveSessionShopId || '');
+          const goodsId = String(cardEl.dataset.goodsId || '');
+          const url = String(cardEl.dataset.goodsUrl || '');
+          const title = String(cardEl.dataset.goodsTitle || '').trim() || '商品详情';
+          if (!shopId) {
+            showApiSideOrderToast('当前会话缺少店铺信息，无法打开商品详情');
+            return;
+          }
+          if (!goodsId && !url) {
+            showApiSideOrderToast('当前商品缺少商品ID，无法打开详情');
+            return;
+          }
+          if (!window.pddApi?.openProductDetailWindow) {
+            showApiSideOrderToast('商品详情窗口能力未就绪');
+            return;
+          }
+          try {
+            const result = await window.pddApi.openProductDetailWindow({
+              shopId,
+              goodsId,
+              url,
+              title,
+            });
+            if (result?.error) {
+              showApiSideOrderToast(result.error || '打开商品详情失败');
+            }
+          } catch (error) {
+            showApiSideOrderToast(error?.message || '打开商品详情失败');
           }
         });
       });
@@ -6729,7 +6769,7 @@
       if (!sessions.length) {
         const emptyText = state.apiSessionTab === 'starred'
           ? '暂无收藏会话，可在右侧按钮中添加收藏。'
-          : (state.apiSessionLoadError || '暂无接口会话数据，请先操作嵌入网页或刷新接口会话。');
+          : (state.apiSessionLoadError || '暂无接口会话数据，请先操作后台页面或刷新接口会话。');
         if (apiSessionListRenderSignature === renderSignature) {
           return;
         }

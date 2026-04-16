@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>元尾巴 · 拼多多客服助手</title>
+  <title>多多尾巴</title>
   <style>
     * {
       margin: 0;
@@ -29,15 +29,31 @@
       align-items: center;
       padding: 0 16px;
       gap: 12px;
+      position: relative;
+      z-index: 3000;
+      pointer-events: auto;
+      flex-shrink: 0;
       -webkit-app-region: no-drag;
       user-select: none;
     }
 
     .toolbar-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
       color: #fff;
       font-size: 15px;
       font-weight: 600;
       margin-right: auto;
+    }
+
+    .toolbar-logo {
+      width: 28px;
+      height: 28px;
+      object-fit: cover;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      flex-shrink: 0;
     }
 
     .toolbar-btn {
@@ -50,6 +66,9 @@
       cursor: pointer;
       font-size: 13px;
       transition: background 0.2s;
+      position: relative;
+      z-index: 3001;
+      pointer-events: auto;
     }
 
     .toolbar-btn:hover {
@@ -70,6 +89,9 @@
       color: #fff;
       font-size: 13px;
       cursor: pointer;
+      position: relative;
+      z-index: 3001;
+      pointer-events: auto;
     }
 
     .toggle-switch input {
@@ -3438,6 +3460,10 @@
       flex-shrink: 0;
     }
 
+    .api-chat-tag[hidden] {
+      display: none !important;
+    }
+
     .api-chat-tools {
       padding: 10px 18px;
       border-bottom: 1px solid #f3f3f3;
@@ -4025,6 +4051,10 @@
       justify-content: flex-end;
     }
 
+    .api-message-item.buyer .api-message-row {
+      position: relative;
+    }
+
     .api-message-row-meta {
       display: flex;
       align-items: center;
@@ -4041,13 +4071,28 @@
 
     .api-message-copy {
       border: 0;
-      padding: 0 0 5px 0;
+      padding: 0;
       background: transparent;
       color: #4f73ef;
       font-size: 12px;
       line-height: 1;
       cursor: pointer;
       flex-shrink: 0;
+      position: absolute;
+      left: calc(100% + 6px);
+      bottom: 5px;
+      white-space: nowrap;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.16s ease;
+    }
+
+    .api-message-item.buyer .api-message-row:hover .api-message-copy,
+    .api-message-item.buyer .api-message-row:focus-within .api-message-copy {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
     }
 
     .api-message-copy:hover {
@@ -4057,6 +4102,10 @@
     .api-goods-card-bubble {
       width: 238px;
       padding: 10px 10px 9px;
+    }
+
+    .api-goods-card-bubble.api-goods-card-clickable {
+      cursor: pointer;
     }
 
     .api-message-item.buyer.goods-link-card {
@@ -6566,6 +6615,8 @@
     .shop-switcher {
       -webkit-app-region: no-drag;
       position: relative;
+      z-index: 3002;
+      pointer-events: auto;
     }
 
     .shop-switcher-btn {
@@ -6744,7 +6795,10 @@
 <body>
   <!-- 顶部工具栏 -->
   <div class="toolbar">
-    <span class="toolbar-title">元尾巴 · 拼多多客服助手</span>
+    <div class="toolbar-title">
+      <img class="toolbar-logo" src="../../assets/logo.png" alt="多多尾巴 logo">
+      <span>多多尾巴</span>
+    </div>
 
     <!-- 店铺切换器 -->
     <div class="shop-switcher" id="shopSwitcher">
@@ -6768,6 +6822,7 @@
       <span>自动回复</span>
     </label>
     <button class="toolbar-btn" id="btnTestReply" title="发送一条测试消息验证自动回复">测试</button>
+    <button class="toolbar-btn" id="btnTestNotification" type="button" title="测试系统右下角通知提醒" onclick="window.__handleTestNotificationButton && window.__handleTestNotificationButton(this)">通知测试</button>
     <button class="toolbar-btn" id="btnLog" title="打开调试面板（独立窗口）">调试</button>
     <button class="toolbar-btn" id="btnReload" title="重新加载拼多多页面">刷新</button>
     <button class="toolbar-btn" id="btnSaveUrl" title="将当前页面设为客服首页">记住此页</button>
@@ -6778,14 +6833,7 @@
     <!-- 左侧导航 -->
     <div class="sidebar">
       <div class="nav-menu">
-        <div class="nav-item active" data-view="chat">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
-          <span>客户对话（嵌入网页）</span>
-        </div>
-        <div class="nav-item" data-view="chat-api">
+        <div class="nav-item active" data-view="chat-api">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 4h16v12H5.17L4 17.17V4z"></path>
@@ -6793,93 +6841,7 @@
             <path d="M10 8h4"></path>
             <path d="M8 12h8"></path>
           </svg>
-          <span>客户对话（接口对接）</span>
-        </div>
-        <div class="nav-item" data-view="mail">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 6h16v12H4z"></path>
-            <path d="M22 6l-10 7L2 6"></path>
-          </svg>
-          <span>站内信（嵌入网页）</span>
-        </div>
-        <div class="nav-item" data-view="mail-api">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 6h16v12H4z"></path>
-            <path d="M22 6l-10 7L2 6"></path>
-            <path d="M8 19h8"></path>
-          </svg>
-          <span>站内信（接口对接）</span>
-        </div>
-        <div class="nav-item" data-view="invoice">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
-            <path d="M14 2v6h6"></path>
-            <path d="M8 13h8"></path>
-            <path d="M8 17h8"></path>
-          </svg>
-          <span>待开票（嵌入网页）</span>
-        </div>
-        <div class="nav-item" data-view="invoice-api">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
-            <path d="M14 2v6h6"></path>
-            <path d="M8 13h8"></path>
-            <path d="M8 17h5"></path>
-            <path d="M8 9h2"></path>
-          </svg>
-          <span>待开票（接口对接）</span>
-        </div>
-        <div class="nav-item" data-view="violation">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-            <line x1="12" y1="9" x2="12" y2="13"></line>
-            <line x1="12" y1="17" x2="12.01" y2="17"></line>
-          </svg>
-          <span>违规管理（嵌入网页）</span>
-        </div>
-        <div class="nav-item" data-view="violation-api">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-            <line x1="12" y1="9" x2="12" y2="13"></line>
-            <line x1="12" y1="17" x2="12.01" y2="17"></line>
-            <path d="M8 21h8"></path>
-          </svg>
-          <span>违规管理（接口对接）</span>
-        </div>
-        <div class="nav-item" data-view="deduction-api">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 1v22"></path>
-            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"></path>
-          </svg>
-          <span>扣款（接口对接）</span>
-        </div>
-        <div class="nav-item" data-view="ticket">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-          </svg>
-          <span>工单管理（嵌入网页）</span>
-        </div>
-        <div class="nav-item" data-view="ticket-api">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <path d="M8 9h4"></path>
-          </svg>
-          <span>工单管理（接口对接）</span>
+          <span>客户对话</span>
         </div>
         <div class="nav-item" data-view="shops">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -6910,7 +6872,62 @@
           </svg>
           <span>AI 助手</span>
         </div>
-
+        <div class="nav-item" data-view="sub-aftersale">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 11 12 14 22 4"></polyline>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          <span>售后中心</span>
+        </div>
+        <div class="nav-item" data-view="ticket-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <path d="M8 9h4"></path>
+          </svg>
+          <span>工单管理</span>
+        </div>
+        <div class="nav-item" data-view="mail-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h16v12H4z"></path>
+            <path d="M22 6l-10 7L2 6"></path>
+            <path d="M8 19h8"></path>
+          </svg>
+          <span>站内信</span>
+        </div>
+        <div class="nav-item" data-view="violation-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            <path d="M8 21h8"></path>
+          </svg>
+          <span>违规管理</span>
+        </div>
+        <div class="nav-item" data-view="invoice-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
+            <path d="M14 2v6h6"></path>
+            <path d="M8 13h8"></path>
+            <path d="M8 17h5"></path>
+            <path d="M8 9h2"></path>
+          </svg>
+          <span>待开票</span>
+        </div>
+        <div class="nav-item" data-view="deduction-api">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1v22"></path>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+          <span>扣款</span>
+        </div>
         <div class="nav-item" data-view="test">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
@@ -6930,19 +6947,56 @@
           </svg>
           <span>数据中心</span>
         </div>
-        <div class="nav-item" data-view="aftersale">
+        <div class="nav-item" data-view="chat" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span>客户对话（嵌入网页）</span>
+        </div>
+        <div class="nav-item" data-view="aftersale" style="display:none;">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="9 11 12 14 22 4"></polyline>
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
           </svg>
           <span>售后中心（嵌入网页）</span>
         </div>
-        <div class="nav-item" data-view="sub-aftersale">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9 11 12 14 22 4"></polyline>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+        <div class="nav-item" data-view="ticket" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
           </svg>
-          <span>售后中心（接口对接）</span>
+          <span>工单管理（嵌入网页）</span>
+        </div>
+        <div class="nav-item" data-view="mail" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h16v12H4z"></path>
+            <path d="M22 6l-10 7L2 6"></path>
+          </svg>
+          <span>站内信（嵌入网页）</span>
+        </div>
+        <div class="nav-item" data-view="violation" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <span>违规管理（嵌入网页）</span>
+        </div>
+        <div class="nav-item" data-view="invoice" style="display:none;">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
+            <path d="M14 2v6h6"></path>
+            <path d="M8 13h8"></path>
+            <path d="M8 17h8"></path>
+          </svg>
+          <span>待开票（嵌入网页）</span>
         </div>
       </div>
       <div class="nav-bottom">
@@ -6996,7 +7050,7 @@
           <div class="chat-bar-sep"></div>
           <button class="chat-bar-btn" id="btnMailOpenDebug">调试窗口</button>
           <div style="flex:1"></div>
-          <span class="api-panel-subtitle" id="mailCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开站内信后台</span>
+          <span class="api-panel-subtitle" id="mailCurrentUrlHint">当前将复用店铺已登录会话打开站内信后台</span>
         </div>
         <div style="position:relative;flex:1;">
           <div class="chat-placeholder">
@@ -7013,7 +7067,7 @@
           <div class="chat-bar-sep"></div>
           <button class="chat-bar-btn" id="btnInvoiceOpenDebug">调试窗口</button>
           <div style="flex:1"></div>
-          <span class="api-panel-subtitle" id="invoiceCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开待开票后台</span>
+          <span class="api-panel-subtitle" id="invoiceCurrentUrlHint">当前将复用店铺已登录会话打开待开票后台</span>
         </div>
         <div style="position:relative;flex:1;">
           <div class="chat-placeholder">
@@ -7030,7 +7084,7 @@
           <div class="chat-bar-sep"></div>
           <button class="chat-bar-btn" id="btnViolationOpenDebug">调试窗口</button>
           <div style="flex:1"></div>
-          <span class="api-panel-subtitle" id="violationCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开违规管理后台</span>
+          <span class="api-panel-subtitle" id="violationCurrentUrlHint">当前将复用店铺已登录会话打开违规管理后台</span>
         </div>
         <div style="position:relative;flex:1;">
           <div class="chat-placeholder">
@@ -7047,7 +7101,7 @@
           <div class="chat-bar-sep"></div>
           <button class="chat-bar-btn" id="btnTicketOpenDebug">调试窗口</button>
           <div style="flex:1"></div>
-          <span class="api-panel-subtitle" id="ticketCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开工单管理后台</span>
+          <span class="api-panel-subtitle" id="ticketCurrentUrlHint">当前将复用店铺已登录会话打开工单管理后台</span>
         </div>
         <div style="position:relative;flex:1;">
           <div class="chat-placeholder">
@@ -7064,7 +7118,7 @@
           <div class="chat-bar-sep"></div>
           <button class="chat-bar-btn" id="btnAfterSaleOpenDebug">调试窗口</button>
           <div style="flex:1"></div>
-          <span class="api-panel-subtitle" id="aftersaleCurrentUrlHint">当前将复用店铺已登录的嵌入网页打开售后中心后台</span>
+          <span class="api-panel-subtitle" id="aftersaleCurrentUrlHint">当前将复用店铺已登录会话打开售后中心后台</span>
         </div>
         <div style="position:relative;flex:1;">
           <div class="chat-placeholder">
@@ -7219,10 +7273,6 @@
             </div>
           </div>
           <div class="api-chat-sidepanel">
-            <div class="api-panel-header">
-              <span>服务助手 · 会话详情</span>
-              <span class="api-panel-subtitle" id="apiTrafficSummary">0 条抓包</span>
-            </div>
             <div class="api-side-shell">
               <div class="api-side-tabs">
                 <button class="api-side-tab active" data-api-side-tab="personal">个人订单</button>
@@ -7496,7 +7546,6 @@
                   <button class="btn btn-secondary" id="btnViolationApiOpenPlatformDetail">打开平台详情</button>
                   <button class="btn btn-primary" id="btnViolationApiOpenAppeal">去申诉</button>
                   <button class="btn btn-secondary" id="btnViolationApiBackToList">返回列表</button>
-                  <button class="btn btn-secondary" id="btnViolationApiBackToViolation">切回违规页</button>
                 </div>
               </div>
               <div class="violation-api-detail-head" id="violationApiDetailHead">
@@ -7650,7 +7699,6 @@
                 </div>
                 <div>
                   <button class="btn btn-secondary" id="btnTicketApiBackToList">返回列表</button>
-                  <button class="btn btn-secondary" id="btnTicketApiBackToTicket">切回工单页</button>
                 </div>
               </div>
               <div class="ticket-api-detail-head" id="ticketApiDetailHead">
@@ -8174,7 +8222,7 @@
                   <option value="食品保健">食品保健</option>
                   <option value="虚拟商品">虚拟商品</option>
                   <option value="运动户外">运动户外</option>
-                  <option value="数码电器">数码电器</option>
+                  <option value="数码电器">运动户外</option>
                   <option value="家纺家具家装">家纺家具家装</option>
                   <option value="汽配摩托">汽配摩托</option>
                 </select>
@@ -8727,7 +8775,9 @@
   <script src="./ops-aftersale-remark-dialog.js"></script>
   <script>
     // ==================== 状态 ====================
-    let currentView = 'chat';
+    let currentView = 'chat-api';
+    const embeddedNavViews = ['chat', 'aftersale', 'ticket', 'mail', 'violation', 'invoice'];
+    let showEmbeddedNavItems = false;
     let shops = [];
     let shopGroups = [];
     let quickPhrases = [];
@@ -9228,6 +9278,35 @@
         || view === 'ticket-api';
     }
 
+    function applyEmbeddedNavVisibility() {
+      embeddedNavViews.forEach(view => {
+        const navItem = document.querySelector(`.nav-item[data-view="${view}"]`);
+        if (!navItem) return;
+        navItem.style.display = showEmbeddedNavItems ? '' : 'none';
+      });
+    }
+
+    async function syncEmbeddedNavVisibility() {
+      try {
+        showEmbeddedNavItems = Boolean(await window.pddApi.isDevelopmentMode());
+      } catch (error) {
+        showEmbeddedNavItems = false;
+        console.error('读取开发模式状态失败:', error);
+      }
+      applyEmbeddedNavVisibility();
+    }
+
+    function getUserVisibleView(view) {
+      if (showEmbeddedNavItems && isEmbeddedPddView(view)) return view;
+      if (view === 'chat') return 'chat-api';
+      if (view === 'mail') return 'mail-api';
+      if (view === 'invoice') return 'invoice-api';
+      if (view === 'violation') return 'violation-api';
+      if (view === 'ticket') return 'ticket-api';
+      if (view === 'aftersale') return 'sub-aftersale';
+      return view;
+    }
+
     async function loadViewContent(view, options = {}) {
       if (view === 'chat-api') {
         await loadApiChatView(options);
@@ -9251,7 +9330,7 @@
     }
 
     async function syncViewStateFromMain() {
-      let nextView = 'chat';
+      let nextView = 'chat-api';
       try {
         const savedView = await window.pddApi.getCurrentView();
         if (savedView) {
@@ -9268,6 +9347,8 @@
         nextView = 'ticket';
       }
 
+      nextView = getUserVisibleView(nextView);
+
       currentView = nextView;
       setActiveNavItem(nextView);
       activateViewPage(nextView);
@@ -9276,6 +9357,7 @@
     }
 
     async function switchView(view) {
+      view = getUserVisibleView(view);
       if (view === currentView) return;
       const previousView = currentView;
       currentView = view;
@@ -10669,7 +10751,7 @@
       const origin = getUrlOrigin(violationUrl);
       hint.textContent = origin
         ? `拼多多商家后台：${origin}（从“违规管理”识别）`
-        : '当前将复用店铺已登录的嵌入网页打开售后中心后台';
+        : '当前将复用店铺已登录会话打开售后中心后台';
     }
 
     function formatApiListTime(value) {
@@ -12026,7 +12108,7 @@
         if (!sessions.length) {
           const emptyText = apiSessionTab === 'starred'
             ? '暂无收藏会话，可在右侧按钮中添加收藏。'
-            : (apiSessionLoadError || '暂无接口会话数据，请先操作嵌入网页或刷新接口会话。');
+            : (apiSessionLoadError || '暂无接口会话数据，请先操作后台页面或刷新接口会话。');
           container.innerHTML = `<div class="api-empty">${esc(emptyText)}</div>`;
           emitRendererDebug('chat-api', 'renderApiSessions empty-dom', { htmlLength: container.innerHTML.length });
           return;
@@ -12537,7 +12619,10 @@
     }
 
     function renderApiTraffic() {
-      document.getElementById('apiTrafficSummary').textContent = `${apiTrafficEntries.length} 条抓包 · ${getApiTrafficDiagText()}`;
+      const summaryEl = document.getElementById('apiTrafficSummary');
+      if (summaryEl) {
+        summaryEl.textContent = `${apiTrafficEntries.length} 条抓包 · ${getApiTrafficDiagText()}`;
+      }
       window.invalidateApiSideOrders?.();
       renderApiSideCards();
     }
@@ -12560,7 +12645,13 @@
         if (!options.silentStatus) {
           recordApiSyncState('拉取会话', `范围：${getApiScopeShopId() === API_ALL_SHOPS ? '显示所有店铺' : getApiScopeShopId() || '未选择店铺'}`);
         }
-        const result = await window.pddApi.apiGetSessions({ shopId: getApiScopeShopId(), page: 1, pageSize: 100 });
+        const result = await window.pddApi.apiGetSessions({
+          shopId: getApiScopeShopId(),
+          page: 1,
+          pageSize: 100,
+          recentDays: 2,
+          maxPages: 10,
+        });
         if (!Array.isArray(result)) {
           apiSessionLoadError = result?.error || '获取接口会话失败';
           renderApiSessions();
@@ -12595,7 +12686,7 @@
           autoBootstrapped: !!options.autoBootstrapped
         });
         if (!options.silentStatus) {
-          recordApiSyncState('拉取完成', `会话数：${result.length || fallbackTrafficSessions.length}`);
+          recordApiSyncState('拉取完成', `近两日会话数：${result.length || fallbackTrafficSessions.length}`);
         }
         apiSessionLoadError = '';
         const nextScopeShopId = getApiScopeShopId();
@@ -13665,6 +13756,7 @@
         : '首次使用: 请在拼多多后台打开客服聊天页面，系统会自动记住',
         'info');
       await loadQuickPhrases();
+      await syncEmbeddedNavVisibility();
 
       // 初始化店铺列表和切换器
       await refreshShopContext();
@@ -13704,18 +13796,18 @@
     document.getElementById('btnViolationOpenDebug')?.addEventListener('click', openDebugWindow);
     document.getElementById('btnTicketOpenDebug')?.addEventListener('click', openDebugWindow);
     document.getElementById('btnAfterSaleOpenDebug')?.addEventListener('click', openDebugWindow);
-    document.getElementById('btnInvoiceListTip').addEventListener('click', () => addLog('请在嵌入网页中查看待开票列表并观察抓包', 'info'));
-    document.getElementById('btnInvoiceActionTip').addEventListener('click', () => addLog('请在嵌入网页中点击“立即开票”，当前接口版先完成列表与统计对接', 'info'));
-    document.getElementById('btnInvoiceSkipTip').addEventListener('click', () => addLog('请在嵌入网页中处理“暂不开票”动作，当前接口版保留抓包观察能力', 'info'));
-    document.getElementById('btnViolationListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看店铺违规管理列表并观察抓包', 'info'));
-    document.getElementById('btnViolationAppealTip')?.addEventListener('click', () => addLog('请在嵌入网页中进入申诉/整改页签，接口版将复用抓包与接口解析', 'info'));
-    document.getElementById('btnViolationWarnTip')?.addEventListener('click', () => addLog('请在嵌入网页中进入违规预警页签，接口版将同步扩展筛选与详情', 'info'));
-    document.getElementById('btnTicketListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看工单列表并观察抓包', 'info'));
-    document.getElementById('btnTicketDispatchTip')?.addEventListener('click', () => addLog('请在嵌入网页中尝试批量派发或切换筛选条件并观察抓包', 'info'));
-    document.getElementById('btnTicketDetailTip')?.addEventListener('click', () => addLog('请在嵌入网页中打开工单详情并观察抓包', 'info'));
-    document.getElementById('btnAfterSaleListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看售后列表并观察抓包', 'info'));
-    document.getElementById('btnAfterSaleDetailTip')?.addEventListener('click', () => addLog('请在嵌入网页中打开售后详情并观察抓包', 'info'));
-    document.getElementById('btnAfterSaleRefundTip')?.addEventListener('click', () => addLog('请在嵌入网页中处理退款/退货退款并观察抓包', 'info'));
+    document.getElementById('btnInvoiceListTip').addEventListener('click', () => addLog('请在后台页面中查看待开票列表并观察抓包', 'info'));
+    document.getElementById('btnInvoiceActionTip').addEventListener('click', () => addLog('请在后台页面中点击“立即开票”，当前接口版先完成列表与统计对接', 'info'));
+    document.getElementById('btnInvoiceSkipTip')?.addEventListener('click', () => addLog('请在后台页面中处理“暂不开票”动作，当前接口版保留抓包观察能力', 'info'));
+    document.getElementById('btnViolationListTip')?.addEventListener('click', () => addLog('请在后台页面中查看店铺违规管理列表并观察抓包', 'info'));
+    document.getElementById('btnViolationAppealTip')?.addEventListener('click', () => addLog('请在后台页面中进入申诉/整改页签，接口版将复用抓包与接口解析', 'info'));
+    document.getElementById('btnViolationWarnTip')?.addEventListener('click', () => addLog('请在后台页面中进入违规预警页签，接口版将同步扩展筛选与详情', 'info'));
+    document.getElementById('btnTicketListTip')?.addEventListener('click', () => addLog('请在后台页面中查看工单列表并观察抓包', 'info'));
+    document.getElementById('btnTicketDispatchTip')?.addEventListener('click', () => addLog('请在后台页面中尝试批量派发或切换筛选条件并观察抓包', 'info'));
+    document.getElementById('btnTicketDetailTip')?.addEventListener('click', () => addLog('请在后台页面中打开工单详情并观察抓包', 'info'));
+    document.getElementById('btnAfterSaleListTip')?.addEventListener('click', () => addLog('请在后台页面中查看售后列表并观察抓包', 'info'));
+    document.getElementById('btnAfterSaleDetailTip')?.addEventListener('click', () => addLog('请在后台页面中打开售后详情并观察抓包', 'info'));
+    document.getElementById('btnAfterSaleRefundTip')?.addEventListener('click', () => addLog('请在后台页面中处理退款/退货退款并观察抓包', 'info'));
 
     document.getElementById('btnTestReply').addEventListener('click', async () => {
       const btn = document.getElementById('btnTestReply');
@@ -13737,6 +13829,50 @@
       }
       btn.textContent = '测试';
       btn.disabled = false;
+    });
+
+    async function handleTestNotificationClick(button) {
+      const btn = button || document.getElementById('btnTestNotification');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '发送中...';
+      }
+      try {
+        const shopName = document.getElementById('shopSwitcherName')?.textContent?.trim() || '当前店铺';
+        const result = await window.pddApi.showDesktopNotification({
+          title: `${shopName} - 系统通知测试`,
+          body: '这是一条右下角通知测试消息，看到说明系统通知链路正常。',
+          silent: false,
+          fallbackToMacOsScript: true,
+          uniqueKey: `manual-test:${Date.now()}`,
+          cooldownMs: 1000,
+          payload: { type: 'manual-test' },
+        });
+        if (result?.error) {
+          addLog(`系统通知测试失败: ${result.error}`, 'error');
+          showToast(`系统通知测试失败：${result.error}`, 2600);
+          return;
+        }
+        addLog('已发送系统通知测试，请查看右下角提醒', 'info');
+        showToast('已发送系统通知测试', 2200);
+      } catch (error) {
+        addLog(`系统通知测试异常: ${error?.message || error}`, 'error');
+        showToast(`系统通知测试异常：${error?.message || error}`, 2600);
+      } finally {
+        if (btn) {
+          btn.textContent = '通知测试';
+          btn.disabled = false;
+        }
+      }
+    }
+
+    window.__handleTestNotificationButton = handleTestNotificationClick;
+
+    document.addEventListener('click', (event) => {
+      const btn = event.target instanceof Element ? event.target.closest('#btnTestNotification') : null;
+      if (!btn) return;
+      event.preventDefault();
+      handleTestNotificationClick(btn);
     });
 
     document.getElementById('btnSaveUrl').addEventListener('click', async () => {
@@ -13832,14 +13968,14 @@
       if (isEmbeddedPddView(currentView)) {
         updateEmbeddedPlaceholder(currentView, {
           visible: true,
-          title: '嵌入网页加载失败',
+          title: '后台页面加载失败',
           detail: data.errorDescription || '请刷新页面或重新切换店铺后重试。'
         });
       }
       document.getElementById('statusDot').className = 'status-dot offline';
       document.getElementById('statusText').textContent =
-        data.errorDescription || '嵌入网页加载失败';
-      addLog(`嵌入网页加载失败: ${data.errorDescription || data.url || '未知错误'}`, 'error');
+        data.errorDescription || '后台页面加载失败';
+      addLog(`后台页面加载失败: ${data.errorDescription || data.url || '未知错误'}`, 'error');
     });
 
     window.pddApi.onPddNavigated((data) => {
@@ -13868,6 +14004,30 @@
       el.style.color = '#e02e24';
       el.style.fontWeight = '600';
       addLog(`[需关注] ${data.customer}: ${data.message}（将发送兜底回复）`, 'error');
+    });
+
+    window.pddApi.onDesktopNotificationClick?.(async (data) => {
+      const type = String(data?.type || '').trim();
+      try {
+        if (type === 'api-message') {
+          await switchView('chat-api');
+          const sessionId = String(data?.sessionId || '').trim();
+          const shopId = String(data?.shopId || '').trim();
+          const customer = String(data?.customer || '').trim();
+          if (sessionId) {
+            await openApiSession(sessionId, customer, shopId, {
+              silentStatus: true,
+              forceRefresh: true,
+            });
+          }
+          return;
+        }
+        if (type === 'mail-list') {
+          await switchView('mail-api');
+        }
+      } catch (error) {
+        addLog(`处理系统通知点击失败: ${error?.message || error}`, 'error');
+      }
     });
 
     window.pddApi.onFallbackCancelled((data) => {

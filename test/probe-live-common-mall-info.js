@@ -3,8 +3,8 @@ const path = require('path');
 const Module = require('module');
 const { app, session } = require('electron');
 
-const CONFIG_PATH = '/Users/sivan/Library/Application Support/元尾巴 · 拼多多客服助手/config.json';
-const USER_DATA_PATH = '/Users/sivan/Library/Application Support/元尾巴 · 拼多多客服助手';
+const CONFIG_PATH = '/Users/sivan/Library/Application Support/多多尾巴/config.json';
+const USER_DATA_PATH = '/Users/sivan/Library/Application Support/多多尾巴';
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_BROWSER = '1';
 const MMS_B84D1838 = '3616,150,3523,3660,3614,3599,3603,3658,3605,3621,3622,3669,3677,3588,3254,3532,3559,3642,3474,3475,3477,3479,3497,3482,1202,1203,1204,1205,3417';

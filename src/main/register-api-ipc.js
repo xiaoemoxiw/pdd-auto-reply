@@ -131,7 +131,7 @@ function registerApiIpc({
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
     try {
-      const sessions = await getApiSessionsByScope(shopId, params.page || 1, params.pageSize || 20);
+      const sessions = await getApiSessionsByScope(shopId, params.page || 1, params.pageSize || 20, params);
       if (verboseLogging) {
         console.log(`[PDD接口:${shopId}] api-get-sessions 返回 ${Array.isArray(sessions) ? sessions.length : 0} 条`);
       }

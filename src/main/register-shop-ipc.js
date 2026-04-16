@@ -1,9 +1,52 @@
+const { screen } = require('electron');
+const {
+  createTicketTodoDetailWindow,
+  loadTicketTodoDetailUrl
+} = require('./ticket-todo-detail-window');
+
+function placeWindowRelativeToMain(mainWindow, win) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!win || win.isDestroyed()) return;
+
+  const mainBounds = mainWindow.getBounds();
+  const currentBounds = win.getBounds();
+  const display = screen.getDisplayMatching(mainBounds);
+  const workArea = display?.workArea || display?.bounds;
+  if (!workArea) return;
+
+  if (win.isMaximized()) win.unmaximize();
+
+  const gap = 12;
+  const maxWidth = Math.max(200, workArea.width);
+  const maxHeight = Math.max(200, workArea.height);
+  const width = Math.min(currentBounds.width, maxWidth);
+  const height = Math.min(currentBounds.height, maxHeight);
+
+  let x = Math.round(mainBounds.x + (mainBounds.width - width) / 2);
+  x = Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - width));
+
+  const yBelow = mainBounds.y + mainBounds.height + gap;
+  const yAbove = mainBounds.y - height - gap;
+  let y = yBelow;
+  if (yBelow + height > workArea.y + workArea.height) {
+    if (yAbove >= workArea.y) {
+      y = yAbove;
+    } else {
+      y = Math.max(workArea.y, workArea.y + workArea.height - height);
+    }
+  }
+
+  win.setBounds({ x, y, width, height }, false);
+}
+
 function registerShopIpc({
   ipcMain,
   store,
   getShopManager,
+  getMainWindow,
   getCurrentView,
   isEmbeddedPddView,
+  getPddHomeUrl,
   destroyApiClient,
   destroyMailApiClient,
   destroyInvoiceApiClient,
@@ -28,6 +71,40 @@ function registerShopIpc({
       shopManager.hideActiveView();
     }
     return switched;
+  });
+
+  ipcMain.handle('open-shop-home', (event, shopId) => {
+    const shopManager = getShopManager();
+    if (!shopManager) return { error: '店铺管理器未初始化' };
+    const shop = shopManager.getShopList().find(item => item.id === shopId);
+    if (!shop?.id) return { error: '店铺不存在' };
+    if (!shopManager.isSelectableShop(shop)) {
+      return { error: '当前店铺 Token 不可用' };
+    }
+    const targetUrl = typeof getPddHomeUrl === 'function'
+      ? getPddHomeUrl()
+      : 'https://mms.pinduoduo.com/home';
+    return createTicketTodoDetailWindow({
+      reuseKey: `shop-home:${shopId}`
+    }).then(({ win, reused }) => {
+      if (!win || win.isDestroyed()) return { error: '后台首页窗口创建失败' };
+      try {
+        if (typeof win.setParentWindow === 'function') win.setParentWindow(null);
+        if (typeof win.setAlwaysOnTop === 'function') win.setAlwaysOnTop(false);
+      } catch {}
+      const shopLabel = String(shop.name || shop.mallId || shop.id).trim() || '店铺后台首页';
+      win.setTitle(`${shopLabel} - 拼多多后台`);
+      const res = loadTicketTodoDetailUrl(win, store, shopId, targetUrl);
+      if (res && res.error) return res;
+      if (!reused) {
+        placeWindowRelativeToMain(getMainWindow?.(), win);
+      }
+      win.show();
+      win.focus();
+      return { ok: true, shopId, url: targetUrl, reused: reused === true };
+    }).catch(error => {
+      return { error: error?.message || '打开店铺后台首页失败' };
+    });
   });
 
   ipcMain.handle('add-shop-by-token', async () => {

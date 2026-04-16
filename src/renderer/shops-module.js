@@ -153,6 +153,15 @@
     return '';
   }
 
+  function getShopAvailabilityStatus(shop) {
+    return String(shop?.availabilityStatus || shop?.status || 'offline').trim().toLowerCase();
+  }
+
+  function isShopHomeOpenable(shop) {
+    const status = getShopAvailabilityStatus(shop);
+    return !!shop?.id && status !== 'expired' && status !== 'invalid';
+  }
+
   function renderShops() {
     const state = getState();
     const shops = state.shops || [];
@@ -175,6 +184,7 @@
       const groupName = shopGroups.find(group => group.id === shop.group)?.name || '未分组';
       const statusMap = { online: '接口可用', offline: '待验证', expired: 'Token过期' };
       const isActive = shop.id === activeShopId;
+      const canOpenHome = isShopHomeOpenable(shop);
       const shopInfoStatusText = getShopInfoStatusText(shop);
       const shopInfoErrorTitle = shop.shopInfoError ? ` title="${esc(shop.shopInfoError)}"` : '';
       const refreshButtonTitle = shop.shopInfoStatus === 'partial'
@@ -182,11 +192,12 @@
         : shop.shopInfoError
         ? `重新獲取店鋪信息\n上次失敗：${shop.shopInfoError}`
         : '手動獲取店鋪信息';
+      const shopNameTitle = canOpenHome ? '点击打开拼多多后台首页' : '当前店铺 Token 不可用';
       return `<tr>
         <td><input type="checkbox" data-id="${shop.id}" class="shop-check" ${selectedShopIds.has(shop.id) ? 'checked' : ''}></td>
         <td>${index + 1}</td>
         <td>
-          <a href="#" class="shop-name-link" data-shop-id="${shop.id}" style="color:${isActive ? '#e02e24' : '#1890ff'};cursor:pointer;text-decoration:none;font-weight:${isActive ? '600' : 'normal'}" title="点击切换到此店铺">${esc(shop.name)}</a>
+          <a href="#" class="shop-name-link${canOpenHome ? '' : ' is-disabled'}" data-shop-id="${shop.id}" style="color:${canOpenHome ? (isActive ? '#e02e24' : '#1890ff') : '#999'};cursor:${canOpenHome ? 'pointer' : 'not-allowed'};text-decoration:none;font-weight:${isActive ? '600' : 'normal'}" title="${esc(shopNameTitle)}">${esc(shop.name)}</a>
           ${isActive ? '<span style="font-size:11px;color:#e02e24;margin-left:4px">(当前)</span>' : ''}
           ${shopInfoStatusText ? `<div style="font-size:11px;color:${shop.shopInfoStatus === 'failed' || shop.shopInfoStatus === 'expired' ? '#e02e24' : '#999'};margin-top:2px"${shopInfoErrorTitle}>${esc(shopInfoStatusText)}</div>` : ''}
         </td>
@@ -218,12 +229,19 @@
       link.addEventListener('click', async event => {
         event.preventDefault();
         const shopId = link.dataset.shopId;
-        if (shopId === getState().activeShopId) {
-          await switchView('chat');
+        const shop = (getState().shops || []).find(item => item.id === shopId);
+        if (!isShopHomeOpenable(shop)) {
+          addLog(`店铺 Token 不可用，无法打开后台首页：${shop?.name || shopId}`, 'error');
           return;
         }
-        await window.pddApi.switchShop(shopId);
-        await switchView('chat');
+        try {
+          const result = await window.pddApi.openShopHome(shopId);
+          if (result?.error) {
+            addLog(`打开店铺后台首页失败：${result.error}`, 'error');
+          }
+        } catch (error) {
+          addLog(`打开店铺后台首页失败：${error?.message || error}`, 'error');
+        }
       });
     });
   }

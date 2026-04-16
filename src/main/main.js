@@ -177,6 +177,7 @@ const lastMatchedReplyAt = new Map(); // fallbackKey -> timestamp
 const embeddedPageActions = new Map(); // shopId -> last action
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
+const PDD_HOME_URL = 'https://mms.pinduoduo.com/home';
 const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=441077635572';
 const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav';
 const PDD_VIOLATION_URL = 'https://mms.pinduoduo.com/pg/violation_list/mall_manage?msfrom=mms_sidenav';
@@ -345,6 +346,10 @@ function setupDevelopmentRendererWatcher() {
 
 function getPddChatUrl() {
   return store.get('chatUrl') || PDD_CHAT_URL;
+}
+
+function getPddHomeUrl() {
+  return PDD_HOME_URL;
 }
 
 function getPddMailUrl() {
@@ -2462,8 +2467,10 @@ registerShopIpc({
   ipcMain,
   store,
   getShopManager: () => shopManager,
+  getMainWindow: () => mainWindow,
   getCurrentView: () => currentView,
   isEmbeddedPddView,
+  getPddHomeUrl,
   destroyApiClient,
   destroyMailApiClient,
   destroyInvoiceApiClient,

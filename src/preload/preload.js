@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   // 多店铺管理
   getActiveShop: () => ipcRenderer.invoke('get-active-shop'),
   switchShop: (shopId) => ipcRenderer.invoke('switch-shop', shopId),
+  openShopHome: (shopId) => ipcRenderer.invoke('open-shop-home', shopId),
   addShopByToken: () => ipcRenderer.invoke('add-shop-by-token'),
   addShopByTokenPath: (path) => ipcRenderer.invoke('add-shop-by-token-path', path),
   addShopByQRCode: () => ipcRenderer.invoke('add-shop-by-qrcode'),

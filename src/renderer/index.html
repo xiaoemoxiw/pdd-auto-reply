@@ -13273,6 +13273,7 @@
         const groupName = shopGroups.find(g => g.id === s.group)?.name || '未分组';
         const statusMap = { online: '登录成功', offline: '已离线', expired: '已过期' };
         const availabilityStatus = getShopAvailabilityStatus(s);
+        const canOpenShopHome = availabilityStatus !== 'expired' && availabilityStatus !== 'invalid';
         const shopNameStatus = s.shopNameStatus || (s.name && !/^店铺 |^新店铺 |^扫码登录中\.\.\.$/.test(s.name) ? 'resolved' : 'pending');
         const shopNameHint = shopNameStatus === 'resolved'
           ? ''
@@ -13282,7 +13283,7 @@
           <td><input type="checkbox" data-id="${s.id}" class="shop-check" ${selectedShopIds.has(s.id) ? 'checked' : ''}></td>
           <td>${i + 1}</td>
           <td>
-            <a href="#" class="shop-name-link" data-shop-id="${s.id}" style="color:${isActive ? '#e02e24' : '#1890ff'};cursor:pointer;text-decoration:none;font-weight:${isActive ? '600' : 'normal'}" title="点击切换到此店铺">${esc(s.name)}</a>
+            <a href="#" class="shop-name-link" data-shop-id="${s.id}" style="color:${canOpenShopHome ? (isActive ? '#e02e24' : '#1890ff') : '#999'};cursor:${canOpenShopHome ? 'pointer' : 'not-allowed'};text-decoration:none;font-weight:${isActive ? '600' : 'normal'}" title="${canOpenShopHome ? '点击打开拼多多后台首页' : '当前店铺 Token 不可用'}">${esc(s.name)}</a>
             ${isActive ? '<span style="font-size:11px;color:#e02e24;margin-left:4px">(当前)</span>' : ''}
             ${shopNameHint}
           </td>
@@ -13308,12 +13309,16 @@
         link.addEventListener('click', async (e) => {
           e.preventDefault();
           const shopId = link.dataset.shopId;
-          if (shopId === activeShopId) {
-            await switchView('chat');
+          const shop = shops.find(item => item.id === shopId);
+          const availabilityStatus = getShopAvailabilityStatus(shop);
+          if (availabilityStatus === 'expired' || availabilityStatus === 'invalid') {
+            addLog(`店铺 Token 不可用，无法打开后台首页：${shop?.name || shopId}`, 'error');
             return;
           }
-          await window.pddApi.switchShop(shopId);
-          await switchView('chat');
+          const result = await window.pddApi.openShopHome(shopId);
+          if (result?.error) {
+            addLog(`打开店铺后台首页失败：${result.error}`, 'error');
+          }
         });
       });
     }

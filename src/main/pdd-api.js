@@ -18,7 +18,6 @@ const goodsParsers = require('./pdd-api/parsers/goods-parsers');
 const refundParsers = require('./pdd-api/parsers/refund-parsers');
 const orderRemarkParsers = require('./pdd-api/parsers/order-remark-parsers');
 const messageParsers = require('./pdd-api/parsers/message-parsers');
-const sessionParsers = require('./pdd-api/parsers/session-parsers');
 const smallPaymentParsers = require('./pdd-api/parsers/small-payment-parsers');
 const { GoodsCardModule } = require('./pdd-api/modules/goods-card-module');
 const { RefundOrdersModule } = require('./pdd-api/modules/refund-orders-module');
@@ -30,6 +29,7 @@ const { OrderRemarkModule } = require('./pdd-api/modules/order-remark-module');
 const { MessageSendModule } = require('./pdd-api/modules/message-send-module');
 const { ChatPollingModule } = require('./pdd-api/modules/chat-polling-module');
 const { ShopProfileModule } = require('./pdd-api/modules/shop-profile-module');
+const { ChatSessionsModule } = require('./pdd-api/modules/chat-sessions-module');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -72,7 +72,6 @@ class PddApiClient extends PddBusinessApiClient {
       getMainCookieWhitelist: () => PDD_API_MAIN_COOKIE_WHITELIST,
     });
     this._sessionInited = false;
-    this._sessionCache = [];
     this._bootstrapTraffic = [];
     this._requestInPddPage = options.requestInPddPage || null;
     this._executeInPddPage = options.executeInPddPage || null;
@@ -89,6 +88,17 @@ class PddApiClient extends PddBusinessApiClient {
     this._messageSendModule = new MessageSendModule(this);
     this._chatPollingModule = new ChatPollingModule(this);
     this._shopProfileModule = new ShopProfileModule(this);
+    this._chatSessionsModule = new ChatSessionsModule(this);
+  }
+
+  // _sessionCache 现在由 ChatSessionsModule 持有；保留访问器兼容外部模块
+  // 直接读写（main.js 在页面抓包同步时会赋值）。
+  get _sessionCache() {
+    return this._chatSessionsModule.sessionCache;
+  }
+
+  set _sessionCache(value) {
+    this._chatSessionsModule.sessionCache = Array.isArray(value) ? value : [];
   }
 
   _getMallId() {
@@ -853,482 +863,32 @@ class PddApiClient extends PddBusinessApiClient {
     return this._shopProfileModule.getShopProfile(force);
   }
 
-  _extractSessionPreviewText(item) {
-    return sessionParsers.extractSessionPreviewText(item);
-  }
-
-  _extractSessionPreviewTime(item) {
-    return sessionParsers.extractSessionPreviewTime(item);
-  }
-
-  _getSessionDedupKey(session = {}) {
-    return sessionParsers.getSessionDedupKey(session);
-  }
-
-  _mergeSessionEntries(existing = {}, incoming = {}) {
-    return sessionParsers.mergeSessionEntries(existing, incoming);
-  }
-
-  _dedupeSessionList(sessions = []) {
-    return sessionParsers.dedupeSessionList(sessions);
-  }
-
-  _extractSessionCreatedTime(item) {
-    return sessionParsers.extractSessionCreatedTime(item);
-  }
-
-  _extractSessionLastMessageActor(item = {}) {
-    return sessionParsers.extractSessionLastMessageActor(item, this._getMallId() || '');
-  }
-
   _normalizeTimestampMs(value) {
-    return sessionParsers.normalizeTimestampMs(value);
-  }
-
-  _isTodayTimestamp(value) {
-    return sessionParsers.isTodayTimestamp(value);
-  }
-
-  _getRecentSessionStartMs() {
-    return sessionParsers.getRecentSessionStartMs();
-  }
-
-  _isWithinRecentTwoDaysTimestamp(value) {
-    return sessionParsers.isWithinRecentTwoDaysTimestamp(value);
-  }
-
-  _hasPendingReplySession(session = {}) {
-    return sessionParsers.hasPendingReplySession(session);
-  }
-
-  _filterDisplaySessions(sessions = []) {
-    return sessionParsers.filterDisplaySessions(sessions);
-  }
-
-  _sortDisplaySessions(sessions = []) {
-    return sessionParsers.sortDisplaySessions(sessions);
+    return this._chatSessionsModule.normalizeTimestampMs(value);
   }
 
   _pickPendingBuyerMessage(messages = [], buyerIds = [], sessionMeta = {}) {
-    return sessionParsers.pickPendingBuyerMessage(messages, buyerIds, sessionMeta, this._getMallId() || '');
-  }
-
-  _parseSessionIdentity(item = {}) {
-    return sessionParsers.parseSessionIdentity(item, this._getMallId() || '');
-  }
-
-  _pickDisplayText(sources = [], keys = []) {
-    return sessionParsers.pickDisplayText(sources, keys);
-  }
-
-  _resolveBuyerParticipant(item = {}) {
-    return sessionParsers.resolveBuyerParticipant(item, this._getMallId() || '');
-  }
-
-  _extractSessionCustomerName(item = {}) {
-    return sessionParsers.extractSessionCustomerName(item, this._getMallId() || '');
-  }
-
-  _extractSessionCustomerAvatar(item = {}) {
-    return sessionParsers.extractSessionCustomerAvatar(item, this._getMallId() || '');
+    return this._chatSessionsModule.pickPendingBuyerMessage(messages, buyerIds, sessionMeta);
   }
 
   _extractMessageSenderName(item = {}) {
-    return sessionParsers.extractMessageSenderName(item, this._getMallId() || '');
+    return this._chatSessionsModule.extractMessageSenderName(item);
   }
 
   _parseSessionList(payload) {
-    return sessionParsers.parseSessionList(payload, this._getMallId() || '');
-  }
-
-  _describeSessionListPayload(payload) {
-    return sessionParsers.describeSessionListPayload(payload);
-  }
-
-  _getCachedSessionFallback() {
-    const urlParts = [
-      '/plateau/chat/latest_conversations',
-      '/plateau/conv_list/status',
-    ];
-    for (const urlPart of urlParts) {
-      const cachedPayload = this._getLatestResponseBody(urlPart);
-      const cachedSessions = this._filterDisplaySessions(this._parseSessionList(cachedPayload));
-      if (cachedSessions.length > 0) {
-        return { sessions: cachedSessions, source: urlPart };
-      }
-    }
-    return { sessions: [], source: '' };
-  }
-
-  _buildSessionListBody(page, pageSize, templateBody, antiContent) {
-    const requestBody = templateBody
-      ? {
-          ...this._cloneJson(templateBody),
-          data: {
-            ...templateBody.data,
-            request_id: this._nextRequestId(),
-            cmd: templateBody.data?.cmd || 'latest_conversations',
-            page: page || templateBody.data?.page,
-            offset: Math.max(0, (page - 1) * pageSize),
-            size: pageSize || templateBody.data?.size,
-            anti_content: templateBody.data?.anti_content || antiContent,
-          },
-          client: templateBody.client !== undefined && templateBody.client !== null && templateBody.client !== ''
-            ? templateBody.client
-            : this._getLatestClientValue(),
-          anti_content: templateBody.anti_content || antiContent,
-        }
-      : {
-          data: {
-            request_id: this._nextRequestId(),
-            cmd: 'latest_conversations',
-            version: 2,
-            need_unreply_time: true,
-            page,
-            size: pageSize,
-            end_time: Math.floor(Date.now() / 1000) - 7 * 24 * 3600,
-            anti_content: antiContent,
-          },
-          client: this._getLatestClientValue(),
-          anti_content: antiContent,
-        };
-    if (requestBody?.data && 'chat_type_id' in requestBody.data) {
-      delete requestBody.data.chat_type_id;
-    }
-    return requestBody;
+    return this._chatSessionsModule.parseSessionList(payload);
   }
 
   async getSessionList(page = 1, pageSize = 20, options = {}) {
-    const allowInitSession = options.allowInitSession !== false;
-    // 不再前置 initSession：cookie 已经在主上下文里就绪后，fallback 模板的 latest_conversations
-    // 通常就能 200 拿到真实数据。把 init 留作"请求失败/空"的兜底，避免每次都阻塞 ~20s。
-    let templateBody = this._getLatestConversationRequestBody();
-    let antiContent = templateBody?.anti_content || this._getLatestAntiContent();
-    if (!templateBody && !antiContent && page === 1 && this._sessionCache.length === 0 && allowInitSession) {
-      // 已经有 init 在跑，或本来就有 bootstrap 数据，等一小段把模板凑齐就好
-      const bootstrapStatus = await this._waitForConversationBootstrap(800);
-      templateBody = this._getLatestConversationRequestBody();
-      antiContent = templateBody?.anti_content || this._getLatestAntiContent();
-      this._log('[API] 首次会话拉取预热结果', bootstrapStatus);
-    }
-    const requestBody = this._buildSessionListBody(page, pageSize, templateBody, antiContent);
-    this._log('[API] 拉取会话列表', {
-      page,
-      pageSize,
-      client: requestBody?.client,
-      hasTopAntiContent: !!requestBody?.anti_content,
-      hasBodyAntiContent: !!requestBody?.data?.anti_content,
-      chatTypeId: requestBody?.data?.chat_type_id,
-      templateSource: templateBody ? 'traffic' : 'fallback',
-    });
-    try {
-      const payload = await this._post('/plateau/chat/latest_conversations', requestBody);
-      const parsedSessions = this._parseSessionList(payload);
-      let sessions = this._filterDisplaySessions(parsedSessions);
-      if (!sessions.length && parsedSessions.length > 0) {
-        sessions = this._sortDisplaySessions(parsedSessions);
-        this._log('[API] 会话列表近两天过滤后为空，回退展示原始会话', {
-          parsedCount: parsedSessions.length,
-          returnedCount: sessions.length,
-        });
-      }
-      this._log('[API] 会话列表响应解析', {
-        count: sessions.length,
-        summary: this._describeSessionListPayload(payload),
-      });
-      if (sessions.length > 0) {
-        this._sessionCache = sessions;
-        return sessions;
-      }
-      if (page === 1 && this._sessionCache.length === 0) {
-        const retryBootstrapStatus = await this._waitForConversationBootstrap(1500);
-        const retryTemplateBody = this._getLatestConversationRequestBody();
-        const retryAntiContent = retryTemplateBody?.anti_content || this._getLatestAntiContent();
-        const retryRequestBody = this._buildSessionListBody(page, pageSize, retryTemplateBody, retryAntiContent);
-        this._log('[API] latest_conversations 首次为空，准备重试', {
-          bootstrapStatus: retryBootstrapStatus,
-          client: retryRequestBody?.client,
-          hasTopAntiContent: !!retryRequestBody?.anti_content,
-          hasBodyAntiContent: !!retryRequestBody?.data?.anti_content,
-          templateSource: retryTemplateBody ? 'traffic' : 'fallback',
-        });
-        await this._sleep(800);
-        const retryPayload = await this._post('/plateau/chat/latest_conversations', retryRequestBody);
-        const retryParsedSessions = this._parseSessionList(retryPayload);
-        let retrySessions = this._filterDisplaySessions(retryParsedSessions);
-        if (!retrySessions.length && retryParsedSessions.length > 0) {
-          retrySessions = this._sortDisplaySessions(retryParsedSessions);
-          this._log('[API] 会话列表重试近两天过滤后为空，回退展示原始会话', {
-            parsedCount: retryParsedSessions.length,
-            returnedCount: retrySessions.length,
-          });
-        }
-        this._log('[API] 会话列表重试响应解析', {
-          count: retrySessions.length,
-          summary: this._describeSessionListPayload(retryPayload),
-        });
-        if (retrySessions.length > 0) {
-          this._sessionCache = retrySessions;
-          return retrySessions;
-        }
-      }
-      const { sessions: cachedSessions, source } = this._getCachedSessionFallback();
-      if (cachedSessions.length > 0) {
-        this._sessionCache = cachedSessions;
-        this._log('[API] latest_conversations 直调为空，回退页面抓取缓存', { source });
-        return cachedSessions;
-      }
-      if (page === 1 && this._sessionCache.length > 0) {
-        this._log('[API] latest_conversations 直调为空，回退内存会话缓存');
-        return this._sessionCache;
-      }
-      this._sessionCache = sessions;
-      this._log('[API] 会话列表拉取成功', {
-        count: sessions.length,
-        payloadKeys: Object.keys(payload?.result || payload?.data || {}),
-      });
-      return sessions;
-    } catch (error) {
-      const { sessions: cachedSessions, source } = this._getCachedSessionFallback();
-      if (cachedSessions.length > 0) {
-        this._sessionCache = cachedSessions;
-        this._log('[API] latest_conversations 直调失败，回退页面抓取缓存', { message: error.message, source });
-        return cachedSessions;
-      }
-      // 直调失败 + 缓存为空 + 允许 init + 尚未 init → 触发一次 init 后再试
-      if (allowInitSession && !this._sessionInited) {
-        this._log('[API] latest_conversations 直调失败，触发 initSession 后重试', { message: error.message });
-        try {
-          await this.initSession();
-        } catch (initError) {
-          this._log('[API] initSession 失败', { message: initError?.message || String(initError || '') });
-        }
-        const retryTemplateBody = this._getLatestConversationRequestBody();
-        const retryAntiContent = retryTemplateBody?.anti_content || this._getLatestAntiContent();
-        const retryRequestBody = this._buildSessionListBody(page, pageSize, retryTemplateBody, retryAntiContent);
-        try {
-          const retryPayload = await this._post('/plateau/chat/latest_conversations', retryRequestBody);
-          const retryParsed = this._parseSessionList(retryPayload);
-          let retrySessions = this._filterDisplaySessions(retryParsed);
-          if (!retrySessions.length && retryParsed.length > 0) {
-            retrySessions = this._sortDisplaySessions(retryParsed);
-          }
-          if (retrySessions.length > 0) {
-            this._sessionCache = retrySessions;
-            return retrySessions;
-          }
-        } catch (retryError) {
-          this._log('[API] init 后重试仍失败', {
-            message: retryError?.message || String(retryError || ''),
-          });
-        }
-      }
-      this._log('[API] 会话列表拉取失败', {
-        message: error.message,
-        statusCode: error.statusCode || 0,
-        errorCode: error.errorCode || 0,
-        payload: error.payload || null,
-      });
-      throw error;
-    }
-  }
-
-  _normalizeOrderSn(value) {
-    return sessionParsers.normalizeOrderSn(value);
-  }
-
-  _matchSessionByOrderSn(session = {}, orderSn = '') {
-    return sessionParsers.matchSessionByOrderSn(session, orderSn);
-  }
-
-  _findCachedSessionByOrderSn(orderSn = '', sessions = []) {
-    const list = Array.isArray(sessions) ? sessions : [];
-    const matched = list.find(item => this._matchSessionByOrderSn(item, orderSn));
-    return matched ? this._cloneJson(matched) : null;
-  }
-
-  _findCachedSessionByUid(uid = '') {
-    const normalizedUid = String(uid || '').trim();
-    if (!normalizedUid) return null;
-    const cachedSessions = [
-      ...this._sessionCache,
-      ...this._parseSessionList(this._getLatestResponseBody('/plateau/chat/latest_conversations')),
-    ];
-    const matched = cachedSessions.find(item => {
-      const candidates = [
-        item?.sessionId,
-        item?.explicitSessionId,
-        item?.conversationId,
-        item?.chatId,
-        item?.rawId,
-        item?.customerId,
-        item?.userUid,
-        item?.raw?.session_id,
-        item?.raw?.conversation_id,
-        item?.raw?.chat_id,
-        item?.raw?.id,
-        item?.raw?.customer_id,
-        item?.raw?.buyer_id,
-        item?.raw?.uid,
-        item?.raw?.to?.uid,
-        item?.raw?.user_info?.uid,
-      ].map(value => String(value || '').trim()).filter(Boolean);
-      return candidates.includes(normalizedUid);
-    });
-    return matched ? this._cloneJson(matched) : null;
-  }
-
-  _parseOrderHistoryMessageItem(item) {
-    if (!item) return null;
-    if (typeof item === 'string') {
-      const parsed = this._safeParseJson(item);
-      return parsed && typeof parsed === 'object' ? parsed : null;
-    }
-    return item && typeof item === 'object' ? item : null;
+    return this._chatSessionsModule.getSessionList(page, pageSize, options);
   }
 
   async getHistoryMessagesByOrderSn(orderSn, options = {}) {
-    const normalizedOrderSn = String(orderSn || '').trim();
-    if (!normalizedOrderSn) {
-      throw new Error('缺少订单号');
-    }
-    const payload = await this._post('/latitude/message/getHistoryMessage', {
-      orderSn: normalizedOrderSn,
-      startTime: Math.max(0, Number(options?.startTime || 0) || 0),
-      endTime: Math.max(0, Number(options?.endTime || Math.floor(Date.now() / 1000)) || Math.floor(Date.now() / 1000)),
-      pageNum: Math.max(0, Number(options?.pageNum || 0) || 0),
-      pageSize: Math.max(1, Math.min(Number(options?.pageSize || 20) || 20, 100)),
-    });
-    const normalizedList = (Array.isArray(payload?.result?.messageList) ? payload.result.messageList : [])
-      .map(item => this._parseOrderHistoryMessageItem(item))
-      .filter(Boolean);
-    const messages = this._parseMessages({
-      result: {
-        messages: normalizedList,
-      },
-    });
-    return {
-      payload,
-      messages,
-      userInfo: payload?.result?.userInfo && typeof payload.result.userInfo === 'object'
-        ? payload.result.userInfo
-        : {},
-      mallInfo: payload?.result?.mallInfo && typeof payload.result.mallInfo === 'object'
-        ? payload.result.mallInfo
-        : {},
-    };
-  }
-
-  _buildSyntheticSessionFromOrderHistory(orderSn = '', history = {}) {
-    const normalizedOrderSn = String(orderSn || '').trim();
-    const payload = history?.payload && typeof history.payload === 'object' ? history.payload : {};
-    const userInfo = history?.userInfo && typeof history.userInfo === 'object' ? history.userInfo : {};
-    const mallInfo = history?.mallInfo && typeof history.mallInfo === 'object' ? history.mallInfo : {};
-    const messages = Array.isArray(history?.messages) ? history.messages : [];
-    const buyerMessage = messages.find(item => item?.isFromBuyer && String(item?.senderId || '').trim());
-    const latestMessage = messages.length ? messages[messages.length - 1] : null;
-    const uid = String(
-      userInfo?.uid
-      || buyerMessage?.senderId
-      || buyerMessage?.raw?.from?.uid
-      || ''
-    ).trim();
-    if (!uid) return null;
-    const cachedSession = this._findCachedSessionByUid(uid);
-    if (cachedSession) {
-      return {
-        ...cachedSession,
-        orderId: cachedSession.orderId || normalizedOrderSn,
-        customerName: cachedSession.customerName || String(userInfo?.nickName || userInfo?.nickname || '').trim(),
-        customerAvatar: cachedSession.customerAvatar || String(userInfo?.avatar || '').trim(),
-      };
-    }
-    const customerName = String(userInfo?.nickName || userInfo?.nickname || buyerMessage?.senderName || '').trim();
-    const customerAvatar = String(userInfo?.avatar || '').trim();
-    return {
-      sessionId: uid,
-      explicitSessionId: '',
-      conversationId: '',
-      chatId: '',
-      rawId: '',
-      customerId: uid,
-      userUid: uid,
-      customerName,
-      customerAvatar,
-      lastMessage: String(latestMessage?.content || '').trim(),
-      lastMessageTime: Number(latestMessage?.timestamp || 0) || 0,
-      lastMessageActor: String(latestMessage?.actor || 'unknown'),
-      lastMessageIsFromBuyer: latestMessage?.isFromBuyer === true,
-      createdAt: Number(messages[0]?.timestamp || latestMessage?.timestamp || 0) || 0,
-      unreadCount: 0,
-      isTimeout: false,
-      waitTime: 0,
-      groupNumber: 0,
-      group_number: 0,
-      orderId: normalizedOrderSn,
-      goodsInfo: null,
-      csUid: '',
-      mallId: String(mallInfo?.mallId || ''),
-      mallName: String(mallInfo?.mallName || ''),
-      isShopMember: null,
-      raw: {
-        ...(payload?.result || {}),
-        user_info: {
-          uid,
-          nickname: customerName,
-          avatar: customerAvatar,
-        },
-        uid,
-        customer_id: uid,
-        buyer_id: uid,
-        order_id: normalizedOrderSn,
-        order_sn: normalizedOrderSn,
-      },
-    };
+    return this._chatSessionsModule.getHistoryMessagesByOrderSn(orderSn, options);
   }
 
   async findSessionByOrderSn(orderSn, options = {}) {
-    const normalizedOrderSn = String(orderSn || '').trim();
-    if (!normalizedOrderSn) {
-      throw new Error('缺少订单号');
-    }
-    if (!this._sessionInited) {
-      await this.initSession();
-    }
-
-    let matchedSession = this._findCachedSessionByOrderSn(normalizedOrderSn, this._sessionCache);
-    if (matchedSession) {
-      return matchedSession;
-    }
-
-    const pageLimit = Math.max(1, Math.min(Number(options?.pageLimit || 4) || 4, 10));
-    const pageSize = Math.max(20, Math.min(Number(options?.pageSize || 50) || 50, 100));
-    for (let page = 1; page <= pageLimit; page += 1) {
-      const sessions = await this.getSessionList(page, pageSize);
-      matchedSession = this._findCachedSessionByOrderSn(normalizedOrderSn, sessions);
-      if (matchedSession) {
-        return matchedSession;
-      }
-      if (!Array.isArray(sessions) || sessions.length < pageSize) {
-        break;
-      }
-    }
-    try {
-      const history = await this.getHistoryMessagesByOrderSn(normalizedOrderSn, {
-        pageSize: Math.max(10, Math.min(Number(options?.historyPageSize || 20) || 20, 100)),
-      });
-      const syntheticSession = this._buildSyntheticSessionFromOrderHistory(normalizedOrderSn, history);
-      if (!syntheticSession?.sessionId) {
-        throw new Error('未找到对应订单会话');
-      }
-      return syntheticSession;
-    } catch (error) {
-      this._log('[API] 按订单号查找会话失败', {
-        orderSn: normalizedOrderSn,
-        message: error.message,
-      });
-      throw new Error('未找到对应订单会话');
-    }
+    return this._chatSessionsModule.findSessionByOrderSn(orderSn, options);
   }
 
   _isBuyerMessage(item) {

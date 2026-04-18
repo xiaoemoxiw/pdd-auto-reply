@@ -17,6 +17,7 @@ const commonParsers = require('./pdd-api/parsers/common-parsers');
 const goodsParsers = require('./pdd-api/parsers/goods-parsers');
 const refundParsers = require('./pdd-api/parsers/refund-parsers');
 const shopProfileParsers = require('./pdd-api/parsers/shop-profile-parsers');
+const orderRemarkParsers = require('./pdd-api/parsers/order-remark-parsers');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -27,14 +28,6 @@ const PDD_UPLOAD_BASES = [
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
 const POLL_INTERVAL = 5000;
 const POLL_INTERVAL_IDLE = 15000;
-const ORDER_REMARK_TAG_LABELS = {
-  RED: '红色',
-  YELLOW: '黄色',
-  GREEN: '绿色',
-  BLUE: '蓝色',
-  PURPLE: '紫色',
-};
-
 class PddApiClient extends EventEmitter {
   constructor(shopId, options = {}) {
     super();
@@ -5790,73 +5783,31 @@ class PddApiClient extends EventEmitter {
   }
 
   _formatOrderRemarkDateTime(value = Date.now()) {
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+    return orderRemarkParsers.formatOrderRemarkDateTime(value);
   }
 
   _extractOrderRemarkText(value) {
-    if (!value) return '';
-    if (typeof value === 'string') return value.trim();
-    if (Array.isArray(value)) {
-      return value.map(item => this._extractOrderRemarkText(item)).filter(Boolean).join('\n').trim();
-    }
-    if (typeof value !== 'object') return '';
-    return this._pickRefundText([value], [
-      'note',
-      'content',
-      'text',
-      'remark',
-      'desc',
-      'message',
-      'value',
-    ]);
+    return orderRemarkParsers.extractOrderRemarkText(value);
   }
 
   _normalizeOrderRemarkTag(value) {
-    const normalized = String(value ?? '').trim().toUpperCase();
-    if (!normalized) return '';
-    if (['0', 'NULL', 'UNDEFINED', 'FALSE', 'NONE'].includes(normalized)) {
-      return '';
-    }
-    return normalized;
+    return orderRemarkParsers.normalizeOrderRemarkTag(value);
   }
 
   _isOrderRemarkSaveIntervalError(error) {
-    const message = String(error?.message || error || '').trim();
-    if (!message) return false;
-    return /两次备注间隔时长需大于1秒|备注间隔时长需大于1秒|间隔时长需大于1秒/.test(message);
+    return orderRemarkParsers.isOrderRemarkSaveIntervalError(error);
   }
 
   _isOrderRemarkSaveMatched(remark = {}, note = '', tag = '') {
-    return this._extractOrderRemarkText(remark?.note) === this._extractOrderRemarkText(note)
-      && this._normalizeOrderRemarkTag(remark?.tag) === this._normalizeOrderRemarkTag(tag);
+    return orderRemarkParsers.isOrderRemarkSaveMatched(remark, note, tag);
   }
 
   _maskOrderRemarkOrderSn(orderSn) {
-    const normalizedOrderSn = String(orderSn || '').trim();
-    if (!normalizedOrderSn) return '';
-    if (normalizedOrderSn.length <= 8) return normalizedOrderSn;
-    return `${normalizedOrderSn.slice(0, 4)}***${normalizedOrderSn.slice(-4)}`;
+    return orderRemarkParsers.maskOrderRemarkOrderSn(orderSn);
   }
 
   _summarizeOrderRemarkRequest(urlPath, body = {}, via = 'direct') {
-    const normalizedNote = this._extractOrderRemarkText(body?.note);
-    return {
-      urlPath: String(urlPath || ''),
-      via,
-      orderSn: this._maskOrderRemarkOrderSn(body?.orderSn),
-      hasNote: normalizedNote.length > 0,
-      noteLength: normalizedNote.length,
-      tag: this._normalizeOrderRemarkTag(body?.tag),
-      source: Number(body?.source) > 0 ? Number(body.source) : 1,
-    };
+    return orderRemarkParsers.summarizeOrderRemarkRequest(urlPath, body, via);
   }
 
   _summarizeOrderRemarkResponse(payload) {
@@ -5877,21 +5828,11 @@ class PddApiClient extends EventEmitter {
   }
 
   _getOrderRemarkTagName(tag) {
-    const normalizedTag = this._normalizeOrderRemarkTag(tag);
-    if (!normalizedTag) return '';
-    const cachedName = this._orderRemarkTagOptionsCache?.[normalizedTag];
-    if (cachedName) return String(cachedName).trim();
-    return ORDER_REMARK_TAG_LABELS[normalizedTag] || '';
+    return orderRemarkParsers.getOrderRemarkTagName(tag, this._orderRemarkTagOptionsCache);
   }
 
   _formatOrderRemarkMeta(value = Date.now()) {
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${month}/${day} ${hours}:${minutes}`;
+    return orderRemarkParsers.formatOrderRemarkMeta(value);
   }
 
   async _getOrderRemarkOperatorName() {
@@ -5933,22 +5874,7 @@ class PddApiClient extends EventEmitter {
   }
 
   _normalizeOrderRemarkTagOptions(payload = {}) {
-    const source = payload?.result && typeof payload.result === 'object'
-      ? payload.result
-      : (payload && typeof payload === 'object' ? payload : {});
-    const entries = Object.entries(source)
-      .map(([value, label]) => [String(value || '').trim().toUpperCase(), String(label || '').trim()])
-      .filter(([value, label]) => value && label);
-    const preferredOrder = ['RED', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE'];
-    const ordered = [
-      ...preferredOrder.filter(key => entries.some(([value]) => value === key)),
-      ...entries.map(([value]) => value).filter(value => !preferredOrder.includes(value)),
-    ];
-    return ordered.reduce((result, key) => {
-      const matched = entries.find(([value]) => value === key);
-      if (matched) result[key] = matched[1];
-      return result;
-    }, {});
+    return orderRemarkParsers.normalizeOrderRemarkTagOptions(payload);
   }
 
   async getOrderRemarkTagOptions(force = false) {

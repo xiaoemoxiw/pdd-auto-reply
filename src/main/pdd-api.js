@@ -19,6 +19,7 @@ const refundParsers = require('./pdd-api/parsers/refund-parsers');
 const shopProfileParsers = require('./pdd-api/parsers/shop-profile-parsers');
 const orderRemarkParsers = require('./pdd-api/parsers/order-remark-parsers');
 const messageParsers = require('./pdd-api/parsers/message-parsers');
+const sessionParsers = require('./pdd-api/parsers/session-parsers');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -1998,443 +1999,95 @@ class PddApiClient extends EventEmitter {
   }
 
   _extractSessionPreviewText(item) {
-    const previewSource = {
-      content: item?.last_msg,
-      text: item?.last_message,
-      msg_content: item?.latest_msg,
-      message: item?.content,
-      body: item?.summary,
-      msg: item?.preview,
-      extra: {
-        text: item?.last_msg_text || item?.msg_text,
-      },
-      ext: {
-        text: item?.snippet,
-      },
-      template_name: item?.last_msg?.template_name || item?.last_message?.template_name || item?.latest_msg?.template_name || item?.template_name,
-      templateName: item?.last_msg?.templateName || item?.last_message?.templateName || item?.latest_msg?.templateName || item?.templateName,
-      show_auto: item?.last_msg?.show_auto ?? item?.last_message?.show_auto ?? item?.latest_msg?.show_auto ?? item?.show_auto,
-      showAuto: item?.last_msg?.showAuto ?? item?.last_message?.showAuto ?? item?.latest_msg?.showAuto ?? item?.showAuto,
-      biz_context: item?.last_msg?.biz_context || item?.last_message?.biz_context || item?.latest_msg?.biz_context || item?.biz_context,
-      bizContext: item?.last_msg?.bizContext || item?.last_message?.bizContext || item?.latest_msg?.bizContext || item?.bizContext,
-      push_biz_context: item?.last_msg?.push_biz_context || item?.last_message?.push_biz_context || item?.latest_msg?.push_biz_context || item?.push_biz_context,
-      pushBizContext: item?.last_msg?.pushBizContext || item?.last_message?.pushBizContext || item?.latest_msg?.pushBizContext || item?.pushBizContext,
-    };
-    return this._extractMessageText(previewSource, { sessionRef: item });
+    return sessionParsers.extractSessionPreviewText(item);
   }
 
   _extractSessionPreviewTime(item) {
-    const candidates = [
-      item?.last_msg_time,
-      item?.update_time,
-      item?.last_time,
-      item?.ts,
-      item?.last_msg?.send_time,
-      item?.last_msg?.time,
-      item?.last_msg?.ts,
-      item?.last_message?.send_time,
-      item?.last_message?.time,
-      item?.latest_msg?.send_time,
-      item?.latest_msg?.time,
-      item?.content?.send_time,
-      item?.content?.time,
-    ];
-    return candidates.find(value => value !== undefined && value !== null && value !== '') || 0;
+    return sessionParsers.extractSessionPreviewTime(item);
   }
 
   _getSessionDedupKey(session = {}) {
-    if (!session || typeof session !== 'object') return '';
-    return String(
-      session.customerId
-      || session.userUid
-      || session.raw?.customer_id
-      || session.raw?.buyer_id
-      || session.raw?.user_info?.uid
-      || session.sessionId
-      || session.explicitSessionId
-      || session.conversationId
-      || session.chatId
-      || session.rawId
-      || ''
-    ).trim();
+    return sessionParsers.getSessionDedupKey(session);
   }
 
   _mergeSessionEntries(existing = {}, incoming = {}) {
-    const existingTime = Number(existing?.lastMessageTime || 0) || 0;
-    const incomingTime = Number(incoming?.lastMessageTime || 0) || 0;
-    const preferIncoming = incomingTime >= existingTime;
-    const primary = preferIncoming ? incoming : existing;
-    const secondary = preferIncoming ? existing : incoming;
-    return {
-      ...secondary,
-      ...primary,
-      customerName: primary.customerName || secondary.customerName || '',
-      customerAvatar: primary.customerAvatar || secondary.customerAvatar || '',
-      lastMessage: primary.lastMessage || secondary.lastMessage || '',
-      lastMessageActor: primary.lastMessageActor || secondary.lastMessageActor || '',
-      unreadCount: Math.max(Number(existing?.unreadCount || 0) || 0, Number(incoming?.unreadCount || 0) || 0),
-      waitTime: Math.max(Number(existing?.waitTime || 0) || 0, Number(incoming?.waitTime || 0) || 0),
-      groupNumber: Math.max(Number(existing?.groupNumber || 0) || 0, Number(incoming?.groupNumber || 0) || 0),
-      group_number: Math.max(Number(existing?.group_number || 0) || 0, Number(incoming?.group_number || 0) || 0),
-      raw: primary.raw || secondary.raw || null,
-    };
+    return sessionParsers.mergeSessionEntries(existing, incoming);
   }
 
   _dedupeSessionList(sessions = []) {
-    const map = new Map();
-    (Array.isArray(sessions) ? sessions : []).forEach(session => {
-      if (!session || typeof session !== 'object') return;
-      const dedupKey = this._getSessionDedupKey(session);
-      if (!dedupKey) return;
-      const existing = map.get(dedupKey);
-      if (!existing) {
-        map.set(dedupKey, session);
-        return;
-      }
-      map.set(dedupKey, this._mergeSessionEntries(existing, session));
-    });
-    return Array.from(map.values());
+    return sessionParsers.dedupeSessionList(sessions);
   }
 
   _extractSessionCreatedTime(item) {
-    const candidates = [
-      item?.create_time,
-      item?.created_at,
-      item?.createdAt,
-      item?.createTime,
-      item?.ctime,
-      item?.context?.create_time,
-      item?.context?.created_at,
-      item?.session_create_time,
-      item?.conversation_create_time,
-      item?.first_msg_time,
-      item?.first_message_time,
-    ];
-    return candidates.find(value => value !== undefined && value !== null && value !== '') || 0;
+    return sessionParsers.extractSessionCreatedTime(item);
   }
 
   _extractSessionLastMessageActor(item = {}) {
-    const context = {
-      customer_id: item?.customer_id,
-      buyer_id: item?.buyer_id,
-      uid: item?.user_info?.uid,
-      user_info: item?.user_info,
-      from: item?.from,
-      to: item?.to,
-    };
-    const candidates = [
-      item?.last_msg,
-      item?.last_message,
-      item?.latest_msg,
-      item?.content,
-      item?.preview,
-      item,
-    ];
-    for (const candidate of candidates) {
-      if (!candidate || typeof candidate !== 'object') continue;
-      const actor = this._getMessageActor({ ...context, ...candidate });
-      if (actor !== 'unknown') return actor;
-    }
-    return 'unknown';
+    return sessionParsers.extractSessionLastMessageActor(item, this._getMallId() || '');
   }
 
   _normalizeTimestampMs(value) {
-    if (value === undefined || value === null || value === '') return 0;
-    if (value instanceof Date) return value.getTime();
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return 0;
-      if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
-        const parsed = Date.parse(trimmed);
-        return Number.isFinite(parsed) ? parsed : 0;
-      }
-    }
-    const num = Number(value);
-    if (!Number.isFinite(num) || num <= 0) return 0;
-    return num < 1e12 ? num * 1000 : num;
+    return sessionParsers.normalizeTimestampMs(value);
   }
 
   _isTodayTimestamp(value) {
-    const ms = this._normalizeTimestampMs(value);
-    if (!ms) return false;
-    const date = new Date(ms);
-    const now = new Date();
-    return date.getFullYear() === now.getFullYear()
-      && date.getMonth() === now.getMonth()
-      && date.getDate() === now.getDate();
+    return sessionParsers.isTodayTimestamp(value);
   }
 
   _getRecentSessionStartMs() {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    return startOfToday - 24 * 60 * 60 * 1000;
+    return sessionParsers.getRecentSessionStartMs();
   }
 
   _isWithinRecentTwoDaysTimestamp(value) {
-    const ms = this._normalizeTimestampMs(value);
-    if (!ms) return false;
-    return ms >= this._getRecentSessionStartMs();
+    return sessionParsers.isWithinRecentTwoDaysTimestamp(value);
   }
 
   _hasPendingReplySession(session = {}) {
-    const lastMessageActor = String(session?.lastMessageActor || '').toLowerCase();
-    const lastMessageIsFromBuyer = session?.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer';
-    const waitValue = Number(session?.waitTime || 0);
-    const hasPendingIndicators = (
-      (Number.isFinite(waitValue) && waitValue > 0)
-      || session?.isTimeout
-      || Number(session?.unreadCount || 0) > 0
-    );
-    if (lastMessageIsFromBuyer) return hasPendingIndicators;
-    if (lastMessageActor === 'seller') return false;
-    return hasPendingIndicators;
+    return sessionParsers.hasPendingReplySession(session);
   }
 
   _filterDisplaySessions(sessions = []) {
-    return sessions
-      .filter(session => (
-        this._isWithinRecentTwoDaysTimestamp(session?.lastMessageTime)
-        || this._isWithinRecentTwoDaysTimestamp(session?.createdAt)
-      ))
-      .sort((a, b) => {
-        const leftTime = this._normalizeTimestampMs(a?.lastMessageTime || a?.createdAt || 0);
-        const rightTime = this._normalizeTimestampMs(b?.lastMessageTime || b?.createdAt || 0);
-        return rightTime - leftTime;
-      });
+    return sessionParsers.filterDisplaySessions(sessions);
   }
 
   _sortDisplaySessions(sessions = []) {
-    return (Array.isArray(sessions) ? sessions.slice() : []).sort((a, b) => {
-      const leftTime = this._normalizeTimestampMs(a?.lastMessageTime || a?.createdAt || 0);
-      const rightTime = this._normalizeTimestampMs(b?.lastMessageTime || b?.createdAt || 0);
-      return rightTime - leftTime;
-    });
+    return sessionParsers.sortDisplaySessions(sessions);
   }
 
   _pickPendingBuyerMessage(messages = [], buyerIds = [], sessionMeta = {}) {
-    const sorted = Array.isArray(messages)
-      ? messages.slice().sort((a, b) => this._normalizeTimestampMs(a?.timestamp) - this._normalizeTimestampMs(b?.timestamp))
-      : [];
-    let latestBuyerMessage = null;
-    const comparableBuyerIds = Array.isArray(buyerIds)
-      ? buyerIds.map(value => String(value || '').trim()).filter(Boolean)
-      : [];
-    const previewText = this._normalizeComparableMessageText(this._extractSessionPreviewText(sessionMeta));
-    for (const item of sorted) {
-      const actor = String(item?.actor || this._getMessageActor(item?.raw || item) || '').toLowerCase();
-      const senderId = String(item?.senderId || item?.raw?.from_uid || item?.raw?.sender_id || item?.raw?.from_id || item?.raw?.from?.uid || '').trim();
-      const isBuyerMessage = actor === 'buyer' || (!!senderId && comparableBuyerIds.includes(senderId));
-      const isSellerMessage = actor === 'seller';
-      const text = String(item?.content || '').trim();
-      const normalizedText = this._normalizeComparableMessageText(text);
-      const matchesPreview = !!previewText && !!normalizedText && normalizedText === previewText;
-      if (!text || actor === 'system') continue;
-      if (isSellerMessage) {
-        latestBuyerMessage = null;
-        continue;
-      }
-      if (isBuyerMessage || (actor === 'unknown' && matchesPreview)) {
-        latestBuyerMessage = item;
-      }
-    }
-    return latestBuyerMessage;
+    return sessionParsers.pickPendingBuyerMessage(messages, buyerIds, sessionMeta, this._getMallId() || '');
   }
 
   _parseSessionIdentity(item = {}) {
-    const conversationId = item.conversation_id || item.conversationId || '';
-    const chatId = item.chat_id || item.chatId || '';
-    const explicitSessionId = item.session_id || item.sessionId || '';
-    const rawId = item.id || '';
-    const buyerUid = this._extractBuyerUid(item);
-    const customerId = item.customer_id || item.buyer_id || item?.user_info?.uid || buyerUid || '';
-    const userUid = item?.user_info?.uid || item.customer_id || item.buyer_id || buyerUid || '';
-    const sessionId = explicitSessionId || conversationId || chatId || rawId || customerId || userUid || '';
-    return {
-      sessionId,
-      explicitSessionId,
-      conversationId,
-      chatId,
-      rawId,
-      customerId: customerId || userUid || '',
-      userUid: userUid || customerId || '',
-    };
+    return sessionParsers.parseSessionIdentity(item, this._getMallId() || '');
   }
 
   _pickDisplayText(sources = [], keys = []) {
-    for (const source of sources) {
-      if (!source || typeof source !== 'object') continue;
-      for (const key of keys) {
-        const value = source[key];
-        if (typeof value === 'string' && value.trim()) {
-          return value.trim();
-        }
-      }
-    }
-    return '';
+    return sessionParsers.pickDisplayText(sources, keys);
   }
 
   _resolveBuyerParticipant(item = {}) {
-    const fromObj = item?.from && typeof item.from === 'object' ? item.from : null;
-    const toObj = item?.to && typeof item.to === 'object' ? item.to : null;
-    const buyerUid = String(this._extractBuyerUid(item) || '');
-    if (!buyerUid) return fromObj || toObj || null;
-    if (String(fromObj?.uid || '') === buyerUid) return fromObj;
-    if (String(toObj?.uid || '') === buyerUid) return toObj;
-    return fromObj || toObj || null;
+    return sessionParsers.resolveBuyerParticipant(item, this._getMallId() || '');
   }
 
   _extractSessionCustomerName(item = {}) {
-    const userInfo = item?.user_info && typeof item.user_info === 'object' ? item.user_info : null;
-    const buyerInfo = item?.buyer && typeof item.buyer === 'object' ? item.buyer : null;
-    const customerInfo = item?.customer && typeof item.customer === 'object' ? item.customer : null;
-    const participant = this._resolveBuyerParticipant(item);
-    const fromObj = item?.from && typeof item.from === 'object' ? item.from : null;
-    const toObj = item?.to && typeof item.to === 'object' ? item.to : null;
-    return this._pickDisplayText(
-      [item, userInfo, buyerInfo, customerInfo, participant, fromObj, toObj],
-      [
-        'nick',
-        'nickname',
-        'nick_name',
-        'buyer_name',
-        'buyer_nickname',
-        'buyer_nick_name',
-        'customer_name',
-        'customer_nickname',
-        'customer_nick_name',
-        'display_name',
-        'displayName',
-        'name',
-      ],
-    );
+    return sessionParsers.extractSessionCustomerName(item, this._getMallId() || '');
   }
 
   _extractSessionCustomerAvatar(item = {}) {
-    const userInfo = item?.user_info && typeof item.user_info === 'object' ? item.user_info : null;
-    const buyerInfo = item?.buyer && typeof item.buyer === 'object' ? item.buyer : null;
-    const customerInfo = item?.customer && typeof item.customer === 'object' ? item.customer : null;
-    const participant = this._resolveBuyerParticipant(item);
-    const fromObj = item?.from && typeof item.from === 'object' ? item.from : null;
-    const toObj = item?.to && typeof item.to === 'object' ? item.to : null;
-    return this._pickDisplayText(
-      [item, userInfo, buyerInfo, customerInfo, participant, fromObj, toObj],
-      [
-        'avatar',
-        'head_img',
-        'buyer_avatar',
-        'avatar_url',
-        'avatarUrl',
-      ],
-    );
+    return sessionParsers.extractSessionCustomerAvatar(item, this._getMallId() || '');
   }
 
   _extractMessageSenderName(item = {}) {
-    const fromObj = item?.from && typeof item.from === 'object' ? item.from : null;
-    const toObj = item?.to && typeof item.to === 'object' ? item.to : null;
-    const userInfo = item?.user_info && typeof item.user_info === 'object' ? item.user_info : null;
-    const participant = this._isBuyerMessage(item) ? this._resolveBuyerParticipant(item) : fromObj;
-    return this._pickDisplayText(
-      [item, participant, fromObj, userInfo, toObj],
-      [
-        'nick',
-        'nickname',
-        'nick_name',
-        'sender_name',
-        'from_name',
-        'display_name',
-        'displayName',
-        'name',
-        'csid',
-      ],
-    );
+    return sessionParsers.extractMessageSenderName(item, this._getMallId() || '');
   }
 
   _parseSessionList(payload) {
-    const list = payload?.data?.list ||
-      payload?.data?.conv_list ||
-      payload?.data?.conversation_list ||
-      payload?.data?.conversations ||
-      payload?.data?.items ||
-      payload?.result?.data?.list ||
-      payload?.result?.data?.conv_list ||
-      payload?.result?.data?.conversation_list ||
-      payload?.result?.data?.conversations ||
-      payload?.result?.data?.items ||
-      payload?.result?.data ||
-      payload?.result?.list ||
-      payload?.result?.data ||
-      payload?.result?.conversations ||
-      payload?.result?.items ||
-      payload?.conv_list ||
-      payload?.conversation_list ||
-      payload?.conversations ||
-      payload?.data?.conversations ||
-      payload?.list ||
-      [];
-
-    const sessions = list.map(item => {
-      const identity = this._parseSessionIdentity(item);
-      const lastMessageActor = this._extractSessionLastMessageActor(item);
-      const customerName = this._extractSessionCustomerName(item);
-      const customerAvatar = this._extractSessionCustomerAvatar(item);
-      return {
-        sessionId: identity.sessionId,
-        explicitSessionId: identity.explicitSessionId,
-        conversationId: identity.conversationId,
-        chatId: identity.chatId,
-        rawId: identity.rawId,
-        customerId: identity.customerId,
-        userUid: identity.userUid,
-        customerName: customerName || '未知客户',
-        customerAvatar,
-        lastMessage: this._extractSessionPreviewText(item),
-        lastMessageTime: this._extractSessionPreviewTime(item),
-        lastMessageActor,
-        lastMessageIsFromBuyer: lastMessageActor === 'buyer',
-        createdAt: this._extractSessionCreatedTime(item),
-        unreadCount: item.unread_count || item.unread || item.unread_num || item?.context?.unread || 0,
-        isTimeout: item.is_timeout || item.timeout || false,
-        waitTime: item.wait_time || item.waiting_time || item.last_unreply_time || 0,
-        groupNumber: item.groupNumber ?? item.group_number ?? item?.user_info?.group_number ?? item?.user_info?.groupNumber ?? 0,
-        group_number: item.group_number ?? item.groupNumber ?? item?.user_info?.group_number ?? item?.user_info?.groupNumber ?? 0,
-        orderId: item.order_id || item.order_sn || '',
-        goodsInfo: item.goods_info || item.goods || null,
-        csUid: item?.from?.cs_uid || '',
-        mallId: item?.from?.mall_id || '',
-        mallName: item.mallName || item.mall_name || item?.mall_info?.mall_name || item?.mall_info?.mallName || '',
-        isShopMember: typeof item.is_shop_member === 'boolean'
-          ? item.is_shop_member
-          : (typeof item.isShopMember === 'boolean' ? item.isShopMember : null),
-        raw: item,
-      };
-    });
-    return this._dedupeSessionList(sessions);
+    return sessionParsers.parseSessionList(payload, this._getMallId() || '');
   }
 
   _describeSessionListPayload(payload) {
-    const candidates = {
-      dataList: Array.isArray(payload?.data?.list) ? payload.data.list.length : -1,
-      dataConvList: Array.isArray(payload?.data?.conv_list) ? payload.data.conv_list.length : -1,
-      dataConversations: Array.isArray(payload?.data?.conversations) ? payload.data.conversations.length : -1,
-      dataConversationList: Array.isArray(payload?.data?.conversation_list) ? payload.data.conversation_list.length : -1,
-      dataItems: Array.isArray(payload?.data?.items) ? payload.data.items.length : -1,
-      resultDataList: Array.isArray(payload?.result?.data?.list) ? payload.result.data.list.length : -1,
-      resultDataConvList: Array.isArray(payload?.result?.data?.conv_list) ? payload.result.data.conv_list.length : -1,
-      resultDataConversations: Array.isArray(payload?.result?.data?.conversations) ? payload.result.data.conversations.length : -1,
-      resultList: Array.isArray(payload?.result?.list) ? payload.result.list.length : -1,
-      resultConversations: Array.isArray(payload?.result?.conversations) ? payload.result.conversations.length : -1,
-      resultItems: Array.isArray(payload?.result?.items) ? payload.result.items.length : -1,
-      rootList: Array.isArray(payload?.list) ? payload.list.length : -1,
-      rootConvList: Array.isArray(payload?.conv_list) ? payload.conv_list.length : -1,
-      rootConversations: Array.isArray(payload?.conversations) ? payload.conversations.length : -1,
-    };
-    return {
-      payloadType: Array.isArray(payload) ? 'array' : typeof payload,
-      topKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [],
-      dataKeys: payload?.data && typeof payload.data === 'object' ? Object.keys(payload.data).slice(0, 12) : [],
-      resultKeys: payload?.result && typeof payload.result === 'object' ? Object.keys(payload.result).slice(0, 12) : [],
-      candidates,
-    };
+    return sessionParsers.describeSessionListPayload(payload);
   }
 
   _getCachedSessionFallback() {
@@ -2626,22 +2279,11 @@ class PddApiClient extends EventEmitter {
   }
 
   _normalizeOrderSn(value) {
-    return String(value || '').trim().toLowerCase();
+    return sessionParsers.normalizeOrderSn(value);
   }
 
   _matchSessionByOrderSn(session = {}, orderSn = '') {
-    const targetOrderSn = this._normalizeOrderSn(orderSn);
-    if (!targetOrderSn) return false;
-    const candidates = [
-      session?.orderId,
-      session?.orderSn,
-      session?.order_sn,
-      session?.raw?.order_id,
-      session?.raw?.orderId,
-      session?.raw?.order_sn,
-      session?.raw?.orderSn,
-    ].map(value => this._normalizeOrderSn(value)).filter(Boolean);
-    return candidates.includes(targetOrderSn);
+    return sessionParsers.matchSessionByOrderSn(session, orderSn);
   }
 
   _findCachedSessionByOrderSn(orderSn = '', sessions = []) {

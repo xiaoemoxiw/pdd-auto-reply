@@ -26,6 +26,7 @@ const { RefundOrdersModule } = require('./pdd-api/modules/refund-orders-module')
 const { SmallPaymentModule } = require('./pdd-api/modules/small-payment-module');
 const { OrderPriceModule } = require('./pdd-api/modules/order-price-module');
 const { InviteOrderModule } = require('./pdd-api/modules/invite-order-module');
+const { SideOrdersModule } = require('./pdd-api/modules/side-orders-module');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -66,6 +67,7 @@ class PddApiClient extends EventEmitter {
     this._smallPaymentModule = new SmallPaymentModule(this);
     this._orderPriceModule = new OrderPriceModule(this);
     this._inviteOrderModule = new InviteOrderModule(this);
+    this._sideOrdersModule = new SideOrdersModule(this);
   }
 
   _log(message, extra) {
@@ -2793,17 +2795,7 @@ class PddApiClient extends EventEmitter {
   }
 
   _formatSideOrderDateTime(value) {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric) || numeric <= 0) return '';
-    const timestamp = numeric > 1e12 ? numeric : numeric * 1000;
-    const date = new Date(timestamp);
-    if (Number.isNaN(date.getTime())) return '';
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}/${month}/${day} ${hours}:${minutes}`;
+    return this._sideOrdersModule.formatDateTime(value);
   }
 
   _formatOrderRemarkDateTime(value = Date.now()) {
@@ -3096,714 +3088,107 @@ class PddApiClient extends EventEmitter {
   }
 
   _buildSideOrderSources(item = {}, fallback = {}) {
-    return [
-      item,
-      item?.raw,
-      item?.orderGoodsList,
-      item?.order_goods_list,
-      item?.goods_info,
-      item?.goodsInfo,
-      item?.goods,
-      item?.order_info,
-      item?.orderInfo,
-      item?.afterSalesInfo,
-      item?.after_sales_info,
-      item?.compensate,
-      item?.compensateInfo,
-      item?.pendingCompensate,
-      item?.raw?.afterSalesInfo,
-      item?.raw?.after_sales_info,
-      item?.raw?.compensate,
-      item?.raw?.compensateInfo,
-      item?.raw?.pendingCompensate,
-      fallback?.goodsInfo,
-      fallback?.raw?.goods_info,
-      fallback?.raw?.goods,
-      fallback?.raw,
-      fallback,
-    ].filter(Boolean);
+    return this._sideOrdersModule.buildSources(item, fallback);
   }
 
   _resolveSideOrderHeadline(tab = 'personal', sources = []) {
-    const afterSalesStatus = this._pickDisplayAfterSalesStatus(sources);
-    const orderStatusText = this._pickRefundText(sources, [
-      'orderStatusStr',
-      'order_status_str',
-      'order_status_desc',
-      'order_status_text',
-      'statusDesc',
-      'status_desc',
-      'statusText',
-      'status_text',
-      'shippingStatusText',
-      'shipping_status_text',
-      'shippingStatus',
-      'shipping_status',
-    ]);
-    const compensateText = this._pickRefundText(sources, [
-      'pendingCompensateText',
-      'pending_compensate_text',
-      'detail',
-      'text',
-      'desc',
-    ]);
-    if (tab === 'aftersale') {
-      return this._mergeSideOrderStatusTexts(orderStatusText, afterSalesStatus) || afterSalesStatus || orderStatusText || '售后处理中';
-    }
-    if (tab === 'pending') {
-      return [orderStatusText, compensateText].filter(Boolean).join('，') || orderStatusText || '店铺待支付';
-    }
-    return this._mergeSideOrderStatusTexts(orderStatusText, afterSalesStatus) || orderStatusText || '订单状态待确认';
+    return this._sideOrdersModule.resolveHeadline(tab, sources);
   }
 
   _isPendingLikeSideOrder(sources = []) {
-    const mergedStatusText = [
-      this._resolveSideOrderHeadline('personal', sources),
-      this._pickRefundText(sources, [
-        'orderStatusStr',
-        'order_status_str',
-        'order_status_desc',
-        'order_status_text',
-        'statusDesc',
-        'status_desc',
-        'statusText',
-        'status_text',
-        'shippingStatusText',
-        'shipping_status_text',
-        'payStatusDesc',
-        'pay_status_desc',
-        'payStatusText',
-        'pay_status_text',
-      ]),
-    ].filter(Boolean).join(' ').replace(/\s+/g, '');
-    return /(待支付|待付款|未支付|未付款|付款中|待成团|未成团)/.test(mergedStatusText);
+    return this._sideOrdersModule.isPendingLikeOrder(sources);
   }
 
   _buildSideOrderMetaRows(tab = 'personal', sources = []) {
-    const rows = [];
-    const orderTimeText = this._formatSideOrderDateTime(this._pickRefundNumber(sources, ['orderTime', 'order_time', 'createdAt', 'created_at']));
-    const afterSalesStatus = this._pickDisplayAfterSalesStatus(sources);
-    const compensateText = this._pickRefundText(sources, [
-      'pendingCompensateText',
-      'pending_compensate_text',
-      'detail',
-      'text',
-      'desc',
-    ]);
-    const refundShippingBenefitText = this._resolveRefundShippingBenefitText(sources);
-    const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
-    const showRefundShippingAfterOrderTime = tab === 'personal' && refundShippingBenefitText;
-    if (orderTimeText) {
-      rows.push({ label: '下单时间', value: orderTimeText });
-    }
-    if (showRefundShippingAfterOrderTime) {
-      rows.push({ label: '退货包运费', value: refundShippingBenefitText });
-    }
-    if (afterSalesStatus) {
-      rows.push({ label: '售后状态', value: afterSalesStatus });
-    }
-    if (tab === 'pending' && compensateText) {
-      rows.push({ label: '待支付说明', value: compensateText });
-    } else if (!showRefundShippingAfterOrderTime && refundShippingBenefitText) {
-      rows.push({ label: '退货包运费', value: refundShippingBenefitText });
-    }
-    if (shippingInfo.shippingStatusText) {
-      rows.push({ label: '物流状态', value: shippingInfo.shippingStatusText });
-    } else if (shippingInfo.trackingNo) {
-      rows.push({ label: '物流单号', value: shippingInfo.trackingNo });
-    }
-    return rows.slice(0, 4);
+    return this._sideOrdersModule.buildMetaRows(tab, sources);
   }
 
-  _formatSideOrderAmount(value, { negative = false } = {}) {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric) || numeric < 0) return '';
-    return `${negative ? '-' : ''}¥${(numeric / 100).toFixed(2)}`;
+  _formatSideOrderAmount(value, options = {}) {
+    return this._sideOrdersModule.formatAmount(value, options);
   }
 
   _resolveSideOrderDiscountText(sources = []) {
-    for (const source of sources) {
-      if (!source || typeof source !== 'object') continue;
-      for (const key of ['merchantDiscount', 'discountAmount', 'totalDiscount']) {
-        if (source[key] === undefined || source[key] === null || source[key] === '') continue;
-        const numeric = Number(source[key]);
-        if (Number.isFinite(numeric) && numeric >= 0) {
-          return this._formatSideOrderAmount(numeric, { negative: true });
-        }
-      }
-    }
-    return '-¥0.00';
+    return this._sideOrdersModule.resolveDiscountText(sources);
   }
 
   _resolveSideOrderManualPriceInfo(sources = []) {
-    for (const source of sources) {
-      if (!source || typeof source !== 'object') continue;
-      const manualDiscount = Number(
-        source.manualDiscount
-        ?? source.manual_discount
-        ?? source.goodsDiscount
-        ?? source.goods_discount
-        ?? ''
-      );
-      const orderAmount = Number(
-        source.orderAmount
-        ?? source.order_amount
-        ?? source.pay_amount
-        ?? source.amount
-        ?? ''
-      );
-      const shippingAmount = Number(
-        source.shippingAmount
-        ?? source.shipping_amount
-        ?? 0
-      );
-      if (!Number.isFinite(manualDiscount) || manualDiscount <= 0) continue;
-      if (!Number.isFinite(orderAmount) || orderAmount < 0) continue;
-      const originalAmount = Math.max(0, orderAmount + manualDiscount);
-      const discount = originalAmount > 0
-        ? Number(((orderAmount / originalAmount) * 10).toFixed(2))
-        : 0;
-      return {
-        applied: true,
-        originalAmount,
-        currentAmount: Math.max(0, orderAmount),
-        discountAmount: Math.max(0, manualDiscount),
-        shippingFee: Math.max(0, shippingAmount),
-        discount,
-      };
-    }
-    return {
-      applied: false,
-      originalAmount: 0,
-      currentAmount: 0,
-      discountAmount: 0,
-      shippingFee: 0,
-      discount: 0,
-    };
+    return this._sideOrdersModule.resolveManualPriceInfo(sources);
   }
 
   _resolveSideOrderPendingCountdown(sources = []) {
-    for (const source of sources) {
-      if (!source || typeof source !== 'object') continue;
-      const rawOrderTime = source.orderTime ?? source.order_time ?? source.createdAt ?? source.created_at;
-      const numeric = Number(rawOrderTime);
-      if (!Number.isFinite(numeric) || numeric <= 0) continue;
-      const orderTimeMs = numeric > 1e12 ? numeric : numeric * 1000;
-      const countdownEndTime = orderTimeMs + 24 * 60 * 60 * 1000;
-      const remainMs = Math.max(0, countdownEndTime - Date.now());
-      const totalSeconds = Math.floor(remainMs / 1000);
-      const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
-      const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
-      const seconds = String(totalSeconds % 60).padStart(2, '0');
-      return {
-        countdownEndTime,
-        countdownText: `${hours}:${minutes}:${seconds}`,
-      };
-    }
-    return {
-      countdownEndTime: 0,
-      countdownText: '',
-    };
+    return this._sideOrdersModule.resolvePendingCountdown(sources);
   }
 
   _buildSideOrderSummaryRows(tab = 'personal', sources = [], amountText = '') {
-    const rows = [];
-    rows.push({
-      label: '店铺优惠抵扣',
-      value: this._resolveSideOrderDiscountText(sources),
-      tone: 'muted',
-    });
-    if (amountText) {
-      rows.push({
-        label: tab === 'pending' ? '待支付金额' : '实收',
-        value: amountText,
-        tone: 'danger',
-      });
-    }
-    return rows.slice(0, 2);
+    return this._sideOrdersModule.buildSummaryRows(tab, sources, amountText);
   }
 
   _shouldShowSideOrderAddressAction(tab = 'personal', sources = []) {
-    if (tab !== 'personal') return false;
-    const statusText = [
-      this._resolveSideOrderHeadline(tab, sources),
-      this._pickRefundText(sources, [
-        'orderStatusStr',
-        'order_status_str',
-        'order_status_desc',
-        'order_status_text',
-        'statusDesc',
-        'status_desc',
-        'statusText',
-        'status_text',
-      ]),
-    ].filter(Boolean).join(' ');
-    return /待发货|已发货/.test(statusText);
+    return this._sideOrdersModule.shouldShowAddressAction(tab, sources);
   }
 
   _resolveSideOrderAddressInfo(sources = []) {
-    const receiverName = this._pickRefundText(sources, [
-      'receiverName',
-      'receiver_name',
-      'consignee',
-      'consigneeName',
-      'consignee_name',
-      'userName',
-      'user_name',
-      'name',
-    ]);
-    const receiverPhone = this._pickRefundText(sources, [
-      'receiverMobile',
-      'receiver_mobile',
-      'receiverPhone',
-      'receiver_phone',
-      'mobile',
-      'phone',
-      'tel',
-      'telephone',
-    ]);
-    const areaParts = [
-      this._pickRefundText(sources, ['provinceName', 'province_name']),
-      this._pickRefundText(sources, ['cityName', 'city_name']),
-      this._pickRefundText(sources, ['districtName', 'district_name']),
-      this._pickRefundText(sources, ['townName', 'town_name']),
-      this._pickRefundText(sources, ['streetName', 'street_name']),
-    ].filter(Boolean);
-    const areaText = areaParts.filter((part, index) => areaParts.indexOf(part) === index).join('');
-    const detailText = this._pickRefundText(sources, [
-      'address',
-      'addressDetail',
-      'address_detail',
-      'detailAddress',
-      'detail_address',
-      'receiverAddress',
-      'receiver_address',
-    ]);
-    const addressText = [areaText, detailText].filter(Boolean).join('');
-    const fullText = [
-      receiverName ? `收货人：${receiverName}` : '',
-      receiverPhone ? `联系电话：${receiverPhone}` : '',
-      addressText ? `收货地址：${addressText}` : '',
-    ].filter(Boolean).join('\n');
-    return {
-      receiverName,
-      receiverPhone,
-      addressText,
-      fullText,
-    };
+    return this._sideOrdersModule.resolveAddressInfo(sources);
   }
 
   _buildSideOrderActionTags(tab = 'personal', sources = []) {
-    const tags = [];
-    if (tab === 'pending' || (tab === 'personal' && this._isPendingLikeSideOrder(sources))) {
-      const manualPriceInfo = this._resolveSideOrderManualPriceInfo(sources);
-      tags.push('备注');
-      if (!manualPriceInfo.applied) {
-        tags.push('改价');
-      }
-      return tags;
-    }
-    const shippingInfo = this._resolveRefundOrderShippingInfo(sources);
-    const manualPriceInfo = this._resolveSideOrderManualPriceInfo(sources);
-    if (this._shouldShowSideOrderAddressAction(tab, sources)) {
-      tags.push('地址');
-    }
-    tags.push('备注');
-    if (tab === 'personal') {
-      tags.push('小额打款');
-    }
-    if (shippingInfo.isShipped || shippingInfo.trackingNo) {
-      tags.push('物流信息');
-    }
-    if (this._pickRefundBoolean(sources, ['showGoodsInstructEntrance', 'show_goods_instruct_entrance'])) {
-      tags.push('查看说明书');
-    }
-    if (this._pickRefundBoolean(sources, ['showExtraPackageTool', 'show_extra_package_tool'])) {
-      tags.push('新增额外包裹');
-    }
-    const statusText = this._pickRefundText(sources, ['orderStatusStr', 'order_status_str']);
-    if (!manualPriceInfo.applied && (tab === 'pending' || /待支付/.test(statusText))) {
-      tags.push('改价');
-    }
-    return [...new Set(tags)].slice(0, 6);
+    return this._sideOrdersModule.buildActionTags(tab, sources);
   }
 
   _normalizeSideOrderCard(item = {}, fallback = {}, tab = 'personal', index = 0) {
-    const sources = this._buildSideOrderSources(item, fallback);
-    const manualPriceInfo = this._resolveSideOrderManualPriceInfo(sources);
-    const addressInfo = this._resolveSideOrderAddressInfo(sources);
-    const goodsInfo = Array.isArray(item?.orderGoodsList)
-      ? (item.orderGoodsList[0] || {})
-      : (item?.orderGoodsList || item?.goodsInfo || item?.goods_info || item?.raw?.orderGoodsList || {});
-    const orderId = this._pickRefundText(sources, ['order_id', 'order_sn', 'orderSn', 'parent_order_sn', 'mall_order_sn', 'orderId'])
-      || String(fallback?.orderId || '').trim();
-    const title = this._pickRefundText(sources, ['goods_name', 'goodsName', 'goods_title', 'goodsTitle', 'item_title', 'itemTitle', 'title'])
-      || fallback?.title
-      || `订单 ${index + 1}`;
-    const imageUrl = this._pickRefundText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'thumbUrl', 'hdThumbUrl', 'goodsThumbUrl', 'pic_url']);
-    const amountText = this._normalizeRefundAmountByKeys(sources, ['order_amount', 'orderAmount', 'pay_amount', 'refund_amount', 'amount', 'order_price', 'price'])
-      || this._pickRefundText(sources, ['priceText', 'price_text'])
-      || this._normalizeGoodsPrice(this._pickRefundNumber(sources, ['goodsPrice', 'min_price', 'group_price']))
-      || '';
-    const quantityValue = this._pickRefundText(
-      [goodsInfo, ...sources],
-      ['goodsNumber', 'quantity', 'num', 'count', 'goods_count', 'buy_num', 'buyNum'],
-    );
-    const specText = this._pickRefundText(
-      [goodsInfo, ...sources],
-      ['spec', 'specText', 'spec_text', 'sku_spec', 'skuSpec', 'spec_desc', 'specDesc', 'sub_name', 'subName'],
-    );
-    const normalizedQuantity = String(quantityValue || '').replace(/^x/i, '').trim();
-    const detailText = this._pickRefundText([item, goodsInfo, ...sources], ['detailText', 'detail_text']) || (normalizedQuantity && specText
-      ? `${specText} x${normalizedQuantity}`
-      : (specText || (normalizedQuantity ? `x${normalizedQuantity}` : '所拍规格待确认')));
-    const pendingCountdown = tab === 'pending'
-      ? this._resolveSideOrderPendingCountdown(sources)
-      : { countdownEndTime: 0, countdownText: '' };
-    const remarkNote = this._extractOrderRemarkText(this._pickRefundText(sources, ['note']));
-    const remarkTag = this._normalizeOrderRemarkTag(this._pickRefundText(sources, ['tag']));
-    const remarkTagName = this._pickRefundText(sources, ['tagName', 'tag_name']);
-    const cachedRemark = this._getOrderRemarkCache(orderId);
-    if (orderId && (remarkNote || remarkTag || remarkTagName)) {
-      this._setOrderRemarkCache(orderId, {
-        note: remarkNote,
-        tag: remarkTag,
-        tagName: remarkTagName,
-      });
-    }
-    return {
-      key: `${tab}::${orderId || 'order'}::${index}`,
-      orderId: orderId || '-',
-      title,
-      imageUrl,
-      detailText,
-      amountText,
-      headline: this._resolveSideOrderHeadline(tab, sources),
-      receiverName: addressInfo.receiverName,
-      receiverPhone: addressInfo.receiverPhone,
-      addressText: addressInfo.addressText,
-      addressFullText: addressInfo.fullText,
-      countdownEndTime: pendingCountdown.countdownEndTime,
-      countdownText: pendingCountdown.countdownText,
-      metaRows: this._buildSideOrderMetaRows(tab, sources),
-      summaryRows: this._buildSideOrderSummaryRows(tab, sources, amountText),
-      note: remarkNote || cachedRemark?.note || '',
-      noteTag: remarkTag || cachedRemark?.tag || '',
-      noteTagName: remarkTagName || cachedRemark?.tagName || '',
-      actionTags: this._buildSideOrderActionTags(tab, sources),
-      manualPriceApplied: manualPriceInfo.applied,
-      manualPriceOriginalAmount: manualPriceInfo.originalAmount / 100,
-      manualPriceDiscount: manualPriceInfo.discount,
-      manualPriceDiscountAmount: manualPriceInfo.discountAmount / 100,
-      manualPriceShippingFee: manualPriceInfo.shippingFee / 100,
-    };
+    return this._sideOrdersModule.normalizeCard(item, fallback, tab, index);
   }
 
   async _extractPendingOrdersFromPageApis(sessionMeta = {}) {
-    const uid = this._getRefundOrderUid(sessionMeta);
-    if (!uid) return null;
-    const pendingPayload = await this._requestRefundOrderPageApi('/latitude/order/userUnfinishedOrder', {
-      pageNo: 1,
-      pageSize: 50,
-      uid,
-    });
-    const pendingOrders = Array.isArray(pendingPayload?.result?.orders) ? pendingPayload.result.orders : [];
-    if (!pendingOrders.length) return [];
-    const compensateMap = {};
-    const validOrderSns = [...new Set(pendingOrders.map(item => String(item?.orderSn || item?.orderId || '').trim()).filter(Boolean))].slice(0, 20);
-    await Promise.all(validOrderSns.map(async orderSn => {
-      try {
-        const payload = await this._requestRefundOrderPageApi('/latitude/order/orderCompensate', { orderSn });
-        const compensatePatch = this._buildSideOrderCompensatePatch(payload?.result || {});
-        if (Object.keys(compensatePatch).length) {
-          compensateMap[orderSn] = compensatePatch;
-        }
-      } catch (error) {
-        this._log('[API] 店铺待支付补充查询失败', { orderSn, message: error.message });
-      }
-    }));
-    return this._dedupeRefundOrders(pendingOrders.map(item => {
-      const orderSn = String(item?.orderSn || item?.orderId || '').trim();
-      return {
-        ...(item || {}),
-        ...(compensateMap[orderSn] || {}),
-      };
-    }), sessionMeta);
+    return this._sideOrdersModule.extractPendingOrdersFromPageApis(sessionMeta);
   }
 
   _getOrderTrafficEntries(urlPart = '', sessionMeta = {}) {
-    const uid = this._getRefundOrderUid(sessionMeta);
-    return this._getApiTrafficEntries()
-      .filter(entry => String(entry?.url || '').includes(urlPart))
-      .filter(entry => {
-        if (!uid) return true;
-        const body = typeof entry?.requestBody === 'string' ? this._safeParseJson(entry.requestBody) : entry?.requestBody;
-        const requestUid = String(body?.uid || body?.data?.uid || '').trim();
-        return !requestUid || requestUid === uid;
-      });
+    return this._sideOrdersModule.getOrderTrafficEntries(urlPart, sessionMeta);
   }
 
   _buildSideOrderCompensatePatch(result = {}) {
-    if (!result || typeof result !== 'object') return {};
-    const text = this._pickRefundText([result], ['detail', 'text', 'desc']);
-    const statusKeys = ['status', 'compensateStatus', 'compensate_status'];
-    const hasStatusKey = statusKeys.some(key => Object.prototype.hasOwnProperty.call(result, key));
-    const status = result.status ?? result.compensateStatus ?? result.compensate_status;
-    const compensate = {};
-    if (hasStatusKey) {
-      compensate.status = status ?? null;
-    } else if (status !== undefined && status !== null && status !== '') {
-      compensate.status = status;
-    }
-    if (text) {
-      compensate.text = text;
-    }
-    if (!Object.keys(compensate).length) return {};
-    return {
-      pendingCompensateText: text || '',
-      pendingCompensate: { ...compensate },
-      compensate,
-    };
+    return this._sideOrdersModule.buildCompensatePatch(result);
   }
 
   _mergeSideOrderCompensatePatch(order = {}, patch = {}) {
-    if (!patch || typeof patch !== 'object' || !Object.keys(patch).length) {
-      return order;
-    }
-    const existingCompensate = order?.compensate && typeof order.compensate === 'object'
-      ? order.compensate
-      : null;
-    const existingPendingCompensate = order?.pendingCompensate && typeof order.pendingCompensate === 'object'
-      ? order.pendingCompensate
-      : null;
-    const mergedCompensate = (patch.compensate && typeof patch.compensate === 'object') || existingCompensate
-      ? {
-          ...(patch.compensate && typeof patch.compensate === 'object' ? patch.compensate : {}),
-          ...(existingCompensate || {}),
-        }
-      : undefined;
-    const mergedPendingCompensate = (patch.pendingCompensate && typeof patch.pendingCompensate === 'object') || existingPendingCompensate
-      ? {
-          ...(patch.pendingCompensate && typeof patch.pendingCompensate === 'object' ? patch.pendingCompensate : {}),
-          ...(existingPendingCompensate || {}),
-        }
-      : undefined;
-    return {
-      ...(order || {}),
-      ...(patch || {}),
-      pendingCompensateText: order?.pendingCompensateText || patch.pendingCompensateText || '',
-      ...(mergedPendingCompensate ? { pendingCompensate: mergedPendingCompensate } : {}),
-      ...(mergedCompensate ? { compensate: mergedCompensate } : {}),
-    };
+    return this._sideOrdersModule.mergeCompensatePatch(order, patch);
   }
 
   _extractOrderCompensateMapFromTraffic(sessionMeta = {}) {
-    const compensateEntries = this._getOrderTrafficEntries('/latitude/order/orderCompensate', sessionMeta);
-    const compensateMap = {};
-    for (let i = compensateEntries.length - 1; i >= 0; i -= 1) {
-      const requestBody = typeof compensateEntries[i]?.requestBody === 'string'
-        ? this._safeParseJson(compensateEntries[i].requestBody)
-        : compensateEntries[i]?.requestBody;
-      const responseBody = compensateEntries[i]?.responseBody && typeof compensateEntries[i].responseBody === 'object'
-        ? compensateEntries[i].responseBody
-        : this._safeParseJson(compensateEntries[i]?.responseBody);
-      const orderSn = String(requestBody?.orderSn || '').trim();
-      const compensatePatch = this._buildSideOrderCompensatePatch(responseBody?.result || {});
-      if (orderSn && Object.keys(compensatePatch).length && !compensateMap[orderSn]) {
-        compensateMap[orderSn] = compensatePatch;
-      }
-    }
-    return compensateMap;
+    return this._sideOrdersModule.extractOrderCompensateMapFromTraffic(sessionMeta);
   }
 
   _attachOrderCompensateFromTraffic(orders = [], sessionMeta = {}) {
-    const list = Array.isArray(orders) ? orders : [];
-    if (!list.length) return list;
-    const compensateMap = this._extractOrderCompensateMapFromTraffic(sessionMeta);
-    if (!Object.keys(compensateMap).length) return list;
-    return list.map(order => {
-      const orderSn = String(order?.orderId || order?.orderSn || order?.order_sn || '').trim();
-      if (!orderSn || !compensateMap[orderSn]) return order;
-      return this._mergeSideOrderCompensatePatch(order, compensateMap[orderSn]);
-    });
+    return this._sideOrdersModule.attachOrderCompensateFromTraffic(orders, sessionMeta);
   }
 
   _hasAfterSalesContext(sources = []) {
-    if (this._pickDisplayAfterSalesStatus(sources)) return true;
-    const afterSalesId = this._pickRefundText(sources, [
-      'afterSalesSn',
-      'after_sales_sn',
-      'refundSn',
-      'refund_sn',
-      'refundId',
-      'refund_id',
-      'aftersaleId',
-      'aftersale_id',
-      'id',
-    ]);
-    return !!afterSalesId;
+    return this._sideOrdersModule.hasAfterSalesContext(sources);
   }
 
   _extractAfterSalesStatusMapFromTraffic(orderSns = [], sessionMeta = {}) {
-    const validOrderSns = [...new Set((Array.isArray(orderSns) ? orderSns : []).map(item => String(item || '').trim()).filter(Boolean))];
-    if (!validOrderSns.length) return {};
-    const targetSet = new Set(validOrderSns);
-    const detailMap = {};
-    const entries = this._getOrderTrafficEntries('/mercury/chat/afterSales/queryList', sessionMeta);
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
-        ? entries[i].responseBody
-        : this._safeParseJson(entries[i]?.responseBody);
-      const currentMap = this._extractAfterSalesDetailMapFromPayload(responseBody);
-      Object.entries(currentMap).forEach(([orderSn, detail]) => {
-        if (!targetSet.has(String(orderSn)) || detailMap[String(orderSn)]) return;
-        detailMap[String(orderSn)] = detail;
-      });
-      if (validOrderSns.every(orderSn => detailMap[orderSn])) break;
-    }
-    return detailMap;
+    return this._sideOrdersModule.extractAfterSalesStatusMapFromTraffic(orderSns, sessionMeta);
   }
 
   _attachAfterSalesStatusFromTraffic(orders = [], sessionMeta = {}) {
-    const orderSns = orders.map(item => String(item?.orderId || item?.orderSn || '').trim()).filter(Boolean);
-    if (!orderSns.length) return orders;
-    const detailMap = this._extractAfterSalesStatusMapFromTraffic(orderSns, sessionMeta);
-    return orders.map(order => {
-      const orderSn = String(order?.orderId || order?.orderSn || '').trim();
-      const detail = detailMap[orderSn] && typeof detailMap[orderSn] === 'object'
-        ? detailMap[orderSn]
-        : {};
-      return {
-        ...order,
-        ...detail,
-        afterSalesStatus: order?.afterSalesStatus || detail.afterSalesStatus || '',
-      };
-    });
+    return this._sideOrdersModule.attachAfterSalesStatusFromTraffic(orders, sessionMeta);
   }
 
   _extractPersonalOrdersFromTraffic(sessionMeta = {}) {
-    const entries = this._getOrderTrafficEntries('/latitude/order/userAllOrder', sessionMeta);
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
-        ? entries[i].responseBody
-        : this._safeParseJson(entries[i]?.responseBody);
-      const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
-      if (!orders.length) continue;
-      return this._attachOrderCompensateFromTraffic(
-        this._attachAfterSalesStatusFromTraffic(this._dedupeRefundOrders(orders, sessionMeta), sessionMeta),
-        sessionMeta,
-      );
-    }
-    return [];
+    return this._sideOrdersModule.extractPersonalOrdersFromTraffic(sessionMeta);
   }
 
   _extractAftersaleOrdersFromTraffic(sessionMeta = {}) {
-    const entries = this._getOrderTrafficEntries('/latitude/order/userRefundOrder', sessionMeta);
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
-        ? entries[i].responseBody
-        : this._safeParseJson(entries[i]?.responseBody);
-      const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
-      if (!orders.length) continue;
-      return this._attachOrderCompensateFromTraffic(this._dedupeRefundOrders(orders, sessionMeta), sessionMeta);
-    }
-    return [];
+    return this._sideOrdersModule.extractAftersaleOrdersFromTraffic(sessionMeta);
   }
 
   _extractPendingOrdersFromTraffic(sessionMeta = {}) {
-    const entries = this._getOrderTrafficEntries('/latitude/order/userUnfinishedOrder', sessionMeta);
-    let pendingOrders = [];
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const responseBody = entries[i]?.responseBody && typeof entries[i].responseBody === 'object'
-        ? entries[i].responseBody
-        : this._safeParseJson(entries[i]?.responseBody);
-      const orders = Array.isArray(responseBody?.result?.orders) ? responseBody.result.orders : [];
-      if (!orders.length) continue;
-      pendingOrders = orders;
-      break;
-    }
-    if (!pendingOrders.length) return [];
-    return this._attachOrderCompensateFromTraffic(this._dedupeRefundOrders(pendingOrders, sessionMeta), sessionMeta);
+    return this._sideOrdersModule.extractPendingOrdersFromTraffic(sessionMeta);
   }
 
   async getSideOrders(sessionRef, tab = 'personal') {
-    const sessionMeta = this._normalizeSessionMeta(sessionRef);
-    const normalizedTab = ['personal', 'aftersale', 'pending'].includes(String(tab || ''))
-      ? String(tab)
-      : 'personal';
-    if (normalizedTab === 'pending') {
-      let pendingOrders = [];
-      try {
-        const pagePendingOrders = await this._extractPendingOrdersFromPageApis(sessionMeta);
-        if (Array.isArray(pagePendingOrders)) {
-          pendingOrders = pagePendingOrders;
-        }
-      } catch (error) {
-        this._log('[API] 侧栏待支付接口查询失败', { message: error.message });
-      }
-      if (!pendingOrders.length) {
-        pendingOrders = this._extractPendingOrdersFromTraffic(sessionMeta);
-      }
-      if (!Array.isArray(pendingOrders) || !pendingOrders.length) return [];
-      return this._attachOrderCompensateFromTraffic(pendingOrders, sessionMeta)
-        .map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
-    }
-    if (normalizedTab === 'aftersale') {
-      let aftersaleOrders = [];
-      try {
-        const pageOrders = await this._extractAftersaleOrdersFromPageApis(sessionMeta);
-        if (Array.isArray(pageOrders)) {
-          aftersaleOrders = pageOrders;
-        }
-      } catch (error) {
-        this._log('[API] 侧栏售后订单接口查询失败', { message: error.message });
-      }
-      if (!aftersaleOrders.length) {
-        aftersaleOrders = this._extractAftersaleOrdersFromTraffic(sessionMeta);
-      }
-      if (!aftersaleOrders.length) {
-        try {
-          const fallbackOrders = await this._extractRefundOrdersFromPageApis(sessionMeta, {
-            eligibleOnly: false,
-          });
-          if (Array.isArray(fallbackOrders)) {
-            aftersaleOrders = fallbackOrders;
-          }
-        } catch (error) {
-          this._log('[API] 侧栏售后订单回退失败', { message: error.message });
-        }
-      }
-      aftersaleOrders = this._attachOrderCompensateFromTraffic(aftersaleOrders, sessionMeta);
-      return aftersaleOrders
-        .filter(item => this._hasAfterSalesContext(this._buildSideOrderSources(item, sessionMeta)))
-        .map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
-    }
-    let orders = [];
-    try {
-      const pageOrders = await this._extractRefundOrdersFromPageApis(sessionMeta, {
-        eligibleOnly: false,
-      });
-      if (Array.isArray(pageOrders)) {
-        orders = pageOrders;
-      }
-    } catch (error) {
-      this._log('[API] 侧栏订单接口查询失败', { tab: normalizedTab, message: error.message });
-    }
-    if (!orders.length) {
-      orders = this._extractPersonalOrdersFromTraffic(sessionMeta);
-    }
-    if (!orders.length) {
-      try {
-        orders = await this.getRefundOrders(sessionMeta);
-      } catch (error) {
-        this._log('[API] 侧栏订单回退失败', { tab: normalizedTab, message: error.message });
-      }
-    }
-    orders = this._attachOrderCompensateFromTraffic(orders, sessionMeta);
-    const filtered = normalizedTab === 'aftersale'
-      ? orders.filter(item => this._hasAfterSalesContext(this._buildSideOrderSources(item, sessionMeta)))
-      : orders;
-    return filtered.map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
+    return this._sideOrdersModule.getSideOrders(sessionRef, tab);
   }
 
   async getSessionMessages(sessionRef, page = 1, pageSize = 30, options = {}) {

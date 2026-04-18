@@ -20,6 +20,7 @@ const shopProfileParsers = require('./pdd-api/parsers/shop-profile-parsers');
 const orderRemarkParsers = require('./pdd-api/parsers/order-remark-parsers');
 const messageParsers = require('./pdd-api/parsers/message-parsers');
 const sessionParsers = require('./pdd-api/parsers/session-parsers');
+const smallPaymentParsers = require('./pdd-api/parsers/small-payment-parsers');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -175,104 +176,23 @@ class PddApiClient extends EventEmitter {
   }
 
   _analyzeSmallPaymentSubmitTemplate(templateEntry) {
-    const templateBody = this._safeParseJson(templateEntry?.requestBody);
-    if (!templateBody || typeof templateBody !== 'object') {
-      return {
-        ready: false,
-        url: templateEntry?.url || '',
-        keys: [],
-        recognizedCount: 0,
-      };
-    }
-    const orderField = this._findObjectPathByCandidates(templateBody, ['orderSn', 'order_sn']);
-    const amountField = this._findObjectPathByCandidates(templateBody, ['playMoneyAmount', 'play_money_amount', 'amount', 'transferAmount', 'transfer_amount']);
-    const typeField = this._findObjectPathByCandidates(templateBody, ['refundType', 'refund_type', 'payType', 'pay_type', 'transferType', 'transfer_type']);
-    const noteField = this._findObjectPathByCandidates(templateBody, ['remarks', 'remark', 'leaveMessage', 'leave_message', 'message']);
-    const chargeField = this._findObjectPathByCandidates(templateBody, ['chargeType', 'charge_type']);
-    const mobileField = this._findObjectPathByCandidates(templateBody, ['mobile', 'userinfo.mobile', 'currentUserInfo.mobile']);
-    const recognizedFields = {
-      orderField,
-      amountField,
-      typeField,
-      noteField,
-      chargeField,
-      mobileField,
-    };
-    const recognizedCount = Object.values(recognizedFields).filter(Boolean).length;
-    return {
-      ready: true,
-      url: templateEntry?.url || '',
-      keys: this._collectObjectKeyPaths(templateBody).slice(0, 60),
-      recognizedCount,
-      recognizedFields,
-      snapshot: this._cloneJson({
-        orderSn: orderField ? this._readObjectPath(templateBody, orderField) : undefined,
-        amount: amountField ? this._readObjectPath(templateBody, amountField) : undefined,
-        type: typeField ? this._readObjectPath(templateBody, typeField) : undefined,
-        note: noteField ? this._readObjectPath(templateBody, noteField) : undefined,
-        chargeType: chargeField ? this._readObjectPath(templateBody, chargeField) : undefined,
-      }),
-    };
+    return smallPaymentParsers.analyzeSmallPaymentSubmitTemplate(templateEntry);
   }
 
   _isSmallPaymentSubmitBody(body = {}, normalizedOrderSn = '') {
-    if (!body || typeof body !== 'object') return false;
-    const targetOrderSn = String(body?.orderSn || body?.order_sn || '').trim();
-    if (!targetOrderSn) return false;
-    if (normalizedOrderSn && targetOrderSn !== normalizedOrderSn) return false;
-    return [
-      body?.playMoneyAmount,
-      body?.play_money_amount,
-      body?.refundType,
-      body?.refund_type,
-      body?.remarks,
-      body?.remark,
-      body?.leaveMessage,
-      body?.leave_message,
-    ].some(value => value !== undefined && value !== null && value !== '');
+    return smallPaymentParsers.isSmallPaymentSubmitBody(body, normalizedOrderSn);
   }
 
   _normalizeSmallPaymentTemplateLabel(value) {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized) return '';
-    if (['shipping', '补运费'].includes(normalized)) return 'shipping';
-    if (['difference', '补差价'].includes(normalized)) return 'difference';
-    if (['other', '其他', '2'].includes(normalized)) return 'other';
-    return '';
+    return smallPaymentParsers.normalizeSmallPaymentTemplateLabel(value);
   }
 
   _inferSmallPaymentTemplateLabelFromBody(body = {}) {
-    const directMatch = [
-      body?.transferTypeDesc,
-      body?.transfer_type_desc,
-      body?.remarks,
-      body?.remark,
-      body?.leaveMessage,
-      body?.leave_message,
-    ].map(item => this._inferSmallPaymentTypeLabel(item)).find(Boolean);
-    if (directMatch) {
-      return directMatch;
-    }
-    const refundType = body?.refundType ?? body?.refund_type;
-    if (Number(refundType) === 2) {
-      return 'other';
-    }
-    return '';
+    return smallPaymentParsers.inferSmallPaymentTemplateLabelFromBody(body);
   }
 
   _normalizeSmallPaymentTemplateEntry(template) {
-    if (!template || typeof template !== 'object') {
-      return null;
-    }
-    const parsedBody = this._safeParseJson(template?.requestBody);
-    if (!parsedBody || typeof parsedBody !== 'object') {
-      return null;
-    }
-    return {
-      url: template.url || `${PDD_BASE}/mercury/unknown_small_payment_submit`,
-      method: template.method || 'POST',
-      requestBody: JSON.stringify(parsedBody),
-    };
+    return smallPaymentParsers.normalizeSmallPaymentTemplateEntry(template);
   }
 
   _collectPersistedSmallPaymentSubmitTemplates(desiredType = '') {
@@ -280,11 +200,11 @@ class PddApiClient extends EventEmitter {
     if (!persistedTemplate || typeof persistedTemplate !== 'object') {
       return [];
     }
-    const normalizedDesired = this._normalizeSmallPaymentTemplateLabel(desiredType);
+    const normalizedDesired = smallPaymentParsers.normalizeSmallPaymentTemplateLabel(desiredType);
     const candidates = [];
     const seen = new Set();
     const pushCandidate = (template) => {
-      const normalizedTemplate = this._normalizeSmallPaymentTemplateEntry(template);
+      const normalizedTemplate = smallPaymentParsers.normalizeSmallPaymentTemplateEntry(template);
       if (!normalizedTemplate) return;
       const key = `${normalizedTemplate.method}:${normalizedTemplate.url}:${normalizedTemplate.requestBody}`;
       if (seen.has(key)) return;
@@ -306,7 +226,7 @@ class PddApiClient extends EventEmitter {
 
   _getLatestSmallPaymentSubmitTemplate(orderSn = '', options = {}) {
     const normalizedOrderSn = String(orderSn || '').trim();
-    const desiredType = this._normalizeSmallPaymentTemplateLabel(options?.desiredType);
+    const desiredType = smallPaymentParsers.normalizeSmallPaymentTemplateLabel(options?.desiredType);
     const trafficEntries = this._getApiTrafficEntries();
     let fallbackTrafficTemplate = null;
     for (let i = trafficEntries.length - 1; i >= 0; i--) {
@@ -321,14 +241,14 @@ class PddApiClient extends EventEmitter {
       ].some(part => url.includes(part))) {
         continue;
       }
-      const body = this._safeParseJson(entry?.requestBody);
-      if (!this._isSmallPaymentSubmitBody(body, normalizedOrderSn)) {
+      const body = commonParsers.safeParseJson(entry?.requestBody);
+      if (!smallPaymentParsers.isSmallPaymentSubmitBody(body, normalizedOrderSn)) {
         continue;
       }
       if (!fallbackTrafficTemplate) {
         fallbackTrafficTemplate = entry;
       }
-      if (!desiredType || this._inferSmallPaymentTemplateLabelFromBody(body) === desiredType) {
+      if (!desiredType || smallPaymentParsers.inferSmallPaymentTemplateLabelFromBody(body) === desiredType) {
         return entry;
       }
     }
@@ -338,14 +258,14 @@ class PddApiClient extends EventEmitter {
     const persistedCandidates = this._collectPersistedSmallPaymentSubmitTemplates(desiredType);
     let fallbackPersistedTemplate = null;
     for (const template of persistedCandidates) {
-      const persistedBody = this._safeParseJson(template?.requestBody);
-      if (!this._isSmallPaymentSubmitBody(persistedBody, normalizedOrderSn)) {
+      const persistedBody = commonParsers.safeParseJson(template?.requestBody);
+      if (!smallPaymentParsers.isSmallPaymentSubmitBody(persistedBody, normalizedOrderSn)) {
         continue;
       }
       if (!fallbackPersistedTemplate) {
         fallbackPersistedTemplate = template;
       }
-      if (!desiredType || this._inferSmallPaymentTemplateLabelFromBody(persistedBody) === desiredType) {
+      if (!desiredType || smallPaymentParsers.inferSmallPaymentTemplateLabelFromBody(persistedBody) === desiredType) {
         return template;
       }
     }
@@ -3146,113 +3066,23 @@ class PddApiClient extends EventEmitter {
   }
 
   _inferSmallPaymentTypeLabel(text) {
-    const normalized = String(text || '').trim();
-    if (!normalized) return '';
-    if (normalized.includes('补运费')) return 'shipping';
-    if (normalized.includes('补差价')) return 'difference';
-    if (normalized.includes('其他') || normalized.includes('补偿')) return 'other';
-    return '';
+    return smallPaymentParsers.inferSmallPaymentTypeLabel(text);
   }
 
   _resolveSmallPaymentRefundTypeFromTemplate(templateBody, submitTemplateMeta = null) {
-    const snapshotType = submitTemplateMeta?.snapshot?.type;
-    const templateType = snapshotType !== undefined
-      ? snapshotType
-      : this._readObjectPath(templateBody, submitTemplateMeta?.recognizedFields?.typeField);
-    if (!Number.isFinite(Number(templateType))) {
-      return null;
-    }
-    const labelCandidates = [
-      submitTemplateMeta?.snapshot?.note,
-      this._readObjectPath(templateBody, submitTemplateMeta?.recognizedFields?.noteField),
-      templateBody?.transferTypeDesc,
-      templateBody?.transfer_type_desc,
-      templateBody?.remarks,
-      templateBody?.remark,
-    ];
-    const matchedLabel = labelCandidates
-      .map(item => this._inferSmallPaymentTypeLabel(item))
-      .find(Boolean);
-    return {
-      refundType: Math.max(0, Math.round(Number(templateType))),
-      label: matchedLabel || '',
-    };
+    return smallPaymentParsers.resolveSmallPaymentRefundTypeFromTemplate(templateBody, submitTemplateMeta);
   }
 
   _resolveSmallPaymentRefundTypeFromHistory(detailList = [], desiredLabel = '') {
-    const normalizedDesired = String(desiredLabel || '').trim();
-    if (!normalizedDesired || !Array.isArray(detailList)) {
-      return null;
-    }
-    for (const item of detailList) {
-      if (!item || typeof item !== 'object') continue;
-      const refundType = item?.refundType ?? item?.refund_type ?? item?.transferType ?? item?.transfer_type;
-      if (!Number.isFinite(Number(refundType))) continue;
-      const matchedLabel = [
-        item?.transferTypeDesc,
-        item?.transfer_type_desc,
-        item?.remarks,
-        item?.remark,
-      ].map(text => this._inferSmallPaymentTypeLabel(text)).find(Boolean);
-      if (matchedLabel && matchedLabel === normalizedDesired) {
-        return Math.max(0, Math.round(Number(refundType)));
-      }
-    }
-    return null;
+    return smallPaymentParsers.resolveSmallPaymentRefundTypeFromHistory(detailList, desiredLabel);
   }
 
   _normalizeSmallPaymentRefundType(value, options = {}) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return Math.max(0, Math.round(value));
-    }
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized) {
-      throw new Error('缺少打款类型');
-    }
-    if (['0', '1', '2'].includes(normalized)) {
-      return Number(normalized);
-    }
-    if (['other', '其他', '2'].includes(normalized)) {
-      return 2;
-    }
-    const desiredLabel = ['difference', '补差价'].includes(normalized)
-      ? 'difference'
-      : (['shipping', '补运费'].includes(normalized) ? 'shipping' : '');
-    if (desiredLabel) {
-      const templateResolved = this._resolveSmallPaymentRefundTypeFromTemplate(
-        options?.templateBody,
-        options?.submitTemplateMeta
-      );
-      if (templateResolved?.label === desiredLabel && Number.isFinite(Number(templateResolved?.refundType))) {
-        return templateResolved.refundType;
-      }
-      const historyResolved = this._resolveSmallPaymentRefundTypeFromHistory(options?.detailList, desiredLabel);
-      if (Number.isFinite(Number(historyResolved))) {
-        return historyResolved;
-      }
-      throw new Error(`当前尚未捕获“${desiredLabel === 'shipping' ? '补运费' : '补差价'}”的真实 refundType，请先在嵌入网页完成一次该类型打款`);
-    }
-    throw new Error(`暂不支持的打款类型：${value}`);
+    return smallPaymentParsers.normalizeSmallPaymentRefundType(value, options);
   }
 
   _buildSmallPaymentSubmitRequestBody(params = {}) {
-    const templateBody = params?.templateBody && typeof params.templateBody === 'object'
-      ? this._cloneJson(params.templateBody)
-      : {};
-    const recognizedFields = params?.submitTemplateMeta?.recognizedFields || {};
-    const writeField = (path, fallbackKey, value) => {
-      if (path) {
-        this._writeObjectPath(templateBody, path, value);
-      } else {
-        templateBody[fallbackKey] = value;
-      }
-    };
-    writeField(recognizedFields.orderField, 'orderSn', params.orderSn);
-    writeField(recognizedFields.amountField, 'playMoneyAmount', params.playMoneyAmount);
-    writeField(recognizedFields.typeField, 'refundType', params.refundType);
-    writeField(recognizedFields.noteField, 'remarks', params.remarks);
-    writeField(recognizedFields.chargeField, 'chargeType', params.chargeType);
-    return templateBody;
+    return smallPaymentParsers.buildSmallPaymentSubmitRequestBody(params);
   }
 
   async submitSmallPayment(params = {}) {

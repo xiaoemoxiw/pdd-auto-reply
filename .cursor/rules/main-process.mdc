@@ -34,6 +34,25 @@ alwaysApply: false
 - 请求头、Referer、Origin、partition、`X-PDD-Token` 等细节要与当前实现保持一致，不要臆测替换。
 - 解析接口返回时，以真实字段兼容现状为准，延续当前多候选字段回退方式，不要只按理想字段名实现。
 
+## PddApiClient 模块结构
+- `PddApiClient` 已经收薄为 facade，所有公共 IPC API 表面不变，但实现已按业务域拆到 `src/main/pdd-api/modules/` 下。新增逻辑请按所属业务域落到对应模块，不要再把整段实现塞回 `pdd-api.js`。
+- 共享请求基座是 `src/main/pdd-business-api-client.js`，负责 cookie 上下文、`_request`/`_requestRaw`、登录页识别、业务错误归一化、跨域兜底、auth 失效事件等。`PddApiClient` 继承它并仅 override `_buildHeaders`/`_emitAuthExpired` 以保留 chat 链路特有的 Referer 与状态机。`ticket-api` / `invoice-api` / `mail-api` / `deduction-api` / `violation-api` 都基于同一个基座。
+- 当前业务模块清单（构造函数顺序就是依赖顺序）：
+  - `goods-card-module.js`：商品卡片信息
+  - `refund-orders-module.js`：退款单
+  - `small-payment-module.js` + `order-price-module.js`：小额改价 / 订单改价
+  - `invite-order-module.js`：邀请下单
+  - `side-orders-module.js`：侧栏订单
+  - `order-remark-module.js`：订单备注
+  - `message-send-module.js`：消息发送、图片/视频上传、视频素材库
+  - `chat-polling-module.js`：长轮询、首轮预热、`markLatestConversations`
+  - `shop-profile-module.js`：店铺核身（userinfo / 客服资料 / mallInfo / credentialInfo / commonMallInfo 探针）
+  - `chat-sessions-module.js`：会话列表多级回退、按订单号查找会话、`sessionCache` 持有方
+  - `session-init-module.js`：通过隐藏 BrowserWindow 加载 `chat-merchant` 触发 cookie / anti-content / 对话模板抓取
+- 解析层独立在 `src/main/pdd-api/parsers/`：`common-parsers` / `goods-parsers` / `message-parsers` / `session-parsers` / `shop-profile-parsers` / `refund-parsers` / `order-remark-parsers` / `small-payment-parsers`。模块内做接口编排与状态管理，纯解析逻辑落到 parser，便于复用与未来加单测。
+- 业务模块通过构造函数注入 `client`（即 `PddApiClient` 实例）访问共享请求/会话/状态能力。事件仍由 `PddApiClient` 通过 `client.emit('newMessage' / 'sessionUpdated' / 'authExpired' / 'messageSent')` 抛出，外部监听者无需感知模块拆分。
+- `_sessionCache` 已迁到 `chat-sessions-module`，`PddApiClient` 仅保留 `get/set _sessionCache` 访问器，兼容 `main.js` 在页面抓包同步时的直接赋值。`_sessionInited` / `_authExpired` 仍由 `PddApiClient` 持有，作为多个模块共享的标志。
+
 ## 存储规范
 - 本地持久化统一走 `electron-store`，并优先复用 `main.js` 中现有默认结构。
 - 渲染层不要直接操作 store；变更配置时由主进程负责读写和兜底。
@@ -48,3 +67,16 @@ alwaysApply: false
 - 延迟发送、冷却时间、消息去重、轮询缓存等运行时状态优先保持在主进程内存结构中，不随意下放到页面层。
 - 修改去重、轮询或延迟逻辑时，要同时考虑多店铺、多来源消息和重复触发问题。
 - 新增接口页或非嵌入页时，要显式验证 BrowserView 显隐与 `currentView` 是否一致；尤其在窗口重载、异常回退和视图恢复场景下，避免出现左侧导航已切回、右侧仍为空白的状态失配。
+
+## PDD 后台聊天运行时收口（强约束）
+本节沉淀 `docs/pdd-stability-handover.md` 与 `docs/chat-api-stability-handover.md` 的稳定结论。一旦回退，整店掉线问题会立刻复发。
+- 主界面默认视图保持 `shops`，**不**默认进 `chat` / `chat-merchant`；启动后只恢复静态店铺选择，不自动恢复网页会话。
+- `inject-cookies` 不再强制跳到聊天页，只在当前就是嵌入页时重载当前目标页；非嵌入页执行 `switch-shop` 时不再"先 `switchTo()` 再隐藏视图"。
+- `app.on('activate')` 在非嵌入页下不无条件 `switchTo(activeShopId)`。
+- 首次创建嵌入页或隐藏视图时，默认目标 URL 是 `PDD_HOME_URL`（隐藏后改为 `about:blank`），**不**默认落到 `chat-merchant`。
+- 导入/刷新 Token 成功后**不**自动 `switchTo(shopId)` 进入聊天页。
+- 业务接口（`apiGetRefundOrders` / `apiGetSideOrders` / `ticket-api` 等）若仍保留 `requestInPddPage` / `requestViaPddPage` / `ensurePddPageViewReady` 兜底，调用方必须显式带 `allowPageRequest: false`，避免在 `chat-api` 等只读场景被后台链路误触发。
+- 自动回复发送策略保持"接口优先 + DOM 兜底"：只要拿得到 `shopId + sessionRef`，统一走 `sendManualMessage()`；只有拿不到会话标识时才回退到隐藏网页 DOM 发送。**不要**让 `network-monitor` / `embedded-dom` 来源默认退回 DOM 发送。
+- `invoice-api` / `violation-api` / `ticket-api` 等纯接口业务必须基于共享请求基座 `src/main/pdd-business-api-client.js`，统一使用其 `session.fetch`、Cookie/身份头、`Referer`、登录页识别和业务错误归一化；不要再把它们回流到页面请求链。
+- 店铺管理的"探针"按钮与"接口校验"按钮职责分离：探针只做显式触发，**不**并回接口校验；探针类只读校验调用 `ticket-api` 时显式传 `allowPageRequest: false`。
+- 若再次出现整串聊天运行时日志（`/service-market/chat/order-list`、`/chats/getToken`、`wss://m-ws.pinduoduo.com`、`wss://titan-ws.pinduoduo.com`、`/janus/api/heartbeat/v2`、`/plateau/chat/*`），优先怀疑：自动回复回退到了 DOM 发送、或新业务链触发了 `requestViaPddPage()` / `ensurePddPageViewReady()`。

@@ -1,7 +1,7 @@
 'use strict';
 
 const { BrowserWindow } = require('electron');
-const { NetworkMonitor } = require('../../network-monitor');
+const { NetworkMonitor } = require('../../traffic/network-monitor');
 const {
   DEFAULT_PAGE_CHROME_UA,
   normalizePddUserAgent,

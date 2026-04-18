@@ -1,6 +1,6 @@
 const path = require('path');
 const { app } = require('electron');
-const packageJson = require('../../package.json');
+const packageJson = require('../../../package.json');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const REPO_LOG_FOLDER = path.join('artifacts', 'api-traffic');

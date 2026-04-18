@@ -1,7 +1,7 @@
 const {
   createViolationInfoWindow,
   loadViolationInfoUrl
-} = require('./violation-info-window');
+} = require('../windows/violation-info-window');
 const { screen } = require('electron');
 
 function buildViolationInfoUrl(params = {}) {

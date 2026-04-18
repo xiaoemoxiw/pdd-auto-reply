@@ -7,7 +7,7 @@ const {
   goForward,
   reload,
   getViewState
-} = require('./invoice-order-detail-window');
+} = require('../windows/invoice-order-detail-window');
 
 function buildInvoiceOrderDetailUrl(base, params = {}) {
   const orderSn = String(params?.orderSn || params?.order_sn || '').trim();

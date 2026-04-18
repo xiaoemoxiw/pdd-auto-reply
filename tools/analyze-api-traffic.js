@@ -6,8 +6,8 @@ const {
   getApiTrafficLogPath,
   getLegacyApiTrafficIndexPaths,
   getLegacyApiTrafficLogPaths,
-} = require('../src/main/api-traffic-path');
-const { buildTrafficSignature, normalizeTrafficEntry } = require('../src/main/api-traffic-recorder');
+} = require('../src/main/traffic/api-traffic-path');
+const { buildTrafficSignature, normalizeTrafficEntry } = require('../src/main/traffic/api-traffic-recorder');
 
 function parseArgs(argv) {
   return argv.reduce((acc, item) => {

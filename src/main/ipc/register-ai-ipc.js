@@ -1,7 +1,7 @@
 const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
-const { MODEL_SOURCES } = require('./ai-intent');
+const { MODEL_SOURCES } = require('../reply/ai-intent');
 
 function registerAiIpc({
   ipcMain,

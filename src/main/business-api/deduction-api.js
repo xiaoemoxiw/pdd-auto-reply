@@ -1,4 +1,4 @@
-const { PddBusinessApiClient, DEFAULT_PDD_BASE } = require('./pdd-business-api-client');
+const { PddBusinessApiClient, DEFAULT_PDD_BASE } = require('../pdd-business-api-client');
 
 const PDD_BASE = DEFAULT_PDD_BASE;
 const DEFAULT_DELAY_SHIP_URL = `${PDD_BASE}/pg/deduciton_detail/record?msfrom=mms_sidenav`;

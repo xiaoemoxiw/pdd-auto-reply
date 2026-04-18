@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { app, session } = require('electron');
 const { PddApiClient } = require('../src/main/pdd-api');
-const { getApiTrafficLogPath } = require('../src/main/api-traffic-path');
+const { getApiTrafficLogPath } = require('../src/main/traffic/api-traffic-path');
 
 app.setName('多多尾巴');
 

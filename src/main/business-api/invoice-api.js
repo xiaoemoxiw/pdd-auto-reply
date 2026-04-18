@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { getDefaultInvoiceSubmitConfig } = require('./invoice-submit-config');
-const { PddBusinessApiClient } = require('./pdd-business-api-client');
-const { normalizePddUserAgent } = require('./pdd-request-profile');
+const { PddBusinessApiClient } = require('../pdd-business-api-client');
+const { normalizePddUserAgent } = require('../pdd-request-profile');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const DEFAULT_INVOICE_URL = `${PDD_BASE}/invoice/center?msfrom=mms_sidenav&activeKey=0`;

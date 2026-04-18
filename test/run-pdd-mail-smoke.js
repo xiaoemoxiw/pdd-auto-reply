@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { app, session } = require('electron');
-const { MailApiClient } = require('../src/main/mail-api');
+const { MailApiClient } = require('../src/main/business-api/mail-api');
 
 const TOKEN_PATH = path.join(__dirname, 'tokens', 'sample-token.json');
 const SHOP_ID = 'shop_mail_smoke';

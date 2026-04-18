@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { app, session } = require('electron');
-const { InvoiceApiClient } = require('../src/main/invoice-api');
+const { InvoiceApiClient } = require('../src/main/business-api/invoice-api');
 
 const TOKEN_PATH = path.join(__dirname, 'tokens', 'sample-token.json');
 const SHOP_ID = 'shop_invoice_smoke';

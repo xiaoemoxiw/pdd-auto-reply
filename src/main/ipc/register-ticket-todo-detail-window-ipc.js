@@ -7,7 +7,7 @@ const {
   goForward,
   reload,
   getViewState
-} = require('./ticket-todo-detail-window');
+} = require('../windows/ticket-todo-detail-window');
 const { screen } = require('electron');
 
 function buildTicketTodoDetailUrl(params = {}) {

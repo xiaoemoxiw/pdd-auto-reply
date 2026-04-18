@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const { getApiTrafficLogPath, getLegacyApiTrafficLogPaths } = require('../src/main/api-traffic-path');
-const { sanitizeTrafficEntry, sanitizeValue } = require('../src/main/api-traffic-sanitizer');
+const { getApiTrafficLogPath, getLegacyApiTrafficLogPaths } = require('../src/main/traffic/api-traffic-path');
+const { sanitizeTrafficEntry, sanitizeValue } = require('../src/main/traffic/api-traffic-sanitizer');
 
 const DEFAULT_OUTPUT_PATH = path.join(process.cwd(), 'artifacts', 'api-traffic', 'api-traffic-log.redacted.jsonl');
 

@@ -6,8 +6,8 @@ const {
   getApiTrafficLogPath,
   getLegacyApiTrafficIndexPaths,
   getLegacyApiTrafficLogPaths,
-} = require('../src/main/api-traffic-path');
-const { buildTrafficSignature, normalizeTrafficEntry } = require('../src/main/api-traffic-recorder');
+} = require('../src/main/traffic/api-traffic-path');
+const { buildTrafficSignature, normalizeTrafficEntry } = require('../src/main/traffic/api-traffic-recorder');
 
 const DEFAULT_OUTPUT_PATH = path.join(process.cwd(), 'artifacts', 'api-traffic', 'api-traffic-report.md');
 const DOMAIN_ORDER = ['chat', 'violation', 'invoice', 'ticket', 'mail', 'order', 'upload', 'unknown'];

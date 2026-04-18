@@ -4,7 +4,7 @@ const {
   DEFAULT_PAGE_CHROME_UA,
   resolveStoredShopProfile,
   applySessionPddPageProfile
-} = require('./pdd-request-profile');
+} = require('../pdd-request-profile');
 
 const detailWindowContexts = new Map();
 const detailWindowKeyToId = new Map();

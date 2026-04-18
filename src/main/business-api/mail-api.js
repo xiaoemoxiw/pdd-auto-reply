@@ -1,4 +1,4 @@
-const { PddBusinessApiClient, DEFAULT_PDD_BASE } = require('./pdd-business-api-client');
+const { PddBusinessApiClient, DEFAULT_PDD_BASE } = require('../pdd-business-api-client');
 
 const PDD_BASE = DEFAULT_PDD_BASE;
 const DEFAULT_MAIL_URL = `${PDD_BASE}/other/mail/mailList?type=-1&id=441077635572`;

@@ -1,6 +1,6 @@
 const { app } = require('electron');
-const { getApiTrafficIndexPath, getApiTrafficLogPath } = require('../src/main/api-traffic-path');
-const { rebuildApiTrafficIndexFromLog } = require('../src/main/api-traffic-recorder');
+const { getApiTrafficIndexPath, getApiTrafficLogPath } = require('../src/main/traffic/api-traffic-path');
+const { rebuildApiTrafficIndexFromLog } = require('../src/main/traffic/api-traffic-recorder');
 
 async function main() {
   const indexData = rebuildApiTrafficIndexFromLog();

@@ -1,6 +1,6 @@
-const { getOrCreateHardwareId } = require('./license-hardware-id');
-const { verifyLicenseCode, unbindLicenseCode, getClientAuthProfile } = require('./license-service');
-const { getLicenseData, setLicenseData, clearLicenseData, isLicenseValid } = require('./license-store');
+const { getOrCreateHardwareId } = require('../license/license-hardware-id');
+const { verifyLicenseCode, unbindLicenseCode, getClientAuthProfile } = require('../license/license-service');
+const { getLicenseData, setLicenseData, clearLicenseData, isLicenseValid } = require('../license/license-store');
 
 function formatTimestamp() {
   const d = new Date();

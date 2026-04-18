@@ -2,7 +2,7 @@ const { screen } = require('electron');
 const {
   createTicketTodoDetailWindow,
   loadTicketTodoDetailUrl
-} = require('./ticket-todo-detail-window');
+} = require('../windows/ticket-todo-detail-window');
 
 function placeWindowRelativeToMain(mainWindow, win) {
   if (!mainWindow || mainWindow.isDestroyed()) return;

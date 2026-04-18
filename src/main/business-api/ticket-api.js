@@ -1,8 +1,8 @@
 const {
   normalizePddUserAgent,
   applyIdentityHeaders,
-} = require('./pdd-request-profile');
-const { PddBusinessApiClient } = require('./pdd-business-api-client');
+} = require('../pdd-request-profile');
+const { PddBusinessApiClient } = require('../pdd-business-api-client');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;

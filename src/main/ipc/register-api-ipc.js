@@ -1,5 +1,5 @@
 const { shell } = require('electron');
-const chatApiCacheStore = require('./chat-api-cache-store');
+const chatApiCacheStore = require('../chat-api-cache-store');
 
 function registerApiIpc({
   ipcMain,

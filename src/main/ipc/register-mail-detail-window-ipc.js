@@ -7,7 +7,7 @@ const {
   goForward,
   reload,
   getViewState
-} = require('./mail-detail-window');
+} = require('../windows/mail-detail-window');
 
 function buildMailDetailUrl(params = {}) {
   const messageId = String(params?.messageId || params?.id || '').trim();

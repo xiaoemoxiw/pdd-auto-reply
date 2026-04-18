@@ -1,4 +1,4 @@
-const { PddBusinessApiClient } = require('./pdd-business-api-client');
+const { PddBusinessApiClient } = require('../pdd-business-api-client');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const DEFAULT_VIOLATION_URL = `${PDD_BASE}/pg/violation_list/mall_manage?msfrom=mms_sidenav`;

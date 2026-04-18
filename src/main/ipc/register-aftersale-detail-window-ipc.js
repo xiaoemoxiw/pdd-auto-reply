@@ -7,7 +7,7 @@ const {
   goForward,
   reload,
   getViewState
-} = require('./aftersale-detail-window');
+} = require('../windows/aftersale-detail-window');
 
 function buildAfterSaleDetailUrl(params = {}) {
   const instanceId = String(params?.instanceId || '').trim();

@@ -29,6 +29,7 @@ const { InviteOrderModule } = require('./pdd-api/modules/invite-order-module');
 const { SideOrdersModule } = require('./pdd-api/modules/side-orders-module');
 const { OrderRemarkModule } = require('./pdd-api/modules/order-remark-module');
 const { MessageSendModule } = require('./pdd-api/modules/message-send-module');
+const { ChatPollingModule } = require('./pdd-api/modules/chat-polling-module');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -37,8 +38,6 @@ const PDD_UPLOAD_BASES = [
   'https://mms-static-1.pddugc.com',
 ];
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
-const POLL_INTERVAL = 5000;
-const POLL_INTERVAL_IDLE = 15000;
 const PDD_API_MAIN_COOKIE_WHITELIST = [
   'PASS_ID',
   '_nano_fp',
@@ -72,12 +71,8 @@ class PddApiClient extends PddBusinessApiClient {
       enableDeepBusinessErrorScan: true,
       getMainCookieWhitelist: () => PDD_API_MAIN_COOKIE_WHITELIST,
     });
-    this._polling = false;
-    this._pollTimer = null;
     this._sessionInited = false;
     this._serviceProfileCache = null;
-    this._seenMessageIds = new Set();
-    this._pollBootstrapDone = false;
     this._sessionCache = [];
     this._bootstrapTraffic = [];
     this._requestInPddPage = options.requestInPddPage || null;
@@ -93,6 +88,7 @@ class PddApiClient extends PddBusinessApiClient {
     this._sideOrdersModule = new SideOrdersModule(this);
     this._orderRemarkModule = new OrderRemarkModule(this);
     this._messageSendModule = new MessageSendModule(this);
+    this._chatPollingModule = new ChatPollingModule(this);
   }
 
   _getMallId() {
@@ -2538,37 +2534,7 @@ class PddApiClient extends PddBusinessApiClient {
   }
 
   async markLatestConversations(size = 100) {
-    if (!this._sessionInited) {
-      await this.initSession();
-    }
-
-    const latestTraffic = this._findLatestTraffic('/plateau/chat/marked_lastest_conversations');
-    const templateBody = this._safeParseJson(latestTraffic?.requestBody);
-    const antiContent = templateBody?.anti_content || this._getLatestAntiContent();
-    const requestBody = templateBody
-      ? {
-          ...this._cloneJson(templateBody),
-          data: {
-            ...(templateBody.data || {}),
-            request_id: this._nextRequestId(),
-            size,
-          },
-          client: templateBody.client !== undefined && templateBody.client !== null && templateBody.client !== ''
-            ? templateBody.client
-            : this._getLatestClientValue(),
-        }
-      : {
-          data: {
-            cmd: 'marked_lastest_conversations',
-            request_id: this._nextRequestId(),
-            size,
-            anti_content: antiContent,
-          },
-          client: this._getLatestClientValue(),
-          anti_content: antiContent,
-        };
-
-    return this._post('/plateau/chat/marked_lastest_conversations', requestBody);
+    return this._chatPollingModule.markLatestConversations(size);
   }
 
   async testConnection(options = {}) {
@@ -2603,177 +2569,12 @@ class PddApiClient extends PddBusinessApiClient {
     };
   }
 
-  async _pollMessagesForSession(sessionRef, options = {}) {
-    const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
-    // 安全模式：轮询过程中不允许隐式 initSession()，防止后台拉起完整 chat-merchant 运行时
-    const messages = await this.getSessionMessages(sessionMeta.sessionId || sessionRef, 1, 20, { allowInitSession: false });
-    const newMessages = [];
-    const bootstrapOnly = options.bootstrapOnly === true;
-    const emitBootstrapPending = options.emitBootstrapPending === true;
-    const buyerIds = [
-      sessionMeta?.customerId,
-      sessionMeta?.userUid,
-      sessionMeta?.raw?.customer_id,
-      sessionMeta?.raw?.buyer_id,
-      sessionMeta?.raw?.uid,
-      sessionMeta?.raw?.user_info?.uid,
-    ].map(value => String(value || '')).filter(Boolean);
-
-    const pendingBootstrapMessage = bootstrapOnly && emitBootstrapPending
-      ? this._pickPendingBuyerMessage(messages, buyerIds, sessionMeta.raw || sessionMeta)
-      : null;
-    const pendingBootstrapKey = pendingBootstrapMessage
-      ? String(pendingBootstrapMessage.messageId || `${pendingBootstrapMessage.sessionId}|${pendingBootstrapMessage.senderId}|${pendingBootstrapMessage.timestamp}|${pendingBootstrapMessage.content}`)
-      : '';
-
-    for (const item of messages) {
-      const key = item.messageId || `${item.sessionId}|${item.senderId}|${item.timestamp}|${item.content}`;
-      const senderId = String(item.senderId || item?.raw?.from_uid || item?.raw?.sender_id || item?.raw?.from_id || item?.raw?.from?.uid || '');
-      const isBuyerMessage = item.isFromBuyer || (!!senderId && buyerIds.includes(senderId));
-      if (!isBuyerMessage || !item.content || this._seenMessageIds.has(key)) continue;
-      this._seenMessageIds.add(key);
-      if (bootstrapOnly) {
-        if (!emitBootstrapPending || key !== pendingBootstrapKey) continue;
-      }
-      newMessages.push(item);
-    }
-
-    if (this._seenMessageIds.size > 500) {
-      const trimmed = [...this._seenMessageIds].slice(-200);
-      this._seenMessageIds = new Set(trimmed);
-    }
-
-    return newMessages;
-  }
-
   startPolling() {
-    if (this._polling) return;
-    this._polling = true;
-    this._doPoll();
+    this._chatPollingModule.start();
   }
 
   stopPolling() {
-    this._polling = false;
-    if (this._pollTimer) {
-      clearTimeout(this._pollTimer);
-      this._pollTimer = null;
-    }
-  }
-
-  async _doPoll() {
-    if (!this._polling) return;
-
-    try {
-      // 安全模式：轮询读取会话列表时不允许隐式 initSession()，
-      // 首轮若尚未建立会话，走页面抓包缓存回退，避免后台创建隐藏 BrowserWindow 加载 chat-merchant 而掉线
-      const sessions = await this.getSessionList(1, 100, { allowInitSession: false });
-      this.emit('sessionUpdated', sessions);
-
-      const targets = sessions
-        .filter(item => item.sessionId)
-        .sort((a, b) => {
-          const unreadDiff = Number(b.unreadCount || 0) - Number(a.unreadCount || 0);
-          if (unreadDiff !== 0) return unreadDiff;
-          return this._normalizeTimestampMs(b?.lastMessageTime) - this._normalizeTimestampMs(a?.lastMessageTime);
-        })
-        .slice(0, 20);
-
-      if (!this._pollBootstrapDone) {
-        const bootstrapTargets = sessions
-          .filter(item => item.sessionId)
-          .sort((a, b) => this._normalizeTimestampMs(b?.lastMessageTime) - this._normalizeTimestampMs(a?.lastMessageTime));
-        const bootstrapPendingMessages = [];
-        for (const sessionItem of bootstrapTargets) {
-          const seededMessages = await this._pollMessagesForSession(sessionItem, {
-            bootstrapOnly: true,
-            emitBootstrapPending: true,
-          });
-          this._log('[API] Bootstrap检查会话', {
-            sessionId: String(sessionItem?.sessionId || ''),
-            customerName: String(sessionItem?.customerName || '未知客户'),
-            previewText: String(sessionItem?.lastMessage || '').trim(),
-            unreadCount: Number(sessionItem?.unreadCount || 0) || 0,
-            waitTime: Number(sessionItem?.waitTime || 0) || 0,
-            lastMessageActor: String(sessionItem?.lastMessageActor || 'unknown'),
-            pickedPendingText: seededMessages.length
-              ? String(seededMessages[seededMessages.length - 1]?.content || '').trim()
-              : '',
-            willEmitPending: seededMessages.length > 0,
-          });
-          if (seededMessages.length) {
-            bootstrapPendingMessages.push({
-              sessionItem,
-              message: seededMessages[seededMessages.length - 1],
-            });
-          }
-        }
-        this._pollBootstrapDone = true;
-        this._log('[API] 首轮轮询预热完成', {
-          seededSessions: bootstrapTargets.length,
-          pendingSessions: bootstrapPendingMessages.length,
-        });
-        for (const item of bootstrapPendingMessages) {
-          const message = item.message;
-          const sessionItem = item.sessionItem;
-          this.emit('newMessage', {
-            shopId: this.shopId,
-            sessionId: message.sessionId,
-            customer: message.senderName || sessionItem.customerName || '未知客户',
-            customerId: message.senderId || sessionItem.customerId || '',
-            userUid: message.senderId || sessionItem.userUid || sessionItem.customerId || '',
-            session: {
-              ...this._cloneJson(sessionItem),
-              sessionId: message.sessionId || sessionItem.sessionId || '',
-              customerId: message.senderId || sessionItem.customerId || '',
-              userUid: message.senderId || sessionItem.userUid || sessionItem.customerId || '',
-              customerName: message.senderName || sessionItem.customerName || '未知客户',
-            },
-            text: message.content,
-            timestamp: message.timestamp,
-            messageId: message.messageId,
-          });
-        }
-        this._schedulePoll(POLL_INTERVAL);
-        return;
-      }
-
-      for (const sessionItem of targets) {
-        const freshMessages = await this._pollMessagesForSession(sessionItem);
-        for (const message of freshMessages) {
-          this.emit('newMessage', {
-            shopId: this.shopId,
-            sessionId: message.sessionId,
-            customer: message.senderName || sessionItem.customerName || '未知客户',
-            customerId: message.senderId || sessionItem.customerId || '',
-            userUid: message.senderId || sessionItem.userUid || sessionItem.customerId || '',
-            session: {
-              ...this._cloneJson(sessionItem),
-              sessionId: message.sessionId || sessionItem.sessionId || '',
-              customerId: message.senderId || sessionItem.customerId || '',
-              userUid: message.senderId || sessionItem.userUid || sessionItem.customerId || '',
-              customerName: message.senderName || sessionItem.customerName || '未知客户',
-            },
-            text: message.content,
-            timestamp: message.timestamp,
-            messageId: message.messageId,
-          });
-        }
-      }
-
-      this._schedulePoll(POLL_INTERVAL);
-    } catch (error) {
-      if (error.authExpired) {
-        this.stopPolling();
-        return;
-      }
-      this._log(`[API] 轮询失败: ${error.message}`);
-      this._schedulePoll(POLL_INTERVAL_IDLE);
-    }
-  }
-
-  _schedulePoll(delay) {
-    if (!this._polling) return;
-    this._pollTimer = setTimeout(() => this._doPoll(), delay);
+    this._chatPollingModule.stop();
   }
 
   async getTokenStatus() {
@@ -3082,8 +2883,7 @@ class PddApiClient extends PddBusinessApiClient {
   destroy() {
     this.stopPolling();
     this.removeAllListeners();
-    this._seenMessageIds.clear();
-    this._pollBootstrapDone = false;
+    this._chatPollingModule.resetSeenMessages();
     this._sessionCache = [];
   }
 }

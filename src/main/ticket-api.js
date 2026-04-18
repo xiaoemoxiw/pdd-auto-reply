@@ -7,6 +7,7 @@ const { PddBusinessApiClient } = require('./pdd-business-api-client');
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
 const DEFAULT_TICKET_URL = `${PDD_BASE}/aftersales/work_order/list?msfrom=mms_sidenav`;
+const DEFAULT_AFTERSALE_URL = `${PDD_BASE}/aftersales/refund/list?msfrom=mms_sidenav`;
 const TICKET_LIST_URL = '/strickland/sop/mms/todoList';
 const TICKET_DETAIL_URL = '/strickland/sop/mms/detail';
 const TICKET_STATUS_COUNT_URL = '/strickland/sop/mms/statusCount';
@@ -209,6 +210,7 @@ function buildPayloadMeta(payload) {
 class TicketApiClient extends PddBusinessApiClient {
   constructor(shopId, options = {}) {
     const getTicketUrl = options.getTicketUrl || (() => DEFAULT_TICKET_URL);
+    const getAfterSaleUrl = options.getAfterSaleUrl || (() => DEFAULT_AFTERSALE_URL);
     super(shopId, {
       ...options,
       getRefererUrl: getTicketUrl,
@@ -216,10 +218,30 @@ class TicketApiClient extends PddBusinessApiClient {
       loginExpiredMessage: '工单管理页面登录已失效，请重新导入 Token 或刷新登录态'
     });
     this._getTicketUrl = getTicketUrl;
+    this._getAfterSaleUrl = getAfterSaleUrl;
     this._requestInPddPage = typeof options.requestInPddPage === 'function' ? options.requestInPddPage : null;
     this._regionCache = new Map();
     this._shippingCompanyCache = null;
     this._shippingCompanyCacheAt = 0;
+  }
+
+  // mercury 售后接口在服务端会根据 Referer 判断"是否来自售后页"，
+  // strickland 工单 Referer（/aftersales/work_order/list）在它眼里会被当成会话失效，
+  // 所以这里集中判定 mercury / antis 售后域名，让 Referer 切回售后页 URL。
+  _isAfterSalePath(urlPath) {
+    const path = String(urlPath || '');
+    return path.startsWith('/mercury/mms/afterSales/')
+      || path.startsWith('/mercury/after_sales/')
+      || path.startsWith('/mercury/merchant/afterSales/')
+      || path.startsWith('/mercury/negotiate/mms/afterSales/')
+      || path.startsWith('/antis/api/refundAddress/');
+  }
+
+  _resolveRefererForPath(urlPath) {
+    if (this._isAfterSalePath(urlPath)) {
+      return this._getAfterSaleUrl() || DEFAULT_AFTERSALE_URL;
+    }
+    return this._getTicketUrl() || DEFAULT_TICKET_URL;
   }
 
   _findLatestTraffic(urlPart, predicate) {
@@ -247,7 +269,7 @@ class TicketApiClient extends PddBusinessApiClient {
     const csrfToken = pickHeaderCaseInsensitive(trafficHeaders, ['x-csrf-token', 'x-csrftoken', 'x-csrf', 'X-CSRF-Token']);
     const requestedWith = pickHeaderCaseInsensitive(trafficHeaders, ['x-requested-with', 'X-Requested-With']);
     const headers = await super._buildHeaders(urlPart, {
-      Referer: referer || this._getTicketUrl() || DEFAULT_TICKET_URL,
+      Referer: referer || this._resolveRefererForPath(urlPart),
       ...extraHeaders
     });
     if (antiContent) headers['anti-content'] = antiContent;
@@ -273,6 +295,7 @@ class TicketApiClient extends PddBusinessApiClient {
       || urlPath.startsWith('/express_base/')
       || urlPath.startsWith('/express_wbfrontend/')
     );
+    await this._ensureMainCookieContextIfNeeded();
     if (shouldTryPageRequest) {
       try {
         const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
@@ -285,11 +308,13 @@ class TicketApiClient extends PddBusinessApiClient {
         const ua = normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || '');
         if (ua) baseHeaders['user-agent'] = ua;
         applyIdentityHeaders(baseHeaders, tokenInfo);
+        const refererForPath = this._resolveRefererForPath(urlPath);
         const payload = await this._requestInPddPage({
           url,
           method,
           source,
           headers: { ...baseHeaders, ...extraHeaders },
+          referrer: refererForPath,
           body: body === undefined || body === null ? null : (typeof body === 'string' ? body : JSON.stringify(body)),
         });
         if (typeof payload === 'string') {

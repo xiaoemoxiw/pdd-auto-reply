@@ -2745,6 +2745,65 @@
       font-weight: 600;
     }
 
+    .api-session-cache-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      line-height: 16px;
+      color: #8a8f99;
+      background: linear-gradient(180deg, #fafbfd, #f4f6fa);
+      border-bottom: 1px solid #eceef2;
+      max-height: 32px;
+      opacity: 1;
+      transition: opacity .28s ease, max-height .28s ease, padding .28s ease, border-color .28s ease;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .api-session-cache-banner.is-hidden {
+      opacity: 0;
+      max-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      border-bottom-color: transparent;
+      pointer-events: none;
+    }
+
+    .api-cache-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4f73ef;
+      flex-shrink: 0;
+      box-shadow: 0 0 0 0 rgba(79, 115, 239, 0);
+    }
+
+    .api-session-cache-banner.is-refreshing .api-cache-status-dot {
+      animation: api-cache-dot-pulse 1.4s ease-in-out infinite;
+    }
+
+    .api-session-cache-banner.is-fresh .api-cache-status-dot {
+      background: #52c41a;
+    }
+
+    .api-session-cache-banner.is-error .api-cache-status-dot {
+      background: #c9ccd1;
+    }
+
+    .api-cache-status-text {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @keyframes api-cache-dot-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.65); }
+    }
+
     .api-mobile-row {
       padding: 13px 14px;
       background: #f7f8fa;
@@ -7196,6 +7255,10 @@
               <span id="apiSessionSummary">0 条会话</span>
               <span class="api-session-summary-count" id="apiTodoHint">当前没有待处理接口会话</span>
             </div>
+            <div class="api-session-cache-banner is-hidden" id="apiSessionCacheBanner">
+              <span class="api-cache-status-dot"></span>
+              <span class="api-cache-status-text" id="apiSessionCacheText">正在更新</span>
+            </div>
             <div class="api-session-list" id="apiSessionList"></div>
             <div class="api-group-link" id="apiLoadMoreSessions">刷新当前列表 ...</div>
           </div>
@@ -8970,6 +9033,10 @@
     let apiStarredSessions = [];
     let apiLastSessionSelection = undefined;
     let apiLastLoadedSessionScope = '';
+    let apiSessionCacheSavedAt = 0;
+    let apiSessionCacheBannerState = '';
+    let apiSessionCacheBannerHideTimer = null;
+    let apiSessionCacheActive = false;
     const apiGoodsCardCache = new Map();
     const apiGoodsCardPending = new Set();
     let apiSyntheticRefundMessages = [];
@@ -12658,6 +12725,103 @@
       renderApiStatus();
     }
 
+    function formatApiCacheRelativeTime(ms) {
+      const numeric = Number(ms || 0);
+      if (!numeric) return '刚刚';
+      const diff = Date.now() - numeric;
+      if (diff < 0) return '刚刚';
+      if (diff < 30 * 1000) return '刚刚';
+      if (diff < 60 * 60 * 1000) return `${Math.max(1, Math.round(diff / 60000))} 分钟前`;
+      if (diff < 24 * 60 * 60 * 1000) return `${Math.max(1, Math.round(diff / 3600000))} 小时前`;
+      return `${Math.max(1, Math.round(diff / 86400000))} 天前`;
+    }
+
+    function setApiSessionCacheBanner(state) {
+      apiSessionCacheBannerState = state || '';
+      if (apiSessionCacheBannerHideTimer) {
+        clearTimeout(apiSessionCacheBannerHideTimer);
+        apiSessionCacheBannerHideTimer = null;
+      }
+      const banner = document.getElementById('apiSessionCacheBanner');
+      const textEl = document.getElementById('apiSessionCacheText');
+      if (!banner || !textEl) return;
+      banner.classList.remove('is-refreshing', 'is-fresh', 'is-error');
+      if (!state) {
+        banner.classList.add('is-hidden');
+        return;
+      }
+      banner.classList.remove('is-hidden');
+      if (state === 'refreshing') {
+        banner.classList.add('is-refreshing');
+        textEl.textContent = apiSessionCacheSavedAt
+          ? `正在更新 · 上次同步 ${formatApiCacheRelativeTime(apiSessionCacheSavedAt)}`
+          : '正在加载最新会话';
+      } else if (state === 'fresh') {
+        banner.classList.add('is-fresh');
+        textEl.textContent = '已是最新';
+        apiSessionCacheBannerHideTimer = setTimeout(() => setApiSessionCacheBanner(''), 1500);
+      } else if (state === 'error') {
+        banner.classList.add('is-error');
+        textEl.textContent = apiSessionCacheSavedAt
+          ? `更新失败 · 当前显示 ${formatApiCacheRelativeTime(apiSessionCacheSavedAt)} 缓存`
+          : '更新失败';
+      }
+    }
+
+    async function preloadApiSessionsFromCache(scopeShopId) {
+      apiSessionCacheSavedAt = 0;
+      if (!window.pddApi?.apiGetCachedSessions) return false;
+      try {
+        let mergedSavedAt = 0;
+        let mergedItems = [];
+        if (scopeShopId === API_ALL_SHOPS) {
+          const shopIds = Array.from(new Set(
+            (Array.isArray(shops) ? shops : [])
+              .map(item => String(item?.id || '').trim())
+              .filter(Boolean)
+          ));
+          if (!shopIds.length) return false;
+          const results = await Promise.all(shopIds.map(id =>
+            window.pddApi.apiGetCachedSessions({ shopId: id }).catch(() => null)
+          ));
+          results.forEach(entry => {
+            if (!entry || !Array.isArray(entry.sessions) || !entry.sessions.length) return;
+            const savedAt = Number(entry.savedAt || 0);
+            if (savedAt > mergedSavedAt) mergedSavedAt = savedAt;
+            mergedItems = mergedItems.concat(entry.sessions);
+          });
+        } else if (scopeShopId) {
+          const entry = await window.pddApi.apiGetCachedSessions({ shopId: scopeShopId }).catch(() => null);
+          if (entry && Array.isArray(entry.sessions) && entry.sessions.length) {
+            mergedSavedAt = Number(entry.savedAt || 0);
+            mergedItems = entry.sessions;
+          }
+        }
+        if (!mergedItems.length) return false;
+        apiSessionCacheSavedAt = mergedSavedAt;
+        apiSessions = dedupeApiSessions(mergedItems.map(item => buildApiSession(item)));
+        apiLastLoadedSessionScope = scopeShopId;
+        return true;
+      } catch (error) {
+        emitRendererDebug?.('chat-api', 'preloadApiSessionsFromCache failed', { message: error?.message || String(error) });
+        return false;
+      }
+    }
+
+    async function preloadApiMessagesFromCache(shopId, sessionId) {
+      if (!window.pddApi?.apiGetCachedMessages || !shopId || !sessionId) return false;
+      try {
+        const entry = await window.pddApi.apiGetCachedMessages({ shopId, sessionId });
+        if (entry && Array.isArray(entry.messages) && entry.messages.length) {
+          apiMessages = entry.messages;
+          return true;
+        }
+      } catch (error) {
+        emitRendererDebug?.('chat-api', 'preloadApiMessagesFromCache failed', { message: error?.message || String(error) });
+      }
+      return false;
+    }
+
     async function loadApiSessions(options = {}) {
       try {
         if (!options.silentStatus) {
@@ -12811,8 +12975,10 @@
         sessionId: apiActiveSessionId,
         customerName: apiActiveSessionName || sessionDisplayName
       });
+      let usedMessageCache = false;
       if (!preserveMessages) {
         apiMessages = [];
+        usedMessageCache = await preloadApiMessagesFromCache(apiActiveSessionShopId, apiActiveSessionId);
         renderApiMessages();
       }
       if (!options.silentStatus) {
@@ -12831,7 +12997,8 @@
           return;
         }
         if (!Array.isArray(result)) {
-          if (!preserveMessages) {
+          // 拉取失败时优先保留已展示的缓存消息，避免界面变空白
+          if (!preserveMessages && !usedMessageCache && !apiMessages.length) {
             apiMessages = [];
             renderApiMessages();
           }
@@ -13047,6 +13214,23 @@
           && !apiSessionLoadError
           && apiSessions.length > 0
           && apiLastLoadedSessionScope === pollingScope;
+        // 内存里没有会话时，尝试用上次磁盘缓存做"先画一帧再请求"，
+        // 把启动等待感从"白屏几秒"压到"瞬间出列表 + 后台静默刷新"。
+        apiSessionCacheActive = false;
+        if (!reuseCachedSessions && apiSessions.length === 0) {
+          const seeded = await preloadApiSessionsFromCache(pollingScope);
+          if (seeded) {
+            apiSessionCacheActive = true;
+            renderApiSessions();
+            renderApiMessages();
+            setApiSessionCacheBanner('refreshing');
+            recordApiSyncState('使用缓存', `${apiSessions.length} 条会话 · ${formatApiCacheRelativeTime(apiSessionCacheSavedAt)}`);
+          } else {
+            setApiSessionCacheBanner('');
+          }
+        } else {
+          setApiSessionCacheBanner('');
+        }
         recordApiSyncState('加载收藏', '开始读取收藏会话');
         const starredPromise = loadApiStarredSessions()
           .then(() => recordApiSyncState('收藏完成', `收藏数：${apiStarredSessions.length}`))
@@ -13067,6 +13251,10 @@
           renderApiMessages();
         } else {
           sessions = await loadApiSessions({ keepCurrent: options.keepCurrent });
+          if (apiSessionCacheActive) {
+            setApiSessionCacheBanner(apiSessionLoadError ? 'error' : 'fresh');
+            apiSessionCacheActive = false;
+          }
         }
         await Promise.allSettled([starredPromise, tokenStatusPromise, trafficPromise, pollingPromise]);
         renderApiMessages();
@@ -13100,6 +13288,10 @@
         renderApiMessages();
         setApiHint(apiSessionLoadError);
         addLog(`加载客户对话失败: ${apiSessionLoadError}`, 'error');
+        if (apiSessionCacheActive) {
+          setApiSessionCacheBanner('error');
+          apiSessionCacheActive = false;
+        }
       }
     }
 

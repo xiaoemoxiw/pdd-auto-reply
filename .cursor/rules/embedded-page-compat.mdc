@@ -64,3 +64,10 @@ alwaysApply: false
 - 同一店铺：主窗口已登录 → 打开内嵌窗口无需重新登录
 - 打开订单/开票/售后等后台页：不再出现"非 Chrome"拦截弹窗（或至少可正常继续使用）
 - 外部链接仍走系统浏览器，不在内嵌窗口内加载第三方站点
+
+## chat-api 场景下的 BrowserView 边界（强约束）
+本节配合 `chat-api-stability` 使用，专门约束"非聊天页面意外被带起聊天运行时"的链路。
+- `chat-api`（"客户对话（接口对接）"）页面默认**不**自动加载侧栏订单/退款。`renderApiSideOrders()` 不允许在侧栏为空时自动调用 `loadApiSideOrders(tab)`；侧栏只显示提示文案（如"侧栏订单与退款信息已暂停自动加载，请先稳定查看消息"）。
+- 必须由用户显式触发的侧栏加载，调用 `apiGetSideOrders` / `apiGetRefundOrders` 时显式带 `allowPageRequest: false`；否则 `refund-order:page-request` 会再次把后台 `BrowserView` 从 `about:blank` 拉回 `https://mms.pinduoduo.com/chat-merchant/index.html`。
+- 切到非嵌入页时，`hideActiveView()` 不只是 `removeBrowserView`，还要把隐藏页导航到 `about:blank`，避免后台聊天运行时持续保活。如果未来发现仍被保活，再考虑直接销毁 `BrowserView`（需要时重建），不要走"留着但默认不显示"的折中。
+- "嵌入网页聊天"入口已停用：左侧 `客户对话（嵌入网页）` 维持停用态，点击或恢复旧 `chat` 视图时统一跳转 `chat-api`，不要把嵌入聊天页恢复为默认或显式入口。

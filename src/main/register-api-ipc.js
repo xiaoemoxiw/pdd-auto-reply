@@ -1,4 +1,5 @@
 const { shell } = require('electron');
+const chatApiCacheStore = require('./chat-api-cache-store');
 
 function registerApiIpc({
   ipcMain,
@@ -424,15 +425,36 @@ function registerApiIpc({
     try {
       // 允许首次 init：依赖 initSession 内部 sticky 标志，已 init 过的店铺不会重复加载 chat-merchant。
       // polling（_pollMessagesForSession）仍保留 allowInitSession:false，杜绝隐式后台拉起 chat-merchant。
-      return await getApiClient(shopId).getSessionMessages(
+      const result = await getApiClient(shopId).getSessionMessages(
         params.session || params.sessionId,
         params.page || 1,
         params.pageSize || 30,
         { allowInitSession: true }
       );
+      // 仅在第一页成功返回有效列表时落盘，避免分页加载历史时把当前页覆盖进缓存
+      if (Array.isArray(result) && result.length && Number(params.page || 1) === 1) {
+        chatApiCacheStore.scheduleWriteMessages(shopId, String(params.sessionId), result);
+      }
+      return result;
     } catch (error) {
       return { error: error.message };
     }
+  });
+
+  ipcMain.handle('api-get-cached-sessions', (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId || shopId === API_ALL_SHOPS) {
+      // 显示所有店铺时让渲染层自行按已知 shopId 列表调用，避免主进程不必要的合并复杂度
+      return null;
+    }
+    return chatApiCacheStore.readSessions(shopId);
+  });
+
+  ipcMain.handle('api-get-cached-messages', (event, params = {}) => {
+    const shopId = String(params?.shopId || '').trim();
+    const sessionId = String(params?.sessionId || '').trim();
+    if (!shopId || !sessionId) return null;
+    return chatApiCacheStore.readMessages(shopId, sessionId);
   });
 
   ipcMain.handle('api-get-goods-card', async (event, params = {}) => {
@@ -926,7 +948,7 @@ function registerApiIpc({
       const failures = [];
       const contentType = Number(params.contentType ?? -1);
       const hasReadStatus = params.readStatus === 0 || params.readStatus === 1 || params.readStatus === '0' || params.readStatus === '1';
-      const pageSize = Math.max(1, Math.min(50, Number(params.size || params.pageSize || 20)));
+      const pageSize = 50;
       const maxPages = Math.max(1, Math.min(100, Number(params.maxPages || 50)));
       if (!targetShops.length) {
         skippedShops.forEach(shop => {

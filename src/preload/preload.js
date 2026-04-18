@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   apiGetSessions: (params) => ipcRenderer.invoke('api-get-sessions', params),
   apiFindSessionByOrderSn: (params) => ipcRenderer.invoke('api-find-session-by-order-sn', params),
   apiGetMessages: (params) => ipcRenderer.invoke('api-get-messages', params),
+  apiGetCachedSessions: (params) => ipcRenderer.invoke('api-get-cached-sessions', params),
+  apiGetCachedMessages: (params) => ipcRenderer.invoke('api-get-cached-messages', params),
   apiGetGoodsCard: (params) => ipcRenderer.invoke('api-get-goods-card', params),
   apiGetRefundOrders: (params) => ipcRenderer.invoke('api-get-refund-orders', params),
   apiSubmitRefundApply: (params) => ipcRenderer.invoke('api-submit-refund-apply', params),

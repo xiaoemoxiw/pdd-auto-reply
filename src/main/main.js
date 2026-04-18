@@ -22,6 +22,7 @@ const {
   ensureApiTrafficLogReady,
   normalizeTrafficEntry,
 } = require('./api-traffic-recorder');
+const chatApiCacheStore = require('./chat-api-cache-store');
 const { registerAiIpc, autoLoadAiIntentEngine } = require('./register-ai-ipc');
 const { registerShopIpc } = require('./register-shop-ipc');
 const { registerApiIpc } = require('./register-api-ipc');
@@ -612,6 +613,11 @@ function setApiSessionSnapshot(shopId, sessions = [], source = 'runtime') {
   }
   apiSessionStore.set(shopId, normalized);
   sendToDebug('api-session-snapshot', { shopId, count: normalized.length, source });
+  // 持久化到磁盘缓存：仅写真实数据（已过 isSanitizedApiSessionEntry 过滤），
+  // 给下次启动"先画一帧再请求"用。
+  if (source !== 'clear' && normalized.length > 0) {
+    chatApiCacheStore.scheduleWriteSessions(shopId, normalized);
+  }
   return normalized;
 }
 
@@ -1548,6 +1554,26 @@ function getApiClient(shopId) {
       shopId: payload?.shopId || shopId,
     });
     sendToDebug('api-new-message', payload);
+    // 把实时推送的消息追加到该会话的磁盘缓存末尾，下次启动可秒开。
+    try {
+      const cacheShopId = String(payload?.shopId || shopId || '').trim();
+      const cacheSessionId = String(payload?.sessionId || '').trim();
+      if (cacheShopId && cacheSessionId) {
+        chatApiCacheStore.appendIncomingMessage(cacheShopId, cacheSessionId, {
+          id: payload?.messageId || '',
+          messageId: payload?.messageId || '',
+          sessionId: cacheSessionId,
+          timestamp: payload?.timestamp || Date.now(),
+          content: payload?.text || '',
+          senderName: payload?.customer || '',
+          senderId: payload?.customerId || '',
+          isFromBuyer: true,
+          source: 'polling-push',
+        });
+      }
+    } catch (cacheError) {
+      console.warn(`[chat-api-cache] 追加实时消息失败: ${cacheError.message}`);
+    }
     handleNewCustomerMessage({
       message: payload.text,
       customer: payload.customer,
@@ -2082,6 +2108,7 @@ async function requestViaPddPage(shopId, request = {}) {
     method: String(request.method || 'GET').toUpperCase(),
     headers: request.headers && typeof request.headers === 'object' ? request.headers : {},
     body: request.body === undefined ? null : request.body,
+    referrer: typeof request.referrer === 'string' ? request.referrer : '',
   };
   if (!payload.url) {
     throw new Error('缺少页面请求 URL');
@@ -2099,12 +2126,17 @@ async function requestViaPddPage(shopId, request = {}) {
     (async () => {
       const payload = ${JSON.stringify(payload)};
       try {
-        const response = await fetch(payload.url, {
+        const fetchInit = {
           method: payload.method,
           credentials: 'include',
           headers: payload.headers,
           body: payload.body === null ? undefined : payload.body,
-        });
+        };
+        if (payload.referrer) {
+          fetchInit.referrer = payload.referrer;
+          fetchInit.referrerPolicy = 'unsafe-url';
+        }
+        const response = await fetch(payload.url, fetchInit);
         const text = await response.text();
         let data = text;
         try { data = JSON.parse(text); } catch {}
@@ -2151,6 +2183,12 @@ function destroyApiClient(shopId) {
   apiSessionStore.delete(shopId);
   apiPendingRendererSessionUpdates.delete(shopId);
   apiRendererSessionWarmupShops.delete(shopId);
+  // 显式销毁/重置店铺时把磁盘缓存也清掉，避免下次启动展示陌生人的会话。
+  try {
+    chatApiCacheStore.clearShop(shopId);
+  } catch (cacheError) {
+    console.warn(`[chat-api-cache] 清理 ${shopId} 缓存失败: ${cacheError.message}`);
+  }
 }
 
 function getMailApiClient(shopId) {
@@ -2217,6 +2255,9 @@ function getInvoiceApiClient(shopId) {
         all.__global = config;
       }
       store.set('invoiceSubmitApiConfig', all);
+    },
+    refreshMainCookieContext(payload = {}) {
+      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
     }
   });
   invoiceApiClients.set(shopId, client);
@@ -2245,6 +2286,12 @@ function getTicketApiClient(shopId) {
     },
     getTicketUrl() {
       return getPddTicketUrl();
+    },
+    getAfterSaleUrl() {
+      return getPddAfterSaleUrl();
+    },
+    refreshMainCookieContext(payload = {}) {
+      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
     },
     requestInPddPage(request) {
       return requestViaPddPage(shopId, {
@@ -2279,6 +2326,9 @@ function getViolationApiClient(shopId) {
     },
     getViolationUrl() {
       return getPddViolationUrl();
+    },
+    refreshMainCookieContext(payload = {}) {
+      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
     }
   });
   violationApiClients.set(shopId, client);
@@ -2304,6 +2354,9 @@ function getDeductionApiClient(shopId) {
     },
     getApiTraffic() {
       return getApiTraffic(shopId);
+    },
+    refreshMainCookieContext(payload = {}) {
+      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
     }
   });
   deductionApiClients.set(shopId, client);

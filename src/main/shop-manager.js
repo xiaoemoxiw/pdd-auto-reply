@@ -36,6 +36,8 @@ class ShopManager {
     this._shopInfoFetchingShopId = '';
     this._overlayTopOffset = 0;
     this._overlayVisible = false;
+    this._importValidationQueue = [];   // 导入后串行校验队列（concurrency = 1）
+    this._importValidationRunning = false;
   }
 
   // ---- BrowserView 生命周期 ----
@@ -949,7 +951,9 @@ class ShopManager {
           this.mainWindow.webContents.send('shop-added', { shop: createdShop });
         }
       }
-      this.onLog(`[PDD助手] Token 文件已静默导入(不自动建立网页会话、不自动校验接口): ${sourceFileName}, 导入 ${importedShopIds.length || 0} 家店铺`);
+      const validationResult = this.enqueueShopValidationOnImport(importedShopIds);
+      const validationScheduledCount = Number(validationResult?.scheduled || 0);
+      this.onLog(`[PDD助手] Token 文件已导入(不自动建立网页会话): ${sourceFileName}, 导入 ${importedShopIds.length || 0} 家店铺；已排队接口校验 ${validationScheduledCount} 家，按导入顺序逐个校验`);
       return {
         shopId: targetShopId,
         cookieCount: importedShopIds.reduce((sum, shopId) => sum + Number(cookieCountByShopId[shopId] || 0), 0),
@@ -965,8 +969,10 @@ class ShopManager {
         refreshedCount,
         multiShopImport: importedShopIds.length > 1,
         profileRefreshDeferred: !!targetShopId,
-        silentImportOnly: true,
-        apiValidationDeferred: true,
+        silentImportOnly: false,
+        apiValidationDeferred: false,
+        apiValidationScheduled: true,
+        apiValidationScheduledCount: validationScheduledCount,
         mainCookieContextReady: false,
         mainCookieContextError: '',
         mainCookieContext: null,
@@ -1668,6 +1674,80 @@ class ShopManager {
         hasRckk: !!nextShop.mainCookieContextHasRckk
       } : null
     };
+  }
+
+  // 把导入的店铺塞进串行校验队列（concurrency = 1，按入队顺序一家一家跑）。
+  // 入队前先把历史 expired 状态归到 offline（渲染层显示为"待验证"），
+  // 避免导入了新 token 后还显示旧的 Token过期。
+  // fire-and-forget：调用方不需要 await。
+  enqueueShopValidationOnImport(shopIds = []) {
+    const ids = Array.from(new Set(
+      (Array.isArray(shopIds) ? shopIds : [])
+        .map(id => String(id || '').trim())
+        .filter(Boolean)
+    ));
+    if (!ids.length) return { scheduled: 0 };
+    let scheduled = 0;
+    for (const shopId of ids) {
+      this._resetShopForRevalidation(shopId);
+      if (!this._importValidationQueue.includes(shopId)) {
+        this._importValidationQueue.push(shopId);
+        scheduled += 1;
+      }
+    }
+    if (scheduled > 0) {
+      this.onLog(`[PDD助手] 已排队接口校验 ${scheduled} 家店铺，将按导入顺序逐个校验`);
+    }
+    this._runImportValidationLoop().catch(() => {});
+    return { scheduled };
+  }
+
+  // 把店铺重置为"待校验"状态，避免重新导入时残留历史 expired。
+  _resetShopForRevalidation(shopId) {
+    if (!shopId) return;
+    const shops = this.store.get('shops') || [];
+    const shop = shops.find(item => item.id === shopId);
+    if (!shop) return;
+    const patch = {};
+    if (shop.availabilityStatus === 'expired' || shop.status === 'expired') {
+      patch.availabilityStatus = 'offline';
+      patch.status = 'offline';
+    }
+    const infoStatus = shop.shopInfoStatus || '';
+    if (infoStatus === 'failed' || infoStatus === 'expired') {
+      patch.shopInfoStatus = 'pending';
+      patch.shopInfoError = '';
+    }
+    if (Object.keys(patch).length) {
+      this._updateShopInfoState(shopId, patch);
+    }
+  }
+
+  async _runImportValidationLoop() {
+    if (this._importValidationRunning) return;
+    this._importValidationRunning = true;
+    try {
+      while (this._importValidationQueue.length) {
+        const shopId = this._importValidationQueue.shift();
+        if (!shopId) continue;
+        // refreshShopProfile 内部用 _shopInfoFetchingShopId 互斥；
+        // 如果用户正手动跑同名/异名校验，等待短暂后重试同一个 shopId，最多 30 次（约 30s）。
+        let attempts = 0;
+        while (attempts < 30) {
+          let result;
+          try {
+            result = await this.refreshShopProfile(shopId);
+          } catch (error) {
+            result = { success: false, error: error?.message || String(error) };
+          }
+          if (!result?.fetching) break;
+          attempts += 1;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    } finally {
+      this._importValidationRunning = false;
+    }
   }
 
   async safeValidateShops(shopIds = []) {

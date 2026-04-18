@@ -13143,9 +13143,11 @@
           const loginFilterHint = result.hasShopMetadata
             ? `；按 loginStatus 过滤后导入 ${result.importedCount || 0} 家，跳过 ${result.skippedShopCount || 0} 家未登录店铺${result.skippedNoPassCookieCount ? `，另有 ${result.skippedNoPassCookieCount} 家缺少可用 PASS_ID` : ''}`
             : '';
-          const browserWarmupHint = result.silentImportOnly
-            ? '；本次仅静默导入店铺与 PASS_ID，未自动建立网页会话、未自动做接口校验'
-            : '';
+          const browserWarmupHint = result.apiValidationScheduled
+            ? `；已排队接口校验 ${result.apiValidationScheduledCount || result.importedCount || 0} 家店铺，按导入顺序逐个校验（一次一家），可在店铺列表查看进度`
+            : (result.silentImportOnly
+              ? '；本次仅静默导入店铺与 PASS_ID，未自动建立网页会话、未自动做接口校验'
+              : '');
           const successText = result.multiShopImport
             ? `已从文件导入 ${result.importedCount || 0} 家店铺，新增 ${result.createdCount || 0} 家，更新 ${result.refreshedCount || 0} 家，当前共 ${result.shopCount || 0} 家店铺`
             : result.refreshed

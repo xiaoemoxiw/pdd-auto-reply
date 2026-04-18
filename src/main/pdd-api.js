@@ -1,16 +1,9 @@
-const { BrowserWindow, session } = require('electron');
 const crypto = require('crypto');
-const fs = require('fs/promises');
-const path = require('path');
-const { NetworkMonitor } = require('./network-monitor');
 const {
-  DEFAULT_PAGE_CHROME_UA,
   normalizePddUserAgent,
-  isChromeLikeUserAgent,
   getChromeClientHintHeaders,
   applyIdentityHeaders,
   applyCookieContextHeaders,
-  applySessionPddPageProfile
 } = require('./pdd-request-profile');
 const { PddBusinessApiClient } = require('./pdd-business-api-client');
 const commonParsers = require('./pdd-api/parsers/common-parsers');
@@ -30,13 +23,9 @@ const { MessageSendModule } = require('./pdd-api/modules/message-send-module');
 const { ChatPollingModule } = require('./pdd-api/modules/chat-polling-module');
 const { ShopProfileModule } = require('./pdd-api/modules/shop-profile-module');
 const { ChatSessionsModule } = require('./pdd-api/modules/chat-sessions-module');
+const { SessionInitModule } = require('./pdd-api/modules/session-init-module');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
-const PDD_UPLOAD_BASES = [
-  'https://galerie-api.pdd.net',
-  'https://galerie-api.htj.pdd.net',
-  'https://mms-static-1.pddugc.com',
-];
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
 const PDD_API_MAIN_COOKIE_WHITELIST = [
   'PASS_ID',
@@ -89,6 +78,7 @@ class PddApiClient extends PddBusinessApiClient {
     this._chatPollingModule = new ChatPollingModule(this);
     this._shopProfileModule = new ShopProfileModule(this);
     this._chatSessionsModule = new ChatSessionsModule(this);
+    this._sessionInitModule = new SessionInitModule(this);
   }
 
   // _sessionCache 现在由 ChatSessionsModule 持有；保留访问器兼容外部模块
@@ -750,89 +740,7 @@ class PddApiClient extends PddBusinessApiClient {
   }
 
   async initSession(force = false, options = {}) {
-    if (this._sessionInited && !force) return { initialized: true };
-
-    this._authExpired = false;
-    const source = String(options?.source || 'unknown').trim() || 'unknown';
-    const shop = this._getShopInfo();
-    this._log('[API] 会话初始化开始', { force: !!force, source });
-    const cookieNamesBefore = await this._listCookieNames();
-    const win = new BrowserWindow({
-      width: 1200,
-      height: 800,
-      show: false,
-      webPreferences: {
-        partition: this.partition,
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-
-    const bootstrapUserAgent = normalizePddUserAgent(shop?.userAgent || this._getTokenInfo()?.userAgent || '');
-    const bootstrapProfile = applySessionPddPageProfile(win.webContents.session, {
-      userAgent: isChromeLikeUserAgent(bootstrapUserAgent) ? bootstrapUserAgent : DEFAULT_PAGE_CHROME_UA,
-      tokenInfo: this._getTokenInfo(),
-      clientHintsProfile: 'page'
-    });
-    if (bootstrapProfile?.userAgent) {
-      win.webContents.setUserAgent(bootstrapProfile.userAgent);
-    }
-
-    const monitor = new NetworkMonitor(win.webContents, {
-      onApiTraffic: entry => this._appendBootstrapTraffic(entry),
-    });
-    monitor.start();
-
-    try {
-      await win.loadURL(CHAT_URL);
-      let settled = false;
-      // 双判定：URL 跳到 chat-merchant 或 bootstrap 抓到模板/anti_content 任一就绪即提前结束。
-      // 只看 URL 容易在快速通过 chat-merchant 后又因 SPA 路由跳走时一直等到 20s 超时。
-      for (let i = 0; i < 20; i++) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const currentUrl = win.webContents.getURL();
-        if (currentUrl.includes('/login')) break;
-        if (currentUrl.includes('chat-merchant')) {
-          settled = true;
-          break;
-        }
-        const bootstrapStatus = this._getConversationBootstrapStatus();
-        if (bootstrapStatus.ready) {
-          settled = true;
-          break;
-        }
-      }
-
-      const finalUrl = win.webContents.getURL();
-      this._sessionInited = settled;
-      const bootstrapStatus = settled
-        ? await this._waitForConversationBootstrap()
-        : this._getConversationBootstrapStatus();
-      this._log(`[API] 会话初始化${settled ? '成功' : '未完成'}`, { source });
-      if (finalUrl.includes('/login')) {
-        this._emitAuthExpired({
-          errorMsg: '网页登录已失效，请重新登录或重新导入 Token',
-          authState: 'expired',
-          source: 'initSession',
-        });
-      }
-      const cookieNamesAfter = await this._listCookieNames();
-      const mainCookieContext = await this._getMainCookieContextSummary();
-      return {
-        initialized: settled,
-        source,
-        url: finalUrl,
-        cookieNamesBefore,
-        cookieNamesAfter,
-        addedCookieNames: cookieNamesAfter.filter(item => !cookieNamesBefore.includes(item)),
-        userAgentUsed: shop?.userAgent || this._getTokenInfo()?.userAgent || '',
-        bootstrapStatus,
-        mainCookieContext,
-      };
-    } finally {
-      monitor.stop();
-      if (!win.isDestroyed()) win.destroy();
-    }
+    return this._sessionInitModule.initSession(force, options);
   }
 
   async _post(urlPath, body, extraHeaders, options) {

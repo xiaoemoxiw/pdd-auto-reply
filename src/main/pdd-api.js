@@ -23,6 +23,7 @@ const sessionParsers = require('./pdd-api/parsers/session-parsers');
 const smallPaymentParsers = require('./pdd-api/parsers/small-payment-parsers');
 const { GoodsCardModule } = require('./pdd-api/modules/goods-card-module');
 const { RefundOrdersModule } = require('./pdd-api/modules/refund-orders-module');
+const { SmallPaymentModule } = require('./pdd-api/modules/small-payment-module');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -61,6 +62,7 @@ class PddApiClient extends EventEmitter {
     this._refreshMainCookieContext = options.refreshMainCookieContext || null;
     this._goodsCardModule = new GoodsCardModule(this);
     this._refundOrdersModule = new RefundOrdersModule(this);
+    this._smallPaymentModule = new SmallPaymentModule(this);
   }
 
   _log(message, extra) {
@@ -200,80 +202,11 @@ class PddApiClient extends EventEmitter {
   }
 
   _collectPersistedSmallPaymentSubmitTemplates(desiredType = '') {
-    const persistedTemplate = this._getSmallPaymentSubmitTemplate();
-    if (!persistedTemplate || typeof persistedTemplate !== 'object') {
-      return [];
-    }
-    const normalizedDesired = smallPaymentParsers.normalizeSmallPaymentTemplateLabel(desiredType);
-    const candidates = [];
-    const seen = new Set();
-    const pushCandidate = (template) => {
-      const normalizedTemplate = smallPaymentParsers.normalizeSmallPaymentTemplateEntry(template);
-      if (!normalizedTemplate) return;
-      const key = `${normalizedTemplate.method}:${normalizedTemplate.url}:${normalizedTemplate.requestBody}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      candidates.push(normalizedTemplate);
-    };
-    if (persistedTemplate.latest || persistedTemplate.byLabel || persistedTemplate.byRefundType) {
-      if (normalizedDesired) {
-        pushCandidate(persistedTemplate.byLabel?.[normalizedDesired]);
-      }
-      pushCandidate(persistedTemplate.latest);
-      Object.values(persistedTemplate.byLabel || {}).forEach(pushCandidate);
-      Object.values(persistedTemplate.byRefundType || {}).forEach(pushCandidate);
-      return candidates;
-    }
-    pushCandidate(persistedTemplate);
-    return candidates;
+    return this._smallPaymentModule.collectPersistedSubmitTemplates(desiredType);
   }
 
   _getLatestSmallPaymentSubmitTemplate(orderSn = '', options = {}) {
-    const normalizedOrderSn = String(orderSn || '').trim();
-    const desiredType = smallPaymentParsers.normalizeSmallPaymentTemplateLabel(options?.desiredType);
-    const trafficEntries = this._getApiTrafficEntries();
-    let fallbackTrafficTemplate = null;
-    for (let i = trafficEntries.length - 1; i >= 0; i--) {
-      const entry = trafficEntries[i];
-      if (String(entry?.method || 'GET').toUpperCase() !== 'POST') continue;
-      const url = String(entry?.url || '');
-      if (!url.includes('/mercury/')) continue;
-      if ([
-        '/mercury/micro_transfer/detail',
-        '/mercury/micro_transfer/queryTips',
-        '/mercury/play_money/check',
-      ].some(part => url.includes(part))) {
-        continue;
-      }
-      const body = commonParsers.safeParseJson(entry?.requestBody);
-      if (!smallPaymentParsers.isSmallPaymentSubmitBody(body, normalizedOrderSn)) {
-        continue;
-      }
-      if (!fallbackTrafficTemplate) {
-        fallbackTrafficTemplate = entry;
-      }
-      if (!desiredType || smallPaymentParsers.inferSmallPaymentTemplateLabelFromBody(body) === desiredType) {
-        return entry;
-      }
-    }
-    if (fallbackTrafficTemplate) {
-      return fallbackTrafficTemplate;
-    }
-    const persistedCandidates = this._collectPersistedSmallPaymentSubmitTemplates(desiredType);
-    let fallbackPersistedTemplate = null;
-    for (const template of persistedCandidates) {
-      const persistedBody = commonParsers.safeParseJson(template?.requestBody);
-      if (!smallPaymentParsers.isSmallPaymentSubmitBody(persistedBody, normalizedOrderSn)) {
-        continue;
-      }
-      if (!fallbackPersistedTemplate) {
-        fallbackPersistedTemplate = template;
-      }
-      if (!desiredType || smallPaymentParsers.inferSmallPaymentTemplateLabelFromBody(persistedBody) === desiredType) {
-        return template;
-      }
-    }
-    return fallbackPersistedTemplate;
+    return this._smallPaymentModule.getLatestSubmitTemplate(orderSn, options);
   }
 
   _getLatestConversationTrafficEntry() {
@@ -2715,89 +2648,7 @@ class PddApiClient extends EventEmitter {
   }
 
   async getSmallPaymentInfo(params = {}) {
-    const normalizedOrderSn = String(params?.orderSn || params?.order_sn || '').trim();
-    if (!normalizedOrderSn) {
-      throw new Error('缺少订单编号');
-    }
-    const mallId = Number(params?.mallId || params?.mall_id || this._getMallId() || 0);
-    const tipsBody = { orderSn: normalizedOrderSn };
-    if (Number.isFinite(mallId) && mallId > 0) {
-      tipsBody.mallId = mallId;
-    }
-    const [detailPayload, checkPayload, tipsPayload] = await Promise.all([
-      this._requestRefundOrderPageApi('/mercury/micro_transfer/detail', { orderSn: normalizedOrderSn }),
-      this._requestRefundOrderPageApi('/mercury/play_money/check', { orderSn: normalizedOrderSn }),
-      this._requestRefundOrderPageApi('/mercury/micro_transfer/queryTips', tipsBody),
-    ]);
-    const businessError = this._normalizeBusinessError(detailPayload)
-      || this._normalizeBusinessError(checkPayload)
-      || this._normalizeBusinessError(tipsPayload);
-    if (businessError) {
-      throw new Error(businessError.message || '获取小额打款信息失败');
-    }
-    const detailList = Array.isArray(detailPayload?.result) ? detailPayload.result : [];
-    const checkResult = checkPayload?.result && typeof checkPayload.result === 'object' ? checkPayload.result : {};
-    const tipsResult = tipsPayload?.result && typeof tipsPayload.result === 'object' ? tipsPayload.result : {};
-    const freight = tipsResult?.freightDTO && typeof tipsResult.freightDTO === 'object' ? tipsResult.freightDTO : {};
-    const successNum = Math.max(0, Number(freight?.successNum || 0) || 0);
-    const processingNum = Math.max(0, Number(freight?.processingNum || 0) || 0);
-    const waitHandleNum = Math.max(0, Number(freight?.waitHandleNum || 0) || 0);
-    const usedTimes = Math.max(detailList.length, successNum + processingNum + waitHandleNum);
-    const maxTimes = 3;
-    const remainingTimes = Math.max(0, maxTimes - usedTimes);
-    const limitAmountFen = Math.max(0, Number(checkResult?.limitAmount || 0) || 0);
-    const transferCode = String(checkResult?.transferCode || '').trim();
-    const transferDesc = String(checkResult?.transferDesc || '').trim();
-    const desiredType = this._normalizeSmallPaymentTemplateLabel(
-      params?.refundType ?? params?.refund_type ?? params?.type
-    );
-    const submitTemplate = this._getLatestSmallPaymentSubmitTemplate(normalizedOrderSn, {
-      desiredType,
-    });
-    const submitTemplateMeta = this._analyzeSmallPaymentSubmitTemplate(submitTemplate);
-    const tipList = Array.isArray(tipsResult?.tipVOList) ? tipsResult.tipVOList : [];
-    const confirmTipList = Array.isArray(tipsResult?.confirmTipVOList) ? tipsResult.confirmTipVOList : [];
-    const standardTipList = Array.isArray(tipsResult?.standardTipVOList) ? tipsResult.standardTipVOList : [];
-    const collectedTips = [...tipList, ...confirmTipList, ...standardTipList]
-      .map(item => (item && typeof item === 'object')
-        ? String(item.content || item.desc || item.tip || item.text || '').trim()
-        : String(item || '').trim())
-      .filter(Boolean);
-    return {
-      success: true,
-      orderSn: normalizedOrderSn,
-      mallId: Number.isFinite(mallId) && mallId > 0 ? mallId : null,
-      limitAmountFen,
-      limitAmount: limitAmountFen > 0 ? this._formatSideOrderAmount(limitAmountFen).replace(/^¥/, '') : '',
-      transferType: Number.isFinite(Number(checkResult?.transferType)) ? Number(checkResult.transferType) : null,
-      playMoneyPattern: Number.isFinite(Number(checkResult?.playMoneyPattern)) ? Number(checkResult.playMoneyPattern) : null,
-      channel: Number.isFinite(Number(checkResult?.channel)) ? Number(checkResult.channel) : null,
-      needChargePlayMoney: Boolean(checkResult?.needChargePlayMoney),
-      transferCode: transferCode || null,
-      transferDesc: transferDesc || null,
-      canSubmit: limitAmountFen > 0 && remainingTimes > 0 && (!transferCode || Boolean(checkResult?.needChargePlayMoney)),
-      submitTemplateReady: !!submitTemplate,
-      submitTemplateUrl: submitTemplate?.url || '',
-      submitTemplateMeta: submitTemplateMeta.ready ? submitTemplateMeta : null,
-      maxTimes,
-      usedTimes,
-      remainingTimes,
-      history: {
-        successNum,
-        processingNum,
-        waitHandleNum,
-        successAmountFen: Math.max(0, Number(freight?.successTotalAmount || 0) || 0),
-        processingAmountFen: Math.max(0, Number(freight?.processingTotalAmount || 0) || 0),
-        waitHandleAmountFen: Math.max(0, Number(freight?.waitHandleTotalAmount || 0) || 0),
-      },
-      showNotSignedTips: Boolean(tipsResult?.showNotSignedTips),
-      tips: collectedTips,
-      detailList: this._cloneJson(detailList),
-      raw: {
-        check: this._cloneJson(checkResult),
-        tips: this._cloneJson(tipsResult),
-      },
-    };
+    return this._smallPaymentModule.getSmallPaymentInfo(params);
   }
 
   _inferSmallPaymentTypeLabel(text) {
@@ -2821,91 +2672,7 @@ class PddApiClient extends EventEmitter {
   }
 
   async submitSmallPayment(params = {}) {
-    const normalizedOrderSn = String(params?.orderSn || params?.order_sn || '').trim();
-    if (!normalizedOrderSn) {
-      throw new Error('缺少订单编号');
-    }
-    const playMoneyAmount = Number.isFinite(Number(params?.playMoneyAmountFen))
-      ? Math.max(0, Math.round(Number(params.playMoneyAmountFen)))
-      : this._parseOrderPriceYuanToFen(params?.playMoneyAmount || params?.amount);
-    if (!playMoneyAmount) {
-      throw new Error('缺少打款金额');
-    }
-    const remarks = String(params?.remarks ?? params?.remark ?? params?.message ?? '').trim();
-    if (!remarks) {
-      throw new Error('缺少留言内容');
-    }
-    const info = await this.getSmallPaymentInfo({
-      orderSn: normalizedOrderSn,
-      mallId: params?.mallId || params?.mall_id,
-    });
-    if (Number(info?.limitAmountFen || 0) > 0 && playMoneyAmount > Number(info.limitAmountFen || 0)) {
-      throw new Error('打款金额不能超过单次上限');
-    }
-    const submitTemplate = this._getLatestSmallPaymentSubmitTemplate(normalizedOrderSn);
-    if (!submitTemplate) {
-      throw new Error('当前店铺尚未捕获小额打款真实提交模板');
-    }
-    const templateBody = this._safeParseJson(submitTemplate?.requestBody);
-    const submitTemplateMeta = this._analyzeSmallPaymentSubmitTemplate(submitTemplate);
-    const refundType = this._normalizeSmallPaymentRefundType(
-      params?.refundType ?? params?.refund_type ?? params?.type,
-      {
-        detailList: info?.detailList,
-        templateBody,
-        submitTemplateMeta,
-      }
-    );
-    const chargeType = Number.isFinite(Number(params?.chargeType))
-      ? Math.max(0, Math.round(Number(params.chargeType)))
-      : Math.max(0, Number(
-        submitTemplateMeta?.snapshot?.chargeType
-        ?? this._readObjectPath(templateBody, submitTemplateMeta?.recognizedFields?.chargeField)
-        ?? templateBody?.chargeType
-        ?? templateBody?.charge_type
-        ?? info?.channel
-        ?? 4
-      ) || 0);
-    const requestBody = this._buildSmallPaymentSubmitRequestBody({
-      templateBody,
-      submitTemplateMeta,
-      orderSn: normalizedOrderSn,
-      playMoneyAmount,
-      refundType,
-      remarks,
-      chargeType,
-    });
-    this._log('[API] 提交小额打款', {
-      orderSn: normalizedOrderSn,
-      playMoneyAmount,
-      refundType,
-      chargeType,
-      hasRemarks: !!remarks,
-    });
-    const payload = await this._requestRefundOrderPageApi('/mercury/play_money/create', requestBody);
-    const businessError = this._normalizeBusinessError(payload);
-    if (businessError) {
-      const error = new Error(businessError.message || '提交小额打款失败');
-      error.errorCode = businessError.code;
-      error.payload = payload;
-      throw error;
-    }
-    const result = payload?.result && typeof payload.result === 'object' ? payload.result : {};
-    const cashierShortUrl = String(result?.link || '').trim();
-    return {
-      success: true,
-      orderSn: normalizedOrderSn,
-      playMoneyAmount,
-      refundType,
-      chargeType,
-      requestBody: this._cloneJson(requestBody),
-      response: this._cloneJson(payload),
-      chargeSn: String(result?.chargeSn || '').trim(),
-      chargeStatus: Number.isFinite(Number(result?.status)) ? Number(result.status) : null,
-      transferCode: result?.transferCode ?? null,
-      cashierShortUrl,
-      cashierUrl: cashierShortUrl ? `https://mms.pinduoduo.com/cashier/?orderSn=${cashierShortUrl}` : '',
-    };
+    return this._smallPaymentModule.submitSmallPayment(params);
   }
 
   _resolveInviteOrderUid(params = {}) {

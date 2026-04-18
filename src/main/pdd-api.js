@@ -1,6 +1,5 @@
 const { BrowserWindow, session } = require('electron');
 const crypto = require('crypto');
-const { EventEmitter } = require('events');
 const fs = require('fs/promises');
 const path = require('path');
 const { NetworkMonitor } = require('./network-monitor');
@@ -13,6 +12,7 @@ const {
   applyCookieContextHeaders,
   applySessionPddPageProfile
 } = require('./pdd-request-profile');
+const { PddBusinessApiClient } = require('./pdd-business-api-client');
 const commonParsers = require('./pdd-api/parsers/common-parsers');
 const goodsParsers = require('./pdd-api/parsers/goods-parsers');
 const refundParsers = require('./pdd-api/parsers/refund-parsers');
@@ -39,29 +39,52 @@ const PDD_UPLOAD_BASES = [
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
 const POLL_INTERVAL = 5000;
 const POLL_INTERVAL_IDLE = 15000;
-class PddApiClient extends EventEmitter {
+const PDD_API_MAIN_COOKIE_WHITELIST = [
+  'PASS_ID',
+  '_nano_fp',
+  'rckk',
+  'api_uid',
+  '_bee',
+  'ru1k',
+  '_f77',
+  'ru2k',
+  '_a42',
+  'JSESSIONID',
+  'msfe-pc-cookie-captcha-token',
+];
+
+class PddApiClient extends PddBusinessApiClient {
   constructor(shopId, options = {}) {
-    super();
-    this.shopId = shopId;
-    this.partition = `persist:pddv2-${shopId}`;
+    // 通过 super 启用基类的请求/重试/认证管线，PddApiClient 自己只保留 chat 链路
+    // 特有的 header 默认值与 emit 文案。基类继承自 EventEmitter，仍可正常 this.emit。
+    super(shopId, {
+      partition: `persist:pddv2-${shopId}`,
+      baseUrl: PDD_BASE,
+      onLog: options.onLog,
+      getShopInfo: options.getShopInfo,
+      getApiTraffic: options.getApiTraffic,
+      refreshMainCookieContext: options.refreshMainCookieContext,
+      errorLabel: 'API',
+      loginExpiredMessage: '网页登录已失效，请重新登录或重新导入 Token',
+      enableMainCookieContextRetry: true,
+      enableAuthExpiredEvent: true,
+      enableCrossOriginHandling: true,
+      enableDeepBusinessErrorScan: true,
+      getMainCookieWhitelist: () => PDD_API_MAIN_COOKIE_WHITELIST,
+    });
     this._polling = false;
     this._pollTimer = null;
     this._sessionInited = false;
-    this._authExpired = false;
     this._serviceProfileCache = null;
     this._seenMessageIds = new Set();
     this._pollBootstrapDone = false;
     this._sessionCache = [];
     this._bootstrapTraffic = [];
-    this._onLog = options.onLog || (() => {});
-    this._getShopInfo = options.getShopInfo || (() => null);
-    this._getApiTraffic = options.getApiTraffic || (() => []);
     this._requestInPddPage = options.requestInPddPage || null;
     this._executeInPddPage = options.executeInPddPage || null;
     this._getOrderPriceUpdateTemplate = options.getOrderPriceUpdateTemplate || (() => null);
     this._setOrderPriceUpdateTemplate = options.setOrderPriceUpdateTemplate || null;
     this._getSmallPaymentSubmitTemplate = options.getSmallPaymentSubmitTemplate || (() => null);
-    this._refreshMainCookieContext = options.refreshMainCookieContext || null;
     this._goodsCardModule = new GoodsCardModule(this);
     this._refundOrdersModule = new RefundOrdersModule(this);
     this._smallPaymentModule = new SmallPaymentModule(this);
@@ -70,18 +93,6 @@ class PddApiClient extends EventEmitter {
     this._sideOrdersModule = new SideOrdersModule(this);
     this._orderRemarkModule = new OrderRemarkModule(this);
     this._messageSendModule = new MessageSendModule(this);
-  }
-
-  _log(message, extra) {
-    this._onLog(message, extra);
-  }
-
-  _getSession() {
-    return session.fromPartition(this.partition);
-  }
-
-  _getTokenInfo() {
-    return (global.__pddTokens && global.__pddTokens[this.shopId]) || null;
   }
 
   _getMallId() {
@@ -104,16 +115,6 @@ class PddApiClient extends EventEmitter {
     if (this._bootstrapTraffic.length > 200) {
       this._bootstrapTraffic.splice(0, this._bootstrapTraffic.length - 200);
     }
-  }
-
-  _findLatestTraffic(urlPart) {
-    const list = this._getApiTrafficEntries();
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (String(list[i]?.url || '').includes(urlPart)) {
-        return list[i];
-      }
-    }
-    return null;
   }
 
   _safeParseJson(text) {
@@ -643,69 +644,9 @@ class PddApiClient extends EventEmitter {
     return Date.now();
   }
 
-  async _getCookieString() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-  }
-
-  async _listCookieNames() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.map(item => item.name).sort();
-  }
-
-  async _getCookieMap() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.reduce((acc, item) => {
-      acc[item.name] = item.value;
-      return acc;
-    }, {});
-  }
-
-  _getMainCookieWhitelist() {
-    return [
-      'PASS_ID',
-      '_nano_fp',
-      'rckk',
-      'api_uid',
-      '_bee',
-      'ru1k',
-      '_f77',
-      'ru2k',
-      '_a42',
-      'JSESSIONID',
-      'msfe-pc-cookie-captcha-token',
-    ];
-  }
-
-  _serializeCookieMap(cookieMap = {}, cookieNames = []) {
-    return cookieNames
-      .filter(name => name && cookieMap[name] !== undefined && cookieMap[name] !== null && cookieMap[name] !== '')
-      .map(name => `${name}=${cookieMap[name]}`)
-      .join('; ');
-  }
-
-  _buildMainCookieString(cookieMap = {}) {
-    return this._serializeCookieMap(cookieMap, this._getMainCookieWhitelist());
-  }
-
-  async _getMainCookieContextSummary() {
-    const cookieMap = await this._getCookieMap();
-    const cookieNames = Object.keys(cookieMap).sort();
-    const mainCookieString = this._buildMainCookieString(cookieMap);
-    const hasRequiredMainCookies = !!(cookieMap.PASS_ID && cookieMap._nano_fp && cookieMap.rckk);
-    return {
-      hasPassId: !!cookieMap.PASS_ID,
-      hasNanoFp: !!cookieMap._nano_fp,
-      hasRckk: !!cookieMap.rckk,
-      hasVerifyAuthToken: !!cookieMap['msfe-pc-cookie-captcha-token'],
-      hasRequiredMainCookies,
-      usesWhitelistCookieString: !!(mainCookieString && hasRequiredMainCookies),
-      cookieNameCount: cookieNames.length,
-      cookieNames,
-    };
-  }
-
-  async _buildHeaders(extraHeaders = {}) {
+  // 覆盖基类默认值：chat-merchant 链路必须用 CHAT_URL 作 Referer，
+  // 同时保持 accept '*/*' 与 cache-control 'max-age=0'，避免触发 PDD 的内容协商防御。
+  async _buildHeaders(_urlPart, extraHeaders = {}) {
     const tokenInfo = this._getTokenInfo();
     const shop = this._getShopInfo();
     const cookieMap = await this._getCookieMap();
@@ -744,136 +685,11 @@ class PddApiClient extends EventEmitter {
     return headers;
   }
 
-  async _prepareRequestHeaders(extraHeaders = {}, options = {}) {
-    let mainCookieContext = await this._getMainCookieContextSummary();
-    const shop = this._getShopInfo();
-    const shouldEnsureMainCookieContext = shop?.loginMethod === 'token'
-      && options.ensureMainCookieContext !== false
-      && (!mainCookieContext.hasPassId || !mainCookieContext.hasNanoFp || !mainCookieContext.hasRckk);
-    if (shouldEnsureMainCookieContext) {
-      await this._maybeRefreshMainCookieContext('missing-main-cookie-context', {
-        summary: mainCookieContext,
-      });
-      mainCookieContext = await this._getMainCookieContextSummary();
-    }
-    if (!mainCookieContext.hasRequiredMainCookies) {
-      const error = new Error('主站 Cookie 未完整建立');
-      error.mainCookieContext = mainCookieContext;
-      throw error;
-    }
-    const headers = await this._buildHeaders(extraHeaders);
-    return { headers, mainCookieContext };
-  }
-
-  async _maybeRefreshMainCookieContext(reason = 'manual', payload = {}) {
-    if (typeof this._refreshMainCookieContext !== 'function') return null;
-    const shop = this._getShopInfo();
-    if (shop?.loginMethod !== 'token') return null;
-    this._log('[API] 刷新主 Cookie 上下文', {
-      reason,
-      ...(payload && typeof payload === 'object' ? payload : {}),
-    });
-    return this._refreshMainCookieContext({
-      shopId: this.shopId,
-      reason,
-      ...(payload && typeof payload === 'object' ? payload : {}),
-    });
-  }
-
-  _shouldRetryWithMainCookieContextRefresh(error, options = {}) {
-    if (options.mainCookieContextRetried) return false;
-    if (options.disableMainCookieContextRetry === true) return false;
-    if (typeof this._refreshMainCookieContext !== 'function') return false;
-    const shop = this._getShopInfo();
-    if (shop?.loginMethod !== 'token') return false;
-    if (error?.authExpired) return true;
-    const statusCode = Number(error?.statusCode || 0);
-    const errorCode = Number(error?.errorCode || 0);
-    return [401, 403, 419].includes(statusCode) || this._isAuthError(errorCode);
-  }
-
-  _isCrossOriginUrl(urlPath = '') {
-    try {
-      const target = new URL(urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`);
-      const origin = new URL(PDD_BASE);
-      return target.origin !== origin.origin;
-    } catch {
-      return false;
-    }
-  }
-
   _createStepError(step, message, extra = {}) {
     const error = new Error(message);
     error.step = step;
     Object.assign(error, extra);
     return error;
-  }
-
-  _normalizeBusinessError(payload) {
-    const candidates = this._collectBusinessPayloadCandidates(payload);
-    for (const item of candidates) {
-      const error = this._extractBusinessError(item);
-      if (error) return error;
-    }
-    return null;
-  }
-
-  _collectBusinessPayloadCandidates(payload) {
-    if (!payload || typeof payload !== 'object') return [];
-    const queue = [payload];
-    const visited = new Set();
-    const result = [];
-    while (queue.length) {
-      const current = queue.shift();
-      if (!current || typeof current !== 'object' || visited.has(current)) continue;
-      visited.add(current);
-      result.push(current);
-      ['result', 'data', 'response'].forEach(key => {
-        if (current[key] && typeof current[key] === 'object') {
-          queue.push(current[key]);
-        }
-      });
-    }
-    return result;
-  }
-
-  _extractBusinessError(payload) {
-    if (!payload || typeof payload !== 'object') return null;
-    const message = payload.error_msg || payload.errorMsg || payload.message || payload.msg || '';
-    const successCodes = new Set([0, 200, 1000000]);
-    if (payload.success === false || payload.ok === false) {
-      return {
-        code: payload.error_code || payload.code || payload.err_no || payload.errno || '',
-        message: message || 'API 请求失败',
-      };
-    }
-    const explicitCode = payload.error_code ?? payload.err_no ?? payload.errno ?? payload.biz_code;
-    if (
-      explicitCode !== undefined
-      && explicitCode !== null
-      && explicitCode !== ''
-      && !successCodes.has(Number(explicitCode))
-    ) {
-      return {
-        code: explicitCode,
-        message: message || 'API 请求失败',
-      };
-    }
-    const genericCode = payload.code;
-    if (
-      genericCode !== undefined
-      && genericCode !== null
-      && genericCode !== ''
-      && Number.isFinite(Number(genericCode))
-      && !successCodes.has(Number(genericCode))
-      && message
-    ) {
-      return {
-        code: genericCode,
-        message,
-      };
-    }
-    return null;
   }
 
   _isInviteOrderTemplateMessage(item = {}) {
@@ -916,10 +732,6 @@ class PddApiClient extends EventEmitter {
     return this._refundOrdersModule.confirmRefundApplyConversationMessage(sessionRef, options);
   }
 
-  _isAuthError(code) {
-    return [40001, 43001, 43002].includes(Number(code));
-  }
-
   _emitAuthExpired(payload = {}) {
     this._authExpired = true;
     this.emit('authExpired', {
@@ -929,22 +741,6 @@ class PddApiClient extends EventEmitter {
       authState: payload.authState || 'expired',
       source: payload.source || 'request',
     });
-  }
-
-  _markAuthExpired(error, payload = {}) {
-    error.authExpired = true;
-    error.authState = payload.authState || 'expired';
-    this._emitAuthExpired(payload);
-    return error;
-  }
-
-  _isLoginPageResponse(response, text) {
-    const finalUrl = String(response?.url || '');
-    if (finalUrl.includes('/login')) return true;
-    const contentType = String(response?.headers?.get('content-type') || '').toLowerCase();
-    if (!contentType.includes('text/html')) return false;
-    const snippet = typeof text === 'string' ? text.slice(0, 800).toLowerCase() : '';
-    return snippet.includes('登录') || snippet.includes('login') || snippet.includes('passport') || snippet.includes('扫码');
   }
 
   async initSession(force = false, options = {}) {
@@ -1030,243 +826,6 @@ class PddApiClient extends EventEmitter {
     } finally {
       monitor.stop();
       if (!win.isDestroyed()) win.destroy();
-    }
-  }
-
-  async _request(method, urlPath, body, extraHeaders = {}, options = {}) {
-    const attempt = async (attemptOptions = {}) => {
-      const suppressAuthExpired = attemptOptions.suppressAuthExpired === undefined
-        ? !!options.suppressAuthExpired
-        : !!attemptOptions.suppressAuthExpired;
-      const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-      const { headers } = await this._prepareRequestHeaders(extraHeaders, attemptOptions);
-      const shop = this._getShopInfo();
-      if (shop?.loginMethod === 'token' && !headers['X-PDD-Token']) {
-        const error = new Error('当前店铺未恢复 Token，请重新导入 Token');
-        if (suppressAuthExpired) {
-          error.authExpired = true;
-          error.authState = 'token_missing';
-          throw error;
-        }
-        throw this._markAuthExpired(error, {
-          errorMsg: error.message,
-          authState: 'token_missing',
-          source: 'missing-token',
-        });
-      }
-      const requestOptions = { method, headers };
-
-      if (body !== undefined && body !== null) {
-        requestOptions.body = typeof body === 'string' ? body : JSON.stringify(body);
-      }
-
-      const response = await this._getSession().fetch(url, requestOptions);
-      const text = await response.text();
-      this._log(`[API] ${method} ${url} -> ${response.status}`);
-
-      let payload = text;
-      try {
-        payload = JSON.parse(text);
-      } catch {}
-
-      if (this._isLoginPageResponse(response, text)) {
-        const error = new Error('网页登录已失效，请重新登录或重新导入 Token');
-        error.statusCode = response.status;
-        error.payload = payload;
-        if (suppressAuthExpired) {
-          error.authExpired = true;
-          error.authState = 'expired';
-          throw error;
-        }
-        throw this._markAuthExpired(error, {
-          statusCode: response.status,
-          errorMsg: error.message,
-          authState: 'expired',
-          source: 'login-page',
-        });
-      }
-
-      if (!response.ok) {
-        const message = typeof payload === 'object'
-          ? payload?.error_msg || payload?.message || `HTTP ${response.status}`
-          : `HTTP ${response.status}: ${String(text).slice(0, 200)}`;
-        const error = new Error(message);
-        error.statusCode = response.status;
-        error.payload = payload;
-        if ([401, 403, 419].includes(Number(response.status))) {
-          if (suppressAuthExpired) {
-            error.authExpired = true;
-            error.authState = 'expired';
-            throw error;
-          }
-          throw this._markAuthExpired(error, {
-            statusCode: response.status,
-            errorMsg: message,
-            authState: 'expired',
-            source: 'http-status',
-          });
-        }
-        throw error;
-      }
-
-      const businessError = this._normalizeBusinessError(payload);
-      if (businessError) {
-        const error = new Error(businessError.message);
-        error.errorCode = businessError.code;
-        error.payload = payload;
-        if (this._isAuthError(businessError.code)) {
-          if (suppressAuthExpired) {
-            error.authExpired = true;
-            error.authState = 'expired';
-            throw error;
-          }
-          throw this._markAuthExpired(error, {
-            errorCode: businessError.code,
-            errorMsg: businessError.message,
-            authState: 'expired',
-            source: 'business-code',
-          });
-        }
-        throw error;
-      }
-
-      this._authExpired = false;
-      return payload;
-    };
-
-    try {
-      const shop = this._getShopInfo();
-      const deferAuthExpired = typeof this._refreshMainCookieContext === 'function' && shop?.loginMethod === 'token';
-      return await attempt({
-        ensureMainCookieContext: options.ensureMainCookieContext !== false,
-        mainCookieContextRetried: false,
-        suppressAuthExpired: deferAuthExpired ? true : options.suppressAuthExpired,
-      });
-    } catch (error) {
-      if (!this._shouldRetryWithMainCookieContextRefresh(error, options)) {
-        throw error;
-      }
-      await this._maybeRefreshMainCookieContext('request-auth-retry', {
-        urlPath,
-        method,
-        statusCode: Number(error?.statusCode || 0),
-        errorCode: Number(error?.errorCode || 0),
-      });
-      return attempt({
-        ensureMainCookieContext: options.ensureMainCookieContext !== false,
-        mainCookieContextRetried: true,
-        suppressAuthExpired: options.suppressAuthExpired,
-      });
-    }
-  }
-
-  async _requestRaw(method, urlPath, body, extraHeaders = {}, options = {}) {
-    const attempt = async (attemptOptions = {}) => {
-      const suppressAuthExpired = attemptOptions.suppressAuthExpired === undefined
-        ? !!options.suppressAuthExpired
-        : !!attemptOptions.suppressAuthExpired;
-      const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-      const { headers } = await this._prepareRequestHeaders(extraHeaders, attemptOptions);
-      const isCrossOrigin = this._isCrossOriginUrl(url);
-      if (isCrossOrigin) {
-        delete headers.cookie;
-        delete headers.pddid;
-        delete headers.etag;
-        delete headers['sec-fetch-site'];
-        headers['sec-fetch-site'] = 'cross-site';
-      }
-      const shop = this._getShopInfo();
-      if (shop?.loginMethod === 'token' && !headers['X-PDD-Token']) {
-        const error = new Error('当前店铺未恢复 Token，请重新导入 Token');
-        if (suppressAuthExpired) {
-          error.authExpired = true;
-          error.authState = 'token_missing';
-          throw error;
-        }
-        throw this._markAuthExpired(error, {
-          errorMsg: error.message,
-          authState: 'token_missing',
-          source: 'missing-token',
-        });
-      }
-      const requestOptions = { method, headers };
-      if (body instanceof FormData) {
-        delete requestOptions.headers['content-type'];
-        delete requestOptions.headers['Content-Type'];
-      }
-      if (body !== undefined && body !== null) {
-        requestOptions.body = body;
-      }
-      const response = await this._getSession().fetch(url, requestOptions);
-      const text = await response.text();
-      this._log(`[API] ${method} ${url} -> ${response.status}`);
-
-      let payload = text;
-      try {
-        payload = JSON.parse(text);
-      } catch {}
-
-      if (this._isLoginPageResponse(response, text)) {
-        const error = new Error('网页登录已失效，请重新登录或重新导入 Token');
-        error.statusCode = response.status;
-        error.payload = payload;
-        if (suppressAuthExpired) {
-          error.authExpired = true;
-          error.authState = 'expired';
-          throw error;
-        }
-        throw this._markAuthExpired(error, {
-          statusCode: response.status,
-          errorMsg: error.message,
-          authState: 'expired',
-          source: 'login-page',
-        });
-      }
-
-      if (!response.ok) {
-        const message = typeof payload === 'object'
-          ? payload?.error_msg || payload?.message || `HTTP ${response.status}`
-          : `HTTP ${response.status}: ${String(text).slice(0, 200)}`;
-        const error = new Error(message);
-        error.statusCode = response.status;
-        error.payload = payload;
-        throw error;
-      }
-
-      const businessError = this._normalizeBusinessError(payload);
-      if (businessError) {
-        const error = new Error(businessError.message);
-        error.errorCode = businessError.code;
-        error.payload = payload;
-        throw error;
-      }
-
-      return payload;
-    };
-
-    try {
-      const shop = this._getShopInfo();
-      const deferAuthExpired = typeof this._refreshMainCookieContext === 'function' && shop?.loginMethod === 'token';
-      return await attempt({
-        ensureMainCookieContext: true,
-        mainCookieContextRetried: false,
-        suppressAuthExpired: deferAuthExpired ? true : options.suppressAuthExpired,
-      });
-    } catch (error) {
-      if (!this._shouldRetryWithMainCookieContextRefresh(error, options)) {
-        throw error;
-      }
-      await this._maybeRefreshMainCookieContext('request-raw-auth-retry', {
-        urlPath,
-        method,
-        statusCode: Number(error?.statusCode || 0),
-        errorCode: Number(error?.errorCode || 0),
-      });
-      return attempt({
-        ensureMainCookieContext: true,
-        mainCookieContextRetried: true,
-        suppressAuthExpired: options.suppressAuthExpired,
-      });
     }
   }
 
@@ -3336,13 +2895,13 @@ class PddApiClient extends EventEmitter {
     let prepareError = '';
 
     try {
-      const prepared = await this._prepareRequestHeaders(requestHeaders, {
+      const prepared = await this._prepareRequestHeaders(undefined, requestHeaders, {
         ensureMainCookieContext: false,
       });
       preparedHeaders = this._summarizePreparedHeaders(prepared.headers);
     } catch (error) {
       prepareError = error?.message || String(error);
-      const fallbackHeaders = await this._buildHeaders(requestHeaders);
+      const fallbackHeaders = await this._buildHeaders(undefined, requestHeaders);
       preparedHeaders = this._summarizePreparedHeaders(fallbackHeaders);
     }
 

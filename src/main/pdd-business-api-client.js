@@ -1,4 +1,5 @@
 const { session } = require('electron');
+const EventEmitter = require('events');
 const {
   normalizePddUserAgent,
   getChromeClientHintHeaders,
@@ -9,8 +10,12 @@ const {
 const DEFAULT_PDD_BASE = 'https://mms.pinduoduo.com';
 const DEFAULT_AUTH_ERROR_CODES = [40001, 43001, 43002];
 
-class PddBusinessApiClient {
+// 业务接口基类，所有 PDD 业务（chat、ticket、invoice、deduction、mail、violation、refund 等）
+// 通过继承获得统一的请求管线、cookie 注水、登录态判定与 auth 失效事件能力。
+// 同时继承 EventEmitter 以便子类（如 PddApiClient）按需发送 authExpired 等事件。
+class PddBusinessApiClient extends EventEmitter {
   constructor(shopId, options = {}) {
+    super();
     this.shopId = shopId;
     this.partition = options.partition || `persist:pddv2-${shopId}`;
     this._baseUrl = options.baseUrl || DEFAULT_PDD_BASE;

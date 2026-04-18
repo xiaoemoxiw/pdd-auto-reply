@@ -253,7 +253,7 @@ class PddBusinessApiClient {
       'sec-fetch-mode': 'cors',
       'sec-fetch-site': 'same-origin',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
-      Referer: trafficHeaders.Referer || this._getRefererUrl() || this._baseUrl,
+      Referer: trafficHeaders.Referer || this._getRefererUrl(urlPart) || this._baseUrl,
       Origin: this._baseUrl,
       ...extraHeaders,
     };

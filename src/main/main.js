@@ -2174,6 +2174,9 @@ function getMailApiClient(shopId) {
     },
     getMailUrl() {
       return getPddMailUrl();
+    },
+    refreshMainCookieContext(payload = {}) {
+      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
     }
   });
   mailApiClients.set(shopId, client);

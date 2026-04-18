@@ -1,12 +1,6 @@
-const { session } = require('electron');
-const {
-  normalizePddUserAgent,
-  getChromeClientHintHeaders,
-  applyIdentityHeaders,
-  applyCookieContextHeaders
-} = require('./pdd-request-profile');
+const { PddBusinessApiClient, DEFAULT_PDD_BASE } = require('./pdd-business-api-client');
 
-const PDD_BASE = 'https://mms.pinduoduo.com';
+const PDD_BASE = DEFAULT_PDD_BASE;
 const DEFAULT_DELAY_SHIP_URL = `${PDD_BASE}/pg/deduciton_detail/record?msfrom=mms_sidenav`;
 const DEFAULT_OUT_OF_STOCK_URL = `${PDD_BASE}/pg/deduciton_detail/stock`;
 const DEFAULT_FAKE_SHIP_TRACK_URL = `${PDD_BASE}/pg/deduciton_detail/fake`;
@@ -47,40 +41,35 @@ function parseTimeToMs(value) {
   return Number.isNaN(ms) ? 0 : ms;
 }
 
-class DeductionApiClient {
+class DeductionApiClient extends PddBusinessApiClient {
   constructor(shopId, options = {}) {
-    this.shopId = shopId;
-    this.partition = `persist:pddv2-${shopId}`;
-    this._onLog = options.onLog || (() => {});
-    this._getShopInfo = options.getShopInfo || (() => null);
-    this._getApiTraffic = options.getApiTraffic || (() => []);
+    super(shopId, {
+      ...options,
+      errorLabel: '扣款接口',
+      loginExpiredMessage: '扣款页面登录已失效，请重新导入 Token 或刷新登录态',
+      // 扣款相关三个 tab 各自有专属落地页 referer，需要按 urlPart 动态选择。
+      getRefererUrl: (urlPart) => DeductionApiClient._resolveDefaultReferer(urlPart),
+    });
   }
 
-  _log(message, extra) {
-    this._onLog(message, extra);
-  }
-
-  _getSession() {
-    return session.fromPartition(this.partition);
-  }
-
-  _getTokenInfo() {
-    return (global.__pddTokens && global.__pddTokens[this.shopId]) || null;
-  }
-
-  _getApiTrafficEntries() {
-    const list = this._getApiTraffic();
-    return Array.isArray(list) ? list : [];
-  }
-
-  _findLatestTraffic(urlPart) {
-    const list = this._getApiTrafficEntries();
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (String(list[i]?.url || '').includes(urlPart)) {
-        return list[i];
-      }
+  static _resolveDefaultReferer(urlPart) {
+    const path = String(urlPart || '');
+    if (path.includes(OUT_OF_STOCK_LIST_URL) || path.includes('/deduciton_detail/stock')) {
+      return DEFAULT_OUT_OF_STOCK_URL;
     }
-    return null;
+    if (path.includes(FAKE_SHIP_TRACK_LIST_URL) || path.includes('/deduciton_detail/fake')) {
+      return DEFAULT_FAKE_SHIP_TRACK_URL;
+    }
+    return DEFAULT_DELAY_SHIP_URL;
+  }
+
+  // 仅在 user-agent 为空时回填默认 UA，避免 deduction 后端拒空 UA；其余字段全部走基座默认。
+  async _buildHeaders(urlPart, extraHeaders = {}) {
+    const headers = await super._buildHeaders(urlPart, extraHeaders);
+    if (!headers['user-agent']) {
+      headers['user-agent'] = DEFAULT_UA;
+    }
+    return headers;
   }
 
   _getTrafficRequestBody(urlPart) {
@@ -88,116 +77,6 @@ class DeductionApiClient {
     if (isPlainObject(requestBody)) return { ...requestBody };
     const parsed = parseJsonSafely(requestBody);
     return isPlainObject(parsed) ? parsed : null;
-  }
-
-  async _getCookieString() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-  }
-
-  async _getCookieMap() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.reduce((acc, item) => {
-      acc[item.name] = item.value;
-      return acc;
-    }, {});
-  }
-
-  _getDefaultReferer(urlPart) {
-    if (String(urlPart || '').includes(OUT_OF_STOCK_LIST_URL) || String(urlPart || '').includes('/deduciton_detail/stock')) {
-      return DEFAULT_OUT_OF_STOCK_URL;
-    }
-    if (String(urlPart || '').includes(FAKE_SHIP_TRACK_LIST_URL) || String(urlPart || '').includes('/deduciton_detail/fake')) {
-      return DEFAULT_FAKE_SHIP_TRACK_URL;
-    }
-    return DEFAULT_DELAY_SHIP_URL;
-  }
-
-  async _buildHeaders(urlPart, extraHeaders = {}) {
-    const tokenInfo = this._getTokenInfo();
-    const shop = this._getShopInfo();
-    const cookie = await this._getCookieString();
-    const cookieMap = await this._getCookieMap();
-    const trafficHeaders = this._findLatestTraffic(urlPart)?.requestHeaders || {};
-    const headers = {
-      accept: 'application/json, text/plain, */*',
-      'accept-language': 'zh-CN,zh;q=0.9',
-      'accept-encoding': 'gzip, deflate, br',
-      'cache-control': 'no-cache',
-      'content-type': 'application/json',
-      ...getChromeClientHintHeaders('api'),
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      Referer: trafficHeaders.Referer || this._getDefaultReferer(urlPart),
-      Origin: PDD_BASE,
-      ...extraHeaders,
-    };
-    if (cookie) headers.cookie = cookie;
-    const ua = normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || '');
-    headers['user-agent'] = ua || DEFAULT_UA;
-    applyIdentityHeaders(headers, tokenInfo);
-    applyCookieContextHeaders(headers, cookieMap);
-    return headers;
-  }
-
-  _parsePayload(text) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-
-  _normalizeBusinessError(payload, fallbackMessage) {
-    if (!payload || typeof payload !== 'object') return null;
-    const success = payload.success;
-    const errorCode = Number(payload.error_code ?? payload.errorCode ?? payload.code ?? 0);
-    if (success === false || (errorCode && errorCode !== 1000000)) {
-      return {
-        code: errorCode,
-        message: payload.error_msg || payload.errorMsg || payload.message || fallbackMessage || '扣款接口失败',
-      };
-    }
-    return null;
-  }
-
-  _isLoginPageResponse(response, text) {
-    const finalUrl = String(response?.url || '');
-    if (finalUrl.includes('/login')) return true;
-    const contentType = String(response?.headers?.get('content-type') || '').toLowerCase();
-    if (!contentType.includes('text/html')) return false;
-    const snippet = typeof text === 'string' ? text.slice(0, 900).toLowerCase() : '';
-    return snippet.includes('登录') || snippet.includes('login') || snippet.includes('passport') || snippet.includes('扫码');
-  }
-
-  async _request(method, urlPath, body, extraHeaders = {}) {
-    const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-    const headers = await this._buildHeaders(urlPath, extraHeaders);
-    const options = { method, headers };
-    if (body !== undefined && body !== null) {
-      options.body = typeof body === 'string' ? body : JSON.stringify(body);
-    }
-    const response = await this._getSession().fetch(url, options);
-    const text = await response.text();
-    const payload = this._parsePayload(text);
-    this._log(`[扣款接口] ${method} ${urlPath} -> ${response.status}`);
-    if (this._isLoginPageResponse(response, text)) {
-      throw new Error('扣款页面登录已失效，请重新导入 Token 或刷新登录态');
-    }
-    if (!response.ok) {
-      throw new Error(typeof payload === 'object'
-        ? payload?.error_msg || payload?.errorMsg || payload?.message || `HTTP ${response.status}`
-        : `HTTP ${response.status}: ${String(text).slice(0, 200)}`);
-    }
-    const businessError = this._normalizeBusinessError(payload, '扣款接口失败');
-    if (businessError) {
-      const error = new Error(businessError.message);
-      error.payload = payload;
-      throw error;
-    }
-    return payload;
   }
 
   _normalizeListItem(category, item) {

@@ -1,12 +1,6 @@
-const { session } = require('electron');
-const {
-  normalizePddUserAgent,
-  getChromeClientHintHeaders,
-  applyIdentityHeaders,
-  applyCookieContextHeaders
-} = require('./pdd-request-profile');
+const { PddBusinessApiClient, DEFAULT_PDD_BASE } = require('./pdd-business-api-client');
 
-const PDD_BASE = 'https://mms.pinduoduo.com';
+const PDD_BASE = DEFAULT_PDD_BASE;
 const DEFAULT_MAIL_URL = `${PDD_BASE}/other/mail/mailList?type=-1&id=441077635572`;
 
 const MAIL_CATEGORIES = [
@@ -21,143 +15,15 @@ const MAIL_CATEGORIES = [
   { contentType: 10, label: '规则弹窗' },
 ];
 
-class MailApiClient {
+class MailApiClient extends PddBusinessApiClient {
   constructor(shopId, options = {}) {
-    this.shopId = shopId;
-    this.partition = `persist:pddv2-${shopId}`;
-    this._onLog = options.onLog || (() => {});
-    this._getShopInfo = options.getShopInfo || (() => null);
-    this._getApiTraffic = options.getApiTraffic || (() => []);
-    this._getMailUrl = options.getMailUrl || (() => DEFAULT_MAIL_URL);
-  }
-
-  _log(message, extra) {
-    this._onLog(message, extra);
-  }
-
-  _getSession() {
-    return session.fromPartition(this.partition);
-  }
-
-  _getTokenInfo() {
-    return (global.__pddTokens && global.__pddTokens[this.shopId]) || null;
-  }
-
-  _getApiTrafficEntries() {
-    const list = this._getApiTraffic();
-    return Array.isArray(list) ? list : [];
-  }
-
-  _findLatestTraffic(urlPart) {
-    const list = this._getApiTrafficEntries();
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (String(list[i]?.url || '').includes(urlPart)) {
-        return list[i];
-      }
-    }
-    return null;
-  }
-
-  async _getCookieString() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-  }
-
-  async _getCookieMap() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.reduce((acc, item) => {
-      acc[item.name] = item.value;
-      return acc;
-    }, {});
-  }
-
-  async _buildHeaders(urlPart, extraHeaders = {}) {
-    const tokenInfo = this._getTokenInfo();
-    const shop = this._getShopInfo();
-    const cookie = await this._getCookieString();
-    const cookieMap = await this._getCookieMap();
-    const trafficHeaders = this._findLatestTraffic(urlPart)?.requestHeaders || {};
-    const headers = {
-      accept: '*/*',
-      'accept-language': 'zh-CN,zh;q=0.9',
-      'accept-encoding': 'gzip, deflate, br',
-      'cache-control': 'no-cache',
-      'content-type': 'application/json',
-      ...getChromeClientHintHeaders('api'),
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      Referer: trafficHeaders.Referer || this._getMailUrl() || DEFAULT_MAIL_URL,
-      Origin: PDD_BASE,
-      ...extraHeaders,
-    };
-    if (cookie) headers.cookie = cookie;
-    headers['user-agent'] = normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || '');
-    applyIdentityHeaders(headers, tokenInfo);
-    applyCookieContextHeaders(headers, cookieMap);
-    return headers;
-  }
-
-  _parsePayload(text) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-
-  _normalizeBusinessError(payload) {
-    if (!payload || typeof payload !== 'object') return null;
-    if (payload.success === false) {
-      return {
-        code: payload.errorCode || payload.error_code || payload.code,
-        message: payload.errorMsg || payload.error_msg || payload.message || '站内信接口失败',
-      };
-    }
-    const code = Number(payload.errorCode || payload.error_code || payload.code || 0);
-    if (code && code !== 1000000) {
-      return {
-        code,
-        message: payload.errorMsg || payload.error_msg || payload.message || '站内信接口失败',
-      };
-    }
-    return null;
-  }
-
-  _isLoginPageResponse(response, text) {
-    const finalUrl = String(response?.url || '');
-    if (finalUrl.includes('/login')) return true;
-    const contentType = String(response?.headers?.get('content-type') || '').toLowerCase();
-    if (!contentType.includes('text/html')) return false;
-    const snippet = typeof text === 'string' ? text.slice(0, 800).toLowerCase() : '';
-    return snippet.includes('登录') || snippet.includes('login') || snippet.includes('passport') || snippet.includes('扫码');
-  }
-
-  async _request(method, urlPath, body, extraHeaders = {}) {
-    const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-    const headers = await this._buildHeaders(urlPath, extraHeaders);
-    const options = { method, headers };
-    if (body !== undefined && body !== null) {
-      options.body = typeof body === 'string' ? body : JSON.stringify(body);
-    }
-    const response = await this._getSession().fetch(url, options);
-    const text = await response.text();
-    const payload = this._parsePayload(text);
-    this._log(`[站内信接口] ${method} ${urlPath} -> ${response.status}`);
-    if (this._isLoginPageResponse(response, text)) {
-      throw new Error('站内信页面登录已失效，请重新导入 Token 或刷新登录态');
-    }
-    if (!response.ok) {
-      throw new Error(typeof payload === 'object'
-        ? payload?.errorMsg || payload?.message || `HTTP ${response.status}`
-        : `HTTP ${response.status}: ${String(text).slice(0, 200)}`);
-    }
-    const businessError = this._normalizeBusinessError(payload);
-    if (businessError) {
-      throw new Error(businessError.message);
-    }
-    return payload;
+    const getMailUrl = typeof options.getMailUrl === 'function' ? options.getMailUrl : (() => DEFAULT_MAIL_URL);
+    super(shopId, {
+      ...options,
+      errorLabel: '站内信接口',
+      loginExpiredMessage: '站内信页面登录已失效，请重新导入 Token 或刷新登录态',
+      getRefererUrl: () => getMailUrl() || DEFAULT_MAIL_URL,
+    });
   }
 
   _stripHtml(html) {

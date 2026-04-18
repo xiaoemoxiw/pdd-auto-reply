@@ -190,6 +190,12 @@ class NetworkMonitor {
     const picked = {};
     const allowList = [
       'content-type', 'Content-Type',
+      'accept', 'Accept',
+      'accept-language', 'Accept-Language',
+      'user-agent', 'User-Agent',
+      'sec-ch-ua',
+      'sec-ch-ua-mobile',
+      'sec-ch-ua-platform',
       'x-pdd-token', 'X-PDD-Token',
       'windows-app-shop-token',
       'pddid',

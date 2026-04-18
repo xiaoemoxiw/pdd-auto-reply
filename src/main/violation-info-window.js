@@ -1,5 +1,10 @@
 const { BrowserWindow, shell } = require('electron');
 const { appendWindowCloseDebugLog } = require('./window-close-debug-log');
+const {
+  DEFAULT_PAGE_CHROME_UA,
+  resolveStoredShopProfile,
+  applySessionPddPageProfile
+} = require('./pdd-request-profile');
 
 const infoWindowContexts = new Map();
 const infoWindowKeyToId = new Map();
@@ -16,17 +21,14 @@ function isMerchantUrl(url) {
 function getShopPartition(shopId) {
   const id = String(shopId || '').trim();
   if (!id) return undefined;
-  return `persist:pdd-${id}`;
+  return `persist:pddv2-${id}`;
 }
 
 function getShopUserAgent(store, shopId) {
-  const fallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-  const id = String(shopId || '').trim();
-  if (!id) return fallback;
-  const shops = store?.get('shops') || [];
-  const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
-  const ua = String(shop?.userAgent || '').trim();
-  return ua || fallback;
+  return resolveStoredShopProfile(store, shopId, {
+    fallbackUserAgent: DEFAULT_PAGE_CHROME_UA,
+    chromeOnly: true
+  }).userAgent;
 }
 
 function getDisplayPath(url) {
@@ -231,6 +233,11 @@ async function createViolationInfoWindow(options = {}) {
 
   const userAgent = getShopUserAgent(options?.store, shopId);
   if (userAgent) win.webContents.setUserAgent(userAgent);
+  applySessionPddPageProfile(win.webContents.session, {
+    userAgent,
+    tokenInfo: resolveStoredShopProfile(options?.store, shopId).tokenInfo,
+    clientHintsProfile: 'page'
+  });
 
   win.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {

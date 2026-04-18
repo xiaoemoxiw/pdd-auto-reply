@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('pddApi', {
 
   // 店铺管理（列表/分组）
   getShops: () => ipcRenderer.invoke('get-shops'),
+  syncTokenShops: () => ipcRenderer.invoke('sync-token-shops'),
   saveShops: (shops) => ipcRenderer.invoke('save-shops', shops),
   getShopGroups: () => ipcRenderer.invoke('get-shop-groups'),
   saveShopGroups: (groups) => ipcRenderer.invoke('save-shop-groups', groups),
@@ -42,6 +43,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   addShopByQRCode: () => ipcRenderer.invoke('add-shop-by-qrcode'),
   removeShop: (shopId) => ipcRenderer.invoke('remove-shop', shopId),
   refreshShopProfile: (shopId) => ipcRenderer.invoke('refresh-shop-profile', shopId),
+  probeShopAuth: (shopId) => ipcRenderer.invoke('probe-shop-auth', shopId),
   refreshMainCookieContext: (params) => ipcRenderer.invoke('refresh-main-cookie-context', params),
 
   // 视图切换
@@ -82,8 +84,9 @@ contextBridge.exposeInMainWorld('pddApi', {
   importTokenFromPath: (path) => ipcRenderer.invoke('import-token-from-path', path),
   getTokenInfo: () => ipcRenderer.invoke('get-token-info'),
   apiGetTokenStatus: (params) => ipcRenderer.invoke('api-get-token-status', params),
-  apiInitSession: () => ipcRenderer.invoke('api-init-session'),
+  apiInitSession: (params) => ipcRenderer.invoke('api-init-session', params),
   apiTestConnection: (params) => ipcRenderer.invoke('api-test-connection', params),
+  probeSafeBusinessApis: (params) => ipcRenderer.invoke('probe-safe-business-apis', params),
   apiGetSessions: (params) => ipcRenderer.invoke('api-get-sessions', params),
   apiFindSessionByOrderSn: (params) => ipcRenderer.invoke('api-find-session-by-order-sn', params),
   apiGetMessages: (params) => ipcRenderer.invoke('api-get-messages', params),

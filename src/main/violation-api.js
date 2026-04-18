@@ -1,4 +1,4 @@
-const { session } = require('electron');
+const { PddBusinessApiClient } = require('./pdd-business-api-client');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const DEFAULT_VIOLATION_URL = `${PDD_BASE}/pg/violation_list/mall_manage?msfrom=mms_sidenav`;
@@ -37,31 +37,16 @@ function dedupeBodies(list = []) {
   });
 }
 
-class ViolationApiClient {
+class ViolationApiClient extends PddBusinessApiClient {
   constructor(shopId, options = {}) {
-    this.shopId = shopId;
-    this.partition = `persist:pdd-${shopId}`;
-    this._onLog = options.onLog || (() => {});
-    this._getShopInfo = options.getShopInfo || (() => null);
-    this._getApiTraffic = options.getApiTraffic || (() => []);
-    this._getViolationUrl = options.getViolationUrl || (() => DEFAULT_VIOLATION_URL);
-  }
-
-  _log(message, extra) {
-    this._onLog(message, extra);
-  }
-
-  _getSession() {
-    return session.fromPartition(this.partition);
-  }
-
-  _getTokenInfo() {
-    return (global.__pddTokens && global.__pddTokens[this.shopId]) || null;
-  }
-
-  _getApiTrafficEntries() {
-    const list = this._getApiTraffic();
-    return Array.isArray(list) ? list : [];
+    const getViolationUrl = options.getViolationUrl || (() => DEFAULT_VIOLATION_URL);
+    super(shopId, {
+      ...options,
+      getRefererUrl: getViolationUrl,
+      errorLabel: '违规管理接口',
+      loginExpiredMessage: '违规管理页面登录已失效，请重新导入 Token 或刷新登录态'
+    });
+    this._getViolationUrl = getViolationUrl;
   }
 
   _findLatestTraffic(urlPart) {
@@ -81,111 +66,6 @@ class ViolationApiClient {
     return isPlainObject(parsed) ? parsed : null;
   }
 
-  async _getCookieString() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-  }
-
-  async _getCookieMap() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.reduce((acc, item) => {
-      acc[item.name] = item.value;
-      return acc;
-    }, {});
-  }
-
-  async _buildHeaders(urlPart, extraHeaders = {}) {
-    const tokenInfo = this._getTokenInfo();
-    const shop = this._getShopInfo();
-    const cookie = await this._getCookieString();
-    const cookieMap = await this._getCookieMap();
-    const trafficHeaders = this._findLatestTraffic(urlPart)?.requestHeaders || {};
-    const headers = {
-      accept: 'application/json, text/plain, */*',
-      'accept-language': 'zh-CN,zh;q=0.9',
-      'accept-encoding': 'gzip, deflate, br',
-      'cache-control': 'no-cache',
-      'content-type': 'application/json',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      Referer: trafficHeaders.Referer || this._getViolationUrl() || DEFAULT_VIOLATION_URL,
-      Origin: PDD_BASE,
-      ...extraHeaders,
-    };
-    if (cookie) headers.cookie = cookie;
-    headers['user-agent'] = (shop?.userAgent || tokenInfo?.userAgent || '').replace('pdd_webview', '').trim();
-    if (tokenInfo?.raw) {
-      headers['X-PDD-Token'] = tokenInfo.raw;
-      headers['windows-app-shop-token'] = tokenInfo.raw;
-    }
-    if (tokenInfo?.pddid) headers.pddid = tokenInfo.pddid;
-    if (cookieMap.rckk) headers.etag = cookieMap.rckk;
-    if (cookieMap['msfe-pc-cookie-captcha-token']) {
-      headers.VerifyAuthToken = cookieMap['msfe-pc-cookie-captcha-token'];
-    }
-    return headers;
-  }
-
-  _parsePayload(text) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-
-  _normalizeBusinessError(payload) {
-    if (!payload || typeof payload !== 'object') return null;
-    const success = payload.success;
-    const errorCode = Number(payload.error_code ?? payload.errorCode ?? payload.code ?? 0);
-    if (success === false || (errorCode && errorCode !== 1000000)) {
-      return {
-        code: errorCode,
-        message: payload.error_msg || payload.errorMsg || payload.message || '违规管理接口失败',
-      };
-    }
-    return null;
-  }
-
-  _isLoginPageResponse(response, text) {
-    const finalUrl = String(response?.url || '');
-    if (finalUrl.includes('/login')) return true;
-    const contentType = String(response?.headers?.get('content-type') || '').toLowerCase();
-    if (!contentType.includes('text/html')) return false;
-    const snippet = typeof text === 'string' ? text.slice(0, 800).toLowerCase() : '';
-    return snippet.includes('登录') || snippet.includes('login') || snippet.includes('passport') || snippet.includes('扫码');
-  }
-
-  async _request(method, urlPath, body, extraHeaders = {}) {
-    const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-    const headers = await this._buildHeaders(urlPath, extraHeaders);
-    const options = { method, headers };
-    if (body !== undefined && body !== null) {
-      options.body = typeof body === 'string' ? body : JSON.stringify(body);
-    }
-    const response = await this._getSession().fetch(url, options);
-    const text = await response.text();
-    const payload = this._parsePayload(text);
-    this._log(`[违规管理接口] ${method} ${urlPath} -> ${response.status}`);
-    if (this._isLoginPageResponse(response, text)) {
-      throw new Error('违规管理页面登录已失效，请重新导入 Token 或刷新登录态');
-    }
-    if (!response.ok) {
-      throw new Error(typeof payload === 'object'
-        ? payload?.error_msg || payload?.errorMsg || payload?.message || `HTTP ${response.status}`
-        : `HTTP ${response.status}: ${String(text).slice(0, 200)}`);
-    }
-    const businessError = this._normalizeBusinessError(payload);
-    if (businessError) {
-      throw new Error(businessError.message);
-    }
-    return payload;
-  }
 
   _looksLikeViolationRecord(item) {
     if (!isPlainObject(item)) return false;
@@ -353,7 +233,9 @@ class ViolationApiClient {
     const pageNo = Math.max(1, Number(params.pageNo || params.page_no || 1));
     const pageSize = Math.max(1, Number(params.pageSize || params.page_size || 100));
     const keyword = String(params.keyword || '').trim();
-    const status = String(params.status || params.appealStatus || '').trim();
+    const rawStatus = params.status ?? params.appealStatus ?? null;
+    const hasStatusFilter = rawStatus !== null && rawStatus !== undefined && `${rawStatus}`.trim() !== '';
+    const status = hasStatusFilter ? String(rawStatus).trim() : '';
     const violationType = String(params.violationType || params.type || '').trim();
     const trafficBody = this._getTrafficRequestBody(VIOLATION_RECORD_URL);
     const bodies = [];
@@ -371,8 +253,10 @@ class ViolationApiClient {
       if ('serialNo' in nextBody) nextBody.serialNo = keyword;
       if ('violationAppealSn' in nextBody) nextBody.violationAppealSn = keyword;
       if ('noticeSn' in nextBody) nextBody.noticeSn = keyword;
-      if ('appealStatus' in nextBody) nextBody.appealStatus = status;
-      if ('violationType' in nextBody) nextBody.violationType = violationType;
+      if ('appealStatus' in nextBody && hasStatusFilter) nextBody.appealStatus = status;
+      if ('appeal_status' in nextBody && hasStatusFilter) nextBody.appeal_status = status;
+      if ('violationType' in nextBody && violationType) nextBody.violationType = violationType;
+      if ('violation_type' in nextBody && violationType) nextBody.violation_type = violationType;
       bodies.push(nextBody);
     }
     bodies.push(

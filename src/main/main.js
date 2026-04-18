@@ -20,7 +20,6 @@ const { AIIntentEngine } = require('./ai-intent');
 const {
   appendApiTrafficLog,
   ensureApiTrafficLogReady,
-  getPersistedApiTraffic,
   normalizeTrafficEntry,
 } = require('./api-traffic-recorder');
 const { registerAiIpc, autoLoadAiIntentEngine } = require('./register-ai-ipc');
@@ -179,7 +178,7 @@ const embeddedPageActions = new Map(); // shopId -> last action
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
 const PDD_HOME_URL = 'https://mms.pinduoduo.com/home';
 const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=441077635572';
-const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav';
+const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav&activeKey=0';
 const PDD_VIOLATION_URL = 'https://mms.pinduoduo.com/pg/violation_list/mall_manage?msfrom=mms_sidenav';
 const PDD_TICKET_URL = 'https://mms.pinduoduo.com/aftersales/work_order/list?msfrom=mms_sidenav';
 const PDD_AFTERSALE_URL = 'https://mms.pinduoduo.com/aftersales/refund/list?msfrom=mms_sidenav';
@@ -239,7 +238,7 @@ const MOCK_SCAN_SHOPS = [
   { account: 'newshop_104', name: '潮玩手办集合店' }
 ];
 
-let currentView = 'chat';
+let currentView = 'shops';
 let mainWindow = null;
 let shopManager = null;
 let replyEngine = null;
@@ -566,11 +565,36 @@ function buildApiSessionTrafficSignature(sessions = []) {
   ].join(':')).join('|');
 }
 
+// 防御：任何字段命中 [TEXT] / [ID] / [REDACTED] / [URL] 等脱敏占位符的会话条目，
+// 视为来自历史脱敏快照的污染数据，必须丢弃，避免渲染层出现"[TEXT]"假会话、
+// 或后续被当作 chat/list 请求的 candidate.id 导致 500。
+function isSanitizedApiSessionEntry(item = {}) {
+  const fields = [
+    item?.sessionId,
+    item?.customerId,
+    item?.userUid,
+    item?.customerName,
+    item?.customerAvatar,
+    item?.lastMessage,
+    item?.conversationId,
+    item?.chatId,
+    item?.rawId,
+  ];
+  return fields.some(value => {
+    if (typeof value !== 'string') return false;
+    return value === '[TEXT]'
+      || value === '[ID]'
+      || value === '[REDACTED]'
+      || value === '[URL]'
+      || value === '[REQUEST_ID]';
+  });
+}
+
 function setApiSessionSnapshot(shopId, sessions = [], source = 'runtime') {
   if (!shopId) return [];
   const normalized = Array.isArray(sessions)
     ? sessions
-      .filter(item => item && item.sessionId)
+      .filter(item => item && item.sessionId && !isSanitizedApiSessionEntry(item))
       .map(item => ({
         ...item,
         shopId,
@@ -637,7 +661,7 @@ function scheduleRendererApiSessionUpdateFlush() {
 function enqueueRendererApiSessionUpdate(shopId, sessions = [], source = 'runtime') {
   if (!shopId || !Array.isArray(sessions)) return;
   const normalizedSessions = sessions
-    .filter(item => item && item.sessionId)
+    .filter(item => item && item.sessionId && !isSanitizedApiSessionEntry(item))
     .map(item => ({
       ...item,
       shopId,
@@ -1400,10 +1424,15 @@ function getApiClient(shopId) {
       return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
     },
     requestInPddPage(request) {
-      return requestViaPddPage(shopId, request);
+      return requestViaPddPage(shopId, {
+        ...(request && typeof request === 'object' ? request : {}),
+        source: request?.source || 'pdd-api:page-request'
+      });
     },
-    async executeInPddPage(script) {
-      const view = await ensurePddPageViewReady(shopId);
+    async executeInPddPage(script, options = {}) {
+      const view = await ensurePddPageViewReady(shopId, {
+        source: options?.source || 'pdd-api:execute-in-page'
+      });
       return view.webContents.executeJavaScript(String(script || ''), true);
     }
   });
@@ -1466,17 +1495,28 @@ function getApiClient(shopId) {
 
 function waitForViewLoad(view, targetUrl = '') {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error('加载拼多多聊天页超时'));
     }, 15000);
     const cleanup = () => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      view.webContents.removeListener('did-finish-load', onLoad);
-      view.webContents.removeListener('did-fail-load', onFail);
+      const wc = view?.webContents;
+      if (!wc || wc.isDestroyed()) return;
+      wc.removeListener('did-finish-load', onLoad);
+      wc.removeListener('did-fail-load', onFail);
     };
     const onLoad = () => {
-      if (!targetUrl || view.webContents.getURL().includes(targetUrl)) {
+      const wc = view?.webContents;
+      if (!wc || wc.isDestroyed()) {
+        cleanup();
+        reject(new Error('拼多多页面已销毁'));
+        return;
+      }
+      if (!targetUrl || wc.getURL().includes(targetUrl)) {
         cleanup();
         resolve();
       }
@@ -1485,8 +1525,14 @@ function waitForViewLoad(view, targetUrl = '') {
       cleanup();
       reject(new Error(desc || '加载拼多多聊天页失败'));
     };
-    view.webContents.on('did-finish-load', onLoad);
-    view.webContents.on('did-fail-load', onFail);
+    const wc = view?.webContents;
+    if (!wc || wc.isDestroyed()) {
+      cleanup();
+      reject(new Error('拼多多页面未就绪'));
+      return;
+    }
+    wc.on('did-finish-load', onLoad);
+    wc.on('did-fail-load', onFail);
   });
 }
 
@@ -1855,7 +1901,40 @@ async function waitForViewUploadResult(view, filePath) {
   });
 }
 
-async function ensurePddPageViewReady(shopId) {
+function normalizePageRuntimeSource(source, fallback = 'unknown') {
+  const text = String(source || '').trim();
+  return text || fallback;
+}
+
+function isAllowedChatRuntimeSource(source) {
+  const normalized = normalizePageRuntimeSource(source, '');
+  if (!normalized) return false;
+  const allowedPrefixes = [
+    'api-send-image:upload-fallback',
+    'api-upload-video:page-upload',
+    'chat-file:',
+    'order-remark:',
+    'refund-order:',
+    'goods-page:',
+    'refund-apply:',
+    'video-material:',
+    'order-price:',
+    'refund-orders:',
+    'goods-spec:',
+    'aftersale-approve-return-goods',
+    'aftersale-approve-resend',
+    'aftersale-reject-refund-submit',
+    'aftersale-merchant-refuse',
+    'pdd-api:execute-in-page',
+    'pdd-api:page-request',
+    'ticket-api:page-request'
+  ];
+  return allowedPrefixes.some(prefix => normalized === prefix || normalized.startsWith(prefix));
+}
+
+async function ensurePddPageViewReady(shopId, options = {}) {
+  const source = normalizePageRuntimeSource(options?.source, 'unknown');
+  ensureBusinessShopAvailable(shopId);
   const view = shopManager?.getOrCreateView(shopId);
   if (!view) throw new Error('未找到店铺网页实例');
   try {
@@ -1863,7 +1942,35 @@ async function ensurePddPageViewReady(shopId) {
   } catch {}
   let justLoadedChatPage = false;
   const currentUrl = view.webContents.getURL();
-  if (!currentUrl || currentUrl === 'about:blank' || !currentUrl.includes('/chat-merchant/')) {
+  const willLoadChatPage = !currentUrl || currentUrl === 'about:blank' || !currentUrl.includes('/chat-merchant/');
+  const isAllowedSource = isAllowedChatRuntimeSource(source);
+  sendToDebug('page-runtime-entry', {
+    shopId,
+    source,
+    stage: 'ensure-view-ready',
+    currentView,
+    currentUrl: currentUrl || 'about:blank',
+    willLoadChatPage,
+    isAllowedSource,
+    timestamp: Date.now()
+  });
+  if (willLoadChatPage && !isAllowedSource) {
+    const error = new Error(`页面链路来源未授权，已阻止后台拉起聊天页: ${source}`);
+    sendToDebug('page-runtime-entry', {
+      shopId,
+      source,
+      stage: 'ensure-view-blocked',
+      currentView,
+      currentUrl: currentUrl || 'about:blank',
+      willLoadChatPage,
+      isAllowedSource,
+      timestamp: Date.now(),
+      error: error.message
+    });
+    throw error;
+  }
+  if (willLoadChatPage) {
+    console.log(`[PDD页面链路:${shopId}] ${source} 触发聊天页准备: ${currentUrl || 'about:blank'} -> ${PDD_CHAT_URL}`);
     const waitTask = waitForViewLoad(view, '/chat-merchant/');
     view.webContents.loadURL(PDD_CHAT_URL);
     await waitTask;
@@ -1876,7 +1983,8 @@ async function ensurePddPageViewReady(shopId) {
 }
 
 async function requestViaPddPage(shopId, request = {}) {
-  const view = await ensurePddPageViewReady(shopId);
+  const source = normalizePageRuntimeSource(request?.source, 'unknown');
+  const view = await ensurePddPageViewReady(shopId, { source });
   const payload = {
     url: String(request.url || ''),
     method: String(request.method || 'GET').toUpperCase(),
@@ -1886,6 +1994,15 @@ async function requestViaPddPage(shopId, request = {}) {
   if (!payload.url) {
     throw new Error('缺少页面请求 URL');
   }
+  sendToDebug('page-runtime-entry', {
+    shopId,
+    source,
+    stage: 'page-request',
+    currentView,
+    method: payload.method,
+    url: payload.url,
+    timestamp: Date.now()
+  });
   const result = await view.webContents.executeJavaScript(`
     (async () => {
       const payload = ${JSON.stringify(payload)};
@@ -1919,8 +2036,17 @@ async function requestViaPddPage(shopId, request = {}) {
   return result.body;
 }
 
-async function uploadImageViaPddPage(shopId, filePath) {
-  const view = await ensurePddPageViewReady(shopId);
+async function uploadImageViaPddPage(shopId, filePath, options = {}) {
+  const source = normalizePageRuntimeSource(options?.source, 'page-upload');
+  const view = await ensurePddPageViewReady(shopId, { source });
+  sendToDebug('page-runtime-entry', {
+    shopId,
+    source,
+    stage: 'page-upload',
+    currentView,
+    fileName: path.basename(String(filePath || '')),
+    timestamp: Date.now()
+  });
   return waitForViewUploadResult(view, filePath);
 }
 
@@ -2026,7 +2152,10 @@ function getTicketApiClient(shopId) {
       return getPddTicketUrl();
     },
     requestInPddPage(request) {
-      return requestViaPddPage(shopId, request);
+      return requestViaPddPage(shopId, {
+        ...(request && typeof request === 'object' ? request : {}),
+        source: request?.source || 'ticket-api:page-request'
+      });
     },
   });
   ticketApiClients.set(shopId, client);
@@ -2092,15 +2221,11 @@ function destroyDeductionApiClient(shopId) {
 }
 
 function getApiTraffic(shopId) {
-  const runtimeList = (apiTrafficStore.get(shopId) || []).map(normalizeTrafficEntry);
-  if (runtimeList.length >= 20) return runtimeList;
-  const persistedList = getPersistedApiTraffic(shopId);
-  if (!persistedList.length) return runtimeList;
-  const merged = [...persistedList, ...runtimeList];
-  if (merged.length > 200) {
-    return merged.slice(merged.length - 200);
-  }
-  return merged;
+  // 仅返回运行时实抓的请求/响应。
+  // 持久化的 artifacts/api-traffic 已脱敏（content/nickname → [TEXT]，uid/session_id → [ID]，
+  // anti_content/cookie → [REDACTED]），既不能当请求模板（发出去服务器 500），
+  // 也不能当渲染兜底（会话列表会出现"[TEXT]"占位符），所以这里不再回灌。
+  return (apiTrafficStore.get(shopId) || []).map(normalizeTrafficEntry);
 }
 
 function getStoredShops() {
@@ -2136,17 +2261,40 @@ function getApiShopAvailabilityStatus(shop) {
   return shop?.availabilityStatus || shop?.status || '';
 }
 
+function getBusinessUnavailableMessage(shop) {
+  const availabilityStatus = getApiShopAvailabilityStatus(shop);
+  if (availabilityStatus === 'expired' || availabilityStatus === 'invalid') {
+    return '店铺会话已过期，请重新登录';
+  }
+  if (availabilityStatus !== 'online') {
+    return '店铺未验证在线，请先完成登录校验';
+  }
+  if (shop?.loginMethod === 'token' && !hasRecoveredApiToken(shop.id)) {
+    return '店铺 Token 未恢复，请先导入或同步 Token';
+  }
+  return '';
+}
+
+function ensureBusinessShopAvailable(shopId) {
+  const shop = getStoredShops().find(item => item?.id === shopId);
+  if (!shop) {
+    throw new Error('没有可用店铺');
+  }
+  const message = getBusinessUnavailableMessage(shop);
+  if (message) {
+    throw new Error(message);
+  }
+  return shop;
+}
+
 function isApiReadyShop(shop) {
   if (!shop?.id) return false;
-  const availabilityStatus = getApiShopAvailabilityStatus(shop);
-  if (availabilityStatus === 'expired' || availabilityStatus === 'invalid') return false;
-  if (shop.loginMethod !== 'token') return true;
-  return hasRecoveredApiToken(shop.id);
+  return !getBusinessUnavailableMessage(shop);
 }
 
 function isApiDisplayableShop(shop) {
   if (!shop?.id) return false;
-  return getApiShopAvailabilityStatus(shop) === 'online' || isApiReadyShop(shop);
+  return isApiReadyShop(shop);
 }
 
 function getApiShopList(shopId, options = {}) {
@@ -2180,7 +2328,12 @@ async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
   let sessions = [];
   let requestError = null;
   try {
-    sessions = await client.getSessionList(page, pageSize);
+    // 允许首次 init：initSession 内部带 sticky 标志，已 init 过的店铺不会重复加载 chat-merchant；
+    // 临时 BrowserWindow 加载完即销毁，不会和后续 polling 抢运行时（polling 仍走 allowInitSession:false）。
+    // 不允许 init 时，没有真模板和 anti_content 就只能返回空，列表永远是 0 条。
+    sessions = await client.getSessionList(page, pageSize, {
+      allowInitSession: true
+    });
     if (sessions.length > 0) {
       setApiSessionSnapshot(shopId, sessions, 'request');
       return sessions;
@@ -2201,15 +2354,6 @@ async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
   if (page === 1 && snapshot.length > 0) {
     return snapshot.slice(0, pageSize);
   }
-  const retry = await client.testConnection();
-  if (Array.isArray(retry?.sessions) && retry.sessions.length > 0) {
-    setApiSessionSnapshot(shopId, retry.sessions, 'test-connection');
-    return retry.sessions;
-  }
-  const retriedTrafficSessions = extractApiSessionsFromTraffic(shopId);
-  if (page === 1 && retriedTrafficSessions.length > 0) {
-    return retriedTrafficSessions.slice(0, pageSize);
-  }
   if (requestError) {
     throw requestError;
   }
@@ -2217,7 +2361,28 @@ async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
 }
 
 async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
-  const targetShops = getApiShopList(shopId, { displayableOnly: shopId === API_ALL_SHOPS });
+  let targetShops = getApiShopList(shopId, { apiReadyOnly: true });
+  if (!targetShops.length) {
+    // 启动时只恢复了 token，未自动校验店铺在线状态。
+    // 进入 chat-api 又必须 apiReadyOnly，所以这里按需自动跑一次"批量接口校验"，
+    // 让用户不必每次手动点"接口校验"才能看到数据。
+    const candidateShops = shopId === API_ALL_SHOPS
+      ? getApiShopList(API_ALL_SHOPS).filter(shop => !isApiReadyShop(shop) && shop?.id)
+      : getApiShopList(shopId).filter(shop => !isApiReadyShop(shop) && shop?.id);
+    if (candidateShops.length && shopManager && typeof shopManager.safeValidateShops === 'function') {
+      try {
+        const validation = await shopManager.safeValidateShops(candidateShops.map(item => item.id));
+        sendToDebug('api-session-auto-validate', {
+          requested: candidateShops.length,
+          successCount: validation?.successCount || 0,
+          failedCount: validation?.failedCount || 0,
+        });
+      } catch (error) {
+        sendToDebug('api-session-auto-validate-failed', { message: error?.message || String(error || '') });
+      }
+      targetShops = getApiShopList(shopId, { apiReadyOnly: true });
+    }
+  }
   if (!targetShops.length) {
     if (shopId === API_ALL_SHOPS) {
       const skippedShops = getApiShopList(API_ALL_SHOPS).filter(shop => !isApiReadyShop(shop));
@@ -2226,16 +2391,17 @@ async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
           .slice(0, 3)
           .map(shop => `${shop.name || shop.id}`)
           .join('、');
-        throw new Error(`显示所有店铺时，${skippedShops.length} 个店铺未恢复 Token：${summary}`);
+        throw new Error(`显示所有店铺时，${skippedShops.length} 个店铺未验证在线：${summary}`);
       }
       return [];
     }
+    ensureBusinessShopAvailable(shopId);
     throw new Error('没有可用店铺');
   }
   if (shopId === API_ALL_SHOPS) {
     const skippedShops = getApiShopList(API_ALL_SHOPS).filter(shop => !isApiReadyShop(shop));
     if (skippedShops.length) {
-      sendToDebug('api-session-skip-token-missing', {
+      sendToDebug('api-session-skip-shop-unavailable', {
         count: skippedShops.length,
         shops: skippedShops.map(shop => ({ shopId: shop.id, shopName: shop.name || '' })),
       });
@@ -2354,6 +2520,7 @@ function createMainWindow() {
     onNetworkMonitor: startNetworkMonitor,
     onDetectChat: detectChatPage,
     getApiClient,
+    getCurrentView: () => currentView,
     onTokenUpdated: (shopId) => {
       destroyApiClient(shopId);
       destroyMailApiClient(shopId);
@@ -2394,7 +2561,7 @@ async function migrateOldData() {
     }
 
     // 把旧 Cookie 恢复到迁移店铺的 partition
-    const ses = session.fromPartition(`persist:pdd-${migrateId}`);
+    const ses = session.fromPartition(`persist:pddv2-${migrateId}`);
     for (const cookie of oldCookies) {
       try { await ses.cookies.set(cookie); } catch {}
     }
@@ -2432,14 +2599,16 @@ async function ensureMainApp() {
 ipcMain.handle('inject-cookies', async (event, cookies) => {
   const shopId = shopManager?.getActiveShopId();
   if (!shopId) return false;
-  const ses = session.fromPartition(`persist:pdd-${shopId}`);
+  const ses = session.fromPartition(`persist:pddv2-${shopId}`);
   for (const cookie of cookies) {
     try { await ses.cookies.set(cookie); } catch (err) {
       console.error('设置 Cookie 失败:', err.message);
     }
   }
   const view = shopManager?.getActiveView();
-  if (view) view.webContents.loadURL(getPddChatUrl());
+  if (view && isEmbeddedPddView(currentView)) {
+    view.webContents.loadURL(getEmbeddedViewUrl(currentView));
+  }
   return true;
 });
 
@@ -2471,6 +2640,7 @@ registerShopIpc({
   getCurrentView: () => currentView,
   isEmbeddedPddView,
   getPddHomeUrl,
+  getPddChatUrl,
   destroyApiClient,
   destroyMailApiClient,
   destroyInvoiceApiClient,
@@ -2941,6 +3111,8 @@ async function handleNewCustomerMessage(data) {
   const fallbackKey = buildFallbackKey(data);
   const source = data.source || 'unknown';
   const conversationId = data.conversationId || data.sessionId || '';
+  const sessionRef = data.session || data.sessionId || data.conversationId;
+  const canSendViaApi = !!(data.shopId && sessionRef);
   const fallbackMessageKey = [
     String(data.shopId || '').trim(),
     String(conversationId || data.customer || '').trim(),
@@ -3000,14 +3172,7 @@ async function handleNewCustomerMessage(data) {
       }
     };
 
-    if (source === 'api-polling') {
-      if (!data.shopId) {
-        throw new Error('接口自动回复缺少店铺信息');
-      }
-      const sessionRef = data.session || data.sessionId || data.conversationId;
-      if (!sessionRef) {
-        throw new Error('接口自动回复缺少会话标识');
-      }
+    if (canSendViaApi) {
       const sendResult = await getApiClient(data.shopId).sendManualMessage(sessionRef, result.reply, {
         manualSource: 'auto-reply',
       });
@@ -3150,7 +3315,7 @@ async function handleNewCustomerMessage(data) {
         });
         // 接口对接页没有复用嵌入页输入框；若继续检查隐藏 BrowserView 的草稿，
         // 会把接口页兜底误判为“人工正在输入”而取消发送。
-        if (source !== 'api-polling' && defaultReply?.cancelOnHumanReply !== false) {
+        if (!canSendViaApi && defaultReply?.cancelOnHumanReply !== false) {
           const view = shopManager?.getActiveView();
           if (view) {
             try {
@@ -3619,20 +3784,32 @@ app.whenReady().then(async () => {
 
   const activeId = store.get('activeShopId');
   const shops = store.get('shops') || [];
+  if (Array.isArray(shops) && shops.length) {
+    const clearedCount = shopManager.clearPersistedSessionsForShops(shops.map(shop => shop.id));
+    console.log(`[PDD助手] 启动时已清理 ${clearedCount} 个店铺的历史网页会话`);
+  }
   const startupShopId = shopManager.getPreferredActiveShopId(shops, activeId);
   if (startupShopId) {
-    await shopManager.restoreCookies(startupShopId);
-    shopManager.switchTo(startupShopId);
+    shopManager.syncActiveShopSelection({
+      shops,
+      preferredShopId: startupShopId,
+      showView: false,
+      emitEvent: false
+    });
+    console.log('[PDD助手] 启动采用静态店铺恢复模式，不自动恢复网页会话');
   } else {
-    shopManager.syncActiveShopSelection({ shops, preferredShopId: activeId });
+    shopManager.syncActiveShopSelection({
+      shops,
+      preferredShopId: activeId,
+      showView: false,
+      emitEvent: false
+    });
   }
-  shopManager.startShopInfoHydrationLoop(5000);
 });
 
 app.on('before-quit', () => {
   cleanupRendererWatcher();
   shopManager?.stopShopInfoHydrationLoop();
-  if (shopManager) shopManager.saveAllCookies();
   for (const shopId of apiClients.keys()) {
     destroyApiClient(shopId);
   }
@@ -3672,7 +3849,16 @@ app.on('activate', () => {
     ensureMainApp().then(() => {
       licenseRuntime?.startTimer?.();
       const activeId = store.get('activeShopId');
-      if (activeId && shopManager) shopManager.switchTo(activeId);
+      if (!activeId || !shopManager) return;
+      if (isEmbeddedPddView(currentView)) {
+        shopManager.switchTo(activeId);
+        return;
+      }
+      shopManager.syncActiveShopSelection({
+        preferredShopId: activeId,
+        showView: false,
+        emitEvent: false
+      });
     });
     return;
   }

@@ -38,7 +38,10 @@ function registerEmbeddedViewIpc({
     }
     let activeView = shopManager.getActiveView();
     if (!activeView && isEmbeddedPddView(targetView)) {
-      shopManager.syncActiveShopSelection({ showView: true });
+      shopManager.syncActiveShopSelection({
+        showView: true,
+        loadUrl: getEmbeddedViewUrl(targetView)
+      });
       activeView = shopManager.getActiveView();
     }
     if (!activeView && isEmbeddedPddView(targetView)) {

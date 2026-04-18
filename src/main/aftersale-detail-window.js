@@ -1,5 +1,10 @@
 const { BrowserWindow, BrowserView, shell } = require('electron');
 const path = require('path');
+const {
+  DEFAULT_PAGE_CHROME_UA,
+  resolveStoredShopProfile,
+  applySessionPddPageProfile
+} = require('./pdd-request-profile');
 
 const detailWindowContexts = new Map();
 const detailWindowKeyToId = new Map();
@@ -17,17 +22,14 @@ function isMerchantUrl(url) {
 function getShopPartition(shopId) {
   const id = String(shopId || '').trim();
   if (!id) return undefined;
-  return `persist:pdd-${id}`;
+  return `persist:pddv2-${id}`;
 }
 
 function getShopUserAgent(store, shopId) {
-  const fallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-  const id = String(shopId || '').trim();
-  if (!id) return fallback;
-  const shops = store?.get('shops') || [];
-  const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
-  const ua = String(shop?.userAgent || '').trim();
-  return ua || fallback;
+  return resolveStoredShopProfile(store, shopId, {
+    fallbackUserAgent: DEFAULT_PAGE_CHROME_UA,
+    chromeOnly: true
+  }).userAgent;
 }
 
 function resolveContext(target) {
@@ -41,10 +43,20 @@ function resolveContext(target) {
   return null;
 }
 
+function getContextWindowId(context) {
+  const win = context?.window;
+  if (!win || win.isDestroyed()) return 0;
+  try {
+    return win.webContents.id;
+  } catch {
+    return 0;
+  }
+}
+
 function removeContextReuseKey(context) {
   if (!context?.reuseKey) return;
   const currentId = detailWindowKeyToId.get(context.reuseKey);
-  if (currentId === context.window?.webContents?.id) {
+  if (currentId === getContextWindowId(context)) {
     detailWindowKeyToId.delete(context.reuseKey);
   }
   context.reuseKey = '';
@@ -56,7 +68,9 @@ function setContextReuseKey(context, reuseKey) {
   if ((context.reuseKey || '') === nextKey) return;
   removeContextReuseKey(context);
   if (!nextKey) return;
-  detailWindowKeyToId.set(nextKey, context.window.webContents.id);
+  const windowId = getContextWindowId(context);
+  if (!windowId) return;
+  detailWindowKeyToId.set(nextKey, windowId);
   context.reuseKey = nextKey;
 }
 
@@ -65,7 +79,7 @@ function cleanupContext(context) {
   context.cleanedUp = true;
   removeContextReuseKey(context);
   destroyView(context);
-  const windowId = context.window?.webContents?.id;
+  const windowId = getContextWindowId(context);
   if (windowId) {
     detailWindowContexts.delete(windowId);
   }
@@ -170,6 +184,11 @@ function ensureView(target, store, shopId) {
   const view = context.view;
   const userAgent = getShopUserAgent(store, nextShopId);
   if (userAgent) view.webContents.setUserAgent(userAgent);
+  applySessionPddPageProfile(view.webContents.session, {
+    userAgent,
+    tokenInfo: resolveStoredShopProfile(store, nextShopId).tokenInfo,
+    clientHintsProfile: 'page'
+  });
 
   view.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {

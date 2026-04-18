@@ -32,7 +32,8 @@ class TokenFileStore {
 
   importTokenFile(filePath) {
     const tokenData = this._readTokenJson(filePath);
-    const records = this._buildImportRecords(filePath, tokenData).map(record => {
+    const importPlan = this._buildImportPlan(filePath, tokenData);
+    const records = importPlan.records.map(record => {
       const targetPath = path.join(this.ensureManagedDir(), `${record.shopId}.json`);
       fs.writeFileSync(targetPath, JSON.stringify(record.tokenData, null, 2) + '\n', 'utf-8');
       return this.readTokenFile(targetPath);
@@ -42,7 +43,11 @@ class TokenFileStore {
       fileName: path.basename(filePath),
       tokenData,
       tokenInfo: this._buildTokenInfo(tokenData),
-      records
+      records,
+      hasShopMetadata: importPlan.hasShopMetadata,
+      eligibleShopCount: importPlan.eligibleShopCount,
+      skippedShopCount: importPlan.skippedShopCount,
+      skippedNoPassCookieCount: importPlan.skippedNoPassCookieCount
     };
   }
 
@@ -139,10 +144,103 @@ class TokenFileStore {
     return entries;
   }
 
+  _extractShopEntries(tokenData = {}) {
+    if (!Array.isArray(tokenData.shops)) return [];
+    return tokenData.shops
+      .filter(item => item && typeof item === 'object')
+      .map(item => ({
+        mallId: item.mallId ? String(item.mallId).trim() : '',
+        mallName: String(item.mallName || '').trim(),
+        loginStatus: String(item.loginStatus || '').trim(),
+        isActive: item.isActive === true,
+        passId: this._normalizePassCookieString(item.passId || '')
+      }));
+  }
+
+  _normalizePassCookieString(value = '') {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    if (text.startsWith('PASS_ID=')) return text;
+    return `PASS_ID=${text}`;
+  }
+
+  _pickPassCookieForShop(shopEntry, activeEntries = [], allEntries = []) {
+    const targetMallId = String(shopEntry?.mallId || '').trim();
+    const targetPassCookie = this._normalizePassCookieString(shopEntry?.passId || '');
+    const activeByMallId = new Map(activeEntries.map(entry => [entry.mallId, entry]));
+    const allByMallId = new Map(allEntries.map(entry => [entry.mallId, entry]));
+
+    if (targetPassCookie && activeEntries.some(entry => entry.cookieStr === targetPassCookie)) {
+      return targetPassCookie;
+    }
+    if (targetPassCookie && allEntries.some(entry => entry.cookieStr === targetPassCookie)) {
+      return targetPassCookie;
+    }
+    if (targetMallId && activeByMallId.has(targetMallId)) {
+      return activeByMallId.get(targetMallId).cookieStr;
+    }
+    if (targetMallId && allByMallId.has(targetMallId)) {
+      return allByMallId.get(targetMallId).cookieStr;
+    }
+    return '';
+  }
+
+  _buildImportPlan(filePath, tokenData = {}) {
+    const records = this._buildImportRecords(filePath, tokenData);
+    const shopEntries = this._extractShopEntries(tokenData);
+    const hasShopMetadata = shopEntries.length > 0;
+    const eligibleShopCount = hasShopMetadata
+      ? shopEntries.filter(item => item.loginStatus === '已登录').length
+      : records.length;
+    return {
+      records,
+      hasShopMetadata,
+      eligibleShopCount,
+      skippedShopCount: hasShopMetadata ? Math.max(0, shopEntries.length - eligibleShopCount) : 0,
+      skippedNoPassCookieCount: hasShopMetadata ? Math.max(0, eligibleShopCount - records.length) : 0
+    };
+  }
+
   _buildImportRecords(filePath, tokenData = {}) {
     const stats = fs.statSync(filePath);
     const passEntries = this._extractPassIdEntries(tokenData);
+    const activePassEntries = this._extractPassIdEntries({
+      mallCookies: Array.isArray(tokenData.activeMallCookies) ? tokenData.activeMallCookies : []
+    });
+    const shopEntries = this._extractShopEntries(tokenData);
     const bindTime = this._formatDate(stats.birthtimeMs || stats.ctimeMs || stats.mtimeMs || Date.now());
+    if (shopEntries.length > 0) {
+      return shopEntries
+        .filter(entry => entry.loginStatus === '已登录')
+        .map(entry => {
+          const passCookie = this._pickPassCookieForShop(entry, activePassEntries, passEntries);
+          if (!passCookie) return null;
+          const nextTokenData = {
+            ...tokenData,
+            mallCookies: [passCookie],
+            activeMallCookies: [passCookie],
+            shops: [{
+              mallId: entry.mallId,
+              mallName: entry.mallName,
+              loginStatus: entry.loginStatus,
+              isActive: entry.isActive,
+              passId: passCookie
+            }]
+          };
+          const tokenInfo = this._buildTokenInfo(nextTokenData);
+          const shopId = this._buildShopId(tokenInfo, nextTokenData, `${filePath}#${entry.mallId || passCookie}`);
+          return {
+            shopId,
+            filePath,
+            fileName: path.basename(filePath),
+            updatedAt: stats.mtimeMs || 0,
+            bindTime,
+            tokenData: nextTokenData,
+            tokenInfo
+          };
+        })
+        .filter(Boolean);
+    }
     if (passEntries.length > 1) {
       return passEntries.map(entry => {
         const nextTokenData = {

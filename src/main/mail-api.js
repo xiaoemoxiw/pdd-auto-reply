@@ -1,4 +1,10 @@
 const { session } = require('electron');
+const {
+  normalizePddUserAgent,
+  getChromeClientHintHeaders,
+  applyIdentityHeaders,
+  applyCookieContextHeaders
+} = require('./pdd-request-profile');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const DEFAULT_MAIL_URL = `${PDD_BASE}/other/mail/mailList?type=-1&id=441077635572`;
@@ -18,7 +24,7 @@ const MAIL_CATEGORIES = [
 class MailApiClient {
   constructor(shopId, options = {}) {
     this.shopId = shopId;
-    this.partition = `persist:pdd-${shopId}`;
+    this.partition = `persist:pddv2-${shopId}`;
     this._onLog = options.onLog || (() => {});
     this._getShopInfo = options.getShopInfo || (() => null);
     this._getApiTraffic = options.getApiTraffic || (() => []);
@@ -77,9 +83,7 @@ class MailApiClient {
       'accept-encoding': 'gzip, deflate, br',
       'cache-control': 'no-cache',
       'content-type': 'application/json',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
+      ...getChromeClientHintHeaders('api'),
       'sec-fetch-dest': 'empty',
       'sec-fetch-mode': 'cors',
       'sec-fetch-site': 'same-origin',
@@ -89,16 +93,9 @@ class MailApiClient {
       ...extraHeaders,
     };
     if (cookie) headers.cookie = cookie;
-    headers['user-agent'] = (shop?.userAgent || tokenInfo?.userAgent || '').replace('pdd_webview', '').trim();
-    if (tokenInfo?.raw) {
-      headers['X-PDD-Token'] = tokenInfo.raw;
-      headers['windows-app-shop-token'] = tokenInfo.raw;
-    }
-    if (tokenInfo?.pddid) headers.pddid = tokenInfo.pddid;
-    if (cookieMap.rckk) headers.etag = cookieMap.rckk;
-    if (cookieMap['msfe-pc-cookie-captcha-token']) {
-      headers.VerifyAuthToken = cookieMap['msfe-pc-cookie-captcha-token'];
-    }
+    headers['user-agent'] = normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || '');
+    applyIdentityHeaders(headers, tokenInfo);
+    applyCookieContextHeaders(headers, cookieMap);
     return headers;
   }
 

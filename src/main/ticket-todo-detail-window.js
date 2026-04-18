@@ -1,49 +1,14 @@
 const { BrowserWindow, BrowserView, shell } = require('electron');
 const path = require('path');
+const {
+  DEFAULT_PAGE_CHROME_UA,
+  resolveStoredShopProfile,
+  applySessionPddPageProfile
+} = require('./pdd-request-profile');
 
 const detailWindowContexts = new Map();
 const detailWindowKeyToId = new Map();
-const sessionChromeUaMap = new WeakMap();
 const DEFAULT_TOOLBAR_HEIGHT = 44;
-const DEFAULT_CHROME_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-
-function applySessionChromeUserAgent(ses, userAgent) {
-  if (!ses) return;
-  const ua = String(userAgent || '').trim();
-  if (!ua) return;
-  try {
-    if (typeof ses.setUserAgent === 'function') {
-      ses.setUserAgent(ua);
-    }
-  } catch {}
-
-  const existing = sessionChromeUaMap.get(ses);
-  if (existing) {
-    existing.ua = ua;
-    return;
-  }
-  sessionChromeUaMap.set(ses, { ua });
-  if (!ses.webRequest || typeof ses.webRequest.onBeforeSendHeaders !== 'function') return;
-
-  ses.webRequest.onBeforeSendHeaders((details, callback) => {
-    const headers = details?.requestHeaders || {};
-    const targetUrl = String(details?.url || '');
-    try {
-      const hostname = new URL(targetUrl).hostname;
-      if (!hostname.endsWith('.pinduoduo.com')) return callback({ requestHeaders: headers });
-    } catch {
-      return callback({ requestHeaders: headers });
-    }
-    const current = sessionChromeUaMap.get(ses);
-    const nextUa = current?.ua || ua;
-    headers['User-Agent'] = nextUa;
-    headers['sec-ch-ua'] = '"Chromium";v="122", "Google Chrome";v="122", "Not(A:Brand";v="99"';
-    headers['sec-ch-ua-mobile'] = '?0';
-    headers['sec-ch-ua-platform'] = '"Windows"';
-    callback({ requestHeaders: headers });
-  });
-}
 
 function isMerchantUrl(url) {
   try {
@@ -57,34 +22,45 @@ function isMerchantUrl(url) {
 function getShopPartition(shopId) {
   const id = String(shopId || '').trim();
   if (!id) return undefined;
-  return `persist:pdd-${id}`;
+  return `persist:pddv2-${id}`;
 }
 
 function getShopUserAgent(store, shopId) {
-  const id = String(shopId || '').trim();
-  const shops = store?.get('shops') || [];
-  const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
-  const ua = String(shop?.userAgent || '').trim();
-  const lower = ua.toLowerCase();
-  const isChromeLike = ua && lower.includes('chrome/') && !lower.includes('electron/');
-  return isChromeLike ? ua : DEFAULT_CHROME_UA;
+  return resolveStoredShopProfile(store, shopId, {
+    fallbackUserAgent: DEFAULT_PAGE_CHROME_UA,
+    chromeOnly: true
+  }).userAgent;
 }
 
 function resolveContext(target) {
   if (!target) return null;
-  if (target.window && target.window.webContents) {
-    return detailWindowContexts.get(target.window.webContents.id) || null;
-  }
-  if (target.webContents && typeof target.setBrowserView === 'function') {
-    return detailWindowContexts.get(target.webContents.id) || null;
-  }
+  try {
+    if (target.window && !target.window.isDestroyed()) {
+      return detailWindowContexts.get(target.window.webContents.id) || null;
+    }
+  } catch {}
+  try {
+    if (target.webContents && typeof target.setBrowserView === 'function' && !target.isDestroyed?.()) {
+      return detailWindowContexts.get(target.webContents.id) || null;
+    }
+  } catch {}
   return null;
+}
+
+function getContextWindowId(context) {
+  const win = context?.window;
+  if (!win || win.isDestroyed()) return 0;
+  try {
+    return win.webContents.id;
+  } catch {
+    return 0;
+  }
 }
 
 function removeContextReuseKey(context) {
   if (!context?.reuseKey) return;
   const currentId = detailWindowKeyToId.get(context.reuseKey);
-  if (currentId === context.window?.webContents?.id) {
+  if (currentId === getContextWindowId(context)) {
     detailWindowKeyToId.delete(context.reuseKey);
   }
   context.reuseKey = '';
@@ -96,7 +72,9 @@ function setContextReuseKey(context, reuseKey) {
   if ((context.reuseKey || '') === nextKey) return;
   removeContextReuseKey(context);
   if (!nextKey) return;
-  detailWindowKeyToId.set(nextKey, context.window.webContents.id);
+  const windowId = getContextWindowId(context);
+  if (!windowId) return;
+  detailWindowKeyToId.set(nextKey, windowId);
   context.reuseKey = nextKey;
 }
 
@@ -105,7 +83,7 @@ function cleanupContext(context) {
   context.cleanedUp = true;
   removeContextReuseKey(context);
   destroyView(context);
-  const windowId = context.window?.webContents?.id;
+  const windowId = getContextWindowId(context);
   if (windowId) {
     detailWindowContexts.delete(windowId);
   }
@@ -223,10 +201,20 @@ function destroyView(target) {
   const context = resolveContext(target) || target;
   const view = context?.view;
   if (view) {
+    const win = context?.window;
     try {
+      if (win && !win.isDestroyed()) {
+        try {
+          win.setBrowserView(null);
+        } catch {}
+      }
       const wc = view.webContents;
-      wc.removeAllListeners();
-      wc.close({ waitForBeforeUnload: false });
+      if (wc && !wc.isDestroyed()) {
+        wc.removeAllListeners();
+        if (!win || !win.isDestroyed()) {
+          wc.close({ waitForBeforeUnload: false });
+        }
+      }
     } catch {}
   }
   if (context) {
@@ -258,7 +246,11 @@ function ensureView(target, store, shopId) {
   const userAgent = getShopUserAgent(store, nextShopId);
   view.__pddUserAgent = userAgent;
   if (userAgent) view.webContents.setUserAgent(userAgent);
-  applySessionChromeUserAgent(view.webContents.session, userAgent);
+  applySessionPddPageProfile(view.webContents.session, {
+    userAgent,
+    tokenInfo: resolveStoredShopProfile(store, nextShopId).tokenInfo,
+    clientHintsProfile: 'page'
+  });
 
   view.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {

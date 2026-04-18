@@ -152,6 +152,15 @@
       font-weight: 600;
     }
 
+    .nav-item.is-disabled-chat {
+      opacity: 0.65;
+    }
+
+    .nav-item.is-disabled-chat:hover {
+      background: #fff7e6;
+      color: #b26a00;
+    }
+
     .nav-icon {
       width: 20px;
       height: 20px;
@@ -557,6 +566,23 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .shop-actions-cell {
+      white-space: normal !important;
+      min-width: 320px;
+    }
+
+    .shop-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .shop-actions .btn {
+      margin-right: 0 !important;
+      flex: 0 0 auto;
     }
 
     .data-table tr:hover td {
@@ -6778,12 +6804,12 @@
     <!-- 左侧导航 -->
     <div class="sidebar">
       <div class="nav-menu">
-        <div class="nav-item active" data-view="chat">
+        <div class="nav-item is-disabled-chat" data-view="chat" title="当前已停用，点击将切换到客户对话（接口对接）">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
-          <span>客户对话（嵌入网页）</span>
+          <span>客户对话（嵌入网页，已停用）</span>
         </div>
         <div class="nav-item" data-view="chat-api">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -7685,7 +7711,7 @@
       <div class="view-page" id="viewShops">
         <div class="page-toolbar">
           <div class="group-tabs" id="shopGroupTabs"></div>
-          <input class="search-box" id="shopSearch" placeholder="搜索店铺名称 / mallId / Token 文件...">
+          <input class="search-box" id="shopSearch" placeholder="搜索店铺名称 / mallId ...">
           <span class="spacer"></span>
           <div class="balance-total" id="balanceTotal">
             可提现合计: <span class="amount">-</span>
@@ -7707,14 +7733,13 @@
                 <th style="width:40px">序号</th>
                 <th>店铺名称</th>
                 <th>mallId</th>
-                <th>Token文件</th>
                 <th>分组</th>
                 <th>备注</th>
-                <th>有效期</th>
+                <th>绑定日期</th>
                 <th>类目</th>
                 <th>状态</th>
                 <th style="text-align:right">可提现</th>
-                <th style="width:80px">操作</th>
+                <th style="width:320px">操作</th>
               </tr>
             </thead>
             <tbody id="shopTableBody"></tbody>
@@ -8727,7 +8752,7 @@
   <script src="./ops-aftersale-remark-dialog.js"></script>
   <script>
     // ==================== 状态 ====================
-    let currentView = 'chat';
+    let currentView = 'shops';
     let shops = [];
     let shopGroups = [];
     let quickPhrases = [];
@@ -9188,6 +9213,13 @@
       if (activeNav) activeNav.classList.add('active');
     }
 
+    function redirectDisabledEmbeddedChatView(source) {
+      const hint = '客户对话（嵌入网页）当前已停用，已切换到“客户对话（接口对接）”。';
+      showToast(hint, 3200);
+      addLog(`[聊天页收口] ${source || 'unknown'} 访问嵌入网页聊天入口，已改走接口对接页`, 'info');
+      return 'chat-api';
+    }
+
     function activateViewPage(view) {
       document.querySelectorAll('.view-page').forEach(p => p.classList.remove('active'));
       const pageByView = {
@@ -9251,7 +9283,7 @@
     }
 
     async function syncViewStateFromMain() {
-      let nextView = 'chat';
+      let nextView = 'shops';
       try {
         const savedView = await window.pddApi.getCurrentView();
         if (savedView) {
@@ -9259,6 +9291,15 @@
         }
       } catch (error) {
         addLog(`读取当前页面状态失败: ${error.message || error}`, 'error');
+      }
+
+      if (nextView === 'chat') {
+        nextView = redirectDisabledEmbeddedChatView('restore-current-view');
+        try {
+          await window.pddApi.switchView(nextView);
+        } catch (error) {
+          addLog(`同步停用聊天页状态失败: ${error.message || error}`, 'error');
+        }
       }
 
       if (nextView === 'sub-violation') {
@@ -9276,6 +9317,11 @@
     }
 
     async function switchView(view) {
+      if (view === 'chat') {
+        const redirectedView = redirectDisabledEmbeddedChatView('switch-view');
+        if (redirectedView === currentView) return;
+        return switchView(redirectedView);
+      }
       if (view === currentView) return;
       const previousView = currentView;
       currentView = view;
@@ -9326,17 +9372,18 @@
     const shopDropdown = document.getElementById('shopDropdown');
     const shopDropdownList = document.getElementById('shopDropdownList');
 
-    shopSwitcherBtn.addEventListener('click', (e) => {
+    shopSwitcherBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
-      const isOpen = shopDropdown.classList.toggle('visible');
-      shopSwitcherBtn.classList.toggle('open', isOpen);
+      const isOpen = shopDropdown?.classList.toggle('visible');
+      shopSwitcherBtn?.classList.toggle('open', !!isOpen);
       if (isOpen) renderShopDropdown();
     });
 
     document.addEventListener('click', (e) => {
-      if (!document.getElementById('shopSwitcher').contains(e.target)) {
-        shopDropdown.classList.remove('visible');
-        shopSwitcherBtn.classList.remove('open');
+      const shopSwitcher = document.getElementById('shopSwitcher');
+      if (shopSwitcher && !shopSwitcher.contains(e.target)) {
+        shopDropdown?.classList.remove('visible');
+        shopSwitcherBtn?.classList.remove('open');
       }
       const videoButton = document.getElementById('btnApiVideoModal');
       const videoPanel = document.getElementById('apiVideoLibraryPanel');
@@ -9358,6 +9405,7 @@
 
     function renderShopDropdown() {
       const visibleShops = shops.filter(isHeaderSelectableShop);
+      if (!shopDropdownList) return;
       if (visibleShops.length === 0) {
         shopDropdownList.innerHTML = '<div class="shop-no-items">暂无可切换店铺，请导入新 Token 或重新登录</div>';
         return;
@@ -9376,8 +9424,8 @@
         item.addEventListener('click', async () => {
           const shopId = item.dataset.shopId;
           if (shopId === activeShopId) {
-            shopDropdown.classList.remove('visible');
-            shopSwitcherBtn.classList.remove('open');
+            shopDropdown?.classList.remove('visible');
+            shopSwitcherBtn?.classList.remove('open');
             return;
           }
           const switched = await window.pddApi.switchShop(shopId);
@@ -9385,8 +9433,8 @@
             showToast('只能切换到登录成功的店铺');
             return;
           }
-          shopDropdown.classList.remove('visible');
-          shopSwitcherBtn.classList.remove('open');
+          shopDropdown?.classList.remove('visible');
+          shopSwitcherBtn?.classList.remove('open');
         });
       });
     }
@@ -12573,15 +12621,7 @@
           return [];
         }
         if (!result.length && !options.autoBootstrapped) {
-          const bootstrapShopId = getApiStatusShopId(false);
-          if (bootstrapShopId && bootstrapShopId !== API_ALL_SHOPS) {
-            setApiHint('接口会话为空，正在自动初始化客户对话...');
-            const bootstrapResult = await window.pddApi.apiTestConnection({ shopId: bootstrapShopId });
-            if (!bootstrapResult?.error) {
-              await loadApiTokenStatus(bootstrapShopId);
-              return loadApiSessions({ ...options, autoBootstrapped: true });
-            }
-          }
+          setApiHint(withApiTrafficDiag('接口会话为空；为避免触发聊天页初始化，已停止自动引导。如需手动测试，请点击“测试”。'));
         }
         const fallbackTrafficSessions = !result.length
           ? parseApiSessionsFromTrafficEntries(await window.pddApi.getApiTraffic({ shopId: getApiScopeShopId() }))
@@ -12641,7 +12681,7 @@
           clearApiActiveSession();
         }
         renderApiSessions();
-        if (options.keepCurrent && apiHasUserSelectedSession && apiActiveSessionId && apiActiveSessionShopId) {
+        if (options.keepCurrent && options.autoOpenCurrent === true && apiHasUserSelectedSession && apiActiveSessionId && apiActiveSessionShopId) {
           const shouldRefreshCurrentSession = !currentSession
             || !apiMessages.length
             || getApiSessionSyncSignature(currentSession) !== apiActiveSessionSyncSignature;
@@ -12719,13 +12759,6 @@
       }
       apiOpenSessionPendingKey = targetSessionKey;
       const pendingPromise = (async () => {
-        try {
-          await loadApiTokenStatus(targetShopId);
-        } catch (error) {
-          if (!options.silentStatus) {
-            recordApiSyncState('状态失败', error?.message || '读取 Token 状态失败');
-          }
-        }
         const result = await window.pddApi.apiGetMessages({
           shopId: targetShopId,
           sessionId: String(sessionId),
@@ -12768,7 +12801,6 @@
             `会话：${sessionDisplayName}，返回 ${apiMessages.length} 条`
           );
         }
-        await window.pddApi.apiMarkLatestConversations({ shopId: targetShopId, size: 100 });
         await loadApiTraffic(targetShopId);
         setApiHint(`已载入 ${apiMessages.length} 条接口消息`);
       })();
@@ -12913,7 +12945,7 @@
         apiTokenStatus = null;
         renderApiShopHeader();
         renderApiStatus();
-        return;
+        return null;
       }
       try {
         const result = await window.pddApi.apiGetTokenStatus({ shopId });
@@ -12923,6 +12955,7 @@
       }
       renderApiShopHeader();
       renderApiStatus();
+      return apiTokenStatus;
     }
 
     async function loadApiChatView(options = {}) {
@@ -12961,14 +12994,7 @@
         const tokenStatusPromise = loadApiTokenStatus()
           .then(() => recordApiSyncState('状态完成', getApiAuthStatusText()))
           .catch(err => recordApiSyncState('状态失败', err.message || '未知错误'));
-        let pollingPromise = Promise.resolve();
-        if (pollingScope === API_ALL_SHOPS ? shops.length > 0 : !!pollingScope) {
-          pollingPromise = ensureApiPollingScope(pollingScope)
-            .then(ok => {
-              if (!ok) recordApiSyncState('轮询未启动', pollingScope === API_ALL_SHOPS ? '显示所有店铺' : pollingScope);
-            })
-            .catch(err => recordApiSyncState('轮询异常', err.message || '未知错误'));
-        }
+        const pollingPromise = Promise.resolve();
         recordApiSyncState('加载抓包', '开始读取接口抓包');
         const trafficPromise = loadApiTraffic()
           .then(() => recordApiSyncState('抓包完成', `${apiTrafficEntries.length} 条`))
@@ -12982,9 +13008,6 @@
           sessions = await loadApiSessions({ keepCurrent: options.keepCurrent });
         }
         await Promise.allSettled([starredPromise, tokenStatusPromise, trafficPromise, pollingPromise]);
-        if ((!apiHasUserSelectedSession || !apiActiveSessionId || !apiActiveSessionShopId) && Array.isArray(sessions) && sessions.length) {
-          await restoreApiLastSessionSelection({ silentStatus: true });
-        }
         renderApiMessages();
         const authHint = window.__chatApiModuleAccess?.getApiAuthHintText?.() || '';
         if (authHint) {
@@ -12992,13 +13015,9 @@
         } else if (!shops.length) {
           setApiHint('请先添加店铺，再测试接口对话。');
         } else if (Array.isArray(sessions) && sessions.length === 0) {
-          setApiHint(withApiTrafficDiag('正在同步接口会话（第 1 次）...'));
-          apiInitialLoadRetryTimer = setTimeout(() => {
-            retryInitialApiSessions(options.keepCurrent);
-          }, 1200);
-        }
-        if (!reuseCachedSessions && (!Array.isArray(sessions) || sessions.length === 0)) {
-          scheduleApiWarmupRefreshes(options.keepCurrent);
+          setApiHint(withApiTrafficDiag('接口会话为空；已停止自动轮询和自动补刷，请手动点击“测试”或“刷新”。'));
+        } else if (Array.isArray(sessions) && sessions.length > 0 && (!apiHasUserSelectedSession || !apiActiveSessionId || !apiActiveSessionShopId)) {
+          setApiHint('已同步接口会话列表，请手动点击左侧会话查看详情。');
         }
         const pendingOrderSn = String(window.__pendingOpenApiChatOrderSn || '').trim();
         if (pendingOrderSn) {
@@ -13024,13 +13043,13 @@
     }
 
     // 工具栏 + 添加按钮
-    document.getElementById('btnAddShopToken').addEventListener('click', async () => {
+    document.getElementById('btnAddShopToken')?.addEventListener('click', async () => {
       shopDropdown.classList.remove('visible');
       shopSwitcherBtn.classList.remove('open');
       await handleAddShopByToken();
     });
 
-    document.getElementById('btnAddShopQR').addEventListener('click', async () => {
+    document.getElementById('btnAddShopQR')?.addEventListener('click', async () => {
       shopDropdown.classList.remove('visible');
       shopSwitcherBtn.classList.remove('open');
       await handleAddShopByQR();
@@ -13040,6 +13059,14 @@
       addLog('正在导入 Token...', 'info');
       try {
         const result = await window.pddApi.addShopByToken();
+        const mainCookieContext = result?.mainCookieContext || null;
+        const formatCookieContextHint = (context) => {
+          if (!context) return '';
+          const cookieNames = Array.isArray(context.cookieNames) && context.cookieNames.length
+            ? context.cookieNames.join(', ')
+            : '无';
+          return `主 Cookie 上下文: ready=${context.ready ? 'yes' : 'no'}, PASS_ID=${context.hasPassId ? 'yes' : 'no'}, _nano_fp=${context.hasNanoFp ? 'yes' : 'no'}, rckk=${context.hasRckk ? 'yes' : 'no'}, url=${context.url || '-'}, cookies=[${cookieNames}]${context.error ? `, error=${context.error}` : ''}`;
+        };
         if (result.canceled) {
           addLog('Token 导入已取消', 'info');
           showToast('Token 导入已取消');
@@ -13051,6 +13078,12 @@
           const shopLabel = result.shopName || result.mallId || result.shopId || '当前店铺';
           const passIdHint = result.multiPassIdSingleToken
             ? `；检测到 ${result.passIdIdentityCount || result.passIdCount || 0} 个 PASS_ID 身份，但文件只有 1 份店铺 Token，当前仍按 1 家店铺导入`
+            : '';
+          const loginFilterHint = result.hasShopMetadata
+            ? `；按 loginStatus 过滤后导入 ${result.importedCount || 0} 家，跳过 ${result.skippedShopCount || 0} 家未登录店铺${result.skippedNoPassCookieCount ? `，另有 ${result.skippedNoPassCookieCount} 家缺少可用 PASS_ID` : ''}`
+            : '';
+          const browserWarmupHint = result.silentImportOnly
+            ? '；本次仅静默导入店铺与 PASS_ID，未自动建立网页会话、未自动做接口校验'
             : '';
           const successText = result.multiShopImport
             ? `已从文件导入 ${result.importedCount || 0} 家店铺，新增 ${result.createdCount || 0} 家，更新 ${result.refreshedCount || 0} 家，当前共 ${result.shopCount || 0} 家店铺`
@@ -13066,7 +13099,10 @@
           } else {
             await switchView('shops');
           }
-          addLog(`${result.multiShopImport ? 'Token 批量导入成功' : result.refreshed ? 'Token 已更新' : 'Token 导入成功'}: ${importFileName}, ${result.cookieCount} Cookie${result.multiShopImport ? `, 导入 ${result.importedCount || 0} 家店铺，新增 ${result.createdCount || 0} 家，更新 ${result.refreshedCount || 0} 家，当前共 ${result.shopCount || 0} 家店铺` : `, mallId=${result.mallId || '未知'}${result.refreshed ? ' (检测到同 mallId，已覆盖现有店铺，不会新增列表行)' : ` (当前共 ${result.shopCount || 0} 家店铺)`}`}${passIdHint}`, 'reply');
+          addLog(`${result.multiShopImport ? 'Token 批量导入成功' : result.refreshed ? 'Token 已更新' : 'Token 导入成功'}: ${importFileName}, ${result.cookieCount} Cookie${result.multiShopImport ? `, 导入 ${result.importedCount || 0} 家店铺，新增 ${result.createdCount || 0} 家，更新 ${result.refreshedCount || 0} 家，当前共 ${result.shopCount || 0} 家店铺` : `, mallId=${result.mallId || '未知'}${result.refreshed ? ' (检测到同 mallId，已覆盖现有店铺，不会新增列表行)' : ` (当前共 ${result.shopCount || 0} 家店铺)`}`}${loginFilterHint}${browserWarmupHint}${passIdHint}`, 'reply');
+          if (mainCookieContext) {
+            addLog(formatCookieContextHint(mainCookieContext), mainCookieContext.ready ? 'info' : 'error');
+          }
           showToast(`${successText}${passIdHint}`);
         }
       } catch (err) {
@@ -13084,7 +13120,7 @@
           addLog(`扫码添加失败: ${result.error}`, 'error');
           showToast(`扫码添加失败：${result.error}`);
         } else {
-          if (!isEmbeddedPddView(currentView)) await switchView('chat');
+          if (!isEmbeddedPddView(currentView)) await switchView('chat-api');
         }
       } catch (err) {
         addLog(`扫码添加异常: ${err.message}`, 'error');
@@ -13100,7 +13136,7 @@
         await window.pddApi.reloadPdd();
       }
       if (currentView === 'chat-api') {
-        await loadApiChatView({ keepCurrent: true, forceRefreshSessions: true });
+        setApiHint(withApiTrafficDiag('店铺已切换；已停止自动重载接口聊天页，请手动点击“刷新”或“测试”。'));
       }
       if (currentView === 'mail-api') {
         loadMailApiView();
@@ -13135,7 +13171,7 @@
         updateBalanceTotal();
       }
       if (currentView === 'chat-api') {
-        await loadApiChatView({ keepCurrent: true, forceRefreshSessions: true });
+        setApiHint(withApiTrafficDiag('店铺列表已更新；已停止自动重载接口聊天页，请手动点击“刷新”或“测试”。'));
       }
       if (currentView === 'mail-api') {
         loadMailApiView();
@@ -13178,38 +13214,38 @@
       setApiHint('已刷新当前会话详情');
     });
 
-    document.getElementById('btnApiStartPolling').addEventListener('click', async () => {
+    document.getElementById('btnApiStartPolling')?.addEventListener('click', async () => {
       const ok = await ensureApiPollingScope(getApiScopeShopId());
       if (ok) setApiHint('已开启接口轮询');
     });
 
-    document.getElementById('btnApiStopPolling').addEventListener('click', async () => {
+    document.getElementById('btnApiStopPolling')?.addEventListener('click', async () => {
       const stopped = await stopApiPollingScope();
       if (stopped) setApiHint('已停止接口轮询');
     });
 
-    document.getElementById('btnApiTestConnection').addEventListener('click', async () => {
+    document.getElementById('btnApiTestConnection')?.addEventListener('click', async () => {
       const targetShopId = getApiStatusShopId(false);
       if (!targetShopId) {
         setApiHint('请先选择一个可测试的店铺');
         return;
       }
+      recordApiSyncState('接口测试', targetShopId);
       const result = await window.pddApi.apiTestConnection({ shopId: targetShopId });
       if (result?.error) {
         setApiHint(`接口测试失败：${result.error}`);
         return;
       }
       await loadApiTokenStatus(targetShopId);
-      await loadApiSessions();
-      setApiHint(`接口测试成功，当前拿到 ${result.sessions?.length || 0} 条会话`);
+      setApiHint('接口测试成功（安全模式，未自动初始化聊天会话）');
     });
 
-    document.getElementById('btnApiOrderInfo').addEventListener('click', async () => {
+    document.getElementById('btnApiOrderInfo')?.addEventListener('click', async () => {
       await loadApiTraffic(getApiStatusShopId(true));
       setApiHint('右侧已更新最新订单辅助信息，可结合抓包继续补接口。');
     });
 
-    document.getElementById('btnApiProductInfo').addEventListener('click', async () => {
+    document.getElementById('btnApiProductInfo')?.addEventListener('click', async () => {
       await loadApiTraffic(getApiStatusShopId(true));
       setApiHint('商品信息区已预留，后续可继续从抓包中补真实接口。');
     });
@@ -13250,8 +13286,7 @@
         if (shopSearchText) {
           const kw = shopSearchText.toLowerCase();
           return s.name.toLowerCase().includes(kw)
-            || s.account.toLowerCase().includes(kw)
-            || String(s.tokenFileName || '').toLowerCase().includes(kw);
+            || s.account.toLowerCase().includes(kw);
         }
         return true;
       });
@@ -13287,14 +13322,21 @@
             ${isActive ? '<span style="font-size:11px;color:#e02e24;margin-left:4px">(当前)</span>' : ''}
             ${shopNameHint}
           </td>
-          <td title="${esc(s.tokenFileName || '')}">${esc(s.tokenFileName) || '<span style="color:#ccc">-</span>'}</td>
+          <td>${esc(s.mallId) || '<span style="color:#ccc">-</span>'}</td>
           <td>${esc(groupName)}</td>
           <td title="${esc(s.remark)}">${esc(s.remark) || '<span style="color:#ccc">-</span>'}</td>
           <td>${s.bindTime}</td>
           <td>${esc(s.category)}</td>
           <td><span class="status-tag ${availabilityStatus}">${statusMap[availabilityStatus] || availabilityStatus}</span></td>
           <td style="text-align:right;font-weight:500">${(s.balance || 0).toFixed(2)}</td>
-          <td><button class="btn btn-sm btn-secondary" onclick="openRemarkModal('${s.id}')">备注</button></td>
+          <td class="shop-actions-cell">
+            <div class="shop-actions">
+              <button class="btn btn-sm btn-secondary" onclick="refreshShopBrowserSession('${s.id}')" title="仅尝试建立网页主 Cookie 会话">网页会话</button>
+              <button class="btn btn-sm btn-secondary" onclick="refreshShopProfile('${s.id}')" title="仅做最小接口校验">接口校验</button>
+              <button class="btn btn-sm btn-secondary" onclick="probeShopBusinessApis('${s.id}')" title="显式探测只读业务接口，不自动进入聊天页">探针</button>
+              <button class="btn btn-sm btn-secondary" onclick="openRemarkModal('${s.id}')">备注</button>
+            </div>
+          </td>
         </tr>`;
       }).join('');
 
@@ -13318,17 +13360,20 @@
           const result = await window.pddApi.openShopHome(shopId);
           if (result?.error) {
             addLog(`打开店铺后台首页失败：${result.error}`, 'error');
+          } else if (result?.mainCookieContext) {
+            const ctx = result.mainCookieContext;
+            addLog(`打开后台前主 Cookie: PASS_ID=${ctx.hasPassId ? 'yes' : 'no'}, _nano_fp=${ctx.hasNanoFp ? 'yes' : 'no'}, rckk=${ctx.hasRckk ? 'yes' : 'no'}, entryUrl=${ctx.entryUrl || '-'}, url=${ctx.url || '-'}${Array.isArray(ctx.attemptedEntryUrls) && ctx.attemptedEntryUrls.length ? `, tried=[${ctx.attemptedEntryUrls.join(', ')}]` : ''}, openUrl=${result.url || '-'}`, ctx.ready ? 'info' : 'error');
           }
         });
       });
     }
 
-    document.getElementById('shopSearch').addEventListener('input', (e) => {
+    document.getElementById('shopSearch')?.addEventListener('input', (e) => {
       shopSearchText = e.target.value;
       renderShops();
     });
 
-    document.getElementById('shopSelectAll').addEventListener('change', (e) => {
+    document.getElementById('shopSelectAll')?.addEventListener('change', (e) => {
       const filtered = getFilteredShops();
       if (e.target.checked) {
         filtered.forEach(s => selectedShopIds.add(s.id));
@@ -13339,7 +13384,7 @@
     });
 
     // 设置分组
-    document.getElementById('btnSetGroup').addEventListener('click', () => {
+    document.getElementById('btnSetGroup')?.addEventListener('click', () => {
       if (selectedShopIds.size === 0) return alert('请先选择店铺');
       const sel = document.getElementById('groupSelect');
       sel.innerHTML = shopGroups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
@@ -13347,7 +13392,7 @@
       showModal('modalGroup');
     });
 
-    document.getElementById('btnConfirmGroup').addEventListener('click', async () => {
+    document.getElementById('btnConfirmGroup')?.addEventListener('click', async () => {
       let groupId = document.getElementById('groupSelect').value;
       const newName = document.getElementById('newGroupName').value.trim();
 
@@ -13375,7 +13420,7 @@
       showModal('modalRemark');
     }
 
-    document.getElementById('btnConfirmRemark').addEventListener('click', async () => {
+    document.getElementById('btnConfirmRemark')?.addEventListener('click', async () => {
       const remark = document.getElementById('remarkInput').value.trim();
       const shop = shops.find(s => s.id === remarkShopId);
       if (shop) {
@@ -13387,17 +13432,163 @@
     });
 
     // 同步/刷新/解绑
-    document.getElementById('btnSyncShops').addEventListener('click', async () => {
+    document.getElementById('btnSyncShops')?.addEventListener('click', async () => {
+      await window.pddApi.syncTokenShops();
       await loadShops();
       addLog('已按 Token 文件同步店铺列表', 'info');
     });
 
-    document.getElementById('btnRefreshShops').addEventListener('click', async () => {
+    document.getElementById('btnRefreshShops')?.addEventListener('click', async () => {
       await loadShops();
       addLog('店铺列表已刷新', 'info');
     });
 
-    document.getElementById('btnUnbindShops').addEventListener('click', async () => {
+    async function refreshShopBrowserSession(shopId) {
+      const result = await window.pddApi.refreshMainCookieContext({
+        shopId,
+        reason: 'manual-browser-session-test'
+      });
+      const mainCookieContext = result?.result || result?.mainCookieContext || null;
+      if (result?.success) {
+        addLog(`网页会话建立成功: ${shopId}`, 'reply');
+        if (mainCookieContext) {
+          addLog(`主 Cookie: PASS_ID=${mainCookieContext.hasPassId ? 'yes' : 'no'}, _nano_fp=${mainCookieContext.hasNanoFp ? 'yes' : 'no'}, rckk=${mainCookieContext.hasRckk ? 'yes' : 'no'}, entryUrl=${mainCookieContext.entryUrl || '-'}, url=${mainCookieContext.url || '-'}${Array.isArray(mainCookieContext.attemptedEntryUrls) && mainCookieContext.attemptedEntryUrls.length ? `, tried=[${mainCookieContext.attemptedEntryUrls.join(', ')}]` : ''}${Array.isArray(mainCookieContext.passIdScopesBeforeWarmup) && mainCookieContext.passIdScopesBeforeWarmup.length ? `, passIdBefore=[${mainCookieContext.passIdScopesBeforeWarmup.join(', ')}]` : ''}${Array.isArray(mainCookieContext.cookieScopes) && mainCookieContext.cookieScopes.length ? `, scopes=[${mainCookieContext.cookieScopes.join(', ')}]` : ''}`, 'info');
+        }
+        await loadShops();
+        return;
+      }
+      addLog(`网页会话建立失败: ${result?.error || '未知错误'}`, 'error');
+      if (mainCookieContext) {
+        addLog(`主 Cookie: PASS_ID=${mainCookieContext.hasPassId ? 'yes' : 'no'}, _nano_fp=${mainCookieContext.hasNanoFp ? 'yes' : 'no'}, rckk=${mainCookieContext.hasRckk ? 'yes' : 'no'}, entryUrl=${mainCookieContext.entryUrl || '-'}, url=${mainCookieContext.url || '-'}${Array.isArray(mainCookieContext.attemptedEntryUrls) && mainCookieContext.attemptedEntryUrls.length ? `, tried=[${mainCookieContext.attemptedEntryUrls.join(', ')}]` : ''}${Array.isArray(mainCookieContext.passIdScopesBeforeWarmup) && mainCookieContext.passIdScopesBeforeWarmup.length ? `, passIdBefore=[${mainCookieContext.passIdScopesBeforeWarmup.join(', ')}]` : ''}${Array.isArray(mainCookieContext.cookieScopes) && mainCookieContext.cookieScopes.length ? `, scopes=[${mainCookieContext.cookieScopes.join(', ')}]` : ''}${mainCookieContext.error ? `, error=${mainCookieContext.error}` : ''}`, 'error');
+      }
+    }
+
+    async function refreshShopProfile(shopId) {
+      const probe = await window.pddApi.probeShopAuth(shopId);
+      if (probe) {
+        const before = probe.mainCookieContextBefore || {};
+        const after = probe.mainCookieContextAfter || {};
+        const warmup = probe.warmupResult || null;
+        const prepared = probe.preparedHeaders || {};
+        const missingCookies = Array.isArray(probe.missingRequiredCookies) && probe.missingRequiredCookies.length
+          ? probe.missingRequiredCookies.join(', ')
+          : '无';
+        addLog(
+          `参数诊断 commonMallInfo: token=${probe.input?.hasToken ? 'yes' : 'no'}, windowsToken=${probe.input?.hasWindowsAppShopToken ? 'yes' : 'no'}, pddid=${probe.input?.hasPddid ? 'yes' : 'no'}, ua=${prepared.userAgentKind || 'missing'}, antiContent=${probe.request?.hasAntiContentTemplate ? 'yes' : 'no'}`,
+          probe.success ? 'info' : 'error'
+        );
+        addLog(
+          `主 Cookie 前后: before(PASS_ID=${before.hasPassId ? 'yes' : 'no'}, _nano_fp=${before.hasNanoFp ? 'yes' : 'no'}, rckk=${before.hasRckk ? 'yes' : 'no'}) -> after(PASS_ID=${after.hasPassId ? 'yes' : 'no'}, _nano_fp=${after.hasNanoFp ? 'yes' : 'no'}, rckk=${after.hasRckk ? 'yes' : 'no'}), missing=[${missingCookies}]`,
+          probe.success ? 'info' : 'error'
+        );
+        addLog(
+          `请求头模板: cookie=${prepared.hasCookie ? 'yes' : 'no'}${Array.isArray(prepared.cookieNames) && prepared.cookieNames.length ? ` [${prepared.cookieNames.join(', ')}]` : ''}, X-PDD-Token=${prepared.hasXToken ? 'yes' : 'no'}, windows-app-shop-token=${prepared.hasWindowsAppToken ? 'yes' : 'no'}, pddid=${prepared.hasPddid ? 'yes' : 'no'}, etag=${prepared.hasEtag ? 'yes' : 'no'}, VerifyAuthToken=${prepared.hasVerifyAuthToken ? 'yes' : 'no'}, referer=${probe.request?.referer || '-'}, origin=${probe.request?.origin || '-'}`,
+          probe.success ? 'info' : 'error'
+        );
+        if (warmup) {
+          addLog(
+            `预热结果: ready=${warmup.ready ? 'yes' : 'no'}, entryUrl=${warmup.entryUrl || '-'}, url=${warmup.url || '-'}${Array.isArray(warmup.attemptedEntryUrls) && warmup.attemptedEntryUrls.length ? `, tried=[${warmup.attemptedEntryUrls.join(', ')}]` : ''}${Array.isArray(warmup.cookieScopes) && warmup.cookieScopes.length ? `, scopes=[${warmup.cookieScopes.join(', ')}]` : ''}${warmup.error ? `, error=${warmup.error}` : ''}`,
+            warmup.ready ? 'info' : 'error'
+          );
+        } else if (probe.warmupError) {
+          addLog(`预热执行失败: ${probe.warmupError}`, 'error');
+        }
+        if (probe.commonMallInfo?.success) {
+          addLog(`commonMallInfo 校验通过: mallId=${probe.commonMallInfo.mallId || '-'}, mallName=${probe.commonMallInfo.mallName || '-'}`, 'reply');
+        } else {
+          addLog(`commonMallInfo 校验失败: ${probe.commonMallInfo?.error || probe.error || probe.prepareError || '未知错误'}`, 'error');
+        }
+        const safeApis = probe.safeApiResults || {};
+        if (safeApis.userInfo) {
+          addLog(
+            `userInfo 校验${safeApis.userInfo.success ? '通过' : '失败'}: mallId=${safeApis.userInfo.mallId || '-'}, username=${safeApis.userInfo.username || '-'}, nickname=${safeApis.userInfo.nickname || '-'}${safeApis.userInfo.success ? '' : `, error=${safeApis.userInfo.error || '未知错误'}`}`,
+            safeApis.userInfo.success ? 'reply' : 'error'
+          );
+        }
+        if (safeApis.credentialInfo) {
+          addLog(
+            `credentialInfo 校验${safeApis.credentialInfo.success ? '通过' : '失败'}: mallId=${safeApis.credentialInfo.mallId || '-'}, mallName=${safeApis.credentialInfo.mallName || '-'}, companyName=${safeApis.credentialInfo.companyName || '-'}, merchantType=${safeApis.credentialInfo.merchantType || '-'}${safeApis.credentialInfo.success ? '' : `, error=${safeApis.credentialInfo.error || '未知错误'}`}`,
+            safeApis.credentialInfo.success ? 'reply' : 'error'
+          );
+        }
+        addLog(`纯接口校验汇总: ${probe.safeApiSuccessCount || 0}/3 通过`, (probe.safeApiSuccessCount || 0) > 0 ? 'info' : 'error');
+        addLog('店铺管理的“接口校验”已收口为资料接口校验，不再顺带探测业务接口。', 'info');
+      }
+      const result = await window.pddApi.refreshShopProfile(shopId);
+      if (result?.success) {
+        addLog(`店铺信息已更新: ${result.shop?.name || shopId}`, 'reply');
+        return;
+      }
+      const errorText = result?.fetching
+        ? (result.error || '店铺信息获取中，请稍候')
+        : (result?.error || '店铺信息获取失败');
+      addLog(`获取店铺信息失败: ${errorText}`, 'error');
+    }
+
+    async function probeShopBusinessApis(shopId) {
+      const businessProbe = await window.pddApi.probeSafeBusinessApis({
+        shopId,
+        probes: {
+          invoiceOverview: true,
+          invoiceList: true,
+          ticketStatusCount: true,
+          violationList: true
+        }
+      });
+      if (businessProbe?.error) {
+        addLog(`业务探针失败: ${businessProbe.error}`, 'error');
+        return;
+      }
+      if (businessProbe?.invoice && !businessProbe.invoice.skipped) {
+        const invoice = businessProbe.invoice;
+        if (invoice.success && invoice.summary) {
+          addLog(
+            `待开票概览通过: 待开票=${invoice.summary.pendingNum || 0}, 已开票=${invoice.summary.invoicedNum || 0}, 开票中=${invoice.summary.applyingNum || 0}, 金额=${Number(invoice.summary.invoiceAmount || 0).toFixed(2)}`,
+            'reply'
+          );
+        } else {
+          addLog(`待开票概览失败: ${invoice.error || '未知错误'}`, 'error');
+        }
+      }
+      if (businessProbe?.ticket && !businessProbe.ticket.skipped) {
+        const ticket = businessProbe.ticket;
+        if (ticket.success && ticket.summary) {
+          const ticketItems = Array.isArray(ticket.summary.items) ? ticket.summary.items : [];
+          addLog(
+            `工单状态统计通过: 状态项=${ticket.summary.itemCount || 0}, 总量=${ticket.summary.totalCount || 0}${ticketItems.length ? `, 明细=[${ticketItems.map(item => `${item.label || '-'}:${item.count || 0}`).join(', ')}]` : ''}`,
+            'reply'
+          );
+        } else {
+          addLog(`工单状态统计失败: ${ticket.error || '未知错误'}`, 'error');
+        }
+      }
+      if (businessProbe?.invoiceList && !businessProbe.invoiceList.skipped) {
+        const invoiceList = businessProbe.invoiceList;
+        if (invoiceList.success && invoiceList.summary) {
+          const sample = Array.isArray(invoiceList.summary.sample) ? invoiceList.summary.sample : [];
+          addLog(
+            `待开票列表通过: 总数=${invoiceList.summary.total || 0}, 第1页=${sample.length}条${sample.length ? `, 样本=[${sample.map(item => `${item.orderSn || item.serialNo || '-'}|${item.orderStatus || '-'}|${item.invoiceApplyStatus || '-'}`).join(', ')}]` : ''}`,
+            'reply'
+          );
+        } else {
+          addLog(`待开票列表失败: ${invoiceList.error || '未知错误'}`, 'error');
+        }
+      }
+      if (businessProbe?.violationList && !businessProbe.violationList.skipped) {
+        const violationList = businessProbe.violationList;
+        if (violationList.success && violationList.summary) {
+          const sample = Array.isArray(violationList.summary.sample) ? violationList.summary.sample : [];
+          addLog(
+            `违规列表通过: 总数=${violationList.summary.total || 0}, 第1页=${sample.length}条${sample.length ? `, 样本=[${sample.map(item => `${item.violationAppealSn || '-'}|${item.violationType || '-'}|${item.appealStatus || '-'}`).join(', ')}]` : ''}`,
+            'reply'
+          );
+        } else {
+          addLog(`违规列表失败: ${violationList.error || '未知错误'}`, 'error');
+        }
+      }
+    }
+
+    document.getElementById('btnUnbindShops')?.addEventListener('click', async () => {
       if (selectedShopIds.size === 0) return alert('请先选择店铺');
       if (!confirm(`确定解绑 ${selectedShopIds.size} 个店铺？`)) return;
       const shopIds = Array.from(selectedShopIds);
@@ -13410,7 +13601,7 @@
     });
 
     // ==================== 批量绑定 ====================
-    document.getElementById('btnBindShops').addEventListener('click', () => {
+    document.getElementById('btnBindShops')?.addEventListener('click', () => {
       document.getElementById('bindStep1').style.display = '';
       document.getElementById('bindStep2').style.display = 'none';
       document.getElementById('btnConfirmBind').style.display = 'none';
@@ -13419,7 +13610,7 @@
       showModal('modalBind');
     });
 
-    document.getElementById('btnStartScan').addEventListener('click', async () => {
+    document.getElementById('btnStartScan')?.addEventListener('click', async () => {
       const status = document.getElementById('scanStatus');
       status.innerHTML = '<div class="scan-icon" style="animation:pulse 1s infinite">📡</div><div class="scan-text">正在扫描，请稍候...</div>';
       document.getElementById('btnStartScan').disabled = true;
@@ -13444,11 +13635,11 @@
       `).join('');
     });
 
-    document.getElementById('bindSelectAll').addEventListener('change', (e) => {
+    document.getElementById('bindSelectAll')?.addEventListener('change', (e) => {
       document.querySelectorAll('.bind-check').forEach(cb => cb.checked = e.target.checked);
     });
 
-    document.getElementById('btnConfirmBind').addEventListener('click', async () => {
+    document.getElementById('btnConfirmBind')?.addEventListener('click', async () => {
       const selected = [...document.querySelectorAll('.bind-check:checked')].map(cb => scannedShops[cb.dataset.idx]);
       if (selected.length === 0) return alert('请至少选择一个店铺');
       await window.pddApi.bindShops(selected);
@@ -13458,7 +13649,7 @@
     });
 
     // ==================== 店铺考试 ====================
-    document.getElementById('btnExamShop').addEventListener('click', async () => {
+    document.getElementById('btnExamShop')?.addEventListener('click', async () => {
       examQuestions = await window.pddApi.getExamQuestions();
       examAnswers = {};
       renderExam();
@@ -13510,7 +13701,7 @@
       document.getElementById('examProgressFill').style.width = total ? (answered / total * 100) + '%' : '0%';
     }
 
-    document.getElementById('btnSubmitExam').addEventListener('click', async () => {
+    document.getElementById('btnSubmitExam')?.addEventListener('click', async () => {
       if (Object.keys(examAnswers).length < examQuestions.length) {
         if (!confirm(`还有 ${examQuestions.length - Object.keys(examAnswers).length} 题未作答，确定提交？`)) return;
       }
@@ -13541,7 +13732,7 @@
       addLog(`考试完成: ${result.score}分 (${result.correct}/${result.total})`, 'info');
     });
 
-    document.getElementById('btnRetakeExam').addEventListener('click', async () => {
+    document.getElementById('btnRetakeExam')?.addEventListener('click', async () => {
       examAnswers = {};
       renderExam();
       document.getElementById('btnSubmitExam').style.display = '';
@@ -13611,25 +13802,25 @@
 
     renderApiEmojiPanel();
 
-    document.getElementById('btnTogglePhrases').addEventListener('click', () => {
+    document.getElementById('btnTogglePhrases')?.addEventListener('click', () => {
       const panel = document.getElementById('phrasePanel');
       panel.classList.toggle('visible');
       if (panel.classList.contains('visible')) loadQuickPhrases();
     });
 
-    document.getElementById('btnManagePhrases').addEventListener('click', () => {
+    document.getElementById('btnManagePhrases')?.addEventListener('click', () => {
       const editor = document.getElementById('phrasesEditor');
       editor.value = quickPhrases.map(p => `${p.category || '通用'}|${p.text}`).join('\n');
       showModal('modalPhrases');
     });
 
-    document.getElementById('btnApiManagePhrases').addEventListener('click', () => {
+    document.getElementById('btnApiManagePhrases')?.addEventListener('click', () => {
       const editor = document.getElementById('phrasesEditor');
       editor.value = quickPhrases.map(p => `${p.category || '通用'}|${p.text}`).join('\n');
       showModal('modalPhrases');
     });
 
-    document.getElementById('btnSavePhrases').addEventListener('click', async () => {
+    document.getElementById('btnSavePhrases')?.addEventListener('click', async () => {
       const lines = document.getElementById('phrasesEditor').value.split('\n').filter(l => l.trim());
       quickPhrases = lines.map((line, i) => {
         const parts = line.split('|');
@@ -13648,17 +13839,19 @@
     });
 
     // 聊天功能栏按钮（暂为提示）
-    document.getElementById('btnOrderInfo').addEventListener('click', () => alert('订单查询功能开发中'));
-    document.getElementById('btnProductInfo').addEventListener('click', () => alert('商品信息功能开发中'));
-    document.getElementById('btnTransfer').addEventListener('click', () => alert('转接功能开发中'));
-    document.getElementById('btnBlacklist').addEventListener('click', () => alert('拉黑功能开发中'));
-    document.getElementById('btnCloseSession').addEventListener('click', () => alert('关闭会话功能开发中'));
+    document.getElementById('btnOrderInfo')?.addEventListener('click', () => alert('订单查询功能开发中'));
+    document.getElementById('btnProductInfo')?.addEventListener('click', () => alert('商品信息功能开发中'));
+    document.getElementById('btnTransfer')?.addEventListener('click', () => alert('转接功能开发中'));
+    document.getElementById('btnBlacklist')?.addEventListener('click', () => alert('拉黑功能开发中'));
+    document.getElementById('btnCloseSession')?.addEventListener('click', () => alert('关闭会话功能开发中'));
 
     // ==================== 工具栏 ====================
     const toggle = document.getElementById('autoReplyToggle');
 
     (async () => {
-      toggle.checked = await window.pddApi.getAutoReplyEnabled();
+      if (toggle) {
+        toggle.checked = await window.pddApi.getAutoReplyEnabled();
+      }
       const savedUrl = await window.pddApi.getChatUrl();
       addLog(savedUrl
         ? `客服首页: ${savedUrl}`
@@ -13671,13 +13864,13 @@
       await syncViewStateFromMain();
     })();
 
-    toggle.addEventListener('change', async () => {
+    toggle?.addEventListener('change', async () => {
       await window.pddApi.setAutoReplyEnabled(toggle.checked);
       addLog(toggle.checked ? '自动回复已开启' : '自动回复已关闭', 'info');
     });
 
-    document.getElementById('btnReload').addEventListener('click', () => window.pddApi.reloadPdd());
-    document.getElementById('btnDevTools').addEventListener('click', async () => {
+    document.getElementById('btnReload')?.addEventListener('click', () => window.pddApi.reloadPdd());
+    document.getElementById('btnDevTools')?.addEventListener('click', async () => {
       const result = await window.pddApi.openDevTools();
       if (result?.error) {
         addLog(`打开 DevTools 失败: ${result.error}`, 'error');
@@ -13699,14 +13892,14 @@
         addLog(`打开调试面板异常: ${err?.message || String(err)}`, 'error');
       }
     };
-    document.getElementById('btnMailOpenDebug').addEventListener('click', openDebugWindow);
-    document.getElementById('btnInvoiceOpenDebug').addEventListener('click', openDebugWindow);
+    document.getElementById('btnMailOpenDebug')?.addEventListener('click', openDebugWindow);
+    document.getElementById('btnInvoiceOpenDebug')?.addEventListener('click', openDebugWindow);
     document.getElementById('btnViolationOpenDebug')?.addEventListener('click', openDebugWindow);
     document.getElementById('btnTicketOpenDebug')?.addEventListener('click', openDebugWindow);
     document.getElementById('btnAfterSaleOpenDebug')?.addEventListener('click', openDebugWindow);
-    document.getElementById('btnInvoiceListTip').addEventListener('click', () => addLog('请在嵌入网页中查看待开票列表并观察抓包', 'info'));
-    document.getElementById('btnInvoiceActionTip').addEventListener('click', () => addLog('请在嵌入网页中点击“立即开票”，当前接口版先完成列表与统计对接', 'info'));
-    document.getElementById('btnInvoiceSkipTip').addEventListener('click', () => addLog('请在嵌入网页中处理“暂不开票”动作，当前接口版保留抓包观察能力', 'info'));
+    document.getElementById('btnInvoiceListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看待开票列表并观察抓包', 'info'));
+    document.getElementById('btnInvoiceActionTip')?.addEventListener('click', () => addLog('请在嵌入网页中点击“立即开票”，当前接口版先完成列表与统计对接', 'info'));
+    document.getElementById('btnInvoiceSkipTip')?.addEventListener('click', () => addLog('请在嵌入网页中处理“暂不开票”动作，当前接口版保留抓包观察能力', 'info'));
     document.getElementById('btnViolationListTip')?.addEventListener('click', () => addLog('请在嵌入网页中查看店铺违规管理列表并观察抓包', 'info'));
     document.getElementById('btnViolationAppealTip')?.addEventListener('click', () => addLog('请在嵌入网页中进入申诉/整改页签，接口版将复用抓包与接口解析', 'info'));
     document.getElementById('btnViolationWarnTip')?.addEventListener('click', () => addLog('请在嵌入网页中进入违规预警页签，接口版将同步扩展筛选与详情', 'info'));
@@ -13717,7 +13910,7 @@
     document.getElementById('btnAfterSaleDetailTip')?.addEventListener('click', () => addLog('请在嵌入网页中打开售后详情并观察抓包', 'info'));
     document.getElementById('btnAfterSaleRefundTip')?.addEventListener('click', () => addLog('请在嵌入网页中处理退款/退货退款并观察抓包', 'info'));
 
-    document.getElementById('btnTestReply').addEventListener('click', async () => {
+    document.getElementById('btnTestReply')?.addEventListener('click', async () => {
       const btn = document.getElementById('btnTestReply');
       btn.textContent = '发送中...';
       btn.disabled = true;
@@ -13739,7 +13932,7 @@
       btn.disabled = false;
     });
 
-    document.getElementById('btnSaveUrl').addEventListener('click', async () => {
+    document.getElementById('btnSaveUrl')?.addEventListener('click', async () => {
       const url = await window.pddApi.getCurrentUrl();
       if (url && !url.includes('/other/404')) {
         if (currentView === 'mail' || currentView === 'mail-api') {
@@ -13794,7 +13987,7 @@
     });
 
     // 调试窗口（独立窗口）
-    document.getElementById('btnLog').addEventListener('click', async (e) => {
+    document.getElementById('btnLog')?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       const originalText = btn.textContent;
       btn.textContent = '打开中...';
@@ -13899,7 +14092,7 @@
       }
     }
 
-    let toastTimer = null;
+    var toastTimer = null;
 
     function showToast(text, duration) {
       const toast = document.getElementById('toastMsg');

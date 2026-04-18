@@ -1,6 +1,11 @@
 const { BrowserView, BrowserWindow, session, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const {
+  DEFAULT_PAGE_CHROME_UA,
+  resolveStoredShopProfile,
+  applySessionPddPageProfile
+} = require('./pdd-request-profile');
 
 const PDD_CHAT_URL = 'https://mms.pinduoduo.com/chat-merchant/index.html';
 const PDD_HOME_URL = 'https://mms.pinduoduo.com/home';
@@ -25,6 +30,7 @@ class ShopManager {
     this.onDetectChat = options.onDetectChat || (() => {});
     this.onTokenUpdated = options.onTokenUpdated || (() => {});
     this.getApiClient = options.getApiClient || (() => null);
+    this.getCurrentView = options.getCurrentView || (() => '');
     this._pendingQRShopId = null;     // 扫码登录中的临时 shopId
     this._shopInfoTimer = null;
     this._shopInfoFetchingShopId = '';
@@ -35,11 +41,22 @@ class ShopManager {
   // ---- BrowserView 生命周期 ----
 
   _getPartition(shopId) {
-    return `persist:pdd-${shopId}`;
+    return `persist:pddv2-${shopId}`;
   }
 
   _getChatUrl() {
     return this.store.get('chatUrl') || PDD_CHAT_URL;
+  }
+
+  _getMainCookieWarmupUrls(options = {}) {
+    const homeUrl = PDD_HOME_URL;
+    const loginRedirectUrl = `${PDD_LOGIN_URL}?redirectUrl=${encodeURIComponent(homeUrl)}`;
+    const urls = [homeUrl, loginRedirectUrl];
+    if (options.includeChatWarmup === true) {
+      const chatUrl = this._getChatUrl() || PDD_CHAT_URL;
+      urls.push(chatUrl);
+    }
+    return Array.from(new Set(urls.filter(Boolean)));
   }
 
   _getTokenStoreKey(shopId) {
@@ -151,37 +168,128 @@ class ShopManager {
     const partition = this._getPartition(shopId);
     const ses = session.fromPartition(partition);
 
-    await ses.clearStorageData();
-    await ses.clearCache();
+    await this._resetSessionCookies(ses);
 
+    return this._seedSessionWithTokenData(ses, tokenData, { httpOnly: true });
+  }
+
+  async _resetSessionCookies(ses) {
+    if (!ses) return 0;
+    let removed = 0;
+    const cookies = await ses.cookies.get({});
+    for (const cookie of cookies) {
+      const domain = String(cookie.domain || '').replace(/^\./, '');
+      if (!domain || !domain.endsWith('pinduoduo.com')) continue;
+      try {
+        await ses.cookies.remove(`https://${domain}${cookie.path || '/'}`, cookie.name);
+        removed++;
+      } catch {}
+    }
+    return removed;
+  }
+
+  async _seedSessionWithTokenData(ses, tokenData = {}, options = {}) {
+    if (!ses) return 0;
+    const httpOnly = options.httpOnly !== false;
     let cookieCount = 0;
     for (const cookieStr of (tokenData.mallCookies || [])) {
       const eqIdx = cookieStr.indexOf('=');
       if (eqIdx < 0) continue;
-      await ses.cookies.set({
-        url: 'https://mms.pinduoduo.com',
-        name: cookieStr.slice(0, eqIdx),
-        value: cookieStr.slice(eqIdx + 1),
-        domain: '.pinduoduo.com',
-        path: '/',
-        secure: true,
-        httpOnly: true
-      });
-      cookieCount++;
+      const name = cookieStr.slice(0, eqIdx);
+      const value = cookieStr.slice(eqIdx + 1);
+      const cookieVariants = [
+        {
+          url: 'https://mms.pinduoduo.com',
+          name,
+          value,
+          domain: '.pinduoduo.com',
+          path: '/',
+          secure: true,
+          httpOnly
+        },
+        {
+          url: 'https://mms.pinduoduo.com',
+          name,
+          value,
+          path: '/',
+          secure: true,
+          httpOnly
+        }
+      ];
+      const variants = name === 'PASS_ID' ? cookieVariants : [cookieVariants[0]];
+      for (const variant of variants) {
+        try {
+          await ses.cookies.set(variant);
+          cookieCount++;
+        } catch {}
+      }
     }
-
-    if (tokenData.pddid) {
-      await ses.cookies.set({
-        url: 'https://mms.pinduoduo.com',
-        name: 'pddid',
-        value: tokenData.pddid,
-        domain: '.pinduoduo.com',
-        path: '/'
-      });
-      cookieCount++;
-    }
-
     return cookieCount;
+  }
+
+  async _getSessionPassIdScopes(ses) {
+    if (!ses) return [];
+    const cookies = await ses.cookies.get({});
+    return Array.from(new Set(
+      cookies
+        .filter(item => item.name === 'PASS_ID')
+        .map(item => `PASS_ID@${String(item.domain || '').replace(/^\./, '') || 'host-only'}`)
+    ));
+  }
+
+  _getManagedTokenData(shopId) {
+    if (!shopId) return null;
+    if (this.tokenFileStore && typeof this.tokenFileStore.findRecordByShopId === 'function') {
+      return this.tokenFileStore.findRecordByShopId(shopId)?.tokenData || null;
+    }
+    return null;
+  }
+
+  async _collectMainCookieContextResult(ses, win = null) {
+    const allCookies = await ses.cookies.get({});
+    const cookies = allCookies.filter(item => {
+      const domain = String(item.domain || '').replace(/^\./, '');
+      return domain.endsWith('pinduoduo.com');
+    });
+    const cookieNames = Array.from(new Set(cookies.map(item => item.name)));
+    const cookieScopes = Array.from(new Set(
+      cookies
+        .filter(item => ['PASS_ID', '_nano_fp', 'rckk'].includes(item.name))
+        .map(item => `${item.name}@${String(item.domain || '').replace(/^\./, '') || 'host-only'}`)
+    ));
+    const hasPassId = cookies.some(item => item.name === 'PASS_ID');
+    const hasNanoFp = cookies.some(item => item.name === '_nano_fp');
+    const hasRckk = cookies.some(item => item.name === 'rckk');
+    return {
+      ready: hasPassId && hasNanoFp && hasRckk,
+      cookieNames,
+      cookieScopes,
+      hasPassId,
+      hasNanoFp,
+      hasRckk,
+      currentUrl: win && !win.isDestroyed() ? win.webContents.getURL() : '',
+    };
+  }
+
+  async _waitForMainCookieContext(ses, win, options = {}) {
+    const waitTimeoutMs = Math.max(3000, Number(options.waitTimeoutMs || 30000));
+    const pollIntervalMs = Math.max(250, Number(options.pollIntervalMs || 500));
+    let result = {
+      ready: false,
+      cookieNames: [],
+      cookieScopes: [],
+      hasPassId: false,
+      hasNanoFp: false,
+      hasRckk: false,
+      currentUrl: '',
+    };
+    const deadline = Date.now() + waitTimeoutMs;
+    while (Date.now() < deadline) {
+      result = await this._collectMainCookieContextResult(ses, win);
+      if (result.ready) break;
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+    return result;
   }
 
   _hasRealShopName(name = '') {
@@ -211,8 +319,53 @@ class ShopManager {
     return fallback;
   }
 
+  _extractImportedShopMetaFromTokenData(tokenData = {}, preferredMallId = '') {
+    const targetMallId = String(preferredMallId || '').trim();
+    const importedMallName = String(
+      tokenData?.mallName
+      || tokenData?.mall_name
+      || tokenData?.shopName
+      || tokenData?.shop_name
+      || ''
+    ).trim();
+    const shopEntries = Array.isArray(tokenData?.shops)
+      ? tokenData.shops.filter(item => item && typeof item === 'object')
+      : [];
+    const normalizeMeta = (item = {}) => ({
+      mallId: String(item.mallId || targetMallId || '').trim(),
+      mallName: String(item.mallName || item.mall_name || importedMallName || '').trim(),
+      loginStatus: String(item.loginStatus || item.login_status || '').trim()
+    });
+    const matchedShop = targetMallId
+      ? shopEntries.find(item => String(item.mallId || '').trim() === targetMallId)
+      : null;
+    if (matchedShop) {
+      return normalizeMeta(matchedShop);
+    }
+    if (shopEntries.length === 1) {
+      return normalizeMeta(shopEntries[0]);
+    }
+    if (importedMallName) {
+      return {
+        mallId: targetMallId,
+        mallName: importedMallName,
+        loginStatus: ''
+      };
+    }
+    const firstNamedShop = shopEntries.find(item => String(item.mallName || item.mall_name || '').trim());
+    if (firstNamedShop) {
+      return normalizeMeta(firstNamedShop);
+    }
+    return null;
+  }
+
   _buildShopFromTokenRecord(record, previousShop = {}) {
     const previousName = previousShop.name || '';
+    const importedShopMeta = this._extractImportedShopMetaFromTokenData(
+      record?.tokenData,
+      record?.tokenInfo?.mallId || previousShop.mallId || ''
+    );
+    const importedMallName = String(importedShopMeta?.mallName || '').trim();
     const autoNames = [
       '扫码登录中...',
       previousShop.mallId ? `店铺 ${previousShop.mallId}` : '',
@@ -220,7 +373,7 @@ class ShopManager {
       previousShop.id ? `新店铺 ${previousShop.id.slice(-6)}` : ''
     ].filter(Boolean);
     const name = !previousName || autoNames.includes(previousName)
-      ? (record.tokenInfo.mallId ? `店铺 ${record.tokenInfo.mallId}` : previousName || `店铺 ${record.shopId.slice(-6)}`)
+      ? (importedMallName || (record.tokenInfo.mallId ? `店铺 ${record.tokenInfo.mallId}` : previousName || `店铺 ${record.shopId.slice(-6)}`))
       : previousName;
     const hasRealShopName = this._hasRealShopName(previousName);
     const previousInfoStatus = this._normalizeShopInfoStatus(previousShop.shopInfoStatus || '');
@@ -236,7 +389,7 @@ class ShopManager {
     const normalizedShopStatus = inheritedFetchedAt
       ? (previousAvailabilityStatus || 'online')
       : (previousAvailabilityStatus === 'expired' ? 'expired' : 'offline');
-    const normalizedShopNameStatus = hasRealShopName
+    const normalizedShopNameStatus = (hasRealShopName || this._hasRealShopName(importedMallName))
       ? 'resolved'
       : (inheritedFetchedAt ? 'missing' : 'pending');
 
@@ -329,7 +482,9 @@ class ShopManager {
     }
 
     const broadcast = options.broadcast !== false;
+    const applyTokens = options.applyTokens !== false;
     const forceApplyTokens = options.forceApplyTokens === true;
+    const showView = options.showView === true || (options.showView !== false && broadcast && !!this.mainWindow);
     const previousShops = this.store.get('shops') || [];
     const previousById = new Map(previousShops.map(shop => [shop.id, shop]));
     const previousByMallId = new Map(previousShops.filter(shop => shop.mallId).map(shop => [String(shop.mallId), shop]));
@@ -375,13 +530,27 @@ class ShopManager {
         userAgent: nextShop.userAgent
       }, nextShop.mallId, record.tokenInfo.userId, record.tokenInfo.token));
 
-      if (shouldRefresh) {
+      if (shouldRefresh && applyTokens) {
         cookieCountByShopId[record.shopId] = await this._applyTokenDataToSession(record.shopId, record.tokenData);
         const view = this.views.get(record.shopId);
-        if (view && nextShop.userAgent) {
-          view.webContents.setUserAgent(nextShop.userAgent);
+        if (view) {
+          const pageProfile = resolveStoredShopProfile(this.store, record.shopId, {
+            fallbackUserAgent: DEFAULT_PAGE_CHROME_UA,
+            chromeOnly: true
+          });
+          view.__pddUserAgent = pageProfile.userAgent;
+          if (pageProfile.userAgent) {
+            view.webContents.setUserAgent(pageProfile.userAgent);
+          }
+          applySessionPddPageProfile(view.webContents.session, {
+            userAgent: pageProfile.userAgent,
+            tokenInfo: pageProfile.tokenInfo,
+            clientHintsProfile: 'page'
+          });
         }
         this.onTokenUpdated(record.shopId);
+      }
+      if (shouldRefresh) {
         if (previousFile) refreshedShopIds.push(record.shopId);
         else createdShopIds.push(record.shopId);
       }
@@ -405,7 +574,7 @@ class ShopManager {
     this.syncActiveShopSelection({
       shops: nextShops,
       preferredShopId: previousActiveShopId,
-      showView: broadcast && !!this.mainWindow
+      showView
     });
 
     if (broadcast && this.mainWindow) {
@@ -473,9 +642,19 @@ class ShopManager {
       callback(true);
     });
 
-    if (shop?.userAgent) {
-      view.webContents.setUserAgent(shop.userAgent);
+    const pageProfile = resolveStoredShopProfile(this.store, shopId, {
+      fallbackUserAgent: DEFAULT_PAGE_CHROME_UA,
+      chromeOnly: true
+    });
+    view.__pddUserAgent = pageProfile.userAgent;
+    if (pageProfile.userAgent) {
+      view.webContents.setUserAgent(pageProfile.userAgent);
     }
+    applySessionPddPageProfile(view.webContents.session, {
+      userAgent: pageProfile.userAgent,
+      tokenInfo: pageProfile.tokenInfo,
+      clientHintsProfile: 'page'
+    });
 
     // 拦截页面内导航，非商家后台域名的链接用系统浏览器打开
     view.webContents.on('will-navigate', (event, url) => {
@@ -492,7 +671,8 @@ class ShopManager {
       if (url?.startsWith('http')) {
         if (this._isMerchantUrl(url)) {
           this.mainWindow.webContents.send('pdd-navigated', { url, fromPopup: true });
-          view.webContents.loadURL(url);
+          if (view.__pddUserAgent) view.webContents.loadURL(url, { userAgent: view.__pddUserAgent });
+          else view.webContents.loadURL(url);
         } else {
           shell.openExternal(url);
         }
@@ -513,7 +693,11 @@ class ShopManager {
 
       this.onInjectScript(view);
       if (this.activeShopId === shopId) {
-        this.mainWindow.webContents.send('pdd-page-loaded', { url });
+        this.mainWindow.webContents.send('pdd-page-loaded', {
+          shopId,
+          currentView: this.getCurrentView(),
+          url
+        });
       }
       setTimeout(() => this.onDetectChat(view, shopId), 2000);
     });
@@ -521,6 +705,8 @@ class ShopManager {
     view.webContents.on('did-start-loading', () => {
       if (this.activeShopId === shopId) {
         this.mainWindow.webContents.send('pdd-page-loading', {
+          shopId,
+          currentView: this.getCurrentView(),
           url: view.webContents.getURL()
         });
       }
@@ -539,7 +725,11 @@ class ShopManager {
 
     view.webContents.on('did-navigate-in-page', (event, url) => {
       if (this.activeShopId === shopId) {
-        this.mainWindow.webContents.send('pdd-navigated', { url });
+        this.mainWindow.webContents.send('pdd-navigated', {
+          shopId,
+          currentView: this.getCurrentView(),
+          url
+        });
       }
       this.onInjectScript(view);
       setTimeout(() => this.onDetectChat(view, shopId), 2000);
@@ -547,7 +737,11 @@ class ShopManager {
 
     view.webContents.on('did-navigate', (event, url) => {
       if (this.activeShopId === shopId) {
-        this.mainWindow.webContents.send('pdd-navigated', { url });
+        this.mainWindow.webContents.send('pdd-navigated', {
+          shopId,
+          currentView: this.getCurrentView(),
+          url
+        });
       }
 
       // 扫码登录检测：从登录页跳转到非登录页，说明登录成功
@@ -609,12 +803,12 @@ class ShopManager {
     this.mainWindow.setBrowserView(view);
     this._resizeView(view);
 
-    // 如果 view 还没加载过内容，加载客服页面
+    // 如果 view 还没加载过内容，优先加载后台首页，避免默认拉起聊天运行时
     const currentUrl = view.webContents.getURL();
     if (loadUrl) {
       view.webContents.loadURL(loadUrl);
     } else if (!currentUrl || currentUrl === 'about:blank') {
-      view.webContents.loadURL(this._getChatUrl());
+      view.webContents.loadURL(PDD_HOME_URL);
     }
 
     this.mainWindow.webContents.send('shop-switched', { shopId, shop });
@@ -638,6 +832,12 @@ class ShopManager {
     const view = this.views.get(this.activeShopId);
     if (view) {
       try { this.mainWindow.removeBrowserView(view); } catch {}
+      try {
+        const currentUrl = view.webContents.getURL();
+        if (currentUrl && currentUrl !== 'about:blank') {
+          view.webContents.loadURL('about:blank');
+        }
+      } catch {}
     }
     this._overlayVisible = false;
   }
@@ -710,15 +910,32 @@ class ShopManager {
       const imported = this.tokenFileStore.importTokenFile(filePath);
       const tokenAnalysis = this._analyzeTokenData(imported.tokenData, imported.tokenInfo);
       const importedShopIds = Array.isArray(imported.records) ? imported.records.map(record => record.shopId) : [];
-      const { shops, cookieCountByShopId, createdShopIds } = await this.syncShopsFromTokenFiles({ broadcast: true });
+      if (!importedShopIds.length) {
+        if (imported.hasShopMetadata) {
+          return {
+            error: imported.eligibleShopCount > 0
+              ? '文件中的“已登录”店铺缺少可用 PASS_ID，未导入任何店铺'
+              : '文件中没有“已登录”的店铺，未导入任何店铺',
+            fileName: imported.fileName,
+            sourceFileName,
+            importedCount: 0,
+            eligibleShopCount: imported.eligibleShopCount || 0,
+            skippedShopCount: imported.skippedShopCount || 0,
+            skippedNoPassCookieCount: imported.skippedNoPassCookieCount || 0
+          };
+        }
+        return { error: 'Token 文件中未解析到可导入店铺', fileName: imported.fileName, sourceFileName };
+      }
+      const { shops, cookieCountByShopId, createdShopIds } = await this.syncShopsFromTokenFiles({
+        broadcast: true,
+        applyTokens: false,
+        showView: false
+      });
       const targetShopId = importedShopIds.find(shopId => createdShopIds.includes(shopId)) || importedShopIds[0] || '';
       const targetShop = shops.find(shop => shop.id === targetShopId) || null;
       const createdCount = importedShopIds.filter(shopId => createdShopIds.includes(shopId)).length;
       const refreshedCount = importedShopIds.length - createdCount;
       const created = createdCount > 0;
-      if (targetShop) {
-        this.switchTo(targetShop.id);
-      }
       for (const shopId of importedShopIds) {
         if (!createdShopIds.includes(shopId)) continue;
         const createdShop = shops.find(shop => shop.id === shopId);
@@ -726,15 +943,7 @@ class ShopManager {
           this.mainWindow.webContents.send('shop-added', { shop: createdShop });
         }
       }
-      if (importedShopIds.length > 1) {
-        if (targetShopId) {
-          this._fetchAndApplyShopProfile(targetShopId).catch(() => {});
-        }
-        this.startShopInfoHydrationLoop(5000);
-      } else if (targetShopId) {
-        this._fetchAndApplyShopProfile(targetShopId).catch(() => {});
-      }
-      this.onLog(`[PDD助手] Token 文件已纳入管理: ${sourceFileName}, 导入 ${importedShopIds.length || 0} 家店铺`);
+      this.onLog(`[PDD助手] Token 文件已静默导入(不自动建立网页会话、不自动校验接口): ${sourceFileName}, 导入 ${importedShopIds.length || 0} 家店铺`);
       return {
         shopId: targetShopId,
         cookieCount: importedShopIds.reduce((sum, shopId) => sum + Number(cookieCountByShopId[shopId] || 0), 0),
@@ -749,6 +958,16 @@ class ShopManager {
         createdCount,
         refreshedCount,
         multiShopImport: importedShopIds.length > 1,
+        profileRefreshDeferred: !!targetShopId,
+        silentImportOnly: true,
+        apiValidationDeferred: true,
+        mainCookieContextReady: false,
+        mainCookieContextError: '',
+        mainCookieContext: null,
+        hasShopMetadata: !!imported.hasShopMetadata,
+        eligibleShopCount: imported.eligibleShopCount || 0,
+        skippedShopCount: imported.skippedShopCount || 0,
+        skippedNoPassCookieCount: imported.skippedNoPassCookieCount || 0,
         passIdCount: tokenAnalysis.passIdCount,
         passIdIdentityCount: tokenAnalysis.passIdIdentityCount,
         tokenMatchesPassId: tokenAnalysis.tokenMatchesPassId,
@@ -795,8 +1014,7 @@ class ShopManager {
     const partition = this._getPartition(shopId);
     const ses = session.fromPartition(partition);
 
-    await ses.clearStorageData();
-    await ses.clearCache();
+    await this._resetSessionCookies(ses);
 
     let cookieCount = 0;
     for (const cookieStr of (tokenData.mallCookies || [])) {
@@ -814,20 +1032,13 @@ class ShopManager {
       cookieCount++;
     }
 
-    if (tokenData.pddid) {
-      await ses.cookies.set({
-        url: 'https://mms.pinduoduo.com',
-        name: 'pddid',
-        value: tokenData.pddid,
-        domain: '.pinduoduo.com',
-        path: '/'
-      });
-      cookieCount++;
-    }
-
     const shop = {
       id: shopId,
-      name: mallId ? `店铺 ${mallId}` : `店铺 ${shopId.slice(-6)}`,
+      name: (() => {
+        const importedShopMeta = this._extractImportedShopMetaFromTokenData(tokenData, mallId);
+        const importedMallName = String(importedShopMeta?.mallName || '').trim();
+        return importedMallName || (mallId ? `店铺 ${mallId}` : `店铺 ${shopId.slice(-6)}`);
+      })(),
       account: '',
       mallId: mallId || '',
       group: '',
@@ -851,9 +1062,14 @@ class ShopManager {
 
     this._saveTokenInfo(shopId, this._buildTokenInfo(tokenData, mallId, userId, tokenStr));
 
-    this.switchTo(shopId);
-
-    this._fetchAndApplyShopProfile(shopId).catch(() => {});
+    const profileRefreshResult = await this.refreshShopProfile(shopId);
+    if (profileRefreshResult?.success) {
+      this.syncActiveShopSelection({
+        preferredShopId: shopId,
+        showView: false,
+        emitEvent: true
+      });
+    }
 
     this.mainWindow.webContents.send('shop-added', { shop });
     this.mainWindow.webContents.send('shop-list-updated', { shops: this.store.get('shops') });
@@ -863,6 +1079,9 @@ class ShopManager {
       shopId,
       cookieCount,
       mallId,
+      mainCookieContextReady: !!profileRefreshResult?.success,
+      mainCookieContextError: profileRefreshResult?.success ? '' : (profileRefreshResult?.error || ''),
+      mainCookieContext: profileRefreshResult?.mainCookieContext || null,
       passIdCount: tokenAnalysis.passIdCount,
       passIdIdentityCount: tokenAnalysis.passIdIdentityCount,
       tokenMatchesPassId: tokenAnalysis.tokenMatchesPassId,
@@ -886,26 +1105,53 @@ class ShopManager {
       this.store.set('shops', shops);
     }
 
-    // 更新内存中 BrowserView 的 UA
-    const view = this.views.get(shopId);
-    if (view && tokenData.userAgent) {
-      view.webContents.setUserAgent(tokenData.userAgent);
-    }
-
-    this._saveTokenInfo(shopId, this._buildTokenInfo({
+    const nextTokenInfo = this._buildTokenInfo({
       ...tokenData,
       userAgent: tokenData.userAgent || shop?.userAgent || ''
-    }, mallId || shop?.mallId || '', userId, tokenStr));
+    }, mallId || shop?.mallId || '', userId, tokenStr);
+    this._saveTokenInfo(shopId, nextTokenInfo);
+
+    // 更新内存中 BrowserView 的 UA
+    const view = this.views.get(shopId);
+    if (view) {
+      const pageProfile = resolveStoredShopProfile(this.store, shopId, {
+        fallbackUserAgent: DEFAULT_PAGE_CHROME_UA,
+        chromeOnly: true
+      });
+      view.__pddUserAgent = pageProfile.userAgent;
+      if (pageProfile.userAgent) {
+        view.webContents.setUserAgent(pageProfile.userAgent);
+      }
+      applySessionPddPageProfile(view.webContents.session, {
+        userAgent: pageProfile.userAgent,
+        tokenInfo: nextTokenInfo,
+        clientHintsProfile: 'page'
+      });
+    }
+
     this.onTokenUpdated(shopId);
 
-    this.switchTo(shopId);
-    if (view) view.webContents.loadURL(this._getChatUrl());
-    this._fetchAndApplyShopProfile(shopId).catch(() => {});
+    const profileRefreshResult = await this.refreshShopProfile(shopId);
+    if (profileRefreshResult?.success) {
+      this.syncActiveShopSelection({
+        preferredShopId: shopId,
+        showView: false,
+        emitEvent: true
+      });
+    }
 
     this.mainWindow.webContents.send('shop-list-updated', { shops: this.store.get('shops') });
     this.onLog(`[PDD助手] Token 已刷新: shopId=${shopId}, ${cookieCount} Cookie`);
 
-    return { shopId, cookieCount, mallId, refreshed: true };
+    return {
+      shopId,
+      cookieCount,
+      mallId,
+      refreshed: true,
+      mainCookieContextReady: !!profileRefreshResult?.success,
+      mainCookieContextError: profileRefreshResult?.success ? '' : (profileRefreshResult?.error || ''),
+      mainCookieContext: profileRefreshResult?.mainCookieContext || null
+    };
   }
 
   // ---- 添加店铺: 扫码登录 ----
@@ -1078,69 +1324,131 @@ class ShopManager {
     return shop;
   }
 
+  _getManagedImportedShopMeta(shopId) {
+    if (!shopId || !this.tokenFileStore || typeof this.tokenFileStore.findRecordByShopId !== 'function') {
+      return null;
+    }
+    const record = this.tokenFileStore.findRecordByShopId(shopId);
+    const shopMeta = this._extractImportedShopMetaFromTokenData(
+      record?.tokenData,
+      record?.tokenInfo?.mallId || ''
+    );
+    if (!shopMeta || typeof shopMeta !== 'object') return null;
+    return {
+      mallId: String(shopMeta.mallId || record?.tokenInfo?.mallId || '').trim(),
+      mallName: String(shopMeta.mallName || '').trim(),
+      loginStatus: String(shopMeta.loginStatus || '').trim()
+    };
+  }
+
   async _hydrateMainCookieContext(shopId, options = {}) {
     const shop = this._getShop(shopId);
     if (!shopId || !shop) return null;
     const ses = session.fromPartition(this._getPartition(shopId));
-    const waitTimeoutMs = Math.max(3000, Number(options.waitTimeoutMs || 15000));
+    const waitTimeoutMs = Math.max(3000, Number(options.waitTimeoutMs || 30000));
     const pollIntervalMs = Math.max(250, Number(options.pollIntervalMs || 500));
 
     this._updateMainCookieContextState(shopId, {
       mainCookieContextReady: false,
       mainCookieContextError: '',
       mainCookieContextUpdatedAt: Number(shop.mainCookieContextUpdatedAt || 0),
+      mainCookieContextUrl: '',
+      mainCookieContextCookieNames: [],
+      mainCookieContextHasPassId: false,
+      mainCookieContextHasNanoFp: false,
+      mainCookieContextHasRckk: false,
+      mainCookieContextFallbackUrl: '',
+      mainCookieContextFallbackCookieNames: [],
     });
 
     let result = {
       ready: false,
       cookieNames: [],
+      cookieScopes: [],
       hasPassId: false,
       hasNanoFp: false,
       hasRckk: false,
       currentUrl: '',
+      entryUrl: '',
+      attemptedEntryUrls: [],
     };
     let win = null;
 
     try {
+      const managedTokenData = this._getManagedTokenData(shopId);
+      const passIdScopesBeforeSeed = await this._getSessionPassIdScopes(ses);
+      if (!passIdScopesBeforeSeed.length && managedTokenData) {
+        result.seededCookieCount = await this._seedSessionWithTokenData(ses, managedTokenData, {
+          httpOnly: true
+        });
+      }
+      result.passIdScopesBeforeSeed = passIdScopesBeforeSeed;
+      result.passIdScopesAfterSeed = await this._getSessionPassIdScopes(ses);
+
       win = new BrowserWindow({
         width: 1200,
         height: 800,
         show: false,
+        paintWhenInitiallyHidden: true,
         webPreferences: {
           partition: this._getPartition(shopId),
           contextIsolation: true,
           nodeIntegration: false,
+          backgroundThrottling: false,
         },
       });
 
-      if (shop?.userAgent) {
-        win.webContents.setUserAgent(shop.userAgent);
+      const pageProfile = resolveStoredShopProfile(this.store, shopId, {
+        fallbackUserAgent: DEFAULT_PAGE_CHROME_UA,
+        chromeOnly: true
+      });
+      applySessionPddPageProfile(win.webContents.session, {
+        userAgent: pageProfile.userAgent,
+        tokenInfo: pageProfile.tokenInfo,
+        clientHintsProfile: 'page'
+      });
+      if (pageProfile.userAgent) {
+        win.webContents.setUserAgent(pageProfile.userAgent);
       }
 
-      await win.loadURL(PDD_HOME_URL);
-      const deadline = Date.now() + waitTimeoutMs;
-      while (Date.now() < deadline) {
-        const cookies = await ses.cookies.get({ domain: '.pinduoduo.com' });
-        const cookieNames = cookies.map(item => item.name);
-        const hasPassId = cookieNames.includes('PASS_ID');
-        const hasNanoFp = cookieNames.includes('_nano_fp');
-        const hasRckk = cookieNames.includes('rckk');
+      const warmupUrls = this._getMainCookieWarmupUrls(options);
+      const perAttemptWaitTimeoutMs = Math.max(8000, Math.round(waitTimeoutMs / Math.max(1, warmupUrls.length)));
+      for (const entryUrl of warmupUrls) {
+        result.attemptedEntryUrls = Array.from(new Set([...(result.attemptedEntryUrls || []), entryUrl]));
+        await win.loadURL(entryUrl);
+        const passIdScopesBeforeWarmup = await this._getSessionPassIdScopes(ses);
         result = {
-          ready: hasPassId && hasNanoFp,
-          cookieNames,
-          hasPassId,
-          hasNanoFp,
-          hasRckk,
-          currentUrl: win.webContents.getURL(),
+          ...(await this._waitForMainCookieContext(ses, win, {
+            waitTimeoutMs: perAttemptWaitTimeoutMs,
+            pollIntervalMs
+          })),
+          entryUrl,
+          passIdScopesBeforeWarmup,
+          passIdScopesBeforeSeed: result.passIdScopesBeforeSeed,
+          passIdScopesAfterSeed: result.passIdScopesAfterSeed,
+          seededCookieCount: Number(result.seededCookieCount || 0),
+          attemptedEntryUrls: result.attemptedEntryUrls
         };
         if (result.ready) break;
-        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+      }
+      if (!result.ready) {
+        result = {
+          ...result,
+          error: '主站 Cookie 上下文未完整建立'
+        };
       }
 
       this._updateMainCookieContextState(shopId, {
         mainCookieContextReady: result.ready,
         mainCookieContextUpdatedAt: Date.now(),
-        mainCookieContextError: result.ready ? '' : '主站 Cookie 上下文未完整建立',
+        mainCookieContextError: result.ready ? '' : (result.error || '主站 Cookie 上下文未完整建立'),
+        mainCookieContextUrl: result.currentUrl || '',
+        mainCookieContextCookieNames: Array.isArray(result.cookieNames) ? result.cookieNames : [],
+        mainCookieContextHasPassId: !!result.hasPassId,
+        mainCookieContextHasNanoFp: !!result.hasNanoFp,
+        mainCookieContextHasRckk: !!result.hasRckk,
+        mainCookieContextFallbackUrl: '',
+        mainCookieContextFallbackCookieNames: [],
       });
       this.onLog(
         `[PDD助手] 主 Cookie 上下文${result.ready ? '已建立' : '未完整建立'}: ${shop.name || shopId}`,
@@ -1150,6 +1458,9 @@ class ShopManager {
           hasNanoFp: result.hasNanoFp,
           hasRckk: result.hasRckk,
           cookieNames: result.cookieNames,
+          cookieScopes: result.cookieScopes,
+          entryUrl: result.entryUrl,
+          attemptedEntryUrls: result.attemptedEntryUrls,
           url: result.currentUrl,
         }
       );
@@ -1160,6 +1471,13 @@ class ShopManager {
         mainCookieContextReady: false,
         mainCookieContextUpdatedAt: Date.now(),
         mainCookieContextError: message,
+        mainCookieContextUrl: result.currentUrl || '',
+        mainCookieContextCookieNames: Array.isArray(result.cookieNames) ? result.cookieNames : [],
+        mainCookieContextHasPassId: !!result.hasPassId,
+        mainCookieContextHasNanoFp: !!result.hasNanoFp,
+        mainCookieContextHasRckk: !!result.hasRckk,
+        mainCookieContextFallbackUrl: '',
+        mainCookieContextFallbackCookieNames: [],
       });
       this.onLog(`[PDD助手] 主 Cookie 上下文初始化失败: ${shop.name || shopId}, ${message}`);
       return {
@@ -1175,9 +1493,11 @@ class ShopManager {
 
   async _fetchAndApplyShopProfile(shopId) {
     if (!shopId) return null;
-    if (this._shopInfoFetchingShopId === shopId) return null;
+    if (this._shopInfoFetchingShopId) return null;
     const client = this.getApiClient(shopId);
     if (!client) return null;
+    const importedShopMeta = this._getManagedImportedShopMeta(shopId);
+    const usesImportedMallName = !!importedShopMeta;
     this._shopInfoFetchingShopId = shopId;
     this._updateShopInfoState(shopId, {
       shopInfoStatus: 'fetching',
@@ -1185,8 +1505,55 @@ class ShopManager {
       shopInfoError: ''
     });
     try {
-      await this._hydrateMainCookieContext(shopId);
-      const initResult = await client.initSession(true);
+      const mainCookieContext = await this._hydrateMainCookieContext(shopId);
+      if (!mainCookieContext?.ready) {
+        throw new Error(mainCookieContext?.error || '等待 `_nano_fp/rckk` 超时');
+      }
+      if (usesImportedMallName) {
+        const [mallInfoResult, userInfoResult, credentialInfoResult] = await Promise.allSettled([
+          client.getMallInfo({ suppressAuthExpired: true }),
+          client.getUserInfo({ suppressAuthExpired: true }),
+          client.getCredentialInfo({ suppressAuthExpired: true })
+        ]);
+        const mallInfo = mallInfoResult.status === 'fulfilled' ? mallInfoResult.value : {};
+        const userInfo = userInfoResult.status === 'fulfilled' ? userInfoResult.value : {};
+        const credentialInfo = credentialInfoResult.status === 'fulfilled' ? credentialInfoResult.value : {};
+        const hasValidationSignal = !!(
+          mallInfo?.mallId
+          || mallInfo?.mallName
+          || credentialInfo?.mallId
+          || credentialInfo?.mallName
+          || credentialInfo?.companyName
+          || userInfo?.mallId
+          || userInfo?.userId
+          || userInfo?.nickname
+          || userInfo?.username
+        );
+        if (!hasValidationSignal) {
+          throw new Error('接口未验证通过');
+        }
+        const importedMallName = importedShopMeta?.mallName || '';
+        const fetchedMallName = String(mallInfo?.mallName || credentialInfo?.mallName || '').trim();
+        const resolvedMallName = this._hasRealShopName(importedMallName) ? importedMallName : fetchedMallName;
+        const hasMallName = this._hasRealShopName(resolvedMallName || '');
+        const shop = this._applyShopProfile(shopId, {
+          mallId: importedShopMeta?.mallId || mallInfo?.mallId || credentialInfo?.mallId || userInfo?.mallId || '',
+          mallName: resolvedMallName,
+          account: userInfo?.nickname || userInfo?.username || '',
+          category: mallInfo?.category || '',
+        }, {
+          shopInfoStatus: hasMallName ? 'done' : 'partial',
+          shopInfoError: hasMallName ? '' : '已验证接口 Token 可用，待补全店铺名称',
+          shopNameStatus: hasMallName ? 'resolved' : 'missing'
+        });
+        if (shop) {
+          this.onLog(`[PDD助手] 已通过纯接口校验店铺 Token: ${shop.name || shop.id}`);
+        }
+        return shop;
+      }
+      const initResult = await client.initSession(true, {
+        source: 'shop-manager:verify-token'
+      });
       const profile = await client.getShopProfile(true);
       const hasMallName = this._hasRealShopName(profile?.mallName || '');
       const apiSuccessCount = Number(profile?.apiSuccessCount || 0);
@@ -1245,6 +1612,13 @@ class ShopManager {
     if (!targetShopId) {
       return { success: false, error: '未找到店铺' };
     }
+    if (this._shopInfoFetchingShopId && this._shopInfoFetchingShopId !== targetShopId) {
+      return {
+        success: false,
+        fetching: true,
+        error: `正在获取 ${this._shopInfoFetchingShopId} 的店铺信息，请稍候`
+      };
+    }
     if (this._shopInfoFetchingShopId === targetShopId) {
       return { success: false, fetching: true, error: '店铺信息获取中，请稍候' };
     }
@@ -1258,7 +1632,16 @@ class ShopManager {
         status: nextShop?.shopInfoStatus || 'failed',
         shopInfoStatus: nextShop?.shopInfoStatus || 'failed',
         availabilityStatus: nextShop?.availabilityStatus || nextShop?.status || 'offline',
-        shopNameStatus: nextShop?.shopNameStatus || 'pending'
+        shopNameStatus: nextShop?.shopNameStatus || 'pending',
+        mainCookieContext: nextShop ? {
+          ready: !!nextShop.mainCookieContextReady,
+          error: nextShop.mainCookieContextError || '',
+          url: nextShop.mainCookieContextUrl || '',
+          cookieNames: nextShop.mainCookieContextCookieNames || [],
+          hasPassId: !!nextShop.mainCookieContextHasPassId,
+          hasNanoFp: !!nextShop.mainCookieContextHasNanoFp,
+          hasRckk: !!nextShop.mainCookieContextHasRckk
+        } : null
       };
     }
     return {
@@ -1268,8 +1651,81 @@ class ShopManager {
       status: nextShop?.shopInfoStatus || 'done',
       shopInfoStatus: nextShop?.shopInfoStatus || 'done',
       availabilityStatus: nextShop?.availabilityStatus || nextShop?.status || 'online',
-      shopNameStatus: nextShop?.shopNameStatus || 'resolved'
+      shopNameStatus: nextShop?.shopNameStatus || 'resolved',
+      mainCookieContext: nextShop ? {
+        ready: !!nextShop.mainCookieContextReady,
+        error: nextShop.mainCookieContextError || '',
+        url: nextShop.mainCookieContextUrl || '',
+        cookieNames: nextShop.mainCookieContextCookieNames || [],
+        hasPassId: !!nextShop.mainCookieContextHasPassId,
+        hasNanoFp: !!nextShop.mainCookieContextHasNanoFp,
+        hasRckk: !!nextShop.mainCookieContextHasRckk
+      } : null
     };
+  }
+
+  async safeValidateShops(shopIds = []) {
+    const normalizedShopIds = Array.from(new Set(
+      (Array.isArray(shopIds) ? shopIds : [])
+        .map(id => String(id || '').trim())
+        .filter(Boolean)
+    ));
+    const validatedShopIds = [];
+    const successShopIds = [];
+    const failed = [];
+
+    for (const shopId of normalizedShopIds) {
+      validatedShopIds.push(shopId);
+      try {
+        const result = await this.refreshShopProfile(shopId);
+        if (result?.success) {
+          successShopIds.push(shopId);
+          continue;
+        }
+        failed.push({
+          shopId,
+          error: result?.error || '店铺信息获取失败'
+        });
+      } catch (error) {
+        failed.push({
+          shopId,
+          error: error?.message || String(error)
+        });
+      }
+    }
+
+    return {
+      shopIds: validatedShopIds,
+      successShopIds,
+      failed,
+      successCount: successShopIds.length,
+      failedCount: failed.length
+    };
+  }
+
+  async probeShopAuth(shopId) {
+    const targetShopId = shopId || this.getActiveShopId();
+    if (!targetShopId) {
+      return { success: false, error: '未找到店铺' };
+    }
+    const client = this.getApiClient(targetShopId);
+    if (!client || typeof client.probeCommonMallInfoRequest !== 'function') {
+      return { success: false, shopId: targetShopId, error: '店铺接口客户端未初始化' };
+    }
+    try {
+      const result = await client.probeCommonMallInfoRequest();
+      return {
+        success: !!result?.success,
+        shopId: targetShopId,
+        ...result,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        shopId: targetShopId,
+        error: error?.message || String(error),
+      };
+    }
   }
 
   _pickNextPendingShopForProfile() {
@@ -1280,13 +1736,22 @@ class ShopManager {
   startShopInfoHydrationLoop(intervalMs = 5000) {
     if (this._shopInfoTimer) return;
     const run = async () => {
-      const nextShop = this._pickNextPendingShopForProfile();
-      if (!nextShop) {
-        this._shopInfoTimer = null;
+      this._shopInfoTimer = null;
+      if (this._shopInfoFetchingShopId) {
+        this._shopInfoTimer = setTimeout(run, intervalMs);
         return;
       }
-      this._shopInfoTimer = setTimeout(run, intervalMs);
-      await this._fetchAndApplyShopProfile(nextShop.id);
+      const nextShop = this._pickNextPendingShopForProfile();
+      if (!nextShop) {
+        return;
+      }
+      try {
+        await this._fetchAndApplyShopProfile(nextShop.id);
+      } finally {
+        if (this._pickNextPendingShopForProfile()) {
+          this._shopInfoTimer = setTimeout(run, intervalMs);
+        }
+      }
     };
     this._shopInfoTimer = setTimeout(run, intervalMs);
   }
@@ -1301,6 +1766,19 @@ class ShopManager {
     const ses = session.fromPartition(this._getPartition(shopId));
     ses.clearStorageData().catch(() => {});
     ses.clearCache().catch(() => {});
+  }
+
+  clearPersistedSessionsForShops(shopIds = []) {
+    const uniqueShopIds = Array.from(new Set(
+      (Array.isArray(shopIds) ? shopIds : [])
+        .map(shopId => String(shopId || '').trim())
+        .filter(Boolean)
+    ));
+    for (const shopId of uniqueShopIds) {
+      this._clearShopSession(shopId);
+      this.store.delete(`shopCookies.${shopId}`);
+    }
+    return uniqueShopIds.length;
   }
 
   // ---- 店铺管理 ----

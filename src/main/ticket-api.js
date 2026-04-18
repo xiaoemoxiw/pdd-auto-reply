@@ -1,4 +1,8 @@
-const { session } = require('electron');
+const {
+  normalizePddUserAgent,
+  applyIdentityHeaders,
+} = require('./pdd-request-profile');
+const { PddBusinessApiClient } = require('./pdd-business-api-client');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const CHAT_URL = `${PDD_BASE}/chat-merchant/index.html`;
@@ -202,35 +206,20 @@ function buildPayloadMeta(payload) {
   return meta;
 }
 
-class TicketApiClient {
+class TicketApiClient extends PddBusinessApiClient {
   constructor(shopId, options = {}) {
-    this.shopId = shopId;
-    this.partition = `persist:pdd-${shopId}`;
-    this._onLog = options.onLog || (() => {});
-    this._getShopInfo = options.getShopInfo || (() => null);
-    this._getApiTraffic = options.getApiTraffic || (() => []);
-    this._getTicketUrl = options.getTicketUrl || (() => DEFAULT_TICKET_URL);
+    const getTicketUrl = options.getTicketUrl || (() => DEFAULT_TICKET_URL);
+    super(shopId, {
+      ...options,
+      getRefererUrl: getTicketUrl,
+      errorLabel: '工单管理接口',
+      loginExpiredMessage: '工单管理页面登录已失效，请重新导入 Token 或刷新登录态'
+    });
+    this._getTicketUrl = getTicketUrl;
     this._requestInPddPage = typeof options.requestInPddPage === 'function' ? options.requestInPddPage : null;
     this._regionCache = new Map();
     this._shippingCompanyCache = null;
     this._shippingCompanyCacheAt = 0;
-  }
-
-  _log(message, extra) {
-    this._onLog(message, extra);
-  }
-
-  _getSession() {
-    return session.fromPartition(this.partition);
-  }
-
-  _getTokenInfo() {
-    return (global.__pddTokens && global.__pddTokens[this.shopId]) || null;
-  }
-
-  _getApiTrafficEntries() {
-    const list = this._getApiTraffic();
-    return Array.isArray(list) ? list : [];
   }
 
   _findLatestTraffic(urlPart, predicate) {
@@ -251,95 +240,26 @@ class TicketApiClient {
     return isPlainObject(parsed) ? parsed : null;
   }
 
-  async _getCookieString() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-  }
-
-  async _getCookieMap() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.reduce((acc, item) => {
-      acc[item.name] = item.value;
-      return acc;
-    }, {});
-  }
-
   async _buildHeaders(urlPart, extraHeaders = {}) {
-    const tokenInfo = this._getTokenInfo();
-    const shop = this._getShopInfo();
-    const cookie = await this._getCookieString();
-    const cookieMap = await this._getCookieMap();
     const trafficHeaders = this._findLatestTraffic(urlPart)?.requestHeaders || {};
     const referer = pickHeaderCaseInsensitive(trafficHeaders, ['referer', 'Referer']);
     const antiContent = pickHeaderCaseInsensitive(trafficHeaders, ['anti-content', 'anti_content', 'Anti-Content']);
     const csrfToken = pickHeaderCaseInsensitive(trafficHeaders, ['x-csrf-token', 'x-csrftoken', 'x-csrf', 'X-CSRF-Token']);
     const requestedWith = pickHeaderCaseInsensitive(trafficHeaders, ['x-requested-with', 'X-Requested-With']);
-    const headers = {
-      accept: 'application/json, text/plain, */*',
-      'accept-language': 'zh-CN,zh;q=0.9',
-      'accept-encoding': 'gzip, deflate, br',
-      'cache-control': 'no-cache',
-      'content-type': 'application/json',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
+    const headers = await super._buildHeaders(urlPart, {
       Referer: referer || this._getTicketUrl() || DEFAULT_TICKET_URL,
-      Origin: PDD_BASE,
-      ...extraHeaders,
-    };
-    if (cookie) headers.cookie = cookie;
-    headers['user-agent'] = (shop?.userAgent || tokenInfo?.userAgent || '').replace('pdd_webview', '').trim();
+      ...extraHeaders
+    });
     if (antiContent) headers['anti-content'] = antiContent;
     if (csrfToken) headers['x-csrf-token'] = csrfToken;
     if (requestedWith) headers['x-requested-with'] = requestedWith;
-    if (tokenInfo?.raw) {
-      headers['X-PDD-Token'] = tokenInfo.raw;
-      headers['windows-app-shop-token'] = tokenInfo.raw;
-    }
-    if (tokenInfo?.pddid) headers.pddid = tokenInfo.pddid;
-    if (cookieMap.rckk) headers.etag = cookieMap.rckk;
-    if (cookieMap['msfe-pc-cookie-captcha-token']) {
-      headers.VerifyAuthToken = cookieMap['msfe-pc-cookie-captcha-token'];
-    }
     return headers;
   }
 
-  _parsePayload(text) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-
-  _normalizeBusinessError(payload) {
-    if (!payload || typeof payload !== 'object') return null;
-    const success = payload.success;
-    const errorCode = Number(payload.error_code ?? payload.errorCode ?? payload.code ?? 0);
-    if (success === false || (errorCode && errorCode !== 1000000)) {
-      return {
-        code: errorCode,
-        message: payload.error_msg || payload.errorMsg || payload.message || '工单管理接口失败',
-      };
-    }
-    return null;
-  }
-
-  _isLoginPageResponse(response, text) {
-    const finalUrl = String(response?.url || '');
-    if (finalUrl.includes('/login')) return true;
-    const contentType = String(response?.headers?.get('content-type') || '').toLowerCase();
-    if (!contentType.includes('text/html')) return false;
-    const snippet = typeof text === 'string' ? text.slice(0, 800).toLowerCase() : '';
-    return snippet.includes('登录') || snippet.includes('login') || snippet.includes('passport') || snippet.includes('扫码');
-  }
-
-  async _request(method, urlPath, body, extraHeaders = {}) {
-    const shouldTryPageRequest = !!this._requestInPddPage && (
+  async _request(method, urlPath, body, extraHeaders = {}, requestOptions = {}) {
+    const source = String(requestOptions?.source || 'ticket-api').trim() || 'ticket-api';
+    const allowPageRequest = requestOptions.allowPageRequest !== false;
+    const shouldTryPageRequest = allowPageRequest && !!this._requestInPddPage && (
       urlPath === TICKET_LIST_URL
       || urlPath === TICKET_STATUS_COUNT_URL
       || urlPath === TICKET_DETAIL_URL
@@ -362,16 +282,13 @@ class TicketApiClient {
           accept: 'application/json, text/plain, */*',
           'content-type': 'application/json',
         };
-        const ua = (shop?.userAgent || tokenInfo?.userAgent || '').replace('pdd_webview', '').trim();
+        const ua = normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || '');
         if (ua) baseHeaders['user-agent'] = ua;
-        if (tokenInfo?.raw) {
-          baseHeaders['X-PDD-Token'] = tokenInfo.raw;
-          baseHeaders['windows-app-shop-token'] = tokenInfo.raw;
-        }
-        if (tokenInfo?.pddid) baseHeaders.pddid = tokenInfo.pddid;
+        applyIdentityHeaders(baseHeaders, tokenInfo);
         const payload = await this._requestInPddPage({
           url,
           method,
+          source,
           headers: { ...baseHeaders, ...extraHeaders },
           body: body === undefined || body === null ? null : (typeof body === 'string' ? body : JSON.stringify(body)),
         });
@@ -387,7 +304,7 @@ class TicketApiClient {
         }
         return payload;
       } catch (error) {
-        this._log(`[工单管理接口] PAGE ${method} ${urlPath} -> ${error?.message || 'FAILED'}`);
+        this._log(`[工单管理接口] PAGE ${method} ${urlPath} -> ${error?.message || 'FAILED'}`, { source });
       }
     }
     const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
@@ -399,7 +316,7 @@ class TicketApiClient {
     const response = await this._getSession().fetch(url, options);
     const text = await response.text();
     const payload = this._parsePayload(text);
-    this._log(`[工单管理接口] ${method} ${urlPath} -> ${response.status}`);
+    this._log(`[工单管理接口] ${method} ${urlPath} -> ${response.status}`, { source });
     if (this._isLoginPageResponse(response, text)) {
       throw new Error('工单管理页面登录已失效，请重新导入 Token 或刷新登录态');
     }
@@ -657,7 +574,7 @@ class TicketApiClient {
 
   // ====== 售后(退款)单 API (Mercury) ====== 
 
-  async getRefundList(params = {}) {
+  async getRefundList(params = {}, options = {}) {
     const pageNo = Math.max(1, Number(params.pageNo || params.page_no || params.pageNumber || 1));
     const pageSize = Math.max(1, Number(params.pageSize || params.page_size || 10));
     
@@ -670,7 +587,7 @@ class TicketApiClient {
     // 清理掉不需要的兼容字段
     ['pageNo', 'page_no', 'page_size', 'debug', 'templateKey'].forEach(k => delete body[k]);
     
-    const payload = await this._request('POST', REFUND_LIST_URL, body);
+    const payload = await this._request('POST', REFUND_LIST_URL, body, {}, options);
     const list = Array.isArray(payload?.result?.list) ? payload.result.list : [];
     const total = payload?.result?.total || 0;
     
@@ -684,8 +601,8 @@ class TicketApiClient {
     };
   }
 
-  async getRefundCount(params = {}) {
-    const payload = await this._request('POST', REFUND_COUNT_URL, params);
+  async getRefundCount(params = {}, options = {}) {
+    const payload = await this._request('POST', REFUND_COUNT_URL, params, {}, options);
     const counts = isPlainObject(payload?.result) ? payload.result : {};
     return { counts, payload };
   }
@@ -696,13 +613,13 @@ class TicketApiClient {
     return { counts, payload };
   }
 
-  async listRefundAddresses(params = {}) {
-    const payload = await this._request('POST', '/antis/api/refundAddress/list', params || {});
+  async listRefundAddresses(params = {}, options = {}) {
+    const payload = await this._request('POST', '/antis/api/refundAddress/list', params || {}, {}, options);
     const list = Array.isArray(payload?.result) ? payload.result : [];
     return { list, payload };
   }
 
-  async approveReturnGoods(params = {}) {
+  async approveReturnGoods(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法同意退货');
@@ -754,7 +671,7 @@ class TicketApiClient {
     checkBody.refundAddress = refundAddress;
     checkBody.orderSn = orderSn;
     checkBody.id = id;
-    const checkPayload = await this._request('POST', checkUrlPath, checkBody);
+    const checkPayload = await this._request('POST', checkUrlPath, checkBody, {}, options);
     const checkResult = checkPayload?.result;
     if (checkResult && typeof checkResult === 'object') {
       if (checkResult.refundAddressValid === false) throw new Error('退货地址校验失败');
@@ -782,11 +699,11 @@ class TicketApiClient {
     if (!('addressType' in body)) body.addressType = 1;
     if (!('confirmWeakRemind' in body)) body.confirmWeakRemind = null;
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     return { ok: true, id, orderSn, payload };
   }
 
-  async approveResend(params = {}) {
+  async approveResend(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法同意补寄');
@@ -815,11 +732,11 @@ class TicketApiClient {
     if (!('uid' in body)) body.uid = null;
     if (!('mallId' in body)) body.mallId = shop?.mallId || tokenInfo?.mallId || '';
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     return { ok: true, id, orderSn, payload };
   }
 
-  async agreeRefundPreCheck(params = {}) {
+  async agreeRefundPreCheck(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法进行同意退款预检查');
@@ -837,12 +754,12 @@ class TicketApiClient {
     if (!('uid' in itemBase)) itemBase.uid = null;
     body.items = [itemBase];
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     const result = isPlainObject(payload?.result) ? payload.result : {};
     return { ok: true, id, orderSn, result, payload };
   }
 
-  async rejectRefundPreCheck(params = {}) {
+  async rejectRefundPreCheck(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法进行驳回退款预检查');
@@ -865,12 +782,12 @@ class TicketApiClient {
     body.version = version;
     body.invokeType = Number.isFinite(invokeType) ? invokeType : 0;
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     const result = isPlainObject(payload?.result) ? payload.result : {};
     return { ok: true, id, orderSn, version, result, payload };
   }
 
-  async rejectRefundGetFormInfo(params = {}) {
+  async rejectRefundGetFormInfo(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id', 'bizId', 'biz_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法获取驳回退款表单');
@@ -889,12 +806,12 @@ class TicketApiClient {
     body.orderSn = orderSn;
     body.afterSalesId = id;
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     const result = isPlainObject(payload?.result) ? payload.result : {};
     return { ok: true, id, orderSn, result, payload };
   }
 
-  async getRejectRefundNegotiateInfo(params = {}) {
+  async getRejectRefundNegotiateInfo(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法获取驳回退款协商信息');
@@ -911,12 +828,12 @@ class TicketApiClient {
     body.afterSalesId = id;
     body.key = key;
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     const result = isPlainObject(payload?.result) ? payload.result : {};
     return { ok: true, id, orderSn, result, payload };
   }
 
-  async rejectRefundSubmit(params = {}) {
+  async rejectRefundSubmit(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id', 'bizId', 'biz_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法提交驳回退款');
@@ -943,11 +860,11 @@ class TicketApiClient {
     body.bizType = Number.isFinite(bizType) && bizType > 0 ? bizType : 10;
     body.bizId = String(pickValue(params, ['bizId', 'biz_id'], String(id)) || String(id)).trim() || String(id);
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     return { ok: true, id, orderSn, payload };
   }
 
-  async rejectRefundGetReasons(params = {}) {
+  async rejectRefundGetReasons(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法获取驳回原因');
@@ -982,12 +899,12 @@ class TicketApiClient {
       }
     }
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     const result = Array.isArray(payload?.result) ? payload.result : [];
     return { ok: true, id, orderSn, result, payload };
   }
 
-  async rejectRefundValidate(params = {}) {
+  async rejectRefundValidate(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法校验第三次驳回');
@@ -1024,11 +941,11 @@ class TicketApiClient {
     body.orderSn = orderSn;
     body.requiredProofs = Array.isArray(params?.requiredProofs) ? params.requiredProofs : [];
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     return { ok: true, id, orderSn, payload };
   }
 
-  async merchantAfterSalesRefuse(params = {}) {
+  async merchantAfterSalesRefuse(params = {}, options = {}) {
     const idRaw = pickValue(params, ['id', 'afterSalesId', 'after_sales_id', 'instanceId', 'instance_id'], '');
     const id = Number(idRaw || 0);
     if (!Number.isFinite(id) || id <= 0) throw new Error('缺少售后单ID，无法提交第三次驳回');
@@ -1065,13 +982,13 @@ class TicketApiClient {
     body.orderSn = orderSn;
     body.requiredProofs = Array.isArray(params?.requiredProofs) ? params.requiredProofs : [];
 
-    const payload = await this._request('POST', urlPath, body);
+    const payload = await this._request('POST', urlPath, body, {}, options);
     return { ok: true, id, orderSn, payload };
   }
 
   // ====== 以下为原有工单(客服处理) API (Strickland) ======
 
-  async getList(params = {}) {
+  async getList(params = {}, options = {}) {
     const pageNo = Math.max(1, Number(params.pageNo || params.page_no || 1));
     const pageSize = Math.max(1, Number(params.pageSize || params.page_size || 100));
     const templateKey = normalizeTemplateKey(params.templateKey || params.template_key);
@@ -1125,7 +1042,7 @@ class TicketApiClient {
     let lastError = null;
     for (const body of bodies) {
       try {
-        const payload = await this._request('POST', TICKET_LIST_URL, body);
+        const payload = await this._request('POST', TICKET_LIST_URL, body, {}, options);
         const list = this._extractListFromPayload(payload);
         const total = this._extractTotalFromPayload(payload, list.length);
         if (!bestResult || list.length > bestResult.list.length) {
@@ -1158,8 +1075,8 @@ class TicketApiClient {
     };
   }
 
-  async getStatusCount() {
-    const payload = await this._request('POST', TICKET_STATUS_COUNT_URL, {});
+  async getStatusCount(options = {}) {
+    const payload = await this._request('POST', TICKET_STATUS_COUNT_URL, {}, {}, options);
     const list = Array.isArray(payload?.result)
       ? payload.result
       : Array.isArray(payload?.data)
@@ -1168,7 +1085,7 @@ class TicketApiClient {
     return { list, payload };
   }
 
-  async getRegionChildren(params = {}) {
+  async getRegionChildren(params = {}, options = {}) {
     const parentIdRaw = pickValue(params, ['parentId', 'parent_id', 'pid', 'parent'], '0');
     const parentId = String(parentIdRaw ?? '').trim() || '0';
     if (parentId !== '0' && !/^\d+$/.test(parentId)) {
@@ -1181,14 +1098,14 @@ class TicketApiClient {
     const query = new URLSearchParams();
     query.set('parent_id', parentId);
     const urlPath = `${REGION_GET_URL}?${query.toString()}`;
-    const payload = await this._request('GET', urlPath, null);
+    const payload = await this._request('GET', urlPath, null, {}, options);
     const rawList = extractArrayFromPayload(payload);
     const list = rawList.map(normalizeRegionItem).filter(Boolean);
     this._regionCache.set(cacheKey, list);
     return { list, payload };
   }
 
-  async getShippingCompanyList(params = {}) {
+  async getShippingCompanyList(params = {}, options = {}) {
     const ttlMs = Math.max(0, Number(params?.ttlMs || params?.ttl_ms || 0));
     const now = Date.now();
     const ttl = ttlMs > 0 ? ttlMs : 6 * 60 * 60 * 1000;
@@ -1196,7 +1113,7 @@ class TicketApiClient {
       return { list: this._shippingCompanyCache.slice(0) };
     }
 
-    const payload = await this._request('GET', SHIPPING_COMPANY_LIST_URL, null);
+    const payload = await this._request('GET', SHIPPING_COMPANY_LIST_URL, null, {}, options);
     let rawList = extractArrayFromPayload(payload);
     if (!rawList.length && isPlainObject(payload?.result)) {
       rawList = extractArrayFromPayload(payload.result);
@@ -1248,7 +1165,7 @@ class TicketApiClient {
     return { list, payload };
   }
 
-  async getChatShippingDetail(params = {}) {
+  async getChatShippingDetail(params = {}, options = {}) {
     const orderSn = String(pickValue(params, ['orderSn', 'order_sn', 'orderNo', 'order_no'], '') || '').trim();
     if (!orderSn) throw new Error('缺少订单号');
     const queryTypeRaw = Number(pickValue(params, ['queryType', 'query_type'], 1));
@@ -1259,11 +1176,11 @@ class TicketApiClient {
     query.set('query_type', queryType);
     query.set('client', client);
     const urlPath = `/chats/shippingDetail?${query.toString()}`;
-    const payload = await this._request('GET', urlPath, null, { Referer: CHAT_URL });
+    const payload = await this._request('GET', urlPath, null, { Referer: CHAT_URL }, options);
     return { payload, result: payload?.result ?? null };
   }
 
-  async getDetail(params = {}) {
+  async getDetail(params = {}, options = {}) {
     const instanceId = String(pickValue(params, [
       'instanceId',
       'instance_id',
@@ -1293,7 +1210,7 @@ class TicketApiClient {
     let lastError = null;
     for (const body of bodies) {
       try {
-        const payload = await this._request('POST', TICKET_DETAIL_URL, body);
+        const payload = await this._request('POST', TICKET_DETAIL_URL, body, {}, options);
         const detail = this._extractDetailFromPayload(payload);
         if (detail) {
           bestResult = { body, detail };

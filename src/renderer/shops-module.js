@@ -112,10 +112,9 @@
     return shops.filter(shop => {
       if (activeGroup !== 'all' && shop.group !== activeGroup) return false;
       if (searchText) {
-        return String(shop.name || '').toLowerCase().includes(searchText)
-          || String(shop.mallId || '').toLowerCase().includes(searchText)
+        return shop.name.toLowerCase().includes(searchText)
           || String(shop.account || '').toLowerCase().includes(searchText)
-          || String(shop.tokenFileName || '').toLowerCase().includes(searchText);
+          || String(shop.mallId || '').toLowerCase().includes(searchText);
       }
       return true;
     });
@@ -202,16 +201,19 @@
           ${shopInfoStatusText ? `<div style="font-size:11px;color:${shop.shopInfoStatus === 'failed' || shop.shopInfoStatus === 'expired' ? '#e02e24' : '#999'};margin-top:2px"${shopInfoErrorTitle}>${esc(shopInfoStatusText)}</div>` : ''}
         </td>
         <td>${esc(shop.mallId) || '<span style="color:#ccc">-</span>'}</td>
-        <td title="${esc(shop.tokenFileName || '')}">${esc(shop.tokenFileName) || '<span style="color:#ccc">-</span>'}</td>
         <td>${esc(groupName)}</td>
         <td title="${esc(shop.remark)}">${esc(shop.remark) || '<span style="color:#ccc">-</span>'}</td>
         <td>${shop.bindTime}</td>
         <td>${esc(shop.category)}</td>
         <td><span class="status-tag ${shop.status}">${statusMap[shop.status] || shop.status}</span></td>
         <td style="text-align:right;font-weight:500">${(shop.balance || 0).toFixed(2)}</td>
-        <td style="white-space:nowrap">
-          <button class="btn btn-sm btn-secondary" onclick="refreshShopProfile('${shop.id}')" style="margin-right:6px" title="${esc(refreshButtonTitle)}">獲取信息</button>
-          <button class="btn btn-sm btn-secondary" onclick="openRemarkModal('${shop.id}')">备注</button>
+        <td class="shop-actions-cell">
+          <div class="shop-actions">
+            <button class="btn btn-sm btn-secondary" onclick="refreshShopBrowserSession('${shop.id}')" title="仅尝试建立网页主 Cookie 会话">网页会话</button>
+            <button class="btn btn-sm btn-secondary" onclick="refreshShopProfile('${shop.id}')" title="${esc(refreshButtonTitle)}">接口校验</button>
+            <button class="btn btn-sm btn-secondary" onclick="probeShopBusinessApis('${shop.id}')" title="显式探测只读业务接口，不自动进入聊天页">探针</button>
+            <button class="btn btn-sm btn-secondary" onclick="openRemarkModal('${shop.id}')">备注</button>
+          </div>
         </td>
       </tr>`;
     }).join('');
@@ -238,6 +240,12 @@
           const result = await window.pddApi.openShopHome(shopId);
           if (result?.error) {
             addLog(`打开店铺后台首页失败：${result.error}`, 'error');
+          } else if (result?.mainCookieContext) {
+            const ctx = result.mainCookieContext;
+            addLog(
+              `打开后台前主 Cookie: PASS_ID=${ctx.hasPassId ? 'yes' : 'no'}, _nano_fp=${ctx.hasNanoFp ? 'yes' : 'no'}, rckk=${ctx.hasRckk ? 'yes' : 'no'}, entryUrl=${ctx.entryUrl || '-'}, url=${ctx.url || '-'}${Array.isArray(ctx.attemptedEntryUrls) && ctx.attemptedEntryUrls.length ? `, tried=[${ctx.attemptedEntryUrls.join(', ')}]` : ''}, openUrl=${result.url || '-'}`,
+              ctx.ready ? 'info' : 'error'
+            );
           }
         } catch (error) {
           addLog(`打开店铺后台首页失败：${error?.message || error}`, 'error');
@@ -311,6 +319,7 @@
   }
 
   async function syncShops() {
+    await window.pddApi.syncTokenShops();
     await loadShops();
     addLog('已按 Token 文件同步店铺列表', 'info');
   }
@@ -335,6 +344,98 @@
     addLog(`获取店铺信息失败: ${errorText}`, 'error');
     if (typeof showToast === 'function') {
       showToast(`获取店铺信息失败：${errorText}`);
+    }
+  }
+
+  async function refreshShopBrowserSession(shopId) {
+    const result = await window.pddApi.refreshMainCookieContext({
+      shopId,
+      reason: 'manual-browser-session-test'
+    });
+    const mainCookieContext = result?.result || result?.mainCookieContext || null;
+    if (result?.success) {
+      addLog(`网页会话建立成功: ${shopId}`, 'reply');
+      if (mainCookieContext) {
+        addLog(
+          `主 Cookie: PASS_ID=${mainCookieContext.hasPassId ? 'yes' : 'no'}, _nano_fp=${mainCookieContext.hasNanoFp ? 'yes' : 'no'}, rckk=${mainCookieContext.hasRckk ? 'yes' : 'no'}, entryUrl=${mainCookieContext.entryUrl || '-'}, url=${mainCookieContext.url || '-'}${Array.isArray(mainCookieContext.attemptedEntryUrls) && mainCookieContext.attemptedEntryUrls.length ? `, tried=[${mainCookieContext.attemptedEntryUrls.join(', ')}]` : ''}${Array.isArray(mainCookieContext.passIdScopesBeforeWarmup) && mainCookieContext.passIdScopesBeforeWarmup.length ? `, passIdBefore=[${mainCookieContext.passIdScopesBeforeWarmup.join(', ')}]` : ''}${Array.isArray(mainCookieContext.cookieScopes) && mainCookieContext.cookieScopes.length ? `, scopes=[${mainCookieContext.cookieScopes.join(', ')}]` : ''}`,
+          'info'
+        );
+      }
+      await loadShops();
+      return;
+    }
+    addLog(`网页会话建立失败: ${result?.error || '未知错误'}`, 'error');
+    if (mainCookieContext) {
+      addLog(
+        `主 Cookie: PASS_ID=${mainCookieContext.hasPassId ? 'yes' : 'no'}, _nano_fp=${mainCookieContext.hasNanoFp ? 'yes' : 'no'}, rckk=${mainCookieContext.hasRckk ? 'yes' : 'no'}, entryUrl=${mainCookieContext.entryUrl || '-'}, url=${mainCookieContext.url || '-'}${Array.isArray(mainCookieContext.attemptedEntryUrls) && mainCookieContext.attemptedEntryUrls.length ? `, tried=[${mainCookieContext.attemptedEntryUrls.join(', ')}]` : ''}${Array.isArray(mainCookieContext.passIdScopesBeforeWarmup) && mainCookieContext.passIdScopesBeforeWarmup.length ? `, passIdBefore=[${mainCookieContext.passIdScopesBeforeWarmup.join(', ')}]` : ''}${Array.isArray(mainCookieContext.cookieScopes) && mainCookieContext.cookieScopes.length ? `, scopes=[${mainCookieContext.cookieScopes.join(', ')}]` : ''}${mainCookieContext.error ? `, error=${mainCookieContext.error}` : ''}`,
+        'error'
+      );
+    }
+  }
+
+  async function probeShopBusinessApis(shopId) {
+    const result = await window.pddApi.probeSafeBusinessApis({
+      shopId,
+      probes: {
+        invoiceOverview: true,
+        invoiceList: true,
+        ticketStatusCount: true,
+        violationList: true
+      }
+    });
+    if (result?.error) {
+      addLog(`业务探针失败: ${result.error}`, 'error');
+      if (typeof showToast === 'function') {
+        showToast(`业务探针失败：${result.error}`);
+      }
+      return;
+    }
+    if (result?.invoice && !result.invoice.skipped) {
+      const invoice = result.invoice;
+      if (invoice.success && invoice.summary) {
+        addLog(
+          `待开票概览通过: 待开票=${invoice.summary.pendingNum || 0}, 已开票=${invoice.summary.invoicedNum || 0}, 开票中=${invoice.summary.applyingNum || 0}, 金额=${Number(invoice.summary.invoiceAmount || 0).toFixed(2)}`,
+          'reply'
+        );
+      } else {
+        addLog(`待开票概览失败: ${invoice.error || '未知错误'}`, 'error');
+      }
+    }
+    if (result?.ticket && !result.ticket.skipped) {
+      const ticket = result.ticket;
+      if (ticket.success && ticket.summary) {
+        const ticketItems = Array.isArray(ticket.summary.items) ? ticket.summary.items : [];
+        addLog(
+          `工单状态统计通过: 状态项=${ticket.summary.itemCount || 0}, 总量=${ticket.summary.totalCount || 0}${ticketItems.length ? `, 明细=[${ticketItems.map(item => `${item.label || '-'}:${item.count || 0}`).join(', ')}]` : ''}`,
+          'reply'
+        );
+      } else {
+        addLog(`工单状态统计失败: ${ticket.error || '未知错误'}`, 'error');
+      }
+    }
+    if (result?.invoiceList && !result.invoiceList.skipped) {
+      const invoiceList = result.invoiceList;
+      if (invoiceList.success && invoiceList.summary) {
+        const sample = Array.isArray(invoiceList.summary.sample) ? invoiceList.summary.sample : [];
+        addLog(
+          `待开票列表通过: 总数=${invoiceList.summary.total || 0}, 第1页=${sample.length}条${sample.length ? `, 样本=[${sample.map(item => `${item.orderSn || item.serialNo || '-'}|${item.orderStatus || '-'}|${item.invoiceApplyStatus || '-'}`).join(', ')}]` : ''}`,
+          'reply'
+        );
+      } else {
+        addLog(`待开票列表失败: ${invoiceList.error || '未知错误'}`, 'error');
+      }
+    }
+    if (result?.violationList && !result.violationList.skipped) {
+      const violationList = result.violationList;
+      if (violationList.success && violationList.summary) {
+        const sample = Array.isArray(violationList.summary.sample) ? violationList.summary.sample : [];
+        addLog(
+          `违规列表通过: 总数=${violationList.summary.total || 0}, 第1页=${sample.length}条${sample.length ? `, 样本=[${sample.map(item => `${item.violationAppealSn || '-'}|${item.violationType || '-'}|${item.appealStatus || '-'}`).join(', ')}]` : ''}`,
+          'reply'
+        );
+      } else {
+        addLog(`违规列表失败: ${violationList.error || '未知错误'}`, 'error');
+      }
     }
   }
 
@@ -569,6 +670,8 @@
   window.updateBalanceTotal = updateBalanceTotal;
   window.openRemarkModal = openRemarkModal;
   window.refreshShopProfile = refreshShopProfile;
+  window.refreshShopBrowserSession = refreshShopBrowserSession;
+  window.probeShopBusinessApis = probeShopBusinessApis;
   window.renderExam = renderExam;
   window.updateExamProgress = updateExamProgress;
 

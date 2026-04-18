@@ -1,5 +1,10 @@
 const { BrowserWindow, BrowserView, shell } = require('electron');
 const path = require('path');
+const {
+  DEFAULT_PAGE_CHROME_UA,
+  resolveStoredShopProfile,
+  applySessionPddPageProfile
+} = require('./pdd-request-profile');
 
 let detailWindow = null;
 let detailView = null;
@@ -18,17 +23,14 @@ function isMerchantUrl(url) {
 function getShopPartition(shopId) {
   const id = String(shopId || '').trim();
   if (!id) return undefined;
-  return `persist:pdd-${id}`;
+  return `persist:pddv2-${id}`;
 }
 
 function getShopUserAgent(store, shopId) {
-  const id = String(shopId || '').trim();
-  if (!id) return '';
-  const shops = store?.get('shops') || [];
-  const shop = Array.isArray(shops) ? shops.find(s => String(s?.id || '').trim() === id) : null;
-  const ua = String(shop?.userAgent || '').trim();
-  if (ua) return ua;
-  return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  return resolveStoredShopProfile(store, shopId, {
+    fallbackUserAgent: DEFAULT_PAGE_CHROME_UA,
+    chromeOnly: true
+  }).userAgent;
 }
 
 function sendState(payload = {}) {
@@ -97,6 +99,11 @@ function ensureView(store, shopId) {
 
   const userAgent = getShopUserAgent(store, nextShopId);
   if (userAgent) detailView.webContents.setUserAgent(userAgent);
+  applySessionPddPageProfile(detailView.webContents.session, {
+    userAgent,
+    tokenInfo: resolveStoredShopProfile(store, nextShopId).tokenInfo,
+    clientHintsProfile: 'page'
+  });
 
   detailView.webContents.on('will-navigate', (event, url) => {
     if (!isMerchantUrl(url)) {

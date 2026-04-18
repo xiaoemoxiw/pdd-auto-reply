@@ -1,10 +1,11 @@
-const { session } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { getDefaultInvoiceSubmitConfig } = require('./invoice-submit-config');
+const { PddBusinessApiClient } = require('./pdd-business-api-client');
+const { normalizePddUserAgent } = require('./pdd-request-profile');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
-const DEFAULT_INVOICE_URL = `${PDD_BASE}/invoice/center?msfrom=mms_sidenav`;
+const DEFAULT_INVOICE_URL = `${PDD_BASE}/invoice/center?msfrom=mms_sidenav&activeKey=0`;
 
 function pickValue(source, keys, fallback = '') {
   for (const key of keys) {
@@ -104,210 +105,22 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-class InvoiceApiClient {
+class InvoiceApiClient extends PddBusinessApiClient {
   constructor(shopId, options = {}) {
-    this.shopId = shopId;
-    this.partition = `persist:pdd-${shopId}`;
-    this._onLog = options.onLog || (() => {});
-    this._getShopInfo = options.getShopInfo || (() => null);
-    this._getApiTraffic = options.getApiTraffic || (() => []);
-    this._getInvoiceUrl = options.getInvoiceUrl || (() => DEFAULT_INVOICE_URL);
+    const getInvoiceUrl = options.getInvoiceUrl || (() => DEFAULT_INVOICE_URL);
+    super(shopId, {
+      ...options,
+      getRefererUrl: getInvoiceUrl,
+      errorLabel: '待开票接口',
+      loginExpiredMessage: '待开票页面登录已失效，请重新导入 Token 或刷新登录态'
+    });
+    this._getInvoiceUrl = getInvoiceUrl;
     this._getSubmitConfig = options.getSubmitConfig || (() => null);
     this._setSubmitConfig = options.setSubmitConfig || (() => {});
     this._detailCache = new Map(); // orderSn -> { at, value }
     this._detailPending = new Map(); // orderSn -> Promise
     this._detailThrottle = Promise.resolve();
     this._lastDetailRequestAt = 0;
-  }
-
-  _log(message, extra) {
-    this._onLog(message, extra);
-  }
-
-  _getSession() {
-    return session.fromPartition(this.partition);
-  }
-
-  _getTokenInfo() {
-    return (global.__pddTokens && global.__pddTokens[this.shopId]) || null;
-  }
-
-  _getApiTrafficEntries() {
-    const list = this._getApiTraffic();
-    return Array.isArray(list) ? list : [];
-  }
-
-  _findLatestTraffic(urlPart) {
-    const list = this._getApiTrafficEntries();
-    for (let i = list.length - 1; i >= 0; i--) {
-      const entry = list[i] || {};
-      const url = String(entry?.url || '');
-      const fullUrl = String(entry?.fullUrl || '');
-      if (url.includes(urlPart) || fullUrl.includes(urlPart)) {
-        return list[i];
-      }
-    }
-    return null;
-  }
-
-  async _getCookieString() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-  }
-
-  async _getCookieMap() {
-    const cookies = await this._getSession().cookies.get({ domain: '.pinduoduo.com' });
-    return cookies.reduce((acc, item) => {
-      acc[item.name] = item.value;
-      return acc;
-    }, {});
-  }
-
-  async _buildHeaders(urlPart, extraHeaders = {}) {
-    const tokenInfo = this._getTokenInfo();
-    const shop = this._getShopInfo();
-    const cookie = await this._getCookieString();
-    const cookieMap = await this._getCookieMap();
-    const trafficHeaders = this._findLatestTraffic(urlPart)?.requestHeaders || {};
-    const headers = {
-      accept: 'application/json, text/plain, */*',
-      'accept-language': 'zh-CN,zh;q=0.9',
-      'accept-encoding': 'gzip, deflate, br',
-      'cache-control': 'no-cache',
-      'content-type': 'application/json',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      Referer: trafficHeaders.Referer || this._getInvoiceUrl() || DEFAULT_INVOICE_URL,
-      Origin: PDD_BASE,
-      ...extraHeaders,
-    };
-    if (cookie) headers.cookie = cookie;
-    headers['user-agent'] = (shop?.userAgent || tokenInfo?.userAgent || '').replace('pdd_webview', '').trim();
-    if (tokenInfo?.raw) {
-      headers['X-PDD-Token'] = tokenInfo.raw;
-      headers['windows-app-shop-token'] = tokenInfo.raw;
-    }
-    if (tokenInfo?.pddid) headers.pddid = tokenInfo.pddid;
-    if (cookieMap.rckk) headers.etag = cookieMap.rckk;
-    if (cookieMap['msfe-pc-cookie-captcha-token']) {
-      headers.VerifyAuthToken = cookieMap['msfe-pc-cookie-captcha-token'];
-    }
-    return headers;
-  }
-
-  _parsePayload(text) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-
-  _normalizeBusinessError(payload) {
-    if (!payload || typeof payload !== 'object') return null;
-    const success = payload.success;
-    const errorCode = Number(payload.error_code ?? payload.errorCode ?? payload.code ?? 0);
-    if (success === false || (errorCode && errorCode !== 1000000)) {
-      return {
-        code: errorCode,
-        message: payload.error_msg || payload.errorMsg || payload.message || '待开票接口失败',
-      };
-    }
-    return null;
-  }
-
-  _isLoginPageResponse(response, text) {
-    const finalUrl = String(response?.url || '');
-    if (finalUrl.includes('/login')) return true;
-    const contentType = String(response?.headers?.get('content-type') || '').toLowerCase();
-    if (!contentType.includes('text/html')) return false;
-    const snippet = typeof text === 'string' ? text.slice(0, 800).toLowerCase() : '';
-    return snippet.includes('登录') || snippet.includes('login') || snippet.includes('passport') || snippet.includes('扫码');
-  }
-
-  async _request(method, urlPath, body, extraHeaders = {}) {
-    const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-    const headers = await this._buildHeaders(urlPath, extraHeaders);
-    const isCrossOrigin = (() => {
-      try {
-        return new URL(url).origin !== PDD_BASE;
-      } catch {
-        return false;
-      }
-    })();
-    if (isCrossOrigin) {
-      headers['sec-fetch-site'] = 'cross-site';
-    }
-    const options = { method, headers };
-    if (body !== undefined && body !== null) {
-      options.body = typeof body === 'string' ? body : JSON.stringify(body);
-    }
-    let response = null;
-    try {
-      response = await this._getSession().fetch(url, options);
-    } catch (error) {
-      throw new Error(`[待开票接口] ${method} ${url} 请求失败：${error?.message || 'network error'}`);
-    }
-    const text = await response.text();
-    const payload = this._parsePayload(text);
-    this._log(`[待开票接口] ${method} ${urlPath} -> ${response.status}`);
-    if (this._isLoginPageResponse(response, text)) {
-      throw new Error('待开票页面登录已失效，请重新导入 Token 或刷新登录态');
-    }
-    if (!response.ok) {
-      throw new Error(typeof payload === 'object'
-        ? payload?.error_msg || payload?.errorMsg || payload?.message || `HTTP ${response.status}`
-        : `HTTP ${response.status}: ${String(text).slice(0, 200)}`);
-    }
-    const businessError = this._normalizeBusinessError(payload);
-    if (businessError) {
-      throw new Error(businessError.message);
-    }
-    return payload;
-  }
-
-  async _requestForm(method, urlPath, formData, extraHeaders = {}) {
-    const url = urlPath.startsWith('http') ? urlPath : `${PDD_BASE}${urlPath}`;
-    const headers = await this._buildHeaders(urlPath, extraHeaders);
-    const isCrossOrigin = (() => {
-      try {
-        return new URL(url).origin !== PDD_BASE;
-      } catch {
-        return false;
-      }
-    })();
-    if (isCrossOrigin) {
-      headers['sec-fetch-site'] = 'cross-site';
-    }
-    delete headers['content-type'];
-    delete headers['Content-Type'];
-    let response = null;
-    try {
-      response = await this._getSession().fetch(url, { method, headers, body: formData });
-    } catch (error) {
-      throw new Error(`[待开票接口] ${method} ${url} 上传失败：${error?.message || 'network error'}`);
-    }
-    const text = await response.text();
-    const payload = this._parsePayload(text);
-    this._log(`[待开票接口] ${method} ${urlPath} -> ${response.status}`);
-    if (this._isLoginPageResponse(response, text)) {
-      throw new Error('待开票页面登录已失效，请重新导入 Token 或刷新登录态');
-    }
-    if (!response.ok) {
-      throw new Error(typeof payload === 'object'
-        ? payload?.error_msg || payload?.errorMsg || payload?.message || `HTTP ${response.status}`
-        : `HTTP ${response.status}: ${String(text).slice(0, 200)}`);
-    }
-    const businessError = this._normalizeBusinessError(payload);
-    if (businessError) {
-      throw new Error(businessError.message);
-    }
-    return payload;
   }
 
   _parseMultipartFieldNames(text) {
@@ -549,7 +362,7 @@ class InvoiceApiClient {
       const cookie = await this._getCookieString();
       const tokenInfo = this._getTokenInfo();
       const shop = this._getShopInfo();
-      const userAgent = (shop?.userAgent || tokenInfo?.userAgent || '').replace('pdd_webview', '').trim();
+      const userAgent = normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || '');
 
       const fileFieldCandidates = [
         'file',
@@ -887,8 +700,10 @@ class InvoiceApiClient {
       page_no: pageNo,
       invoice_type: '',
       invoice_kind: '',
+      invoice_way: '',
       invoice_waybill_no: '',
       file_status: '',
+      subsidy_type: Number(params.subsidyType ?? 0),
       order_sn: keyword,
     };
     const payload = await this._request('POST', '/omaisms/invoice/invoice_list', body);

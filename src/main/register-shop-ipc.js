@@ -47,6 +47,7 @@ function registerShopIpc({
   getCurrentView,
   isEmbeddedPddView,
   getPddHomeUrl,
+  getPddChatUrl,
   destroyApiClient,
   destroyMailApiClient,
   destroyInvoiceApiClient,
@@ -66,14 +67,17 @@ function registerShopIpc({
     if (!shopManager) return false;
     const shop = shopManager.getShopList().find(item => item.id === shopId);
     if (!shopManager.isUserSelectableShop(shop)) return false;
-    const switched = shopManager.switchTo(shopId);
-    if (switched && !isEmbeddedPddView?.(getCurrentView?.())) {
-      shopManager.hideActiveView();
+    if (!isEmbeddedPddView?.(getCurrentView?.())) {
+      return !!shopManager.syncActiveShopSelection({
+        preferredShopId: shopId,
+        showView: false,
+        emitEvent: true
+      });
     }
-    return switched;
+    return shopManager.switchTo(shopId);
   });
 
-  ipcMain.handle('open-shop-home', (event, shopId) => {
+  ipcMain.handle('open-shop-home', async (event, shopId) => {
     const shopManager = getShopManager();
     if (!shopManager) return { error: '店铺管理器未初始化' };
     const shop = shopManager.getShopList().find(item => item.id === shopId);
@@ -81,9 +85,17 @@ function registerShopIpc({
     if (!shopManager.isSelectableShop(shop)) {
       return { error: '当前店铺 Token 不可用' };
     }
-    const targetUrl = typeof getPddHomeUrl === 'function'
+    let mainCookieContext = null;
+    try {
+      const warmupResult = await shopManager.refreshMainCookieContext(shopId, {
+        reason: 'open-shop-home'
+      });
+      mainCookieContext = warmupResult?.result || null;
+    } catch {}
+    const fallbackHomeUrl = typeof getPddHomeUrl === 'function'
       ? getPddHomeUrl()
       : 'https://mms.pinduoduo.com/home';
+    const targetUrl = fallbackHomeUrl;
     return createTicketTodoDetailWindow({
       reuseKey: `shop-home:${shopId}`
     }).then(({ win, reused }) => {
@@ -101,7 +113,13 @@ function registerShopIpc({
       }
       win.show();
       win.focus();
-      return { ok: true, shopId, url: targetUrl, reused: reused === true };
+      return {
+        ok: true,
+        shopId,
+        url: targetUrl,
+        reused: reused === true,
+        mainCookieContext
+      };
     }).catch(error => {
       return { error: error?.message || '打开店铺后台首页失败' };
     });
@@ -163,6 +181,17 @@ function registerShopIpc({
     }
   });
 
+  ipcMain.handle('probe-shop-auth', async (event, shopId) => {
+    const shopManager = getShopManager();
+    if (!shopManager) return { success: false, error: '店铺管理器未初始化' };
+    try {
+      return await shopManager.probeShopAuth(shopId);
+    } catch (error) {
+      console.error('[PDD助手] 店铺接口参数诊断失败:', error.message);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('refresh-main-cookie-context', async (event, params = {}) => {
     const shopManager = getShopManager();
     if (!shopManager) return { success: false, error: '店铺管理器未初始化' };
@@ -204,10 +233,25 @@ function registerShopIpc({
   ipcMain.handle('get-shops', async () => {
     const shopManager = getShopManager();
     if (shopManager) {
-      const result = await shopManager.syncShopsFromTokenFiles({ broadcast: false });
-      return Array.isArray(result?.shops) ? result.shops : result;
+      return shopManager.getShopList();
     }
     return store.get('shops');
+  });
+
+  ipcMain.handle('sync-token-shops', async () => {
+    const shopManager = getShopManager();
+    if (!shopManager) return { error: '店铺管理器未初始化' };
+    const result = await shopManager.syncShopsFromTokenFiles({
+      broadcast: false,
+      applyTokens: true,
+      forceApplyTokens: true,
+      showView: false
+    });
+    const shops = Array.isArray(result?.shops) ? result.shops : [];
+    return {
+      ...(result && typeof result === 'object' ? result : {}),
+      shops
+    };
   });
 
   ipcMain.handle('save-shops', (event, shops) => {

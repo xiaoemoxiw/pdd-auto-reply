@@ -68,6 +68,127 @@ function registerApiIpc({
     return fallbackMessage;
   }
 
+  function getBusinessUnavailableMessage(shop) {
+    const availabilityStatus = getApiShopAvailabilityStatus(shop);
+    if (availabilityStatus === 'expired' || availabilityStatus === 'invalid') {
+      return '会话已过期，请重新登录';
+    }
+    if (availabilityStatus !== 'online') {
+      return '店铺未验证在线，请先完成登录校验';
+    }
+    return '店铺当前不可用';
+  }
+
+  function buildTicketStatusCountSummary(result = {}) {
+    const rawList = Array.isArray(result?.list) ? result.list : [];
+    const normalized = rawList
+      .map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const label = String(
+          item.statusDesc
+          || item.status_desc
+          || item.name
+          || item.label
+          || item.text
+          || item.status
+          || item.code
+          || ''
+        ).trim();
+        const count = Number(
+          item.count
+          ?? item.num
+          ?? item.total
+          ?? item.value
+          ?? 0
+        );
+        return {
+          label,
+          count: Number.isFinite(count) ? count : 0
+        };
+      })
+      .filter(Boolean);
+    return {
+      itemCount: normalized.length,
+      totalCount: normalized.reduce((sum, item) => sum + Number(item.count || 0), 0),
+      items: normalized.slice(0, 10)
+    };
+  }
+
+  function buildInvoiceOverviewSummary(result = {}) {
+    return {
+      pendingNum: Number(result?.pendingNum || 0),
+      invoicedNum: Number(result?.invoicedNum || 0),
+      applyingNum: Number(result?.applyingNum || 0),
+      invoiceAmount: Number(result?.invoiceAmount || 0),
+      quickPendingTotal: Number(result?.quickPendingTotal || 0),
+      qualityPendingTotal: Number(result?.qualityPendingTotal || 0),
+      normalPendingTotal: Number(result?.normalPendingTotal || 0),
+      showInvoiceMarkTab: !!result?.showInvoiceMarkTab,
+      isThirdPartySubMall: !!result?.isThirdPartySubMall,
+    };
+  }
+
+  function buildInvoiceListSummary(result = {}) {
+    const rawList = Array.isArray(result?.list) ? result.list : [];
+    return {
+      pageNo: Number(result?.pageNo || 1),
+      pageSize: Number(result?.pageSize || rawList.length || 0),
+      total: Number(result?.total || 0),
+      sample: rawList.slice(0, 3).map(item => ({
+        serialNo: String(item?.serialNo || ''),
+        orderSn: String(item?.orderSn || ''),
+        orderStatus: String(item?.orderStatus || ''),
+        invoiceApplyStatus: String(item?.invoiceApplyStatus || ''),
+        invoiceDisplayStatus: Number(item?.invoiceDisplayStatus || 0),
+      }))
+    };
+  }
+
+  function buildViolationListSummary(result = {}) {
+    const rawList = Array.isArray(result?.list) ? result.list : [];
+    const sample = rawList.slice(0, 3).map(item => ({
+      violationAppealSn: String(
+        item?.violationAppealSn
+        || item?.violation_appeal_sn
+        || item?.noticeSn
+        || item?.notice_sn
+        || item?.serialNo
+        || item?.serial_no
+        || ''
+      ),
+      violationType: String(
+        item?.violationTypeStr
+        || item?.violation_type_str
+        || item?.violationType
+        || item?.violation_type
+        || ''
+      ),
+      appealStatus: String(
+        item?.appealStatusStr
+        || item?.appeal_status_str
+        || item?.appealStatus
+        || item?.appeal_status
+        || ''
+      ),
+      noticeTime: String(
+        item?.noticeTime
+        || item?.notice_time
+        || item?.violationTime
+        || item?.violation_time
+        || ''
+      )
+    }));
+    return {
+      pageNo: Number(result?.pageNo || 1),
+      pageSize: Number(result?.pageSize || rawList.length || 0),
+      total: Number(result?.total || 0),
+      typeCount: result?.typeMap && typeof result.typeMap === 'object'
+        ? Object.keys(result.typeMap).length
+        : 0,
+      sample
+    };
+  }
+
   function shouldRetryViolationList(error) {
     const message = String(buildApiErrorMessage(error) || '').toLowerCase();
     return message.includes('会话已过期')
@@ -76,16 +197,32 @@ function registerApiIpc({
       || message.includes('login');
   }
 
-  async function invokePageApiWithRetry(shopId, request) {
+  async function invokePageApiWithRetry(shopId, request, options = {}) {
     try {
       return await request();
     } catch (error) {
-      if (!shouldRetryViolationList(error)) {
+      if (!shouldRetryViolationList(error) || options.allowInitSessionRetry !== true) {
         throw error;
       }
-      await getApiClient(shopId).initSession(true);
+      console.log(`[PDD接口:${shopId}] 显式允许页面重试，准备 initSession(true): ${options.source || 'unknown'}`);
+      await getApiClient(shopId).initSession(true, {
+        source: String(options.source || 'unknown')
+      });
       return request();
     }
+  }
+
+  function buildReadonlyTicketRequestOptions(source) {
+    return {
+      allowPageRequest: false,
+      source: String(source || 'ticket-readonly')
+    };
+  }
+
+  function buildWriteTicketRequestOptions(source) {
+    return {
+      source: String(source || 'ticket-write')
+    };
   }
 
   function getLastApiSessionSelection() {
@@ -106,11 +243,15 @@ function registerApiIpc({
     return getApiClient(shopId).getTokenStatus();
   });
 
-  ipcMain.handle('api-init-session', async () => {
-    const shopId = getActiveShopId();
+  ipcMain.handle('api-init-session', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有活跃店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
     try {
-      return await getApiClient(shopId).initSession(true);
+      console.log(`[PDD接口:${shopId}] 显式调用 api-init-session: ${String(params?.source || 'renderer-manual')}`);
+      return await getApiClient(shopId).initSession(true, {
+        source: String(params?.source || 'renderer-manual')
+      });
     } catch (error) {
       return { error: error.message };
     }
@@ -121,10 +262,106 @@ function registerApiIpc({
     if (!shopId) return { error: '没有活跃店铺' };
     if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
     try {
-      return await getApiClient(shopId).testConnection();
+      return await getApiClient(shopId).testConnection({
+        initializeSession: params?.initializeSession === true
+      });
     } catch (error) {
       return { error: error.message };
     }
+  });
+
+  ipcMain.handle('probe-safe-business-apis', async (event, params = {}) => {
+    const shopId = resolveShopId(params);
+    if (!shopId) return { error: '没有可用店铺' };
+    if (shopId === API_ALL_SHOPS) return { error: '请先选择具体店铺' };
+    const probeOptions = {
+      invoiceOverview: params?.probes?.invoiceOverview !== false,
+      invoiceList: params?.probes?.invoiceList === true,
+      ticketStatusCount: params?.probes?.ticketStatusCount === true,
+      violationList: params?.probes?.violationList === true,
+    };
+    const invoice = {
+      success: false,
+      error: '',
+      summary: null,
+      skipped: !probeOptions.invoiceOverview
+    };
+    const invoiceList = {
+      success: false,
+      error: '',
+      summary: null,
+      skipped: !probeOptions.invoiceList
+    };
+    const ticket = {
+      success: false,
+      error: '',
+      summary: null,
+      skipped: !probeOptions.ticketStatusCount
+    };
+    const violationList = {
+      success: false,
+      error: '',
+      summary: null,
+      skipped: !probeOptions.violationList
+    };
+
+    if (probeOptions.invoiceOverview) {
+      try {
+        const result = await getInvoiceApiClient(shopId).getOverview();
+        invoice.success = true;
+        invoice.summary = buildInvoiceOverviewSummary(result);
+      } catch (error) {
+        invoice.error = buildApiErrorMessage(error);
+      }
+    }
+
+    if (probeOptions.invoiceList) {
+      try {
+        const result = await getInvoiceApiClient(shopId).getList({
+          pageNo: 1,
+          pageSize: 5
+        });
+        invoiceList.success = true;
+        invoiceList.summary = buildInvoiceListSummary(result);
+      } catch (error) {
+        invoiceList.error = buildApiErrorMessage(error);
+      }
+    }
+
+    if (probeOptions.ticketStatusCount) {
+      try {
+        const result = await getTicketApiClient(shopId).getStatusCount({
+          allowPageRequest: false
+        });
+        ticket.success = true;
+        ticket.summary = buildTicketStatusCountSummary(result);
+      } catch (error) {
+        ticket.error = buildApiErrorMessage(error);
+      }
+    }
+
+    if (probeOptions.violationList) {
+      try {
+        const result = await getViolationApiClient(shopId).getList({
+          pageNo: 1,
+          pageSize: 5
+        });
+        violationList.success = true;
+        violationList.summary = buildViolationListSummary(result);
+      } catch (error) {
+        violationList.error = buildApiErrorMessage(error);
+      }
+    }
+
+    return {
+      shopId,
+      success: invoice.success || invoiceList.success || ticket.success || violationList.success,
+      invoice,
+      invoiceList,
+      ticket
+      ,
+      violationList
+    };
   });
 
   ipcMain.handle('api-get-sessions', async (event, params = {}) => {
@@ -185,10 +422,13 @@ function registerApiIpc({
     if (!shopId) return { error: '没有可用店铺' };
     if (!params.sessionId) return { error: '缺少 sessionId' };
     try {
+      // 允许首次 init：依赖 initSession 内部 sticky 标志，已 init 过的店铺不会重复加载 chat-merchant。
+      // polling（_pollMessagesForSession）仍保留 allowInitSession:false，杜绝隐式后台拉起 chat-merchant。
       return await getApiClient(shopId).getSessionMessages(
         params.session || params.sessionId,
         params.page || 1,
-        params.pageSize || 30
+        params.pageSize || 30,
+        { allowInitSession: true }
       );
     } catch (error) {
       return { error: error.message };
@@ -419,7 +659,9 @@ function registerApiIpc({
     } catch (error) {
       if (error.step === 'upload' && /ERR_BLOCKED_BY_CLIENT/i.test(error.message || '')) {
         try {
-          const uploadResult = await uploadImageViaPddPage(shopId, params.filePath);
+          const uploadResult = await uploadImageViaPddPage(shopId, params.filePath, {
+            source: 'api-send-image:upload-fallback'
+          });
           const imageUrl = uploadResult?.processed_url || uploadResult?.url;
           return await client.sendImageUrl(params.session || params.sessionId, imageUrl, {
             filePath: params.filePath,
@@ -473,7 +715,9 @@ function registerApiIpc({
     if (!shopId) return { error: '没有可用店铺' };
     if (!params.filePath) return { error: '缺少视频路径' };
     try {
-      const uploadResult = await uploadImageViaPddPage(shopId, params.filePath);
+      const uploadResult = await uploadImageViaPddPage(shopId, params.filePath, {
+        source: 'api-upload-video:page-upload'
+      });
       const client = getApiClient(shopId);
       const fileDetail = await client.waitVideoFileReady({
         fileId: uploadResult?.file_id || uploadResult?.id,
@@ -505,7 +749,7 @@ function registerApiIpc({
     if (shopId === API_ALL_SHOPS) {
       const targetShops = getApiShopList(API_ALL_SHOPS, { apiReadyOnly: true });
       if (!targetShops.length) {
-        return { error: '显示所有店铺时，没有已恢复 Token 的店铺可用于接口轮询' };
+        return { error: '显示所有店铺时，没有已验证在线的店铺可用于接口轮询' };
       }
       targetShops.forEach(shop => getApiClient(shop.id).startPolling());
       const bootstrapResults = await Promise.allSettled(targetShops.map(async shop => {
@@ -571,7 +815,7 @@ function registerApiIpc({
           failures.push({
             shopId: shop.id,
             shopName: shop.name || '未命名店铺',
-            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+            message: getBusinessUnavailableMessage(shop),
           });
         });
         return {
@@ -608,7 +852,7 @@ function registerApiIpc({
           failures.push({
             shopId: shop.id,
             shopName: shop.name || '未命名店铺',
-            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+            message: getBusinessUnavailableMessage(shop),
           });
         });
         const categoryMap = new Map();
@@ -689,7 +933,7 @@ function registerApiIpc({
           failures.push({
             shopId: shop.id,
             shopName: shop.name || '未命名店铺',
-            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+            message: getBusinessUnavailableMessage(shop),
           });
         });
         return {
@@ -741,7 +985,7 @@ function registerApiIpc({
           failures.push({
             shopId: shop.id,
             shopName: shop.name || '未命名店铺',
-            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+            message: getBusinessUnavailableMessage(shop),
           });
         });
         const merged = resultGroups
@@ -800,7 +1044,7 @@ function registerApiIpc({
     if (shopId === API_ALL_SHOPS) {
       const targetShops = getApiShopList(API_ALL_SHOPS, { apiReadyOnly: true });
       if (!targetShops.length) {
-        return { error: '显示所有店铺时，没有已恢复 Token 的店铺可用于待开票列表' };
+        return { error: '显示所有店铺时，没有已验证在线的店铺可用于待开票列表' };
       }
       const failures = [];
       try {
@@ -878,7 +1122,11 @@ function registerApiIpc({
     const shopId = resolveShopId(params);
     if (!shopId) return { error: '没有可用店铺' };
     try {
-      return await invokePageApiWithRetry(shopId, () => getInvoiceApiClient(shopId).submitInvoiceRecord(params));
+      return await invokePageApiWithRetry(
+        shopId,
+        () => getInvoiceApiClient(shopId).submitInvoiceRecord(params),
+        { allowInitSessionRetry: true, source: 'invoice-submit-record' }
+      );
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -899,7 +1147,7 @@ function registerApiIpc({
           failures.push({
             shopId: shop.id,
             shopName: shop.name || '未命名店铺',
-            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+            message: getBusinessUnavailableMessage(shop),
           });
         });
         return { list: [], failures };
@@ -930,7 +1178,7 @@ function registerApiIpc({
         failures.push({
           shopId: shop.id,
           shopName: shop.name || '未命名店铺',
-          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          message: getBusinessUnavailableMessage(shop),
         });
       });
       const merged = resultGroups.flatMap(group => group.list || []);
@@ -971,7 +1219,7 @@ function registerApiIpc({
         const failures = skippedShops.map(shop => ({
           shopId: shop.id,
           shopName: shop.name || '未命名店铺',
-          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          message: getBusinessUnavailableMessage(shop),
         }));
         return { pageNo, pageSize, total: 0, list: [], failures };
       }
@@ -1004,7 +1252,7 @@ function registerApiIpc({
             ...forwardedParams,
             pageNo,
             pageSize,
-          }));
+          }, buildReadonlyTicketRequestOptions('ticket-get-list')));
           const list = Array.isArray(result?.list) ? result.list : [];
           const decorated = list.map(item => ({
             ...item,
@@ -1026,7 +1274,7 @@ function registerApiIpc({
         failures.push({
           shopId: shop.id,
           shopName: shop.name || '未命名店铺',
-          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          message: getBusinessUnavailableMessage(shop),
         });
       });
 
@@ -1048,7 +1296,10 @@ function registerApiIpc({
       };
     }
     try {
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getList(params));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getList(
+        params,
+        buildReadonlyTicketRequestOptions('ticket-get-list')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1065,7 +1316,7 @@ function registerApiIpc({
         const failures = skippedShops.map(shop => ({
           shopId: shop.id,
           shopName: shop.name || '未命名店铺',
-          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          message: getBusinessUnavailableMessage(shop),
         }));
         const pageNo = Math.max(1, Number(params.pageNo || params.page_no || 1));
         const pageSize = Math.max(1, Number(params.pageSize || params.page_size || 50));
@@ -1109,7 +1360,7 @@ function registerApiIpc({
               ...forwardedParams,
               pageNo,
               pageSize,
-            }));
+            }, buildReadonlyTicketRequestOptions('aftersale-get-list')));
             const list = Array.isArray(result?.list) ? result.list : [];
             const decorated = list.map(item => ({
               ...item,
@@ -1130,7 +1381,7 @@ function registerApiIpc({
           failures.push({
             shopId: shop.id,
             shopName: shop.name || '未命名店铺',
-            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+            message: getBusinessUnavailableMessage(shop),
           });
         });
 
@@ -1171,7 +1422,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRefundList(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRefundList(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-get-list')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1184,7 +1438,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRegionChildren(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRegionChildren(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-get-regions')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1197,7 +1454,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getShippingCompanyList(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getShippingCompanyList(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-get-shipping-companies')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1211,7 +1471,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getChatShippingDetail(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getChatShippingDetail(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-get-shipping-detail')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1224,7 +1487,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).listRefundAddresses(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).listRefundAddresses(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-list-refund-addresses')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1247,7 +1513,14 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).approveReturnGoods(forwardedParams));
+      return await invokePageApiWithRetry(
+        shopId,
+        () => getTicketApiClient(shopId).approveReturnGoods(
+          forwardedParams,
+          buildWriteTicketRequestOptions('aftersale-approve-return-goods')
+        ),
+        { allowInitSessionRetry: true, source: 'aftersale-approve-return-goods' }
+      );
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1272,7 +1545,14 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).approveResend(forwardedParams));
+      return await invokePageApiWithRetry(
+        shopId,
+        () => getTicketApiClient(shopId).approveResend(
+          forwardedParams,
+          buildWriteTicketRequestOptions('aftersale-approve-resend')
+        ),
+        { allowInitSessionRetry: true, source: 'aftersale-approve-resend' }
+      );
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1295,7 +1575,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).agreeRefundPreCheck(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).agreeRefundPreCheck(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-agree-refund-precheck')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1320,7 +1603,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundPreCheck(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundPreCheck(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-reject-refund-precheck')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1344,7 +1630,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundGetFormInfo(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundGetFormInfo(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-reject-refund-get-form-info')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1367,7 +1656,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRejectRefundNegotiateInfo(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRejectRefundNegotiateInfo(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-reject-refund-get-negotiate-info')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1390,7 +1682,14 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundSubmit(forwardedParams));
+      return await invokePageApiWithRetry(
+        shopId,
+        () => getTicketApiClient(shopId).rejectRefundSubmit(
+          forwardedParams,
+          buildWriteTicketRequestOptions('aftersale-reject-refund-submit')
+        ),
+        { allowInitSessionRetry: true, source: 'aftersale-reject-refund-submit' }
+      );
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1413,7 +1712,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundGetReasons(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundGetReasons(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-reject-refund-get-reasons')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1438,7 +1740,10 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundValidate(forwardedParams));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).rejectRefundValidate(
+        forwardedParams,
+        buildReadonlyTicketRequestOptions('aftersale-reject-refund-validate')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1463,7 +1768,14 @@ function registerApiIpc({
     try {
       const forwardedParams = { ...params };
       if ('shopId' in forwardedParams) delete forwardedParams.shopId;
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).merchantAfterSalesRefuse(forwardedParams));
+      return await invokePageApiWithRetry(
+        shopId,
+        () => getTicketApiClient(shopId).merchantAfterSalesRefuse(
+          forwardedParams,
+          buildWriteTicketRequestOptions('aftersale-merchant-refuse')
+        ),
+        { allowInitSessionRetry: true, source: 'aftersale-merchant-refuse' }
+      );
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1501,7 +1813,7 @@ function registerApiIpc({
         const failures = skippedShops.map(shop => ({
           shopId: shop.id,
           shopName: shop.name || '未命名店铺',
-          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          message: getBusinessUnavailableMessage(shop),
         }));
         return { shopId, counts: {}, total: 0, statusLabels, failures };
       }
@@ -1509,7 +1821,10 @@ function registerApiIpc({
       try {
         const results = await Promise.all(targetShops.map(async shop => {
           try {
-            const result = await invokePageApiWithRetry(shop.id, () => getTicketApiClient(shop.id).getRefundCount());
+            const result = await invokePageApiWithRetry(shop.id, () => getTicketApiClient(shop.id).getRefundCount(
+              {},
+              buildReadonlyTicketRequestOptions('aftersale-get-overview')
+            ));
             return { shopId: shop.id, shopName: shop.name || '未命名店铺', countsObj: result?.counts || {} };
           } catch (error) {
             failures.push({
@@ -1525,7 +1840,7 @@ function registerApiIpc({
           failures.push({
             shopId: shop.id,
             shopName: shop.name || '未命名店铺',
-            message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+            message: getBusinessUnavailableMessage(shop),
           });
         });
 
@@ -1538,7 +1853,10 @@ function registerApiIpc({
     }
 
     try {
-      const result = await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRefundCount());
+      const result = await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getRefundCount(
+        {},
+        buildReadonlyTicketRequestOptions('aftersale-get-overview')
+      ));
       const counts = result?.counts || {};
       const total = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
       return { shopId, counts, total, statusLabels, failures: [] };
@@ -1554,7 +1872,10 @@ function registerApiIpc({
       return { error: '缺少工单实例 ID' };
     }
     try {
-      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getDetail(params));
+      return await invokePageApiWithRetry(shopId, () => getTicketApiClient(shopId).getDetail(
+        params,
+        buildReadonlyTicketRequestOptions('ticket-get-detail')
+      ));
     } catch (error) {
       return { error: buildApiErrorMessage(error) };
     }
@@ -1573,7 +1894,7 @@ function registerApiIpc({
         const failures = skippedShops.map(shop => ({
           shopId: shop.id,
           shopName: shop.name || '未命名店铺',
-          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          message: getBusinessUnavailableMessage(shop),
         }));
         return { pageNo, pageSize, total: 0, list: [], typeMap: {}, failures };
       }
@@ -1635,7 +1956,7 @@ function registerApiIpc({
         failures.push({
           shopId: shop.id,
           shopName: shop.name || '未命名店铺',
-          message: shop.status === 'expired' ? '会话已过期，请重新登录' : 'Token 未恢复，请先导入或同步 Token',
+          message: getBusinessUnavailableMessage(shop),
         });
       });
 

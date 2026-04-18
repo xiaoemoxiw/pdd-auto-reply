@@ -4,6 +4,15 @@ const { EventEmitter } = require('events');
 const fs = require('fs/promises');
 const path = require('path');
 const { NetworkMonitor } = require('./network-monitor');
+const {
+  DEFAULT_PAGE_CHROME_UA,
+  normalizePddUserAgent,
+  isChromeLikeUserAgent,
+  getChromeClientHintHeaders,
+  applyIdentityHeaders,
+  applyCookieContextHeaders,
+  applySessionPddPageProfile
+} = require('./pdd-request-profile');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -26,7 +35,7 @@ class PddApiClient extends EventEmitter {
   constructor(shopId, options = {}) {
     super();
     this.shopId = shopId;
-    this.partition = `persist:pdd-${shopId}`;
+    this.partition = `persist:pddv2-${shopId}`;
     this._polling = false;
     this._pollTimer = null;
     this._sessionInited = false;
@@ -95,7 +104,11 @@ class PddApiClient extends EventEmitter {
   }
 
   _safeParseJson(text) {
-    if (!text || typeof text !== 'string') return null;
+    if (!text) return null;
+    if (typeof text === 'object') {
+      return this._cloneJson(text);
+    }
+    if (typeof text !== 'string') return null;
     const source = String(text).trim();
     if (!source) return null;
     try {
@@ -1138,19 +1151,15 @@ class PddApiClient extends EventEmitter {
     const tokenInfo = this._getTokenInfo();
     const shop = this._getShopInfo();
     const cookieMap = await this._getCookieMap();
-    const fullCookie = this._serializeCookieMap(cookieMap, Object.keys(cookieMap));
     const mainCookie = this._buildMainCookieString(cookieMap);
     const hasRequiredMainCookies = !!(cookieMap.PASS_ID && cookieMap._nano_fp && cookieMap.rckk);
-    const cookie = hasRequiredMainCookies ? mainCookie : fullCookie;
     const headers = {
       accept: '*/*',
       'accept-language': 'zh-CN,zh;q=0.9',
       'accept-encoding': 'gzip, deflate, br',
       'cache-control': 'max-age=0',
       'content-type': 'application/json',
-      'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
+      ...getChromeClientHintHeaders('api'),
       'sec-fetch-dest': 'empty',
       'sec-fetch-mode': 'cors',
       'sec-fetch-site': 'same-origin',
@@ -1160,17 +1169,12 @@ class PddApiClient extends EventEmitter {
       ...extraHeaders,
     };
 
-    if (cookie) headers.cookie = cookie;
-    headers['user-agent'] = (shop?.userAgent || tokenInfo?.userAgent || '').replace('pdd_webview', '').trim();
-    if (tokenInfo?.raw) {
-      headers['X-PDD-Token'] = tokenInfo.raw;
-      headers['windows-app-shop-token'] = tokenInfo.raw;
+    if (hasRequiredMainCookies && mainCookie) {
+      headers.cookie = mainCookie;
     }
-    if (tokenInfo?.pddid) headers.pddid = tokenInfo.pddid;
-    if (cookieMap.rckk) headers.etag = cookieMap.rckk;
-    if (cookieMap['msfe-pc-cookie-captcha-token']) {
-      headers.VerifyAuthToken = cookieMap['msfe-pc-cookie-captcha-token'];
-    }
+    headers['user-agent'] = normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || '');
+    applyIdentityHeaders(headers, tokenInfo);
+    applyCookieContextHeaders(headers, cookieMap);
     if (!hasRequiredMainCookies) {
       this._log('[API] 请求关键 Cookie 缺失', {
         hasPassId: !!cookieMap.PASS_ID,
@@ -1187,12 +1191,17 @@ class PddApiClient extends EventEmitter {
     const shop = this._getShopInfo();
     const shouldEnsureMainCookieContext = shop?.loginMethod === 'token'
       && options.ensureMainCookieContext !== false
-      && (!mainCookieContext.hasPassId || !mainCookieContext.hasNanoFp);
+      && (!mainCookieContext.hasPassId || !mainCookieContext.hasNanoFp || !mainCookieContext.hasRckk);
     if (shouldEnsureMainCookieContext) {
       await this._maybeRefreshMainCookieContext('missing-main-cookie-context', {
         summary: mainCookieContext,
       });
       mainCookieContext = await this._getMainCookieContextSummary();
+    }
+    if (!mainCookieContext.hasRequiredMainCookies) {
+      const error = new Error('主站 Cookie 未完整建立');
+      error.mainCookieContext = mainCookieContext;
+      throw error;
     }
     const headers = await this._buildHeaders(extraHeaders);
     return { headers, mainCookieContext };
@@ -1215,6 +1224,7 @@ class PddApiClient extends EventEmitter {
 
   _shouldRetryWithMainCookieContextRefresh(error, options = {}) {
     if (options.mainCookieContextRetried) return false;
+    if (options.disableMainCookieContextRetry === true) return false;
     if (typeof this._refreshMainCookieContext !== 'function') return false;
     const shop = this._getShopInfo();
     if (shop?.loginMethod !== 'token') return false;
@@ -1273,6 +1283,7 @@ class PddApiClient extends EventEmitter {
       payload = await this._requestInPddPage({
         method: 'POST',
         url: '/plateau/file/pre_upload',
+        source: 'chat-file:pre-upload',
         headers: {
           'content-type': 'application/json',
           accept: 'application/json, text/plain, */*',
@@ -1305,6 +1316,7 @@ class PddApiClient extends EventEmitter {
       ? await this._requestInPddPage({
           method: 'POST',
           url: ticket.uploadUrl,
+          source: 'chat-file:upload',
           headers: {
             accept: 'application/json, text/plain, */*',
             'content-type': 'application/json',
@@ -1704,11 +1716,13 @@ class PddApiClient extends EventEmitter {
     return snippet.includes('登录') || snippet.includes('login') || snippet.includes('passport') || snippet.includes('扫码');
   }
 
-  async initSession(force = false) {
+  async initSession(force = false, options = {}) {
     if (this._sessionInited && !force) return { initialized: true };
 
     this._authExpired = false;
+    const source = String(options?.source || 'unknown').trim() || 'unknown';
     const shop = this._getShopInfo();
+    this._log('[API] 会话初始化开始', { force: !!force, source });
     const cookieNamesBefore = await this._listCookieNames();
     const win = new BrowserWindow({
       width: 1200,
@@ -1721,8 +1735,14 @@ class PddApiClient extends EventEmitter {
       },
     });
 
-    if (shop?.userAgent) {
-      win.webContents.setUserAgent(shop.userAgent);
+    const bootstrapUserAgent = normalizePddUserAgent(shop?.userAgent || this._getTokenInfo()?.userAgent || '');
+    const bootstrapProfile = applySessionPddPageProfile(win.webContents.session, {
+      userAgent: isChromeLikeUserAgent(bootstrapUserAgent) ? bootstrapUserAgent : DEFAULT_PAGE_CHROME_UA,
+      tokenInfo: this._getTokenInfo(),
+      clientHintsProfile: 'page'
+    });
+    if (bootstrapProfile?.userAgent) {
+      win.webContents.setUserAgent(bootstrapProfile.userAgent);
     }
 
     const monitor = new NetworkMonitor(win.webContents, {
@@ -1733,10 +1753,18 @@ class PddApiClient extends EventEmitter {
     try {
       await win.loadURL(CHAT_URL);
       let settled = false;
+      // 双判定：URL 跳到 chat-merchant 或 bootstrap 抓到模板/anti_content 任一就绪即提前结束。
+      // 只看 URL 容易在快速通过 chat-merchant 后又因 SPA 路由跳走时一直等到 20s 超时。
       for (let i = 0; i < 20; i++) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         const currentUrl = win.webContents.getURL();
-        if (currentUrl.includes('chat-merchant') && !currentUrl.includes('/login')) {
+        if (currentUrl.includes('/login')) break;
+        if (currentUrl.includes('chat-merchant')) {
+          settled = true;
+          break;
+        }
+        const bootstrapStatus = this._getConversationBootstrapStatus();
+        if (bootstrapStatus.ready) {
           settled = true;
           break;
         }
@@ -1747,7 +1775,7 @@ class PddApiClient extends EventEmitter {
       const bootstrapStatus = settled
         ? await this._waitForConversationBootstrap()
         : this._getConversationBootstrapStatus();
-      this._log(`[API] 会话初始化${settled ? '成功' : '未完成'}`);
+      this._log(`[API] 会话初始化${settled ? '成功' : '未完成'}`, { source });
       if (finalUrl.includes('/login')) {
         this._emitAuthExpired({
           errorMsg: '网页登录已失效，请重新登录或重新导入 Token',
@@ -1759,6 +1787,7 @@ class PddApiClient extends EventEmitter {
       const mainCookieContext = await this._getMainCookieContextSummary();
       return {
         initialized: settled,
+        source,
         url: finalUrl,
         cookieNamesBefore,
         cookieNamesAfter,
@@ -1878,7 +1907,7 @@ class PddApiClient extends EventEmitter {
       const shop = this._getShopInfo();
       const deferAuthExpired = typeof this._refreshMainCookieContext === 'function' && shop?.loginMethod === 'token';
       return await attempt({
-        ensureMainCookieContext: true,
+        ensureMainCookieContext: options.ensureMainCookieContext !== false,
         mainCookieContextRetried: false,
         suppressAuthExpired: deferAuthExpired ? true : options.suppressAuthExpired,
       });
@@ -1893,7 +1922,7 @@ class PddApiClient extends EventEmitter {
         errorCode: Number(error?.errorCode || 0),
       });
       return attempt({
-        ensureMainCookieContext: true,
+        ensureMainCookieContext: options.ensureMainCookieContext !== false,
         mainCookieContextRetried: true,
         suppressAuthExpired: options.suppressAuthExpired,
       });
@@ -2026,6 +2055,7 @@ class PddApiClient extends EventEmitter {
       payload = await this._requestInPddPage({
         method: 'POST',
         url: urlPath,
+        source: 'order-remark:page-request',
         headers,
         body: JSON.stringify(body || {}),
       });
@@ -2412,6 +2442,14 @@ class PddApiClient extends EventEmitter {
       });
   }
 
+  _sortDisplaySessions(sessions = []) {
+    return (Array.isArray(sessions) ? sessions.slice() : []).sort((a, b) => {
+      const leftTime = this._normalizeTimestampMs(a?.lastMessageTime || a?.createdAt || 0);
+      const rightTime = this._normalizeTimestampMs(b?.lastMessageTime || b?.createdAt || 0);
+      return rightTime - leftTime;
+    });
+  }
+
   _pickPendingBuyerMessage(messages = [], buyerIds = [], sessionMeta = {}) {
     const sorted = Array.isArray(messages)
       ? messages.slice().sort((a, b) => this._normalizeTimestampMs(a?.timestamp) - this._normalizeTimestampMs(b?.timestamp))
@@ -2616,14 +2654,18 @@ class PddApiClient extends EventEmitter {
     const candidates = {
       dataList: Array.isArray(payload?.data?.list) ? payload.data.list.length : -1,
       dataConvList: Array.isArray(payload?.data?.conv_list) ? payload.data.conv_list.length : -1,
+      dataConversations: Array.isArray(payload?.data?.conversations) ? payload.data.conversations.length : -1,
       dataConversationList: Array.isArray(payload?.data?.conversation_list) ? payload.data.conversation_list.length : -1,
       dataItems: Array.isArray(payload?.data?.items) ? payload.data.items.length : -1,
       resultDataList: Array.isArray(payload?.result?.data?.list) ? payload.result.data.list.length : -1,
       resultDataConvList: Array.isArray(payload?.result?.data?.conv_list) ? payload.result.data.conv_list.length : -1,
+      resultDataConversations: Array.isArray(payload?.result?.data?.conversations) ? payload.result.data.conversations.length : -1,
       resultList: Array.isArray(payload?.result?.list) ? payload.result.list.length : -1,
+      resultConversations: Array.isArray(payload?.result?.conversations) ? payload.result.conversations.length : -1,
       resultItems: Array.isArray(payload?.result?.items) ? payload.result.items.length : -1,
       rootList: Array.isArray(payload?.list) ? payload.list.length : -1,
       rootConvList: Array.isArray(payload?.conv_list) ? payload.conv_list.length : -1,
+      rootConversations: Array.isArray(payload?.conversations) ? payload.conversations.length : -1,
     };
     return {
       payloadType: Array.isArray(payload) ? 'array' : typeof payload,
@@ -2687,15 +2729,15 @@ class PddApiClient extends EventEmitter {
     return requestBody;
   }
 
-  async getSessionList(page = 1, pageSize = 20) {
-    if (!this._sessionInited) {
-      await this.initSession();
-    }
-
+  async getSessionList(page = 1, pageSize = 20, options = {}) {
+    const allowInitSession = options.allowInitSession !== false;
+    // 不再前置 initSession：cookie 已经在主上下文里就绪后，fallback 模板的 latest_conversations
+    // 通常就能 200 拿到真实数据。把 init 留作"请求失败/空"的兜底，避免每次都阻塞 ~20s。
     let templateBody = this._getLatestConversationRequestBody();
     let antiContent = templateBody?.anti_content || this._getLatestAntiContent();
-    if (!templateBody && !antiContent && page === 1 && this._sessionCache.length === 0) {
-      const bootstrapStatus = await this._waitForConversationBootstrap(1500);
+    if (!templateBody && !antiContent && page === 1 && this._sessionCache.length === 0 && allowInitSession) {
+      // 已经有 init 在跑，或本来就有 bootstrap 数据，等一小段把模板凑齐就好
+      const bootstrapStatus = await this._waitForConversationBootstrap(800);
       templateBody = this._getLatestConversationRequestBody();
       antiContent = templateBody?.anti_content || this._getLatestAntiContent();
       this._log('[API] 首次会话拉取预热结果', bootstrapStatus);
@@ -2712,7 +2754,15 @@ class PddApiClient extends EventEmitter {
     });
     try {
       const payload = await this._post('/plateau/chat/latest_conversations', requestBody);
-      const sessions = this._filterDisplaySessions(this._parseSessionList(payload));
+      const parsedSessions = this._parseSessionList(payload);
+      let sessions = this._filterDisplaySessions(parsedSessions);
+      if (!sessions.length && parsedSessions.length > 0) {
+        sessions = this._sortDisplaySessions(parsedSessions);
+        this._log('[API] 会话列表近两天过滤后为空，回退展示原始会话', {
+          parsedCount: parsedSessions.length,
+          returnedCount: sessions.length,
+        });
+      }
       this._log('[API] 会话列表响应解析', {
         count: sessions.length,
         summary: this._describeSessionListPayload(payload),
@@ -2735,7 +2785,15 @@ class PddApiClient extends EventEmitter {
         });
         await this._sleep(800);
         const retryPayload = await this._post('/plateau/chat/latest_conversations', retryRequestBody);
-        const retrySessions = this._filterDisplaySessions(this._parseSessionList(retryPayload));
+        const retryParsedSessions = this._parseSessionList(retryPayload);
+        let retrySessions = this._filterDisplaySessions(retryParsedSessions);
+        if (!retrySessions.length && retryParsedSessions.length > 0) {
+          retrySessions = this._sortDisplaySessions(retryParsedSessions);
+          this._log('[API] 会话列表重试近两天过滤后为空，回退展示原始会话', {
+            parsedCount: retryParsedSessions.length,
+            returnedCount: retrySessions.length,
+          });
+        }
         this._log('[API] 会话列表重试响应解析', {
           count: retrySessions.length,
           summary: this._describeSessionListPayload(retryPayload),
@@ -2767,6 +2825,34 @@ class PddApiClient extends EventEmitter {
         this._sessionCache = cachedSessions;
         this._log('[API] latest_conversations 直调失败，回退页面抓取缓存', { message: error.message, source });
         return cachedSessions;
+      }
+      // 直调失败 + 缓存为空 + 允许 init + 尚未 init → 触发一次 init 后再试
+      if (allowInitSession && !this._sessionInited) {
+        this._log('[API] latest_conversations 直调失败，触发 initSession 后重试', { message: error.message });
+        try {
+          await this.initSession();
+        } catch (initError) {
+          this._log('[API] initSession 失败', { message: initError?.message || String(initError || '') });
+        }
+        const retryTemplateBody = this._getLatestConversationRequestBody();
+        const retryAntiContent = retryTemplateBody?.anti_content || this._getLatestAntiContent();
+        const retryRequestBody = this._buildSessionListBody(page, pageSize, retryTemplateBody, retryAntiContent);
+        try {
+          const retryPayload = await this._post('/plateau/chat/latest_conversations', retryRequestBody);
+          const retryParsed = this._parseSessionList(retryPayload);
+          let retrySessions = this._filterDisplaySessions(retryParsed);
+          if (!retrySessions.length && retryParsed.length > 0) {
+            retrySessions = this._sortDisplaySessions(retryParsed);
+          }
+          if (retrySessions.length > 0) {
+            this._sessionCache = retrySessions;
+            return retrySessions;
+          }
+        } catch (retryError) {
+          this._log('[API] init 后重试仍失败', {
+            message: retryError?.message || String(retryError || ''),
+          });
+        }
       }
       this._log('[API] 会话列表拉取失败', {
         message: error.message,
@@ -3825,8 +3911,14 @@ class PddApiClient extends EventEmitter {
         nodeIntegration: false,
       },
     });
-    if (shop?.userAgent) {
-      win.webContents.setUserAgent(shop.userAgent);
+    const goodsPageUserAgent = normalizePddUserAgent(shop?.userAgent || this._getTokenInfo()?.userAgent || '');
+    const goodsPageProfile = applySessionPddPageProfile(win.webContents.session, {
+      userAgent: isChromeLikeUserAgent(goodsPageUserAgent) ? goodsPageUserAgent : DEFAULT_PAGE_CHROME_UA,
+      tokenInfo: this._getTokenInfo(),
+      clientHintsProfile: 'page'
+    });
+    if (goodsPageProfile?.userAgent) {
+      win.webContents.setUserAgent(goodsPageProfile.userAgent);
     }
     try {
       await win.loadURL(url);
@@ -4710,6 +4802,7 @@ class PddApiClient extends EventEmitter {
       return this._requestInPddPage({
         method: 'POST',
         url,
+        source: 'refund-order:page-request',
         headers: {
           accept: 'application/json, text/plain, */*',
           'content-type': 'application/json;charset=UTF-8',
@@ -4734,6 +4827,7 @@ class PddApiClient extends EventEmitter {
       return this._requestInPddPage({
         method: normalizedMethod,
         url: urlPath,
+        source: 'goods-page:request',
         headers,
         body: normalizedMethod === 'GET' ? null : JSON.stringify(body || {}),
       });
@@ -4799,6 +4893,7 @@ class PddApiClient extends EventEmitter {
       return this._requestInPddPage({
         method: normalizedMethod,
         url: urlPath,
+        source: 'refund-apply:page-request',
         headers,
         body: normalizedMethod === 'GET' ? null : JSON.stringify(body || {}),
       });
@@ -4820,6 +4915,7 @@ class PddApiClient extends EventEmitter {
       return this._requestInPddPage({
         method: 'POST',
         url: urlPath,
+        source: 'video-material:page-request',
         headers,
         body: JSON.stringify(body || {}),
       });
@@ -6617,7 +6713,7 @@ class PddApiClient extends EventEmitter {
             return interceptor.abort(error?.message || String(error || 'bootstrap-failed'));
           }
         })()
-      `);
+      `, { source: 'order-price:template-bootstrap' });
     } catch (error) {
       return {
         success: false,
@@ -6885,7 +6981,7 @@ class PddApiClient extends EventEmitter {
         });
         return items;
       })()
-    `);
+    `, { source: 'refund-orders:dom-extract' });
     return Array.isArray(result) ? result : [];
   }
 
@@ -7021,7 +7117,7 @@ class PddApiClient extends EventEmitter {
         }
         return parseModal() || { error: 'SPEC_MODAL_NOT_FOUND' };
       })()
-    `);
+    `, { source: 'goods-spec:dom-extract' });
     if (!result || typeof result !== 'object' || result.error) {
       this._log('[API] 聊天页规格提取失败', { goodsId: target.goodsId, reason: result?.error || 'EMPTY_RESULT' });
       return null;
@@ -8161,10 +8257,10 @@ class PddApiClient extends EventEmitter {
     return filtered.map((item, index) => this._normalizeSideOrderCard(item, sessionMeta, normalizedTab, index));
   }
 
-  async getSessionMessages(sessionRef, page = 1, pageSize = 30) {
-    if (!this._sessionInited) {
-      await this.initSession();
-    }
+  async getSessionMessages(sessionRef, page = 1, pageSize = 30, options = {}) {
+    const allowInitSession = options.allowInitSession !== false;
+    // 不再前置 init：先尝试请求，失败再触发 init 兜底，避免每次点击会话都阻塞 ~20s。
+    // init 触发位置见下方 chat/list 全部候选失败后的 latitude 兜底之前。
 
     const sessionMeta = this._normalizeSessionMeta(sessionRef);
     const sessionIds = [
@@ -8204,6 +8300,9 @@ class PddApiClient extends EventEmitter {
             start_index: Math.max(0, (page - 1) * pageSize),
             size: pageSize || templateList.size || 30,
           };
+      // PDD chat/list 普通客服聊天必须带 chat_type_id=1，缺失会直接 500。
+      // 模板里若没有则补默认值；非模板分支也用 1 作为默认。
+      const fallbackChatTypeId = 1;
       return templateBody
         ? {
             ...this._cloneJson(templateBody),
@@ -8211,6 +8310,7 @@ class PddApiClient extends EventEmitter {
               ...(templateBody.data || {}),
               request_id: this._nextRequestId(),
               cmd: templateBody.data?.cmd || 'list',
+              chat_type_id: templateBody.data?.chat_type_id ?? fallbackChatTypeId,
               anti_content: templateBody.data?.anti_content || antiContent,
               list: requestList,
             },
@@ -8222,6 +8322,7 @@ class PddApiClient extends EventEmitter {
         : {
             data: {
               cmd: 'list',
+              chat_type_id: fallbackChatTypeId,
               request_id: this._nextRequestId(),
               list: {
                 with: {
@@ -8246,6 +8347,24 @@ class PddApiClient extends EventEmitter {
         const id = String(body?.data?.list?.with?.id || '');
         return requestCandidates.some(candidate => String(candidate.id) === id);
       });
+    if (!allowInitSession && !templateBody && !antiContent) {
+      for (const entry of cachedEntries) {
+        const cachedPayload = entry?.responseBody && typeof entry.responseBody === 'object' ? entry.responseBody : null;
+        if (!cachedPayload) continue;
+        const cachedMessages = this._parseMessages(cachedPayload, sessionMeta);
+        if (cachedMessages.length > 0) {
+          this._log('[API] 安全模式读取消息，直接回退页面抓取缓存', {
+            sessionId: String(sessionMeta.sessionId || ''),
+            count: cachedMessages.length,
+          });
+          return cachedMessages;
+        }
+      }
+      this._log('[API] 安全模式读取消息缺少模板，跳过初始化链路', {
+        sessionId: String(sessionMeta.sessionId || ''),
+      });
+      return [];
+    }
     let fallbackMessages = [];
     let lastError = null;
     for (let index = 0; index < requestCandidates.length; index++) {
@@ -8256,7 +8375,11 @@ class PddApiClient extends EventEmitter {
         && String(templateList?.with?.id || '') === String(candidate.id);
       const requestBody = buildRequestBody(candidate, useSessionWindow);
       try {
-        const payload = await this._post('/plateau/chat/list', requestBody);
+        const payload = await this._post('/plateau/chat/list', requestBody, undefined, {
+          suppressAuthExpired: !allowInitSession,
+          ensureMainCookieContext: allowInitSession,
+          disableMainCookieContextRetry: !allowInitSession,
+        });
         const messages = this._parseMessages(payload, sessionMeta);
         this._log('[API] chat/list 候选响应', {
           candidateId: candidate.id,
@@ -8271,10 +8394,30 @@ class PddApiClient extends EventEmitter {
         }
       } catch (error) {
         lastError = error;
+        const payload = error?.payload;
+        const payloadPreview = (() => {
+          if (payload && typeof payload === 'object') {
+            return {
+              success: payload.success,
+              error_code: payload.error_code ?? payload.errorCode,
+              error_msg: payload.error_msg || payload.errorMsg || payload.message,
+              result_code: payload?.result?.error_code,
+              result_msg: payload?.result?.error_msg,
+            };
+          }
+          if (typeof payload === 'string') {
+            return payload.slice(0, 200);
+          }
+          return undefined;
+        })();
         this._log('[API] chat/list 候选失败', {
           candidateId: candidate.id,
           candidateRole: candidate.role,
+          statusCode: error?.statusCode,
           message: error.message,
+          hasTemplate: !!templateBody,
+          chatTypeId: requestBody?.data?.chat_type_id,
+          payloadPreview,
         });
       }
     }
@@ -8290,10 +8433,254 @@ class PddApiClient extends EventEmitter {
         return cachedMessages;
       }
     }
+    // 终极降级：chat/list 走 anti_content 链路在没有页面模板时几乎必然 500，
+    // 改走商家工作台标准 REST /latitude/message/getHistoryMessage（按 orderSn 查），
+    // 该接口无 anti_content，鉴权只看 cookie + token，对带订单的会话非常稳定。
+    const orderSn = this._extractSessionOrderSn(sessionMeta);
+    if (orderSn) {
+      try {
+        const historyMessages = await this._fetchHistoryMessagesByOrderSn(orderSn, page, pageSize, sessionMeta);
+        if (historyMessages.length > 0) {
+          this._log('[API] 降级走 latitude/getHistoryMessage 成功', {
+            sessionId: String(sessionMeta.sessionId || ''),
+            orderSn,
+            count: historyMessages.length,
+          });
+          return historyMessages;
+        }
+        this._log('[API] latitude/getHistoryMessage 返回 0 条', {
+          sessionId: String(sessionMeta.sessionId || ''),
+          orderSn,
+        });
+      } catch (error) {
+        this._log('[API] latitude/getHistoryMessage 调用失败', {
+          sessionId: String(sessionMeta.sessionId || ''),
+          orderSn,
+          statusCode: error?.statusCode,
+          message: error?.message,
+        });
+      }
+    } else {
+      // 没拿到 orderSn 时主动诊断：把 sessionMeta 关键字段打出来，并询问 PDD"该买家共有多少订单"
+      // 这样能立即区分"测试买家无订单"和"买家有订单但我们没解析到"两种情况
+      const buyerUid = String(sessionMeta.userUid || sessionMeta.customerId || sessionMeta.sessionId || '').trim();
+      const sessionMetaSummary = {
+        sessionId: String(sessionMeta.sessionId || ''),
+        userUid: String(sessionMeta.userUid || ''),
+        customerId: String(sessionMeta.customerId || ''),
+        rawKeys: sessionMeta?.raw && typeof sessionMeta.raw === 'object' ? Object.keys(sessionMeta.raw).slice(0, 20) : [],
+        rawToUid: String(sessionMeta?.raw?.to?.uid || ''),
+        rawUserInfoUid: String(sessionMeta?.raw?.user_info?.uid || ''),
+      };
+      let buyerOrderQuantity = null;
+      if (buyerUid) {
+        // 先试 number 再试 string（PDD 该接口对 uid 类型较挑），附上 chat 页 Referer
+        const uidAsNumber = Number(buyerUid);
+        const uidCandidates = Number.isFinite(uidAsNumber) && String(uidAsNumber) === buyerUid
+          ? [uidAsNumber, buyerUid]
+          : [buyerUid, uidAsNumber].filter(v => v !== undefined && !Number.isNaN(v));
+        const extraHeaders = {
+          accept: 'application/json, text/plain, */*',
+          'content-type': 'application/json;charset=UTF-8',
+          Referer: `${PDD_BASE}/chat-merchant/index.html`,
+        };
+        for (const uidValue of uidCandidates) {
+          try {
+            const quantityPayload = await this._post('/latitude/order/userOrderQuantity', { uid: uidValue }, extraHeaders, {
+              suppressAuthExpired: true,
+              ensureMainCookieContext: false,
+              disableMainCookieContextRetry: true,
+            });
+            const result = quantityPayload?.result || {};
+            buyerOrderQuantity = {
+              uidType: typeof uidValue,
+              sum: Number(result.sum || 0),
+              unfinished: Number(result.unfinished || 0),
+              unshipped: Number(result.unshipped || 0),
+              shippedNotReceived: Number(result.shippedNotReceived || 0),
+              received: Number(result.received || 0),
+              refund: Number(result.refund || 0),
+            };
+            break;
+          } catch (error) {
+            buyerOrderQuantity = { uidType: typeof uidValue, error: error?.message || String(error || '') };
+            if (!/bad params/i.test(String(error?.message || ''))) break;
+          }
+        }
+      }
+      this._log('[API] 缺少 orderSn 无法降级 latitude/getHistoryMessage', {
+        ...sessionMetaSummary,
+        buyerOrderQuantity,
+      });
+    }
     if (lastError) {
       throw lastError;
     }
     return fallbackMessages;
+  }
+
+  _extractSessionOrderSn(sessionMeta) {
+    if (!sessionMeta || typeof sessionMeta !== 'object') return '';
+    const raw = sessionMeta.raw && typeof sessionMeta.raw === 'object' ? sessionMeta.raw : {};
+    const candidates = [
+      sessionMeta.orderId,
+      sessionMeta.orderSn,
+      raw.order_sn,
+      raw.orderSn,
+      raw.order_id,
+      raw.orderId,
+      raw?.last_order?.order_sn,
+      raw?.last_order?.orderSn,
+      raw?.goods_info?.order_sn,
+    ];
+    for (const value of candidates) {
+      const text = String(value || '').trim();
+      if (text) return text;
+    }
+    const buyerUid = this._extractSessionBuyerUid(sessionMeta);
+    if (buyerUid) {
+      const viaTraffic = this._findOrderSnByBuyerUid(buyerUid);
+      if (viaTraffic) return viaTraffic;
+    }
+    return '';
+  }
+
+  _extractSessionBuyerUid(sessionMeta) {
+    if (!sessionMeta || typeof sessionMeta !== 'object') return '';
+    const raw = sessionMeta.raw && typeof sessionMeta.raw === 'object' ? sessionMeta.raw : {};
+    const candidates = [
+      sessionMeta.userUid,
+      sessionMeta.customerId,
+      raw?.to?.uid,
+      raw?.user_info?.uid,
+      raw?.buyer?.uid,
+      raw.buyer_uid,
+      raw.user_uid,
+      raw.uid,
+    ];
+    for (const value of candidates) {
+      const text = String(value || '').trim();
+      if (text) return text;
+    }
+    return '';
+  }
+
+  // 在本店铺已抓到的 afterSales/queryList 等 mercury 响应里按 buyer uid 反查订单号。
+  // pdd-api 和 ticket-api 共享同一个 api-traffic store，所以这条反查链路不需要额外网络请求。
+  _findOrderSnByBuyerUid(buyerUid) {
+    const target = String(buyerUid || '').trim();
+    if (!target) return '';
+    const urlHints = [
+      '/mercury/mms/afterSales/',
+      '/mercury/after_sales/',
+      '/mangkhut/mms/orderDetail',
+    ];
+    const entries = this._getApiTrafficEntries();
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      const url = String(entry?.url || '');
+      if (!urlHints.some(hint => url.includes(hint))) continue;
+      const payload = entry?.responseBody;
+      const body = typeof payload === 'object' && payload !== null
+        ? payload
+        : this._safeParseJson(payload);
+      if (!body) continue;
+      const orderSn = this._searchOrderSnByBuyerUidInPayload(body, target);
+      if (orderSn) return orderSn;
+    }
+    return '';
+  }
+
+  _searchOrderSnByBuyerUidInPayload(payload, targetUid) {
+    const orderSnKeys = ['orderSn', 'order_sn', 'orderNo', 'order_no'];
+    const buyerUidKeys = ['userUid', 'user_uid', 'buyerUid', 'buyer_uid', 'customerId', 'customer_id', 'uid'];
+    const queue = [payload];
+    const visited = new Set();
+    const MAX_NODES = 5000;
+    let processed = 0;
+    while (queue.length && processed < MAX_NODES) {
+      const node = queue.shift();
+      processed += 1;
+      if (!node || typeof node !== 'object') continue;
+      if (visited.has(node)) continue;
+      visited.add(node);
+      if (!Array.isArray(node)) {
+        let matched = false;
+        for (const key of buyerUidKeys) {
+          const value = node[key];
+          if (value === undefined || value === null) continue;
+          if (String(value).trim() === targetUid) {
+            matched = true;
+            break;
+          }
+        }
+        if (matched) {
+          for (const key of orderSnKeys) {
+            const value = node[key];
+            const text = String(value || '').trim();
+            if (text) return text;
+          }
+        }
+      }
+      if (Array.isArray(node)) {
+        for (const item of node) {
+          if (item && typeof item === 'object') queue.push(item);
+        }
+      } else {
+        for (const value of Object.values(node)) {
+          if (value && typeof value === 'object') queue.push(value);
+        }
+      }
+    }
+    return '';
+  }
+
+  async _fetchHistoryMessagesByOrderSn(orderSn, page = 1, pageSize = 20, sessionRef = null) {
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeSize = Math.max(1, Math.min(50, Number(pageSize) || 20));
+    const requestBody = {
+      orderSn: String(orderSn),
+      startTime: 0,
+      endTime: Math.floor(Date.now() / 1000),
+      pageNum: safePage - 1,
+      pageSize: safeSize,
+    };
+    const headers = {
+      accept: 'application/json, text/plain, */*',
+      'content-type': 'application/json',
+    };
+    const payload = await this._post('/latitude/message/getHistoryMessage', requestBody, headers, {
+      suppressAuthExpired: true,
+      ensureMainCookieContext: false,
+      disableMainCookieContextRetry: true,
+    });
+    const list = this._parseLatitudeHistoryMessageList(payload);
+    if (!list.length) return [];
+    return this._parseMessages({ result: { list } }, sessionRef);
+  }
+
+  _parseLatitudeHistoryMessageList(payload) {
+    const raw = payload?.result?.messageList
+      || payload?.data?.messageList
+      || payload?.messageList
+      || [];
+    if (!Array.isArray(raw)) return [];
+    const items = [];
+    for (const entry of raw) {
+      if (!entry) continue;
+      if (typeof entry === 'object') {
+        items.push(entry);
+        continue;
+      }
+      if (typeof entry !== 'string') continue;
+      const parsed = this._safeParseJson(entry);
+      if (parsed && typeof parsed === 'object') {
+        items.push(parsed);
+      }
+    }
+    // 接口默认按"新→旧"返回；按 ts 升序排，和 chat/list 一致
+    items.sort((a, b) => Number(a?.ts || 0) - Number(b?.ts || 0));
+    return items;
   }
 
   _buildSendMessageBody(sessionRef, text) {
@@ -9079,20 +9466,32 @@ class PddApiClient extends EventEmitter {
     return this._post('/plateau/chat/marked_lastest_conversations', requestBody);
   }
 
-  async testConnection() {
+  async testConnection(options = {}) {
     const steps = [];
-    const sessionInit = await this.initSession(true);
-    steps.push({ step: 'initSession', ok: !!sessionInit.initialized, detail: sessionInit });
+    const initializeSession = options?.initializeSession === true;
+    let sessions = [];
+    if (initializeSession) {
+      const sessionInit = await this.initSession(true, {
+        source: 'api-test-connection'
+      });
+      steps.push({ step: 'initSession', ok: !!sessionInit.initialized, detail: sessionInit });
+    } else {
+      steps.push({ step: 'initSession', ok: false, skipped: true, detail: { reason: 'safe-mode' } });
+    }
 
     const userInfo = await this.getUserInfo();
     steps.push({ step: 'getUserInfo', ok: true, detail: userInfo });
 
-    const sessions = await this.getSessionList(1, 5);
-    steps.push({ step: 'getSessionList', ok: true, detail: { count: sessions.length } });
+    if (initializeSession) {
+      sessions = await this.getSessionList(1, 5);
+      steps.push({ step: 'getSessionList', ok: true, detail: { count: sessions.length } });
+    } else {
+      steps.push({ step: 'getSessionList', ok: false, skipped: true, detail: { reason: 'safe-mode' } });
+    }
 
     return {
       ok: true,
-      tokenStatus: this.getTokenStatus(),
+      tokenStatus: await this.getTokenStatus(),
       userInfo,
       sessions,
       steps,
@@ -9101,7 +9500,8 @@ class PddApiClient extends EventEmitter {
 
   async _pollMessagesForSession(sessionRef, options = {}) {
     const { sessionMeta } = this._getSessionIdentityCandidates(sessionRef);
-    const messages = await this.getSessionMessages(sessionMeta.sessionId || sessionRef, 1, 20);
+    // 安全模式：轮询过程中不允许隐式 initSession()，防止后台拉起完整 chat-merchant 运行时
+    const messages = await this.getSessionMessages(sessionMeta.sessionId || sessionRef, 1, 20, { allowInitSession: false });
     const newMessages = [];
     const bootstrapOnly = options.bootstrapOnly === true;
     const emitBootstrapPending = options.emitBootstrapPending === true;
@@ -9159,7 +9559,9 @@ class PddApiClient extends EventEmitter {
     if (!this._polling) return;
 
     try {
-      const sessions = await this.getSessionList(1, 100);
+      // 安全模式：轮询读取会话列表时不允许隐式 initSession()，
+      // 首轮若尚未建立会话，走页面抓包缓存回退，避免后台创建隐藏 BrowserWindow 加载 chat-merchant 而掉线
+      const sessions = await this.getSessionList(1, 100, { allowInitSession: false });
       this.emit('sessionUpdated', sessions);
 
       const targets = sessions
@@ -9274,12 +9676,6 @@ class PddApiClient extends EventEmitter {
     const shop = this._getShopInfo();
     const mainCookieContext = await this._getMainCookieContextSummary();
     const tokenMissing = shop?.loginMethod === 'token' && !tokenInfo?.raw;
-    let serviceProfile = null;
-    if (tokenInfo?.raw) {
-      try {
-        serviceProfile = await this.getServiceProfile();
-      } catch {}
-    }
     const authState = tokenMissing ? 'token_missing' : (this._authExpired ? 'expired' : 'normal');
     const authHint = tokenMissing
       ? '当前店铺缺少接口 Token，请重新导入 Token'
@@ -9294,10 +9690,287 @@ class PddApiClient extends EventEmitter {
       authHint,
       requiresReauth: authState !== 'normal',
       sessionInited: this._sessionInited,
-      mallName: serviceProfile?.mallName || this._getShopInfo()?.name || '',
-      serviceName: serviceProfile?.serviceName || '',
-      serviceAvatar: serviceProfile?.serviceAvatar || '',
+      mallName: shop?.name || '',
+      serviceName: shop?.account || '',
+      serviceAvatar: '',
       mainCookieContext,
+    };
+  }
+
+  _summarizePreparedHeaders(headers = {}) {
+    const userAgent = String(headers['user-agent'] || headers['User-Agent'] || '').trim();
+    const cookieHeader = String(headers.cookie || '').trim();
+    const cookieNames = cookieHeader
+      ? cookieHeader
+        .split(';')
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+        .map(item => item.split('=')[0].trim())
+        .filter(Boolean)
+      : [];
+    return {
+      hasCookie: !!cookieHeader,
+      cookieNames,
+      hasXToken: !!headers['X-PDD-Token'],
+      hasWindowsAppToken: !!headers['windows-app-shop-token'],
+      hasPddid: !!headers.pddid,
+      hasEtag: !!headers.etag,
+      hasVerifyAuthToken: !!(headers.VerifyAuthToken || headers.verifyauthtoken),
+      hasAntiContent: !!(headers['anti-content'] || headers['Anti-Content']),
+      referer: headers.Referer || headers.referer || '',
+      origin: headers.Origin || headers.origin || '',
+      secChUaPlatform: headers['sec-ch-ua-platform'] || '',
+      userAgent,
+      userAgentKind: userAgent.includes('PddWorkbench-Online')
+        ? 'workbench'
+        : (userAgent ? 'chrome-like' : 'missing'),
+    };
+  }
+
+  _summarizeWarmupResult(result = null) {
+    if (!result || typeof result !== 'object') return null;
+    return {
+      ready: !!result.ready,
+      error: result.error || '',
+      url: result.url || result.currentUrl || '',
+      entryUrl: result.entryUrl || '',
+      attemptedEntryUrls: Array.isArray(result.attemptedEntryUrls) ? result.attemptedEntryUrls : [],
+      cookieNames: Array.isArray(result.cookieNames) ? result.cookieNames : [],
+      cookieScopes: Array.isArray(result.cookieScopes) ? result.cookieScopes : [],
+      hasPassId: !!result.hasPassId,
+      hasNanoFp: !!result.hasNanoFp,
+      hasRckk: !!result.hasRckk,
+    };
+  }
+
+  _buildSafeApiResultSummary(result = {}) {
+    return {
+      success: !!result.success,
+      skipped: !!result.skipped,
+      error: result.error || '',
+      statusCode: Number(result.statusCode || 0),
+      errorCode: Number(result.errorCode || 0),
+      authExpired: !!result.authExpired,
+      mallId: result.mallId || '',
+      mallName: result.mallName || '',
+      username: result.username || '',
+      nickname: result.nickname || '',
+      companyName: result.companyName || '',
+      merchantType: result.merchantType || '',
+      category: result.category || '',
+    };
+  }
+
+  async probeCommonMallInfoRequest(options = {}) {
+    const tokenInfo = this._getTokenInfo();
+    const shop = this._getShopInfo();
+    const requestHeaders = this._getShopInfoRequestHeaders('mall');
+    const mainCookieContextBefore = await this._getMainCookieContextSummary();
+    let warmupResult = null;
+    let warmupError = '';
+
+    if (
+      options.refreshMainCookieContext !== false
+      && typeof this._refreshMainCookieContext === 'function'
+      && shop?.loginMethod === 'token'
+    ) {
+      try {
+        warmupResult = await this._refreshMainCookieContext({
+          shopId: this.shopId,
+          reason: 'manual-commonMallInfo-probe',
+          source: 'shop-auth-probe',
+        });
+      } catch (error) {
+        warmupError = error?.message || String(error);
+      }
+    }
+
+    const mainCookieContextAfter = await this._getMainCookieContextSummary();
+    let preparedHeaders = null;
+    let prepareError = '';
+
+    try {
+      const prepared = await this._prepareRequestHeaders(requestHeaders, {
+        ensureMainCookieContext: false,
+      });
+      preparedHeaders = this._summarizePreparedHeaders(prepared.headers);
+    } catch (error) {
+      prepareError = error?.message || String(error);
+      const fallbackHeaders = await this._buildHeaders(requestHeaders);
+      preparedHeaders = this._summarizePreparedHeaders(fallbackHeaders);
+    }
+
+    const missingRequiredCookies = [
+      !mainCookieContextAfter.hasPassId ? 'PASS_ID' : '',
+      !mainCookieContextAfter.hasNanoFp ? '_nano_fp' : '',
+      !mainCookieContextAfter.hasRckk ? 'rckk' : '',
+    ].filter(Boolean);
+
+    let commonMallInfo = {
+      success: false,
+      skipped: !mainCookieContextAfter.hasRequiredMainCookies,
+      error: mainCookieContextAfter.hasRequiredMainCookies
+        ? ''
+        : (prepareError || '主站 Cookie 未完整建立'),
+      statusCode: 0,
+      errorCode: 0,
+      authExpired: false,
+      mallId: '',
+      mallName: '',
+    };
+
+    const userInfo = {
+      success: false,
+      skipped: !mainCookieContextAfter.hasRequiredMainCookies,
+      error: mainCookieContextAfter.hasRequiredMainCookies
+        ? ''
+        : (prepareError || '主站 Cookie 未完整建立'),
+      statusCode: 0,
+      errorCode: 0,
+      authExpired: false,
+      mallId: '',
+      username: '',
+      nickname: '',
+    };
+    const credentialInfo = {
+      success: false,
+      skipped: !mainCookieContextAfter.hasRequiredMainCookies,
+      error: mainCookieContextAfter.hasRequiredMainCookies
+        ? ''
+        : (prepareError || '主站 Cookie 未完整建立'),
+      statusCode: 0,
+      errorCode: 0,
+      authExpired: false,
+      mallId: '',
+      mallName: '',
+      companyName: '',
+      merchantType: '',
+    };
+
+    if (mainCookieContextAfter.hasRequiredMainCookies) {
+      try {
+        const payload = await this._request(
+          'GET',
+          '/earth/api/mallInfo/commonMallInfo',
+          null,
+          requestHeaders,
+          { suppressAuthExpired: true }
+        );
+        const info = this._parseMallInfo(payload);
+        commonMallInfo = {
+          success: true,
+          skipped: false,
+          error: '',
+          statusCode: 200,
+          errorCode: 0,
+          authExpired: false,
+          mallId: info?.mallId || '',
+          mallName: info?.mallName || '',
+          category: info?.category || '',
+          logo: info?.logo || '',
+        };
+      } catch (error) {
+        commonMallInfo = {
+          success: false,
+          skipped: false,
+          error: error?.message || String(error),
+          statusCode: Number(error?.statusCode || 0),
+          errorCode: Number(error?.errorCode || 0),
+          authExpired: !!error?.authExpired,
+          mallId: '',
+          mallName: '',
+        };
+      }
+
+      try {
+        const info = await this.getUserInfo({ suppressAuthExpired: true });
+        Object.assign(userInfo, {
+          success: true,
+          skipped: false,
+          error: '',
+          statusCode: 200,
+          errorCode: 0,
+          authExpired: false,
+          mallId: info?.mallId || '',
+          username: info?.username || '',
+          nickname: info?.nickname || '',
+        });
+      } catch (error) {
+        Object.assign(userInfo, {
+          success: false,
+          skipped: false,
+          error: error?.message || String(error),
+          statusCode: Number(error?.statusCode || 0),
+          errorCode: Number(error?.errorCode || 0),
+          authExpired: !!error?.authExpired,
+        });
+      }
+
+      try {
+        const info = await this.getCredentialInfo({ suppressAuthExpired: true });
+        Object.assign(credentialInfo, {
+          success: true,
+          skipped: false,
+          error: '',
+          statusCode: 200,
+          errorCode: 0,
+          authExpired: false,
+          mallId: info?.mallId || '',
+          mallName: info?.mallName || '',
+          companyName: info?.companyName || '',
+          merchantType: info?.merchantType || '',
+        });
+      } catch (error) {
+        Object.assign(credentialInfo, {
+          success: false,
+          skipped: false,
+          error: error?.message || String(error),
+          statusCode: Number(error?.statusCode || 0),
+          errorCode: Number(error?.errorCode || 0),
+          authExpired: !!error?.authExpired,
+        });
+      }
+    }
+
+    const safeApiResults = {
+      mallInfo: this._buildSafeApiResultSummary({
+        ...commonMallInfo,
+        category: commonMallInfo?.category || '',
+      }),
+      userInfo: this._buildSafeApiResultSummary(userInfo),
+      credentialInfo: this._buildSafeApiResultSummary(credentialInfo),
+    };
+    const safeApiSuccessCount = Object.values(safeApiResults).filter(item => item?.success).length;
+
+    return {
+      success: safeApiSuccessCount > 0,
+      shopId: this.shopId,
+      request: {
+        method: 'GET',
+        url: `${PDD_BASE}/earth/api/mallInfo/commonMallInfo`,
+        referer: requestHeaders.Referer || '',
+        origin: requestHeaders.Origin || '',
+        hasAntiContentTemplate: !!requestHeaders['anti-content'],
+      },
+      input: {
+        loginMethod: shop?.loginMethod || '',
+        mallId: tokenInfo?.mallId || shop?.mallId || '',
+        userId: tokenInfo?.userId || '',
+        hasToken: !!tokenInfo?.raw,
+        hasWindowsAppShopToken: !!tokenInfo?.raw,
+        hasPddid: !!tokenInfo?.pddid,
+        hasUserAgent: !!normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || ''),
+      },
+      mainCookieContextBefore,
+      warmupResult: this._summarizeWarmupResult(warmupResult?.result || warmupResult),
+      warmupError,
+      mainCookieContextAfter,
+      missingRequiredCookies,
+      preparedHeaders,
+      prepareError,
+      commonMallInfo,
+      safeApiResults,
+      safeApiSuccessCount,
     };
   }
 

@@ -971,13 +971,12 @@
     );
     if (shouldReload) {
       entry.cacheKey = cacheKey;
-      entry.loading = true;
+      entry.loading = false;
       entry.error = '';
       if (!entry.items.length) {
-        showEmpty(getApiSideOrderLoadingText(tab));
+        showEmpty('侧栏订单与退款信息已暂停自动加载，请先稳定查看消息。');
+        return;
       }
-      void loadApiSideOrders(tab);
-      if (!entry.items.length) return;
     }
     if (entry.loading && !entry.items.length) {
       showEmpty(getApiSideOrderLoadingText(tab));
@@ -4972,6 +4971,59 @@
   }
 
   function buildApiGoodsCardFallback(linkInfo, message = {}, session = {}) {
+    // 优先读"商品来源通知消息"里显式挂载的 goods_info 对象，
+    // 这里字段是 goods_id / goods_name / goods_thumb_url / mall_link_url / min_group_price 等。
+    // 不走 pickApiGoods* 的深度遍历，避免把 raw.info.title（系统提示文案）或 goods_id 误当 title/price。
+    const explicitGoodsInfo = [
+      message?.raw?.info?.goods_info,
+      message?.raw?.info?.data?.goods_info,
+      message?.extra?.goods_info,
+      message?.raw?.extra?.goods_info,
+      message?.raw?.biz_context?.goods_info,
+      message?.raw?.goods_info,
+      session?.goodsInfo,
+      session?.raw?.goods_info,
+      session?.raw?.goods,
+    ].find(item => item && typeof item === 'object') || {};
+
+    const explicitGoodsId = explicitGoodsInfo.goods_id
+      ?? explicitGoodsInfo.goodsId
+      ?? explicitGoodsInfo.goodsID
+      ?? explicitGoodsInfo.id;
+    const explicitTitle = explicitGoodsInfo.goods_name
+      || explicitGoodsInfo.goodsName
+      || explicitGoodsInfo.goods_title
+      || explicitGoodsInfo.goodsTitle;
+    const explicitImage = explicitGoodsInfo.goods_thumb_url
+      || explicitGoodsInfo.goodsThumbUrl
+      || explicitGoodsInfo.hd_thumb_url
+      || explicitGoodsInfo.hdThumbUrl
+      || explicitGoodsInfo.thumb_url
+      || explicitGoodsInfo.thumbUrl
+      || explicitGoodsInfo.image_url
+      || explicitGoodsInfo.imageUrl
+      || explicitGoodsInfo.pic_url
+      || explicitGoodsInfo.picUrl;
+    const explicitUrl = explicitGoodsInfo.mall_link_url
+      || explicitGoodsInfo.mallLinkUrl
+      || explicitGoodsInfo.goods_url
+      || explicitGoodsInfo.goodsUrl
+      || explicitGoodsInfo.url;
+    const explicitPriceRaw = explicitGoodsInfo.min_group_price
+      ?? explicitGoodsInfo.minGroupPrice
+      ?? explicitGoodsInfo.group_price
+      ?? explicitGoodsInfo.groupPrice
+      ?? explicitGoodsInfo.promotion_price
+      ?? explicitGoodsInfo.promotionPrice
+      ?? explicitGoodsInfo.coupon_promo_price
+      ?? explicitGoodsInfo.couponPromoPrice
+      ?? explicitGoodsInfo.min_normal_price
+      ?? explicitGoodsInfo.minNormalPrice
+      ?? explicitGoodsInfo.min_price
+      ?? explicitGoodsInfo.minPrice
+      ?? explicitGoodsInfo.price;
+
+    // 没命中显式字段时，回退到旧的深度遍历（兼容其它消息类型）
     const sources = [
       message?.extra,
       message?.raw?.extra,
@@ -4982,16 +5034,23 @@
       session?.raw?.goods_info,
       session?.raw?.goods,
     ].filter(Boolean);
-    const priceText = pickApiGoodsText(sources, ['priceText', 'price_text', 'price'])
-      || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['promotionPrice', 'promotion_price', 'couponPromoPrice', 'coupon_promo_price', 'group_price', 'min_group_price', 'price', 'min_price', 'goodsPrice']));
+    const fallbackPriceText = pickApiGoodsText(sources, ['priceText', 'price_text'])
+      || formatApiGoodsPrice(pickApiGoodsNumber(sources, ['promotionPrice', 'promotion_price', 'couponPromoPrice', 'coupon_promo_price', 'group_price', 'min_group_price', 'min_normal_price', 'price', 'min_price']));
+    const priceText = formatApiGoodsPrice(explicitPriceRaw) || fallbackPriceText;
     const groupRawText = pickApiGoodsText(sources, ['groupText', 'group_text', 'groupLabel', 'group_label', 'group_order_type_desc', 'group_desc']);
     const groupCount = pickApiGoodsNumber(sources, ['customer_num', 'customerNumber', 'group_member_count', 'group_count']);
+
     return normalizeApiGoodsCard({
       cacheKey: String(linkInfo?.cacheKey || ''),
-      goodsId: linkInfo?.goodsId || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID', 'id']),
-      url: linkInfo?.url || '',
-      title: pickApiGoodsText(sources, ['title', 'goods_name', 'goodsName', 'goodsTitle', 'name']) || '拼多多商品',
-      imageUrl: pickApiGoodsText(sources, ['imageUrl', 'image_url', 'thumb_url', 'hd_thumb_url', 'goods_thumb_url', 'goodsThumbUrl', 'pic_url']),
+      goodsId: linkInfo?.goodsId
+        || (explicitGoodsId != null && explicitGoodsId !== '' ? String(explicitGoodsId) : '')
+        || pickApiGoodsText(sources, ['goods_id', 'goodsId', 'goodsID']),
+      url: linkInfo?.url || explicitUrl || '',
+      title: (explicitTitle && String(explicitTitle).trim())
+        || pickApiGoodsText(sources, ['goods_name', 'goodsName', 'goodsTitle'])
+        || '拼多多商品',
+      imageUrl: explicitImage
+        || pickApiGoodsText(sources, ['goods_thumb_url', 'goodsThumbUrl', 'hd_thumb_url', 'hdThumbUrl', 'thumb_url', 'thumbUrl', 'image_url', 'imageUrl', 'pic_url']),
       priceText,
       groupText: groupRawText || (groupCount > 0 ? `${groupCount}人团` : '2人团'),
       specText: '查看商品规格',
@@ -5751,48 +5810,14 @@
   }
 
   async function ensureApiGoodsCardLoaded(linkInfo, fallbackCard) {
+    // 安全模式：chat-api 渲染期不再自动触发 apiGetGoodsCard。
+    // 真实商品卡片只在用户显式点击"查看商品规格"时才通过 loadApiGoodsSpecModalData 拉取，
+    // 避免 goods-page:request 隐式把后台 BrowserView 载入 chat-merchant 导致掉线。
     const state = getState();
     const cache = state.apiGoodsCardCache;
-    const pending = state.apiGoodsCardPending;
-    if (!linkInfo?.url || !cache || !pending || pending.has(linkInfo.cacheKey)) return;
+    if (!linkInfo?.cacheKey || !cache) return;
     if (fallbackCard && isMeaningfulApiGoodsCard(fallbackCard)) {
       cache.set(linkInfo.cacheKey, normalizeApiGoodsCard(fallbackCard, fallbackCard));
-      return;
-    }
-    const cachedCard = cache.get(linkInfo.cacheKey);
-    if (cachedCard && isMeaningfulApiGoodsCard(cachedCard)) return;
-    if (cachedCard) {
-      cache.delete(linkInfo.cacheKey);
-    }
-    if (!window.pddApi?.apiGetGoodsCard) return;
-    pending.add(linkInfo.cacheKey);
-    try {
-      recordApiSyncState('商品卡片请求', `goodsId:${linkInfo.goodsId || '-'}，url:${linkInfo.url ? '有' : '无'}`);
-      const result = await window.pddApi.apiGetGoodsCard({
-        shopId: state.apiActiveSessionShopId,
-        url: linkInfo.url,
-        goodsId: linkInfo.goodsId,
-        fallback: fallbackCard,
-      });
-      if (result?.error) {
-        recordApiSyncState('商品卡片失败', result.error);
-        cache.delete(linkInfo.cacheKey);
-        return;
-      }
-      const normalized = normalizeApiGoodsCard(result, fallbackCard);
-      if (isMeaningfulApiGoodsCard(normalized)) {
-        cache.set(linkInfo.cacheKey, normalized);
-        recordApiSyncState('商品卡片成功', describeApiGoodsCardResult(normalized));
-      } else {
-        cache.delete(linkInfo.cacheKey);
-        recordApiSyncState('商品卡片占位', describeApiGoodsCardResult(normalized));
-      }
-    } catch (error) {
-      cache.delete(linkInfo.cacheKey);
-      recordApiSyncState('商品卡片失败', error?.message || '未知异常');
-    } finally {
-      pending.delete(linkInfo.cacheKey);
-      if (getState().apiHasUserSelectedSession) renderApiMessages();
     }
   }
 

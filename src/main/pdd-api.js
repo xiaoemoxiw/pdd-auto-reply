@@ -16,7 +16,6 @@ const { PddBusinessApiClient } = require('./pdd-business-api-client');
 const commonParsers = require('./pdd-api/parsers/common-parsers');
 const goodsParsers = require('./pdd-api/parsers/goods-parsers');
 const refundParsers = require('./pdd-api/parsers/refund-parsers');
-const shopProfileParsers = require('./pdd-api/parsers/shop-profile-parsers');
 const orderRemarkParsers = require('./pdd-api/parsers/order-remark-parsers');
 const messageParsers = require('./pdd-api/parsers/message-parsers');
 const sessionParsers = require('./pdd-api/parsers/session-parsers');
@@ -30,6 +29,7 @@ const { SideOrdersModule } = require('./pdd-api/modules/side-orders-module');
 const { OrderRemarkModule } = require('./pdd-api/modules/order-remark-module');
 const { MessageSendModule } = require('./pdd-api/modules/message-send-module');
 const { ChatPollingModule } = require('./pdd-api/modules/chat-polling-module');
+const { ShopProfileModule } = require('./pdd-api/modules/shop-profile-module');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -72,7 +72,6 @@ class PddApiClient extends PddBusinessApiClient {
       getMainCookieWhitelist: () => PDD_API_MAIN_COOKIE_WHITELIST,
     });
     this._sessionInited = false;
-    this._serviceProfileCache = null;
     this._sessionCache = [];
     this._bootstrapTraffic = [];
     this._requestInPddPage = options.requestInPddPage || null;
@@ -89,6 +88,7 @@ class PddApiClient extends PddBusinessApiClient {
     this._orderRemarkModule = new OrderRemarkModule(this);
     this._messageSendModule = new MessageSendModule(this);
     this._chatPollingModule = new ChatPollingModule(this);
+    this._shopProfileModule = new ShopProfileModule(this);
   }
 
   _getMallId() {
@@ -833,139 +833,24 @@ class PddApiClient extends PddBusinessApiClient {
     return this._orderRemarkModule.requestApi(urlPath, body);
   }
 
-  _parseUserInfo(payload) {
-    return shopProfileParsers.parseUserInfo(payload, {
-      mallId: this._getMallId() || '',
-      userId: this._getTokenInfo()?.userId || '',
-    });
-  }
-
-  _parseServiceProfile(payload) {
-    return shopProfileParsers.parseServiceProfile(payload, {
-      mallId: this._getMallId() || '',
-      shopName: this._getShopInfo()?.name || '',
-    });
-  }
-
-  _getShopInfoRequestHeaders(type = 'default') {
-    const antiContent = this._getLatestAntiContent();
-    if (type === 'credential') {
-      return {
-        Referer: `${PDD_BASE}/mallcenter/info/main/index`,
-        Origin: PDD_BASE,
-        ...(antiContent ? { 'anti-content': antiContent } : {}),
-      };
-    }
-    return {
-      Referer: PDD_BASE,
-      Origin: PDD_BASE,
-      ...(antiContent ? { 'anti-content': antiContent } : {}),
-    };
-  }
-
   async getUserInfo(options = {}) {
-    try {
-      const payload = await this._post('/janus/api/userinfo', {}, this._getShopInfoRequestHeaders('mall'), options);
-      return this._parseUserInfo(payload);
-    } catch (error) {
-      const payload = await this._post('/janus/api/new/userinfo', {}, this._getShopInfoRequestHeaders('mall'), options);
-      return this._parseUserInfo(payload);
-    }
+    return this._shopProfileModule.getUserInfo(options);
   }
 
   async getServiceProfile(force = false, options = {}) {
-    if (this._serviceProfileCache && !force) {
-      return this._serviceProfileCache;
-    }
-
-    const cachedPayload = this._getLatestResponseBody('/chats/userinfo/realtime');
-    const cachedProfile = this._parseServiceProfile(cachedPayload);
-    const hasCachedProfile = !!(cachedProfile.mallName || cachedProfile.serviceName || cachedProfile.serviceAvatar);
-    if (hasCachedProfile && !force) {
-      this._serviceProfileCache = cachedProfile;
-      return cachedProfile;
-    }
-
-    try {
-      const payload = await this._request('GET', '/chats/userinfo/realtime?get_response=true', null, {}, options);
-      const profile = this._parseServiceProfile(payload);
-      this._serviceProfileCache = profile;
-      return profile;
-    } catch (error) {
-      if (hasCachedProfile) {
-        this._serviceProfileCache = cachedProfile;
-        return cachedProfile;
-      }
-      throw error;
-    }
-  }
-
-  _parseMallInfo(payload) {
-    return shopProfileParsers.parseMallInfo(payload, { mallId: this._getMallId() || '' });
-  }
-
-  _parseCredentialInfo(payload) {
-    return shopProfileParsers.parseCredentialInfo(payload, { mallId: this._getMallId() || '' });
+    return this._shopProfileModule.getServiceProfile(force, options);
   }
 
   async getMallInfo(options = {}) {
-    const payload = await this._request('GET', '/earth/api/mallInfo/commonMallInfo', null, this._getShopInfoRequestHeaders('mall'), options);
-    return this._parseMallInfo(payload);
+    return this._shopProfileModule.getMallInfo(options);
   }
 
   async getCredentialInfo(options = {}) {
-    const payload = await this._request('GET', '/earth/api/mallInfo/queryFinalCredentialNew', null, this._getShopInfoRequestHeaders('credential'), options);
-    return this._parseCredentialInfo(payload);
+    return this._shopProfileModule.getCredentialInfo(options);
   }
 
   async getShopProfile(force = false) {
-    if (force) {
-      this._serviceProfileCache = null;
-    }
-    const requestOptions = { suppressAuthExpired: true };
-    const [userInfoResult, serviceProfileResult, mallInfoResult, credentialInfoResult] = await Promise.allSettled([
-      this.getUserInfo(requestOptions),
-      this.getServiceProfile(force, requestOptions),
-      this.getMallInfo(requestOptions),
-      this.getCredentialInfo(requestOptions)
-    ]);
-    const userInfo = userInfoResult.status === 'fulfilled' ? userInfoResult.value : {};
-    const serviceProfile = serviceProfileResult.status === 'fulfilled' ? serviceProfileResult.value : {};
-    const mallInfo = mallInfoResult.status === 'fulfilled' ? mallInfoResult.value : {};
-    const credentialInfo = credentialInfoResult.status === 'fulfilled' ? credentialInfoResult.value : {};
-    const resultEntries = [
-      ['userInfo', userInfoResult],
-      ['serviceProfile', serviceProfileResult],
-      ['mallInfo', mallInfoResult],
-      ['credentialInfo', credentialInfoResult]
-    ];
-    const apiResolvedSources = resultEntries
-      .filter(([, item]) => item?.status === 'fulfilled')
-      .map(([name]) => name);
-    const apiFailedSources = resultEntries
-      .filter(([, item]) => item?.status !== 'fulfilled')
-      .map(([name]) => name);
-    const apiAuthFailedSources = resultEntries
-      .filter(([, item]) => item?.status === 'rejected' && (item.reason?.authExpired || this._isAuthError(item.reason?.errorCode)))
-      .map(([name]) => name);
-    if (apiResolvedSources.length > 0) {
-      this._authExpired = false;
-    }
-    return {
-      mallId: mallInfo.mallId || credentialInfo.mallId || serviceProfile.mallId || userInfo.mallId || this._getMallId() || '',
-      mallName: mallInfo.mallName || credentialInfo.mallName || serviceProfile.mallName || '',
-      account: userInfo.nickname || serviceProfile.serviceName || '',
-      mobile: userInfo.mobile || '',
-      category: mallInfo.category || '',
-      logo: mallInfo.logo || serviceProfile.serviceAvatar || '',
-      companyName: credentialInfo.companyName || '',
-      merchantType: credentialInfo.merchantType || '',
-      apiSuccessCount: apiResolvedSources.length,
-      apiResolvedSources,
-      apiFailedSources,
-      apiAuthFailedCount: apiAuthFailedSources.length,
-      apiAuthFailedSources,
-    };
+    return this._shopProfileModule.getShopProfile(force);
   }
 
   _extractSessionPreviewText(item) {
@@ -2603,281 +2488,8 @@ class PddApiClient extends PddBusinessApiClient {
     };
   }
 
-  _summarizePreparedHeaders(headers = {}) {
-    const userAgent = String(headers['user-agent'] || headers['User-Agent'] || '').trim();
-    const cookieHeader = String(headers.cookie || '').trim();
-    const cookieNames = cookieHeader
-      ? cookieHeader
-        .split(';')
-        .map(item => String(item || '').trim())
-        .filter(Boolean)
-        .map(item => item.split('=')[0].trim())
-        .filter(Boolean)
-      : [];
-    return {
-      hasCookie: !!cookieHeader,
-      cookieNames,
-      hasXToken: !!headers['X-PDD-Token'],
-      hasWindowsAppToken: !!headers['windows-app-shop-token'],
-      hasPddid: !!headers.pddid,
-      hasEtag: !!headers.etag,
-      hasVerifyAuthToken: !!(headers.VerifyAuthToken || headers.verifyauthtoken),
-      hasAntiContent: !!(headers['anti-content'] || headers['Anti-Content']),
-      referer: headers.Referer || headers.referer || '',
-      origin: headers.Origin || headers.origin || '',
-      secChUaPlatform: headers['sec-ch-ua-platform'] || '',
-      userAgent,
-      userAgentKind: userAgent.includes('PddWorkbench-Online')
-        ? 'workbench'
-        : (userAgent ? 'chrome-like' : 'missing'),
-    };
-  }
-
-  _summarizeWarmupResult(result = null) {
-    if (!result || typeof result !== 'object') return null;
-    return {
-      ready: !!result.ready,
-      error: result.error || '',
-      url: result.url || result.currentUrl || '',
-      entryUrl: result.entryUrl || '',
-      attemptedEntryUrls: Array.isArray(result.attemptedEntryUrls) ? result.attemptedEntryUrls : [],
-      cookieNames: Array.isArray(result.cookieNames) ? result.cookieNames : [],
-      cookieScopes: Array.isArray(result.cookieScopes) ? result.cookieScopes : [],
-      hasPassId: !!result.hasPassId,
-      hasNanoFp: !!result.hasNanoFp,
-      hasRckk: !!result.hasRckk,
-    };
-  }
-
-  _buildSafeApiResultSummary(result = {}) {
-    return {
-      success: !!result.success,
-      skipped: !!result.skipped,
-      error: result.error || '',
-      statusCode: Number(result.statusCode || 0),
-      errorCode: Number(result.errorCode || 0),
-      authExpired: !!result.authExpired,
-      mallId: result.mallId || '',
-      mallName: result.mallName || '',
-      username: result.username || '',
-      nickname: result.nickname || '',
-      companyName: result.companyName || '',
-      merchantType: result.merchantType || '',
-      category: result.category || '',
-    };
-  }
-
   async probeCommonMallInfoRequest(options = {}) {
-    const tokenInfo = this._getTokenInfo();
-    const shop = this._getShopInfo();
-    const requestHeaders = this._getShopInfoRequestHeaders('mall');
-    const mainCookieContextBefore = await this._getMainCookieContextSummary();
-    let warmupResult = null;
-    let warmupError = '';
-
-    if (
-      options.refreshMainCookieContext !== false
-      && typeof this._refreshMainCookieContext === 'function'
-      && shop?.loginMethod === 'token'
-    ) {
-      try {
-        warmupResult = await this._refreshMainCookieContext({
-          shopId: this.shopId,
-          reason: 'manual-commonMallInfo-probe',
-          source: 'shop-auth-probe',
-        });
-      } catch (error) {
-        warmupError = error?.message || String(error);
-      }
-    }
-
-    const mainCookieContextAfter = await this._getMainCookieContextSummary();
-    let preparedHeaders = null;
-    let prepareError = '';
-
-    try {
-      const prepared = await this._prepareRequestHeaders(undefined, requestHeaders, {
-        ensureMainCookieContext: false,
-      });
-      preparedHeaders = this._summarizePreparedHeaders(prepared.headers);
-    } catch (error) {
-      prepareError = error?.message || String(error);
-      const fallbackHeaders = await this._buildHeaders(undefined, requestHeaders);
-      preparedHeaders = this._summarizePreparedHeaders(fallbackHeaders);
-    }
-
-    const missingRequiredCookies = [
-      !mainCookieContextAfter.hasPassId ? 'PASS_ID' : '',
-      !mainCookieContextAfter.hasNanoFp ? '_nano_fp' : '',
-      !mainCookieContextAfter.hasRckk ? 'rckk' : '',
-    ].filter(Boolean);
-
-    let commonMallInfo = {
-      success: false,
-      skipped: !mainCookieContextAfter.hasRequiredMainCookies,
-      error: mainCookieContextAfter.hasRequiredMainCookies
-        ? ''
-        : (prepareError || '主站 Cookie 未完整建立'),
-      statusCode: 0,
-      errorCode: 0,
-      authExpired: false,
-      mallId: '',
-      mallName: '',
-    };
-
-    const userInfo = {
-      success: false,
-      skipped: !mainCookieContextAfter.hasRequiredMainCookies,
-      error: mainCookieContextAfter.hasRequiredMainCookies
-        ? ''
-        : (prepareError || '主站 Cookie 未完整建立'),
-      statusCode: 0,
-      errorCode: 0,
-      authExpired: false,
-      mallId: '',
-      username: '',
-      nickname: '',
-    };
-    const credentialInfo = {
-      success: false,
-      skipped: !mainCookieContextAfter.hasRequiredMainCookies,
-      error: mainCookieContextAfter.hasRequiredMainCookies
-        ? ''
-        : (prepareError || '主站 Cookie 未完整建立'),
-      statusCode: 0,
-      errorCode: 0,
-      authExpired: false,
-      mallId: '',
-      mallName: '',
-      companyName: '',
-      merchantType: '',
-    };
-
-    if (mainCookieContextAfter.hasRequiredMainCookies) {
-      try {
-        const payload = await this._request(
-          'GET',
-          '/earth/api/mallInfo/commonMallInfo',
-          null,
-          requestHeaders,
-          { suppressAuthExpired: true }
-        );
-        const info = this._parseMallInfo(payload);
-        commonMallInfo = {
-          success: true,
-          skipped: false,
-          error: '',
-          statusCode: 200,
-          errorCode: 0,
-          authExpired: false,
-          mallId: info?.mallId || '',
-          mallName: info?.mallName || '',
-          category: info?.category || '',
-          logo: info?.logo || '',
-        };
-      } catch (error) {
-        commonMallInfo = {
-          success: false,
-          skipped: false,
-          error: error?.message || String(error),
-          statusCode: Number(error?.statusCode || 0),
-          errorCode: Number(error?.errorCode || 0),
-          authExpired: !!error?.authExpired,
-          mallId: '',
-          mallName: '',
-        };
-      }
-
-      try {
-        const info = await this.getUserInfo({ suppressAuthExpired: true });
-        Object.assign(userInfo, {
-          success: true,
-          skipped: false,
-          error: '',
-          statusCode: 200,
-          errorCode: 0,
-          authExpired: false,
-          mallId: info?.mallId || '',
-          username: info?.username || '',
-          nickname: info?.nickname || '',
-        });
-      } catch (error) {
-        Object.assign(userInfo, {
-          success: false,
-          skipped: false,
-          error: error?.message || String(error),
-          statusCode: Number(error?.statusCode || 0),
-          errorCode: Number(error?.errorCode || 0),
-          authExpired: !!error?.authExpired,
-        });
-      }
-
-      try {
-        const info = await this.getCredentialInfo({ suppressAuthExpired: true });
-        Object.assign(credentialInfo, {
-          success: true,
-          skipped: false,
-          error: '',
-          statusCode: 200,
-          errorCode: 0,
-          authExpired: false,
-          mallId: info?.mallId || '',
-          mallName: info?.mallName || '',
-          companyName: info?.companyName || '',
-          merchantType: info?.merchantType || '',
-        });
-      } catch (error) {
-        Object.assign(credentialInfo, {
-          success: false,
-          skipped: false,
-          error: error?.message || String(error),
-          statusCode: Number(error?.statusCode || 0),
-          errorCode: Number(error?.errorCode || 0),
-          authExpired: !!error?.authExpired,
-        });
-      }
-    }
-
-    const safeApiResults = {
-      mallInfo: this._buildSafeApiResultSummary({
-        ...commonMallInfo,
-        category: commonMallInfo?.category || '',
-      }),
-      userInfo: this._buildSafeApiResultSummary(userInfo),
-      credentialInfo: this._buildSafeApiResultSummary(credentialInfo),
-    };
-    const safeApiSuccessCount = Object.values(safeApiResults).filter(item => item?.success).length;
-
-    return {
-      success: safeApiSuccessCount > 0,
-      shopId: this.shopId,
-      request: {
-        method: 'GET',
-        url: `${PDD_BASE}/earth/api/mallInfo/commonMallInfo`,
-        referer: requestHeaders.Referer || '',
-        origin: requestHeaders.Origin || '',
-        hasAntiContentTemplate: !!requestHeaders['anti-content'],
-      },
-      input: {
-        loginMethod: shop?.loginMethod || '',
-        mallId: tokenInfo?.mallId || shop?.mallId || '',
-        userId: tokenInfo?.userId || '',
-        hasToken: !!tokenInfo?.raw,
-        hasWindowsAppShopToken: !!tokenInfo?.raw,
-        hasPddid: !!tokenInfo?.pddid,
-        hasUserAgent: !!normalizePddUserAgent(shop?.userAgent || tokenInfo?.userAgent || ''),
-      },
-      mainCookieContextBefore,
-      warmupResult: this._summarizeWarmupResult(warmupResult?.result || warmupResult),
-      warmupError,
-      mainCookieContextAfter,
-      missingRequiredCookies,
-      preparedHeaders,
-      prepareError,
-      commonMallInfo,
-      safeApiResults,
-      safeApiSuccessCount,
-    };
+    return this._shopProfileModule.probeCommonMallInfoRequest(options);
   }
 
   destroy() {

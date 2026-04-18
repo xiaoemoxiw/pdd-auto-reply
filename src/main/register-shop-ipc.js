@@ -39,6 +39,47 @@ function placeWindowRelativeToMain(mainWindow, win) {
   win.setBounds({ x, y, width, height }, false);
 }
 
+function extractGoodsIdFromUrl(url = '') {
+  const text = String(url || '').trim();
+  if (!text) return '';
+  try {
+    const parsed = new URL(text);
+    return parsed.searchParams.get('goods_id') || parsed.searchParams.get('goodsId') || '';
+  } catch {
+    const match = text.match(/[?&]goods_id=(\d+)/i) || text.match(/[?&]goodsId=(\d+)/i);
+    return match?.[1] || '';
+  }
+}
+
+function dedupeUrls(urls = []) {
+  const seen = new Set();
+  return urls.filter(item => {
+    const value = String(item || '').trim();
+    if (!value || seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
+}
+
+function buildProductDetailWindowUrls(params = {}) {
+  const rawUrl = String(params?.url || '').trim();
+  const explicitGoodsId = String(params?.goodsId || params?.goods_id || '').trim();
+  const goodsId = explicitGoodsId || extractGoodsIdFromUrl(rawUrl);
+  const merchantUrl = rawUrl.startsWith('http://') || rawUrl.startsWith('https://') ? rawUrl : '';
+  const urls = dedupeUrls([
+    goodsId ? `https://mms.pinduoduo.com/goods/goods_detail?goodsId=${encodeURIComponent(goodsId)}` : '',
+    goodsId ? `https://mms.pinduoduo.com/goods/goods_detail?goods_id=${encodeURIComponent(goodsId)}` : '',
+    goodsId ? `https://mms.pinduoduo.com/goods/goods_list?goodsId=${encodeURIComponent(goodsId)}` : '',
+    goodsId ? `https://mms.pinduoduo.com/goods/goods_list?goods_id=${encodeURIComponent(goodsId)}` : '',
+    merchantUrl,
+  ]);
+  return {
+    goodsId,
+    urls,
+    targetUrl: urls[0] || ''
+  };
+}
+
 function registerShopIpc({
   ipcMain,
   store,
@@ -123,6 +164,43 @@ function registerShopIpc({
     }).catch(error => {
       return { error: error?.message || '打开店铺后台首页失败' };
     });
+  });
+
+  ipcMain.handle('open-product-detail-window', async (event, params = {}) => {
+    const shopManager = getShopManager();
+    if (!shopManager) return { error: '店铺管理器未初始化' };
+    const shopId = String(params?.shopId || '').trim();
+    if (!shopId) return { error: '缺少店铺信息' };
+    const shop = shopManager.getShopList().find(item => item.id === shopId);
+    if (!shop?.id) return { error: '店铺不存在' };
+    if (!shopManager.isSelectableShop(shop)) {
+      return { error: '当前店铺 Token 不可用' };
+    }
+    const { goodsId, targetUrl } = buildProductDetailWindowUrls(params);
+    if (!targetUrl) return { error: '缺少商品链接或商品ID' };
+    try {
+      const { win, reused } = await createTicketTodoDetailWindow({
+        reuseKey: goodsId ? `goods-detail:${shopId}:${goodsId}` : `goods-detail:${shopId}:${targetUrl}`
+      });
+      if (!win || win.isDestroyed()) return { error: '商品详情窗口创建失败' };
+      try {
+        if (typeof win.setParentWindow === 'function') win.setParentWindow(null);
+        if (typeof win.setAlwaysOnTop === 'function') win.setAlwaysOnTop(false);
+      } catch {}
+      const shopLabel = String(shop.name || shop.mallId || shop.id).trim() || '商品详情';
+      const titleSuffix = goodsId ? `商品 ${goodsId}` : '商品详情';
+      win.setTitle(`${shopLabel} - ${titleSuffix}`);
+      const res = loadTicketTodoDetailUrl(win, store, shopId, targetUrl);
+      if (res && res.error) return res;
+      if (!reused) {
+        placeWindowRelativeToMain(getMainWindow?.(), win);
+      }
+      win.show();
+      win.focus();
+      return { ok: true, shopId, goodsId, url: targetUrl, reused: reused === true };
+    } catch (error) {
+      return { error: error?.message || '打开商品详情失败' };
+    }
   });
 
   ipcMain.handle('add-shop-by-token', async () => {

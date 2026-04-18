@@ -1,7 +1,7 @@
 const { app, session } = require('electron');
 const fs = require('fs');
 
-const USER_DATA_PATH = '/Users/sivan/Library/Application Support/元尾巴 · 拼多多客服助手';
+const USER_DATA_PATH = '/Users/sivan/Library/Application Support/多多尾巴';
 const TARGET_URL = 'https://mms.pinduoduo.com';
 
 app.setPath('userData', USER_DATA_PATH);

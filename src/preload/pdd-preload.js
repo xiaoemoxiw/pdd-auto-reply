@@ -1,5 +1,56 @@
 const { ipcRenderer } = require('electron');
 
+function injectNotificationBlocker() {
+  const script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.textContent = `
+    (() => {
+      try {
+        const BlockedNotification = function Notification() {
+          throw new Error('Notifications are blocked in embedded PDD page');
+        };
+        BlockedNotification.permission = 'denied';
+        BlockedNotification.requestPermission = () => Promise.resolve('denied');
+        Object.defineProperty(window, 'Notification', {
+          configurable: true,
+          enumerable: false,
+          writable: false,
+          value: BlockedNotification,
+        });
+        if (navigator && navigator.permissions && typeof navigator.permissions.query === 'function') {
+          const rawQuery = navigator.permissions.query.bind(navigator.permissions);
+          navigator.permissions.query = (descriptor) => {
+            if (descriptor && descriptor.name === 'notifications') {
+              return Promise.resolve({
+                state: 'denied',
+                onchange: null,
+                addEventListener() {},
+                removeEventListener() {},
+                dispatchEvent() { return false; },
+              });
+            }
+            return rawQuery(descriptor);
+          };
+        }
+      } catch (error) {
+        console.warn('[PDD助手] 屏蔽页面通知失败:', error);
+      }
+    })();
+  `;
+  const target = document.head || document.documentElement;
+  if (!target) return;
+  target.prepend(script);
+  script.remove();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('readystatechange', () => {
+    if (document.readyState === 'interactive') injectNotificationBlocker();
+  }, { once: true });
+} else {
+  injectNotificationBlocker();
+}
+
 /**
  * PDD 页面的 preload 脚本
  * 负责在拼多多网页内建立与主进程的通信通道

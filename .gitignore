@@ -9,3 +9,4 @@ artifacts/api-traffic/*
 !artifacts/api-traffic/api-traffic-report.md
 !artifacts/api-traffic/api-traffic-sample.jsonl
 artifacts/window-debug/*
+release/

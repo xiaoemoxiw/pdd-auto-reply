@@ -636,8 +636,14 @@ class ShopManager {
       }
     });
 
-    // 禁用 WebRTC（消除 STUN 服务器解析错误，PDD 语音客服功能不影响自动回复）
+    // 禁用 WebRTC，并屏蔽内嵌拼多多页自己的通知，只保留应用主进程通知
+    view.webContents.session.setPermissionCheckHandler((wc, permission) => {
+      if (permission === 'notifications') return false;
+      if (permission === 'media' || permission === 'geolocation') return false;
+      return true;
+    });
     view.webContents.session.setPermissionRequestHandler((wc, permission, callback) => {
+      if (permission === 'notifications') return callback(false);
       if (permission === 'media' || permission === 'geolocation') return callback(false);
       callback(true);
     });

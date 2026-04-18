@@ -9,6 +9,9 @@ const API_TRAFFIC_LOG_FILE = 'api-traffic-log.jsonl';
 const API_TRAFFIC_INDEX_FILE = 'api-traffic-index.json';
 
 function getApiTrafficStorageDir() {
+  if (app.isPackaged) {
+    return path.join(app.getPath('userData'), APP_DATA_LOG_FOLDER);
+  }
   return path.join(REPO_ROOT, REPO_LOG_FOLDER);
 }
 

@@ -146,7 +146,7 @@
     if (invoiceApiEntryDialogState.canSubmit === false) return '当前店铺接口校验未开放录入发票提交能力';
     if (!invoiceApiEntryDialogState.fileName) return '请先上传发票文件';
     if (!invoiceApiEntryDialogState.invoiceNumber.trim()) return '请填写发票号码';
-    return '若提示未识别到上传接口，请先到【待开票（嵌入网页）】完成一次录入发票提交以便抓包识别';
+    return '若提示未识别到上传接口，请先到【待开票后台】完成一次录入发票提交以便抓包识别';
   }
 
   function formatInvoiceApiPromiseTime(value) {
@@ -330,7 +330,7 @@
       loading: false
     };
     if (activeShopId && shopId && shopId !== activeShopId) {
-      showInvoiceApiEntryStatus('warn', `当前记录所属店铺与右上角当前店铺不一致（记录店铺：${invoiceApiEntryDialogState.shopName || shopId}）。若提示未识别提交接口，请先切换到该店铺在【待开票（嵌入网页）】完成一次录入发票提交。`);
+      showInvoiceApiEntryStatus('warn', `当前记录所属店铺与右上角当前店铺不一致（记录店铺：${invoiceApiEntryDialogState.shopName || shopId}）。若提示未识别提交接口，请先切换到该店铺在【待开票后台】完成一次录入发票提交。`);
     } else {
       showInvoiceApiEntryStatus('', '');
     }

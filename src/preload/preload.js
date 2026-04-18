@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('pddApi', {
   // 视图切换
   switchView: (view) => ipcRenderer.invoke('switch-view', view),
   getCurrentView: () => ipcRenderer.invoke('get-current-view'),
+  isDevelopmentMode: () => ipcRenderer.invoke('is-development-mode'),
 
   // 窗口操作
   openSettings: () => ipcRenderer.invoke('open-settings'),
@@ -168,6 +169,8 @@ contextBridge.exposeInMainWorld('pddApi', {
   // 调试窗口
   openDebugWindow: () => ipcRenderer.invoke('open-debug-window'),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  showDesktopNotification: (params) => ipcRenderer.invoke('show-desktop-notification', params),
+  openProductDetailWindow: (params) => ipcRenderer.invoke('open-product-detail-window', params),
   openMailDetailWindow: (params) => ipcRenderer.invoke('mail-open-detail-window', params),
   openAfterSaleDetailWindow: (params) => ipcRenderer.invoke('aftersale-open-detail-window', params),
   openInvoiceOrderDetailWindow: (params) => ipcRenderer.invoke('invoice-open-order-detail-window', params),
@@ -232,5 +235,6 @@ contextBridge.exposeInMainWorld('pddApi', {
   onApiNewMessage: (cb) => ipcRenderer.on('api-new-message', (_, d) => cb(d)),
   onApiBootstrapInspect: (cb) => ipcRenderer.on('api-bootstrap-inspect', (_, d) => cb(d)),
   onApiMessageSent: (cb) => ipcRenderer.on('api-message-sent', (_, d) => cb(d)),
-  onApiReadMarkUpdated: (cb) => ipcRenderer.on('api-read-mark-updated', (_, d) => cb(d))
+  onApiReadMarkUpdated: (cb) => ipcRenderer.on('api-read-mark-updated', (_, d) => cb(d)),
+  onDesktopNotificationClick: (cb) => ipcRenderer.on('desktop-notification-click', (_, d) => cb(d))
 });

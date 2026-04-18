@@ -35,6 +35,7 @@ const { registerTicketTodoDetailWindowIpc } = require('./register-ticket-todo-de
 const { registerLicenseIpc } = require('./register-license-ipc');
 const { isLicenseValid } = require('./license-store');
 const { registerViolationInfoWindowIpc } = require('./register-violation-info-window-ipc');
+const { registerSystemNotificationIpc, showDesktopNotification } = require('./register-system-notification-ipc');
 const { appendWindowCloseDebugLog, getWindowCloseDebugLogPath } = require('./window-close-debug-log');
 const Store = require('electron-store');
 const DEFAULT_QA_RULES = require('../../test/pdd-qa-rules.json');
@@ -117,6 +118,8 @@ const store = new Store({
     defaultReply: {
       enabled: true,
       texts: [
+        '亲亲，在的，可以看一下详情或者规格噢~不同规格的样式可能会不同',
+        '可以先看一下详情或者规格，确认一下是否符合您的需求~',
         '亲,我会乐意为你服务。收藏一下本小店，我们会不定期上新款。祝你网购愉快。',
         '亲，如果您有什么疑问可以直接留言，客服看到了会记录下来的，没有及时回复您，真的非常抱歉！',
         '亲，客服正在来的路上喔，您看到的商品基本都是有货的，可以参考详情和规格选择，拍下后尽快给您安排发出~',
@@ -238,7 +241,7 @@ const MOCK_SCAN_SHOPS = [
   { account: 'newshop_104', name: '潮玩手办集合店' }
 ];
 
-let currentView = 'shops';
+let currentView = 'chat-api';
 let mainWindow = null;
 let shopManager = null;
 let replyEngine = null;
@@ -722,6 +725,86 @@ function getShopDisplayName(shopId) {
   return shop?.name || shopId || '未知店铺';
 }
 
+function resolveApiCustomerMeta(payload = {}) {
+  const shopId = String(payload?.shopId || '').trim();
+  const sessionId = String(payload?.sessionId || '').trim();
+  const snapshotSession = getApiSessionSnapshot(shopId)
+    .find(item => String(item?.sessionId || '') === sessionId) || null;
+  const nicknameCandidates = [
+    snapshotSession?.customerName,
+    snapshotSession?.displayName,
+    payload?.session?.customerName,
+    payload?.session?.displayName,
+    payload?.customerName,
+    payload?.displayName,
+    payload?.messages?.[0]?.customerName,
+    payload?.messages?.[0]?.displayName,
+    payload?.messages?.[0]?.raw?.nickname,
+    payload?.messages?.[0]?.raw?.nick,
+    payload?.messages?.[0]?.raw?.display_name,
+    payload?.messages?.[0]?.raw?.displayName,
+    payload?.customer,
+  ];
+  const customerName = nicknameCandidates
+    .map(item => String(item || '').trim())
+    .find(Boolean) || '';
+  const customerId = [
+    snapshotSession?.customerId,
+    payload?.session?.customerId,
+    payload?.customerId,
+    payload?.messages?.[0]?.customerId,
+    payload?.customer,
+    sessionId,
+  ].map(item => String(item || '').trim()).find(Boolean) || '';
+  return {
+    customerName: customerName || customerId || '未知客户',
+    customerId,
+    customerAvatar: String(
+      snapshotSession?.customerAvatar
+      || payload?.session?.customerAvatar
+      || payload?.customerAvatar
+      || payload?.messages?.[0]?.customerAvatar
+      || payload?.messages?.[0]?.raw?.avatar
+      || payload?.messages?.[0]?.raw?.avatar_url
+      || payload?.messages?.[0]?.raw?.avatarUrl
+      || ''
+    ).trim(),
+  };
+}
+
+function notifyApiMessage(payload = {}) {
+  const shopId = String(payload?.shopId || '').trim();
+  const sessionId = String(payload?.sessionId || '').trim();
+  const shopName = getShopDisplayName(shopId);
+  const customerMeta = resolveApiCustomerMeta(payload);
+  const customer = customerMeta.customerName || '未知客户';
+  const messageId = String(payload?.messageId || payload?.messages?.[0]?.messageId || '').trim();
+  const messageText = String(
+    payload?.text
+    || payload?.messages?.[0]?.content
+    || payload?.messages?.[0]?.text
+    || payload?.session?.lastMessage
+    || '请及时查看'
+  ).trim() || '请及时查看';
+  const title = `${shopName} · ${customer}`;
+  return showDesktopNotification({
+    title,
+    subtitle: '',
+    body: messageText,
+    silent: false,
+    uniqueKey: `api-message:${shopId}:${sessionId}:${messageId || messageText}`,
+    cooldownMs: 15000,
+    payload: {
+      type: 'api-message',
+      shopId,
+      sessionId,
+      customer,
+    },
+  }, {
+    getMainWindow: () => mainWindow,
+  });
+}
+
 function getApiRefundTemplateFallbackText() {
   return '亲亲，这边帮您申请退款，您看可以吗？若同意可以点击下方卡片按钮哦～';
 }
@@ -1164,6 +1247,11 @@ function pushApiMessagesFromTraffic(shopId, entry) {
       messages: [message],
     };
     mainWindow?.webContents.send('api-new-message', payload);
+    notifyApiMessage({
+      ...payload,
+      messageId: message.messageId || '',
+      text: message.content || message.text || '',
+    });
     sendToDebug('api-new-message', { shopId, sessionId: message.sessionId, source: 'traffic-notify', messageId: message.messageId || '' });
   });
 }
@@ -1455,6 +1543,10 @@ function getApiClient(shopId) {
 
   client.on('newMessage', payload => {
     mainWindow?.webContents.send('api-new-message', payload);
+    notifyApiMessage({
+      ...payload,
+      shopId: payload?.shopId || shopId,
+    });
     sendToDebug('api-new-message', payload);
     handleNewCustomerMessage({
       message: payload.text,
@@ -2360,15 +2452,103 @@ async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
   return sessions;
 }
 
-async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
-  let targetShops = getApiShopList(shopId, { apiReadyOnly: true });
-  if (!targetShops.length) {
-    // 启动时只恢复了 token，未自动校验店铺在线状态。
-    // 进入 chat-api 又必须 apiReadyOnly，所以这里按需自动跑一次"批量接口校验"，
-    // 让用户不必每次手动点"接口校验"才能看到数据。
-    const candidateShops = shopId === API_ALL_SHOPS
-      ? getApiShopList(API_ALL_SHOPS).filter(shop => !isApiReadyShop(shop) && shop?.id)
-      : getApiShopList(shopId).filter(shop => !isApiReadyShop(shop) && shop?.id);
+function getApiSessionRecentStartMs(recentDays = 2) {
+  const normalizedDays = Math.max(1, Number(recentDays || 1) || 1);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return startOfToday - Math.max(0, normalizedDays - 1) * 24 * 60 * 60 * 1000;
+}
+
+function getApiSessionLastMessageTimeMs(session = {}) {
+  const candidates = [
+    session?.lastMessageTime,
+    session?.last_message_time,
+    session?.last_msg_time,
+    session?.update_time,
+    session?.updated_at,
+    session?.ts,
+    session?.raw?.lastMessageTime,
+    session?.raw?.last_message_time,
+    session?.raw?.last_msg_time,
+    session?.raw?.update_time,
+    session?.raw?.updated_at,
+    session?.raw?.ts,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null || candidate === '') continue;
+    const numericValue = Number(candidate);
+    if (Number.isFinite(numericValue) && numericValue > 0) {
+      return numericValue < 10_000_000_000 ? numericValue * 1000 : numericValue;
+    }
+    const parsedTime = new Date(String(candidate)).getTime();
+    if (Number.isFinite(parsedTime) && parsedTime > 0) {
+      return parsedTime;
+    }
+  }
+  return 0;
+}
+
+function getApiSessionIdentity(session = {}) {
+  return String(
+    session?.sessionId
+    || session?.explicitSessionId
+    || session?.conversationId
+    || session?.chatId
+    || session?.customerId
+    || session?.userUid
+    || session?.raw?.session_id
+    || session?.raw?.conversation_id
+    || session?.raw?.chat_id
+    || session?.raw?.customer_id
+    || session?.raw?.buyer_id
+    || session?.raw?.uid
+    || ''
+  ).trim();
+}
+
+async function loadShopApiRecentSessions(shopId, options = {}) {
+  const pageSize = Math.max(20, Math.min(100, Number(options.pageSize || 100) || 100));
+  const maxPages = Math.max(1, Math.min(20, Number(options.maxPages || 8) || 8));
+  const startMs = getApiSessionRecentStartMs(options.recentDays || 2);
+  const collected = [];
+  const seenKeys = new Set();
+  for (let page = 1; page <= maxPages; page += 1) {
+    const sessions = await loadShopApiSessions(shopId, page, pageSize);
+    if (!Array.isArray(sessions) || sessions.length === 0) break;
+    let addedCount = 0;
+    let reachedHistoryBoundary = false;
+    for (const session of sessions) {
+      const sessionKey = getApiSessionIdentity(session);
+      if (!sessionKey || seenKeys.has(sessionKey)) continue;
+      const messageTime = getApiSessionLastMessageTimeMs(session);
+      if (messageTime && messageTime < startMs) {
+        reachedHistoryBoundary = true;
+        continue;
+      }
+      seenKeys.add(sessionKey);
+      collected.push(session);
+      addedCount += 1;
+    }
+    if (sessions.length < pageSize || reachedHistoryBoundary || addedCount === 0) {
+      break;
+    }
+  }
+  return collected.sort((left, right) => (
+    getApiSessionLastMessageTimeMs(right) - getApiSessionLastMessageTimeMs(left)
+  ));
+}
+
+async function getApiSessionsByScope(shopId, page = 1, pageSize = 20, options = {}) {
+  let targetShops = getApiShopList(shopId, { displayableOnly: shopId === API_ALL_SHOPS });
+  // 启动时只恢复了 token，未自动校验店铺在线状态；如果当前可显示的店铺中
+  // 没有任何一个处于 apiReady 状态，主动跑一次"批量接口校验"（等价于"接口校验"按钮），
+  // 避免用户必须手动点"接口校验"才能进入 chat-api 看到数据。
+  const hasReadyShop = targetShops.some(shop => isApiReadyShop(shop));
+  if (!hasReadyShop) {
+    const candidateShops = (shopId === API_ALL_SHOPS
+      ? getApiShopList(API_ALL_SHOPS)
+      : getApiShopList(shopId)
+    ).filter(shop => !isApiReadyShop(shop) && shop?.id);
     if (candidateShops.length && shopManager && typeof shopManager.safeValidateShops === 'function') {
       try {
         const validation = await shopManager.safeValidateShops(candidateShops.map(item => item.id));
@@ -2380,7 +2560,7 @@ async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
       } catch (error) {
         sendToDebug('api-session-auto-validate-failed', { message: error?.message || String(error || '') });
       }
-      targetShops = getApiShopList(shopId, { apiReadyOnly: true });
+      targetShops = getApiShopList(shopId, { displayableOnly: shopId === API_ALL_SHOPS });
     }
   }
   if (!targetShops.length) {
@@ -2398,6 +2578,7 @@ async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
     ensureBusinessShopAvailable(shopId);
     throw new Error('没有可用店铺');
   }
+  const shouldLoadRecentSessions = Number(options?.recentDays || 0) > 0 && Number(page || 1) === 1;
   if (shopId === API_ALL_SHOPS) {
     const skippedShops = getApiShopList(API_ALL_SHOPS).filter(shop => !isApiReadyShop(shop));
     if (skippedShops.length) {
@@ -2408,13 +2589,17 @@ async function getApiSessionsByScope(shopId, page = 1, pageSize = 20) {
     }
   }
   if (shopId !== API_ALL_SHOPS) {
-    const sessions = await loadShopApiSessions(targetShops[0].id, page, pageSize);
+    const sessions = shouldLoadRecentSessions
+      ? await loadShopApiRecentSessions(targetShops[0].id, options)
+      : await loadShopApiSessions(targetShops[0].id, page, pageSize);
     return sessions.map(session => decorateApiSession(targetShops[0].id, session));
   }
   const failures = [];
   const sessionGroups = await Promise.all(targetShops.map(async shop => {
     try {
-      const sessions = await loadShopApiSessions(shop.id, page, pageSize);
+      const sessions = shouldLoadRecentSessions
+        ? await loadShopApiRecentSessions(shop.id, options)
+        : await loadShopApiSessions(shop.id, page, pageSize);
       return sessions.map(session => decorateApiSession(shop.id, session));
     } catch (error) {
       failures.push({
@@ -2458,8 +2643,8 @@ function createMainWindow() {
     height,
     minWidth: 800,
     minHeight: 700,
-    title: '元尾巴 · 拼多多客服助手',
-    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+    title: '多多尾巴',
+    icon: path.join(__dirname, '..', '..', 'assets', 'logo.png'),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
@@ -2621,6 +2806,10 @@ ipcMain.handle('write-clipboard-text', (event, text) => {
   return true;
 });
 
+ipcMain.handle('is-development-mode', () => {
+  return isDevelopmentMode();
+});
+
 licenseRuntime = registerLicenseIpc({
   ipcMain,
   store,
@@ -2753,6 +2942,11 @@ registerTicketTodoDetailWindowIpc({
 registerViolationInfoWindowIpc({
   ipcMain,
   store,
+  getMainWindow: () => mainWindow
+});
+
+registerSystemNotificationIpc({
+  ipcMain,
   getMainWindow: () => mainWindow
 });
 
@@ -3457,6 +3651,8 @@ function ensureDefaultReplyConfig(config = null) {
   const legacyText = '亲，您好！您的问题我已收到，请稍等，马上为您处理~';
   const previousDefaultText = '亲，目前咨询客户较多，客服小姐姐在一个一个回复，稍等一下~';
   const nextDefaultTexts = [
+    '亲亲，在的，可以看一下详情或者规格噢~不同规格的样式可能会不同',
+    '可以先看一下详情或者规格，确认一下是否符合您的需求~',
     '亲,我会乐意为你服务。收藏一下本小店，我们会不定期上新款。祝你网购愉快。',
     '亲，如果您有什么疑问可以直接留言，客服看到了会记录下来的，没有及时回复您，真的非常抱歉！',
     '亲，客服正在来的路上喔，您看到的商品基本都是有货的，可以参考详情和规格选择，拍下后尽快给您安排发出~',
@@ -3511,8 +3707,8 @@ function initMockData() {
   }
 }
 
-const APP_NAME = '元尾巴 · 拼多多客服助手';
-const APP_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+const APP_NAME = '多多尾巴';
+const APP_ICON_PATH = path.join(__dirname, '..', '..', 'assets', 'logo.png');
 
 function setupAppMenu() {
   const template = [

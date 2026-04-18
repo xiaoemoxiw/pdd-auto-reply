@@ -14,7 +14,7 @@ function createSettingsWindow(parent, store) {
     height: 600,
     parent,
     modal: true,
-    title: '元尾巴 · 自动回复设置',
+    title: '多多尾巴 · 自动回复设置',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,

@@ -1,11 +1,20 @@
 const fs = require('fs');
 const path = require('path');
+const { app } = require('electron');
 
-const LOG_DIR = path.join(__dirname, '..', '..', 'artifacts', 'window-debug');
-const LOG_PATH = path.join(LOG_DIR, 'window-close-log.jsonl');
+function getLogDir() {
+  if (app.isPackaged) {
+    return path.join(app.getPath('userData'), 'window-debug');
+  }
+  return path.join(__dirname, '..', '..', 'artifacts', 'window-debug');
+}
+
+function getLogPath() {
+  return path.join(getLogDir(), 'window-close-log.jsonl');
+}
 
 function ensureLogDir() {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
+  fs.mkdirSync(getLogDir(), { recursive: true });
 }
 
 function appendWindowCloseDebugLog(payload = {}) {
@@ -15,12 +24,12 @@ function appendWindowCloseDebugLog(payload = {}) {
       time: new Date().toISOString(),
       ...payload
     };
-    fs.appendFileSync(LOG_PATH, `${JSON.stringify(record)}\n`, 'utf-8');
+    fs.appendFileSync(getLogPath(), `${JSON.stringify(record)}\n`, 'utf-8');
   } catch {}
 }
 
 function getWindowCloseDebugLogPath() {
-  return LOG_PATH;
+  return getLogPath();
 }
 
 module.exports = {

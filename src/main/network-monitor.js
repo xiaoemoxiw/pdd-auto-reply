@@ -256,40 +256,50 @@ class NetworkMonitor {
 
   _extractJsonObjectFromText(text) {
     const source = String(text || '');
-    const start = source.indexOf('{');
-    if (start < 0) return null;
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    for (let index = start; index < source.length; index++) {
-      const char = source[index];
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-        } else if (char === '\\') {
-          escaped = true;
-        } else if (char === '"') {
-          inString = false;
+    if (!source.includes('{')) return null;
+    for (let start = source.indexOf('{'); start >= 0; start = source.indexOf('{', start + 1)) {
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      for (let index = start; index < source.length; index++) {
+        const char = source[index];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (char === '\\') {
+            escaped = true;
+          } else if (char === '"') {
+            inString = false;
+          }
+          continue;
         }
-        continue;
-      }
-      if (char === '"') {
-        inString = true;
-        continue;
-      }
-      if (char === '{') depth += 1;
-      if (char === '}') {
-        depth -= 1;
-        if (depth === 0) {
-          const candidate = source.slice(start, index + 1);
-          try {
-            return JSON.parse(candidate);
-          } catch {
-            return null;
+        if (char === '"') {
+          inString = true;
+          continue;
+        }
+        if (char === '{') depth += 1;
+        if (char === '}') {
+          depth -= 1;
+          if (depth === 0) {
+            const candidate = source.slice(start, index + 1);
+            try {
+              const parsed = JSON.parse(candidate);
+              if (parsed && typeof parsed === 'object') {
+                return parsed;
+              }
+            } catch {}
+            break;
           }
         }
       }
     }
+    return null;
+  }
+
+  _extractNotifyPayloadFromDecodedText(text) {
+    const parsed = this._extractJsonObjectFromText(text);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (parsed?.push_data || parsed?.message || parsed?.response) return parsed;
     return null;
   }
 
@@ -318,12 +328,16 @@ class NetworkMonitor {
     }
     const gunzipped = this._tryGunzipBuffer(buffer);
     if (gunzipped) {
-      const decodedText = gunzipped.toString('latin1').replace(/[^\x09\x0a\x0d\x20-\x7e]/g, ' ');
+      const latin1Text = gunzipped.toString('latin1');
+      const utf8Text = gunzipped.toString('utf8');
+      const decodedText = latin1Text.replace(/[^\x09\x0a\x0d\x20-\x7e]/g, ' ');
       const compactText = decodedText.replace(/\s+/g, ' ').trim();
       summary.gzipDecodedLength = gunzipped.length;
       summary.textPreview = compactText.slice(0, 1200);
       summary.tokens = this._extractPrintableSegments(compactText, 30);
-      const notifyPayload = this._extractJsonObjectFromText(compactText);
+      const notifyPayload = this._extractNotifyPayloadFromDecodedText(compactText)
+        || this._extractNotifyPayloadFromDecodedText(utf8Text)
+        || this._extractNotifyPayloadFromDecodedText(latin1Text);
       if (notifyPayload) {
         summary.notifyPayload = notifyPayload;
       }

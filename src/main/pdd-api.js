@@ -27,6 +27,7 @@ const { SmallPaymentModule } = require('./pdd-api/modules/small-payment-module')
 const { OrderPriceModule } = require('./pdd-api/modules/order-price-module');
 const { InviteOrderModule } = require('./pdd-api/modules/invite-order-module');
 const { SideOrdersModule } = require('./pdd-api/modules/side-orders-module');
+const { OrderRemarkModule } = require('./pdd-api/modules/order-remark-module');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -47,8 +48,6 @@ class PddApiClient extends EventEmitter {
     this._sessionInited = false;
     this._authExpired = false;
     this._serviceProfileCache = null;
-    this._orderRemarkTagOptionsCache = null;
-    this._orderRemarkCache = new Map();
     this._seenMessageIds = new Set();
     this._pollBootstrapDone = false;
     this._sessionCache = [];
@@ -68,6 +67,7 @@ class PddApiClient extends EventEmitter {
     this._orderPriceModule = new OrderPriceModule(this);
     this._inviteOrderModule = new InviteOrderModule(this);
     this._sideOrdersModule = new SideOrdersModule(this);
+    this._orderRemarkModule = new OrderRemarkModule(this);
   }
 
   _log(message, extra) {
@@ -1662,36 +1662,7 @@ class PddApiClient extends EventEmitter {
   }
 
   async _requestOrderRemarkApi(urlPath, body = {}) {
-    const headers = {
-      accept: 'application/json, text/plain, */*',
-      'content-type': 'application/json',
-    };
-    let payload = null;
-    const via = typeof this._requestInPddPage === 'function' ? 'page' : 'direct';
-    this._log('[API] 订单备注请求开始', this._summarizeOrderRemarkRequest(urlPath, body, via));
-    if (typeof this._requestInPddPage === 'function') {
-      payload = await this._requestInPddPage({
-        method: 'POST',
-        url: urlPath,
-        source: 'order-remark:page-request',
-        headers,
-        body: JSON.stringify(body || {}),
-      });
-    } else {
-      payload = await this._post(urlPath, body || {}, headers);
-    }
-    this._log('[API] 订单备注请求返回', {
-      ...this._summarizeOrderRemarkRequest(urlPath, body, via),
-      response: this._summarizeOrderRemarkResponse(payload),
-    });
-    const businessError = this._normalizeBusinessError(payload);
-    if (businessError) {
-      const error = new Error(businessError.message);
-      error.errorCode = businessError.code;
-      error.payload = payload;
-      throw error;
-    }
-    return payload;
+    return this._orderRemarkModule.requestApi(urlPath, body);
   }
 
   _parseUserInfo(payload) {
@@ -2827,24 +2798,11 @@ class PddApiClient extends EventEmitter {
   }
 
   _summarizeOrderRemarkResponse(payload) {
-    if (!payload || typeof payload !== 'object') {
-      return {
-        type: typeof payload,
-      };
-    }
-    const candidates = this._collectBusinessPayloadCandidates(payload);
-    const first = candidates[0] || payload;
-    return {
-      success: first?.success,
-      ok: first?.ok,
-      errorCode: first?.error_code ?? first?.code ?? first?.err_no ?? first?.errno ?? null,
-      message: first?.error_msg || first?.message || first?.msg || '',
-      resultKeys: first?.result && typeof first.result === 'object' ? Object.keys(first.result).slice(0, 10) : [],
-    };
+    return this._orderRemarkModule.summarizeResponse(payload);
   }
 
   _getOrderRemarkTagName(tag) {
-    return orderRemarkParsers.getOrderRemarkTagName(tag, this._orderRemarkTagOptionsCache);
+    return this._orderRemarkModule.getTagName(tag);
   }
 
   _formatOrderRemarkMeta(value = Date.now()) {
@@ -2852,41 +2810,15 @@ class PddApiClient extends EventEmitter {
   }
 
   async _getOrderRemarkOperatorName() {
-    try {
-      const userInfo = await this.getUserInfo();
-      const username = String(userInfo?.username || '').trim();
-      if (username) return username;
-    } catch {}
-    try {
-      const profile = await this.getServiceProfile();
-      const username = String(profile?.username || '').trim();
-      if (username) return username;
-      const serviceName = String(profile?.serviceName || '').trim();
-      if (serviceName) return serviceName;
-    } catch {}
-    return String(this._getShopInfo()?.name || '').trim() || '主账号';
+    return this._orderRemarkModule.getOperatorName();
   }
 
   _getOrderRemarkCache(orderSn) {
-    const normalizedOrderSn = String(orderSn || '').trim();
-    if (!normalizedOrderSn) return null;
-    const cached = this._orderRemarkCache.get(normalizedOrderSn);
-    if (!cached || typeof cached !== 'object') return null;
-    return this._cloneJson(cached);
+    return this._orderRemarkModule.getCache(orderSn);
   }
 
   _setOrderRemarkCache(orderSn, remark = {}) {
-    const normalizedOrderSn = String(orderSn || '').trim();
-    if (!normalizedOrderSn) return null;
-    const nextRemark = {
-      orderSn: normalizedOrderSn,
-      note: this._extractOrderRemarkText(remark?.note),
-      tag: this._normalizeOrderRemarkTag(remark?.tag),
-      tagName: String(remark?.tagName || '').trim(),
-      source: Number(remark?.source) > 0 ? Number(remark.source) : 1,
-    };
-    this._orderRemarkCache.set(normalizedOrderSn, nextRemark);
-    return this._cloneJson(nextRemark);
+    return this._orderRemarkModule.setCache(orderSn, remark);
   }
 
   _normalizeOrderRemarkTagOptions(payload = {}) {
@@ -2894,197 +2826,15 @@ class PddApiClient extends EventEmitter {
   }
 
   async getOrderRemarkTagOptions(force = false) {
-    if (this._orderRemarkTagOptionsCache && !force) {
-      return this._cloneJson(this._orderRemarkTagOptionsCache);
-    }
-    let payload;
-    try {
-      payload = await this._requestOrderRemarkApi('/pizza/order/remarkTag/query', {});
-    } catch (error) {
-      if (this._orderRemarkTagOptionsCache) {
-        return this._cloneJson(this._orderRemarkTagOptionsCache);
-      }
-      throw error;
-    }
-    const result = this._normalizeOrderRemarkTagOptions(payload);
-    this._orderRemarkTagOptionsCache = result;
-    return this._cloneJson(result);
+    return this._orderRemarkModule.getTagOptions(force);
   }
 
   async getOrderRemark(orderSn, source = 1) {
-    const normalizedOrderSn = String(orderSn || '').trim();
-    if (!normalizedOrderSn) {
-      throw new Error('缺少订单编号');
-    }
-    const requestBody = {
-      orderSn: normalizedOrderSn,
-      source: Number(source) > 0 ? Number(source) : 1,
-    };
-    const [noteResult, noteTagResult] = await Promise.allSettled([
-      this._requestOrderRemarkApi('/pizza/order/note/query', requestBody),
-      this._requestOrderRemarkApi('/pizza/order/noteTag/query', requestBody),
-    ]);
-    if (noteResult.status === 'rejected' && noteTagResult.status === 'rejected') {
-      throw noteTagResult.reason || noteResult.reason || new Error('读取订单备注失败');
-    }
-    const notePayload = noteResult.status === 'fulfilled' ? noteResult.value : null;
-    const noteTagPayload = noteTagResult.status === 'fulfilled' ? noteTagResult.value : null;
-    const noteTagData = noteTagPayload?.result && typeof noteTagPayload.result === 'object'
-      ? noteTagPayload.result
-      : {};
-    const noteData = notePayload?.result;
-    const note = this._extractOrderRemarkText(noteTagData?.note) || this._extractOrderRemarkText(noteData);
-    const tag = this._normalizeOrderRemarkTag(this._pickRefundText([noteTagData], ['tag', 'tagCode', 'color', 'colorCode']));
-    const tagName = this._pickRefundText([noteTagData], ['tagName', 'tag_name', 'colorName', 'color_name']);
-    return this._setOrderRemarkCache(normalizedOrderSn, {
-      orderSn: normalizedOrderSn,
-      note,
-      tag,
-      tagName,
-      source: requestBody.source,
-    });
+    return this._orderRemarkModule.getRemark(orderSn, source);
   }
 
   async saveOrderRemark(params = {}) {
-    const normalizedOrderSn = String(params?.orderSn || '').trim();
-    if (!normalizedOrderSn) {
-      throw new Error('缺少订单编号');
-    }
-    const source = Number(params?.source) > 0 ? Number(params.source) : 1;
-    const baseNote = String(params?.note || '').trim().slice(0, 300);
-    const tag = this._normalizeOrderRemarkTag(params?.tag);
-    const baseTagName = String(params?.tagName || '').trim();
-    const tagName = baseTagName || this._getOrderRemarkTagName(tag);
-    let finalNote = baseNote;
-    if (params?.autoAppendMeta) {
-      const operatorName = await this._getOrderRemarkOperatorName();
-      const metaText = this._formatOrderRemarkMeta();
-      const suffix = [operatorName, metaText].filter(Boolean).join(' ').trim();
-      finalNote = suffix
-        ? `${baseNote || ''} [${suffix}]`.trim()
-        : baseNote;
-    }
-    const candidates = tag
-      ? [
-        {
-          url: '/pizza/order/noteTag/update',
-          body: {
-            orderSn: normalizedOrderSn,
-            source,
-            remark: finalNote,
-            remarkTag: tag,
-            remarkTagName: tagName || '',
-          },
-        },
-        {
-          url: '/pizza/order/note/update',
-          body: {
-            orderSn: normalizedOrderSn,
-            source,
-            remark: finalNote,
-          },
-        },
-      ]
-      : [
-        {
-          url: '/pizza/order/noteTag/update',
-          body: {
-            orderSn: normalizedOrderSn,
-            source,
-            remark: finalNote,
-            remarkTag: '',
-            remarkTagName: '',
-          },
-        },
-        {
-          url: '/pizza/order/note/update',
-          body: {
-            orderSn: normalizedOrderSn,
-            source,
-            remark: finalNote,
-          },
-        },
-      ];
-    let lastError = null;
-    let responsePayload = null;
-    let latestRemark = null;
-    for (let index = 0; index < candidates.length; index += 1) {
-      const candidate = candidates[index];
-      let canRetryAfterIntervalError = true;
-      while (true) {
-        try {
-          responsePayload = await this._requestOrderRemarkApi(candidate.url, candidate.body);
-          lastError = null;
-          break;
-        } catch (error) {
-          lastError = error;
-          if (canRetryAfterIntervalError && this._isOrderRemarkSaveIntervalError(error)) {
-            canRetryAfterIntervalError = false;
-            await this._sleep(1100);
-            continue;
-          }
-          break;
-        }
-      }
-      if (lastError) {
-        continue;
-      }
-      latestRemark = null;
-      try {
-        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
-      } catch (error) {
-        lastError = error;
-      }
-      if (!lastError && this._isOrderRemarkSaveMatched(latestRemark, finalNote, tag)) {
-        break;
-      }
-      if (!lastError) {
-        this._log('[API] 订单备注写入后回读未生效', {
-          candidateUrl: candidate.url,
-          orderSn: this._maskOrderRemarkOrderSn(normalizedOrderSn),
-          expected: {
-            noteLength: this._extractOrderRemarkText(finalNote).length,
-            tag,
-          },
-          actual: {
-            noteLength: this._extractOrderRemarkText(latestRemark?.note).length,
-            tag: this._normalizeOrderRemarkTag(latestRemark?.tag),
-          },
-        });
-        lastError = new Error('备注保存未生效，请重试');
-      }
-      if (index < candidates.length - 1) {
-        await this._sleep(1100);
-      }
-    }
-    if (lastError && this._isOrderRemarkSaveIntervalError(lastError)) {
-      try {
-        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
-        if (this._isOrderRemarkSaveMatched(latestRemark, finalNote, tag)) {
-          lastError = null;
-        }
-      } catch {}
-    }
-    if (lastError) {
-      throw lastError;
-    }
-    if (!latestRemark) {
-      try {
-        latestRemark = await this.getOrderRemark(normalizedOrderSn, source);
-      } catch {}
-    }
-    const cachedRemark = this._setOrderRemarkCache(normalizedOrderSn, {
-      orderSn: normalizedOrderSn,
-      note: latestRemark?.note || finalNote,
-      tag: latestRemark?.tag || tag,
-      tagName: latestRemark?.tagName || '',
-      source,
-    });
-    return {
-      success: true,
-      ...cachedRemark,
-      response: responsePayload,
-    };
+    return this._orderRemarkModule.saveRemark(params);
   }
 
   _buildSideOrderSources(item = {}, fallback = {}) {

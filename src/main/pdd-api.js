@@ -18,6 +18,7 @@ const goodsParsers = require('./pdd-api/parsers/goods-parsers');
 const refundParsers = require('./pdd-api/parsers/refund-parsers');
 const shopProfileParsers = require('./pdd-api/parsers/shop-profile-parsers');
 const orderRemarkParsers = require('./pdd-api/parsers/order-remark-parsers');
+const messageParsers = require('./pdd-api/parsers/message-parsers');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -866,27 +867,7 @@ class PddApiClient extends EventEmitter {
   }
 
   _extractBuyerUid(item = {}) {
-    const directCandidates = [
-      item.customer_id,
-      item.buyer_id,
-      item?.user_info?.uid,
-      item.uid,
-    ].map(value => String(value || '')).filter(Boolean);
-    if (directCandidates.length) return directCandidates[0];
-    const mallId = String(this._getMallId() || '');
-    const fromUid = String(item?.from?.uid || item.from_uid || '');
-    const toUid = String(item?.to?.uid || item.to_uid || '');
-    const fromRole = String(item?.from?.role || '').toLowerCase();
-    const toRole = String(item?.to?.role || '').toLowerCase();
-    if (['buyer', 'customer', 'user'].includes(fromRole) && fromUid) return fromUid;
-    if (['buyer', 'customer', 'user'].includes(toRole) && toUid) return toUid;
-    if (mallId) {
-      if (fromUid && fromUid === mallId && toUid) return toUid;
-      if (toUid && toUid === mallId && fromUid) return fromUid;
-      if (String(item?.from?.mall_id || '') === mallId && toUid) return toUid;
-      if (String(item?.to?.mall_id || '') === mallId && fromUid) return fromUid;
-    }
-    return toUid || fromUid || '';
+    return messageParsers.extractBuyerUid(item, this._getMallId() || '');
   }
 
   _buildSendMessageTemplate(sessionRef, text, ts, hash) {
@@ -1334,123 +1315,27 @@ class PddApiClient extends EventEmitter {
   }
 
   _normalizeComparableMessageText(text) {
-    return String(text || '').replace(/\s+/g, ' ').trim();
+    return messageParsers.normalizeComparableMessageText(text);
   }
 
   _isInviteOrderTemplateMessage(item = {}) {
-    const templateName = String(item?.template_name || item?.templateName || '').trim();
-    if (templateName === 'substitute_order_v2' || templateName === 'substitute_order_v3') return true;
-    if (templateName) return false;
-    const messageType = Number(
-      item?.type
-      ?? item?.msg_type
-      ?? item?.message_type
-      ?? item?.content_type
-      ?? -1
-    );
-    const sourceText = this._extractMessageText(item);
-    if (this._isRefundPendingNoticeText(sourceText) || this._isRefundSuccessNoticeText(sourceText)) {
-      return false;
-    }
-    const info = item?.info && typeof item.info === 'object' ? item.info : {};
-    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
-    const goodsInfoList = [
-      infoData?.goods_info_list,
-      infoData?.goodsInfoList,
-      infoData?.goods_list,
-      infoData?.goodsList,
-      info?.goods_info_list,
-      info?.goodsInfoList,
-      info?.goods_list,
-      info?.goodsList,
-    ].find(Array.isArray) || [];
-    return messageType === 64 && !!(
-      goodsInfoList.length
-      && goodsInfoList.some(entry => entry && typeof entry === 'object')
-    );
+    return messageParsers.isInviteOrderTemplateMessage(item);
   }
 
   _isRobotManagedTextMessage(item = {}) {
-    const templateName = String(item?.template_name || item?.templateName || '').trim();
-    const showAuto = item?.show_auto === true || item?.showAuto === true;
-    return templateName === 'mall_robot_text_msg' || showAuto;
+    return messageParsers.isRobotManagedTextMessage(item);
   }
 
   _isSystemNoticeMessage(item = {}) {
-    const sourceText = this._extractMessageText(item);
-    if (this._isRefundDefaultSellerNoteText(sourceText)) return false;
-    if (this._isRobotManagedTextMessage(item)) return false;
-    const messageType = Number(
-      item?.type
-      ?? item?.msg_type
-      ?? item?.message_type
-      ?? item?.content_type
-      ?? -1
-    );
-    const cardId = String(item?.info?.card_id || '').trim();
-    if (messageType === 19 && cardId === 'ask_refund_apply') return false;
-    if (this._isInviteOrderTemplateMessage(item)) return false;
-    if (messageType === 31 || messageType === 90) return true;
-    const templateName = String(item?.template_name || item?.templateName || '').trim();
-    if (templateName) return true;
-    const systemInfo = item?.system;
-    if (systemInfo && typeof systemInfo === 'object' && Object.keys(systemInfo).length) return true;
-    return this._isSystemNoticeText(sourceText);
+    return messageParsers.isSystemNoticeMessage(item);
   }
 
   _getMessageActor(item = {}) {
-    if (this._isSystemNoticeMessage(item)) return 'system';
-    const role = String(
-      item.role ||
-      item.msg_from ||
-      item.from_type ||
-      item.sender_role ||
-      item?.from?.role ||
-      item?.sender?.role ||
-      item?.to?.role ||
-      ''
-    ).toLowerCase();
-    if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return 'buyer';
-    if (['system', 'robot', 'bot', 'notice', 'tips', '99'].includes(role)) return 'system';
-    if (['seller', 'service', 'kf', 'agent', 'mall_cs', '2', '3', '4'].includes(role)) return 'seller';
-    if (item.is_buyer || item.is_buyer === 1 || item.sender_type === 1 || item.sender_type === 0) return 'buyer';
-    if (item.is_robot || item.is_system) return 'system';
-    if (item.is_seller) return 'seller';
-
-    const mallId = String(this._getMallId() || '');
-    const fromUid = String(item?.from?.uid || item.from_uid || item.sender_id || item.from_id || '');
-    const toUid = String(item?.to?.uid || item.to_uid || '');
-    const buyerUidCandidates = [
-      item?.customer_id,
-      item?.buyer_id,
-      item?.uid,
-      item?.user_info?.uid,
-    ].map(value => String(value || '')).filter(Boolean);
-
-    if (mallId && (fromUid === mallId || String(item?.from?.mall_id || '') === mallId)) return 'seller';
-    if (mallId && (toUid === mallId || String(item?.to?.mall_id || '') === mallId)) return 'buyer';
-    if (fromUid && buyerUidCandidates.includes(fromUid)) return 'buyer';
-    if (toUid && buyerUidCandidates.includes(toUid)) return 'seller';
-    return 'unknown';
+    return messageParsers.getMessageActor(item, this._getMallId() || '');
   }
 
   _isSystemNoticeText(text = '') {
-    const source = String(text || '').trim();
-    if (!source) return false;
-    if (this._isRefundPendingNoticeText(source) || this._isRefundSuccessNoticeText(source)) return true;
-    return [
-      /您接待过此消费者/,
-      /机器人已暂停接待/,
-      /机器人未找到对应(?:的)?回复/,
-      /立即恢复接待/,
-      /为避免插嘴/,
-      /为避免插播/,
-      /为避免抢答/,
-      /当前用户来自/,
-      /商品详情页/,
-      /订单已超承诺发货时间/,
-      /请人工跟进/,
-    ].some(pattern => pattern.test(source));
+    return messageParsers.isSystemNoticeText(text);
   }
 
   _isRefundDefaultSellerNoteText(text = '') {
@@ -2950,177 +2835,35 @@ class PddApiClient extends EventEmitter {
   }
 
   _isBuyerMessage(item) {
-    return this._getMessageActor(item) === 'buyer';
+    return messageParsers.isBuyerMessage(item, this._getMallId() || '');
   }
 
   _extractPendingConfirmMessageText(sessionRef, item = {}, fallbackText = '', options = {}) {
-    const raw = item && typeof item === 'object' ? item : {};
-    const templateName = String(raw?.template_name || raw?.templateName || '').trim();
-    const showAuto = raw?.show_auto === true || raw?.showAuto === true;
-    if (templateName !== 'mall_robot_text_msg' && !showAuto) return '';
-
-    const normalizedFallback = this._normalizeComparableMessageText(fallbackText);
-    const fallbackLooksBroken = !normalizedFallback
-      || /^\d+$/.test(normalizedFallback)
-      || normalizedFallback.length <= 4;
-    const pendingInfo = options?.latestTrusteeshipInfo && typeof options.latestTrusteeshipInfo === 'object'
+    const latestTrusteeshipInfo = options?.latestTrusteeshipInfo
+      && typeof options.latestTrusteeshipInfo === 'object'
       ? options.latestTrusteeshipInfo
       : this._getLatestTrusteeshipStateInfo(sessionRef);
-    const pendingConfirmData = pendingInfo?.pendingConfirmData;
-    const showText = this._normalizeComparableMessageText(pendingConfirmData?.showText || '');
-    if (!showText) return '';
-
-    const consumerMessageId = String(
-      raw?.biz_context?.consumer_msg_id
-      || raw?.bizContext?.consumer_msg_id
-      || raw?.bizContext?.consumerMsgId
-      || raw?.push_biz_context?.consumer_msg_id
-      || raw?.pushBizContext?.consumer_msg_id
-      || ''
-    ).trim();
-    const referenceConsumerMessageId = String(
-      pendingConfirmData?.referenceConsumerMessageId
-      || pendingConfirmData?.refConsumerMessageId
-      || ''
-    ).trim();
-    if (consumerMessageId && referenceConsumerMessageId && consumerMessageId === referenceConsumerMessageId) {
-      return showText;
-    }
-    return fallbackLooksBroken ? showText : '';
+    return messageParsers.extractPendingConfirmMessageText(item, fallbackText, latestTrusteeshipInfo);
   }
 
   _extractMessageText(item, options = {}) {
-    const candidates = [
-      item?.content,
-      item?.text,
-      item?.msg_content,
-      item?.message,
-      item?.body,
-      item?.msg_text,
-      item?.msg,
-      item?.extra?.text,
-      item?.ext?.text,
-    ];
-    let directText = '';
-    for (const value of candidates) {
-      if (typeof value === 'string' && value.trim()) {
-        directText = value;
-        break;
-      }
-      if (value && typeof value === 'object') {
-        const nestedText = [
-          value.text,
-          value.content,
-          value.message,
-          value.msg,
-          value.title,
-        ].find(entry => typeof entry === 'string' && entry.trim());
-        if (nestedText) {
-          directText = nestedText;
-          break;
-        }
-      }
-    }
-    const structuredText = directText ? '' : this._extractStructuredMessageText(item);
-    const extractedText = String(directText || structuredText || '').trim();
-    const pendingConfirmText = this._extractPendingConfirmMessageText(
-      options?.sessionRef,
-      item,
-      extractedText,
-      options
-    );
-    return pendingConfirmText || extractedText;
+    const latestTrusteeshipInfo = options?.latestTrusteeshipInfo
+      && typeof options.latestTrusteeshipInfo === 'object'
+      ? options.latestTrusteeshipInfo
+      : (options?.sessionRef ? this._getLatestTrusteeshipStateInfo(options.sessionRef) : null);
+    return messageParsers.extractMessageText(item, { latestTrusteeshipInfo });
   }
 
   _extractStructuredMessageEntryText(entry) {
-    if (!entry || typeof entry !== 'object') return '';
-    return this._pickGoodsText([
-      entry?.text,
-      entry?.content,
-      entry?.message,
-      entry?.msg,
-      entry?.title,
-      entry?.label,
-      entry?.name,
-      entry?.desc,
-      entry?.value,
-    ]);
+    return messageParsers.extractStructuredMessageEntryText(entry);
   }
 
   _extractStructuredMessageText(item = {}) {
-    const info = item?.info && typeof item.info === 'object' ? item.info : {};
-    const infoData = info?.data && typeof info.data === 'object' ? info.data : {};
-    const systemInfo = item?.system && typeof item.system === 'object' ? item.system : {};
-    const pushBizContext = item?.push_biz_context && typeof item.push_biz_context === 'object' ? item.push_biz_context : {};
-    const directText = this._pickGoodsText([
-      info?.mall_content,
-      info?.merchant_content,
-      info?.content,
-      info?.text,
-      info?.title,
-      infoData?.mall_content,
-      infoData?.content,
-      infoData?.text,
-      infoData?.title,
-      info?.label,
-      info?.desc,
-      info?.tip,
-      info?.message,
-      systemInfo?.text,
-      systemInfo?.content,
-      pushBizContext?.replace_content,
-      pushBizContext?.replaceContent,
-    ]);
-    if (directText) return directText;
-    const entryLists = [
-      Array.isArray(info?.item_content) ? info.item_content : [],
-      Array.isArray(info?.mall_item_content) ? info.mall_item_content : [],
-      Array.isArray(info?.items) ? info.items : [],
-    ];
-    for (const list of entryLists) {
-      const entryText = list
-        .map(entry => this._extractStructuredMessageEntryText(entry))
-        .filter(Boolean)
-        .join(' ')
-        .trim();
-      if (entryText) return entryText;
-    }
-    return '';
+    return messageParsers.extractStructuredMessageText(item);
   }
 
   _extractMessageReadState(item = {}) {
-    const candidates = [
-      item?.is_read,
-      item?.isRead,
-      item?.read_status,
-      item?.readStatus,
-      item?.read_state,
-      item?.readState,
-      item?.extra?.is_read,
-      item?.extra?.isRead,
-      item?.extra?.read_status,
-      item?.extra?.readStatus,
-      item?.extra?.read_state,
-      item?.extra?.readState,
-      item?.ext?.is_read,
-      item?.ext?.isRead,
-      item?.ext?.read_status,
-      item?.ext?.readStatus,
-      item?.ext?.read_state,
-      item?.ext?.readState,
-    ];
-    for (const value of candidates) {
-      if (value === undefined || value === null || value === '') continue;
-      if (typeof value === 'boolean') return value ? 'read' : 'unread';
-      if (typeof value === 'number') return value > 0 ? 'read' : 'unread';
-      if (typeof value === 'string') {
-        const normalized = value.trim().toLowerCase();
-        if (!normalized) continue;
-        if (['1', 'true', 'read', 'has_read', 'already_read', '已读'].includes(normalized)) return 'read';
-        if (['0', 'false', 'unread', 'not_read', '未读'].includes(normalized)) return 'unread';
-      }
-    }
-    return '';
+    return messageParsers.extractMessageReadState(item);
   }
 
   _decodeGoodsText(value = '') {
@@ -3250,60 +2993,7 @@ class PddApiClient extends EventEmitter {
   }
 
   _findMessageArray(payload) {
-    const directCandidates = [
-      payload?.data?.msg_list,
-      payload?.data?.messages,
-      payload?.result?.data?.msg_list,
-      payload?.result?.data?.messages,
-      payload?.result?.data?.list,
-      payload?.result?.msg_list,
-      payload?.result?.messages,
-      payload?.result?.list,
-      payload?.msg_list,
-      payload?.messages,
-      payload?.data?.list,
-    ];
-    const directList = directCandidates.find(item => Array.isArray(item) && item.length);
-    if (directList) return directList;
-    const queue = [payload];
-    const visited = new Set();
-    const candidateKeys = new Set([
-      'msg_list',
-      'message_list',
-      'messages',
-      'msg_info',
-      'chat_msg',
-      'im_msg',
-      'recv_msg',
-      'new_msg',
-      'data',
-      'result',
-      'list',
-      'items',
-      'records',
-      'response',
-      'conversations',
-      'conv_list',
-      'chat_list',
-      'msg_data',
-      'message_data',
-    ]);
-    while (queue.length) {
-      const current = queue.shift();
-      if (!current || typeof current !== 'object' || visited.has(current)) continue;
-      visited.add(current);
-      if (Array.isArray(current)) {
-        if (current.length && current.some(item => item && typeof item === 'object')) {
-          return current;
-        }
-        continue;
-      }
-      Object.keys(current).forEach(key => {
-        if (!candidateKeys.has(key)) return;
-        queue.push(current[key]);
-      });
-    }
-    return directCandidates.find(Array.isArray) || [];
+    return messageParsers.findMessageArray(payload);
   }
 
   _parseMessages(payload, sessionRef = null) {

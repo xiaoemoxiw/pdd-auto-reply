@@ -16,6 +16,7 @@ const {
 const commonParsers = require('./pdd-api/parsers/common-parsers');
 const goodsParsers = require('./pdd-api/parsers/goods-parsers');
 const refundParsers = require('./pdd-api/parsers/refund-parsers');
+const shopProfileParsers = require('./pdd-api/parsers/shop-profile-parsers');
 
 const PDD_BASE = 'https://mms.pinduoduo.com';
 const PDD_UPLOAD_BASES = [
@@ -1984,26 +1985,17 @@ class PddApiClient extends EventEmitter {
   }
 
   _parseUserInfo(payload) {
-    const info = payload?.result || payload?.data || payload || {};
-    return {
-      mallId: info.mall_id || info.mallId || this._getMallId() || '',
-      userId: info.uid || info.user_id || info.userId || this._getTokenInfo()?.userId || '',
-      username: info.username || info.user_name || info.login_name || '',
-      nickname: info.nick_name || info.nickname || info.name || '',
-      mobile: info.mobile || '',
-    };
+    return shopProfileParsers.parseUserInfo(payload, {
+      mallId: this._getMallId() || '',
+      userId: this._getTokenInfo()?.userId || '',
+    });
   }
 
   _parseServiceProfile(payload) {
-    const info = payload?.result || payload?.data || payload || {};
-    const mall = (info.mall && typeof info.mall === 'object') ? info.mall : {};
-    return {
-      mallId: info.mall_id || info.mallId || mall.mall_id || this._getMallId() || '',
-      mallName: mall.mall_name || info.mall_name || this._getShopInfo()?.name || '',
-      username: info.username || info.user_name || info.login_name || '',
-      serviceName: info.username || info.nickname || info.nick_name || info.name || '',
-      serviceAvatar: mall.logo || info.avatar || info.head_img || '',
-    };
+    return shopProfileParsers.parseServiceProfile(payload, {
+      mallId: this._getMallId() || '',
+      shopName: this._getShopInfo()?.name || '',
+    });
   }
 
   _getShopInfoRequestHeaders(type = 'default') {
@@ -2060,27 +2052,11 @@ class PddApiClient extends EventEmitter {
   }
 
   _parseMallInfo(payload) {
-    const info = payload?.result || payload?.data || payload || {};
-    const staple = Array.isArray(info.staple) ? info.staple : [];
-    return {
-      mallId: info.mall_id || info.mallId || this._getMallId() || '',
-      mallName: info.mall_name || info.mallName || '',
-      category: staple[0] || info.mall_category || info.category || '',
-      logo: info.logo || '',
-    };
+    return shopProfileParsers.parseMallInfo(payload, { mallId: this._getMallId() || '' });
   }
 
   _parseCredentialInfo(payload) {
-    const info = payload?.result || payload?.data || payload || {};
-    const mallInfo = info.mallInfo && typeof info.mallInfo === 'object' ? info.mallInfo : {};
-    const detail = info.queryDetailResult && typeof info.queryDetailResult === 'object' ? info.queryDetailResult : {};
-    const enterprise = detail.enterprise && typeof detail.enterprise === 'object' ? detail.enterprise : {};
-    return {
-      mallId: mallInfo.id || detail.mallId || this._getMallId() || '',
-      mallName: mallInfo.mallName || detail.mallName || '',
-      companyName: mallInfo.companyName || enterprise.companyName || '',
-      merchantType: detail.merchantType || '',
-    };
+    return shopProfileParsers.parseCredentialInfo(payload, { mallId: this._getMallId() || '' });
   }
 
   async getMallInfo(options = {}) {

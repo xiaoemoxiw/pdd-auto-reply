@@ -134,19 +134,59 @@
   }
 
   function esc(value) {
-    return callRuntime('esc', value) || '';
+    if (!value) return '';
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  function addLog(message, type) {
-    return callRuntime('addLog', message, type);
-  }
-
-  function formatApiDateTime(value) {
-    return callRuntime('formatApiDateTime', value) || '';
+  function addLog(text, type = 'info') {
+    const statusText = document.getElementById('statusText');
+    if (statusText) statusText.textContent = text;
+    console.log(`[${type}] ${text}`);
   }
 
   function getApiTimeMs(value) {
-    return callRuntime('getApiTimeMs', value) || 0;
+    if (!value) return 0;
+    if (value instanceof Date) {
+      const ms = value.getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    }
+    const num = Number(value);
+    if (Number.isFinite(num) && num) {
+      return num < 1e12 ? num * 1000 : num;
+    }
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (!text) return 0;
+      const fallback = new Date(text).getTime();
+      if (Number.isFinite(fallback)) return fallback;
+      const normalized = text
+        .replace(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(:\d{2})?/, '$1T$2$3');
+      const ms = new Date(normalized).getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    }
+    return 0;
+  }
+
+  function formatApiDateTime(value) {
+    const ms = getApiTimeMs(value);
+    if (!ms) return '';
+    const date = new Date(ms);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function formatApiListTime(value) {
+    const num = Number(value);
+    if (!num) return '-';
+    const ms = num < 1e12 ? num * 1000 : num;
+    const date = new Date(ms);
+    const now = new Date();
+    const sameDay = date.getFullYear() === now.getFullYear()
+      && date.getMonth() === now.getMonth()
+      && date.getDate() === now.getDate();
+    if (sameDay) {
+      return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   }
 
   function getApiActiveSession() {
@@ -157,16 +197,16 @@
     return callRuntime('loadQuickPhrases');
   }
 
-  function formatApiListTime(value) {
-    return callRuntime('formatApiListTime', value) || '';
-  }
-
   function getApiSessionKey(sessionOrShopId, maybeSessionId = '') {
-    return callRuntime('getApiSessionKey', sessionOrShopId, maybeSessionId) || '';
+    if (typeof sessionOrShopId === 'object' && sessionOrShopId) {
+      return `${sessionOrShopId.shopId || ''}::${sessionOrShopId.sessionId || ''}`;
+    }
+    return `${sessionOrShopId || ''}::${maybeSessionId || ''}`;
   }
 
   function emitRendererDebug(scope, message, extra = {}) {
-    return callRuntime('emitRendererDebug', scope, message, extra);
+    if (!window.pddApi?.debugLog) return;
+    window.pddApi.debugLog({ scope, message, extra });
   }
 
   function getApiSelectedShop() {
@@ -193,23 +233,396 @@
     return callRuntime('getApiSelectableShops') || [];
   }
 
+  function getApiSessionLastMessageActor(session = {}) {
+    const actor = String(session.lastMessageActor || '').toLowerCase();
+    if (actor) return actor;
+    const raw = session?.raw && typeof session.raw === 'object' ? session.raw : null;
+    const context = {
+      customer_id: session.customerId || raw?.customer_id,
+      buyer_id: session.customerId || raw?.buyer_id,
+      user_info: raw?.user_info,
+      from: raw?.from,
+      to: raw?.to,
+    };
+    const candidates = [
+      raw?.last_msg,
+      raw?.last_message,
+      raw?.latest_msg,
+      raw?.content,
+      raw,
+    ];
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const role = String(
+        candidate.role
+        || candidate.msg_from
+        || candidate.from_type
+        || candidate.sender_role
+        || candidate?.from?.role
+        || candidate?.sender?.role
+        || candidate?.to?.role
+        || ''
+      ).toLowerCase();
+      if (['buyer', 'customer', 'user', '1', '0'].includes(role)) return 'buyer';
+      if (['system', 'robot', 'bot', 'notice', 'tips', '99'].includes(role)) return 'system';
+      if (['seller', 'service', 'kf', 'agent', 'mall_cs', '2', '3', '4'].includes(role)) return 'seller';
+      const merged = { ...context, ...candidate };
+      if (merged.is_buyer || merged.is_buyer === 1 || merged.sender_type === 1 || merged.sender_type === 0) return 'buyer';
+      if (merged.is_robot || merged.is_system) return 'system';
+      if (merged.is_seller) return 'seller';
+    }
+    return 'unknown';
+  }
+
+  function isApiSessionLastMessageFromBuyer(session = {}) {
+    if (session.lastMessageIsFromBuyer === true) return true;
+    return getApiSessionLastMessageActor(session) === 'buyer';
+  }
+
+  function getApiPendingReplyElapsedMs(session = {}) {
+    const lastMessageMs = getApiTimeMs(session.lastMessageTime);
+    if (lastMessageMs > 0) {
+      return Math.max(0, Date.now() - lastMessageMs);
+    }
+    const waitValue = Number(session.waitTime || 0);
+    if (!(waitValue > 0)) return 0;
+    if (waitValue > 1e12) {
+      return Math.max(0, Date.now() - waitValue);
+    }
+    if (waitValue > 1e9) {
+      return Math.max(0, Date.now() - waitValue * 1000);
+    }
+    if (waitValue > 100000) {
+      return Math.max(0, waitValue);
+    }
+    if (waitValue > 1440) {
+      return Math.max(0, waitValue * 1000);
+    }
+    return Math.max(0, waitValue * 60000);
+  }
+
+  function getApiPendingReplyDisplayState(session = {}) {
+    const unreadCount = Number(session.unreadCount || 0);
+    const waitValue = Number(session.waitTime || 0);
+    const pending = isApiSessionLastMessageFromBuyer(session) && (unreadCount > 0 || waitValue > 0 || !!session.isTimeout);
+    if (!pending) {
+      return { pending: false, countdownSeconds: 0, waitMinutes: 0 };
+    }
+    const elapsedMs = getApiPendingReplyElapsedMs(session);
+    if (!elapsedMs) {
+      return { pending: false, countdownSeconds: 0, waitMinutes: 0 };
+    }
+    const timeoutMs = 180 * 1000;
+    if (elapsedMs < timeoutMs) {
+      return {
+        pending: true,
+        countdownSeconds: Math.ceil((timeoutMs - elapsedMs) / 1000),
+        waitMinutes: 0,
+      };
+    }
+    return {
+      pending: true,
+      countdownSeconds: 0,
+      waitMinutes: Math.max(3, Math.floor(elapsedMs / 60000)),
+    };
+  }
+
+  function getApiPendingReplyMinutes(session = {}) {
+    return getApiPendingReplyDisplayState(session).waitMinutes || 0;
+  }
+
   function hasApiPendingReply(session = {}) {
-    return !!callRuntime('hasApiPendingReply', session);
+    return !!getApiPendingReplyDisplayState(session).pending;
   }
 
   function formatApiPendingReplyText(session = {}) {
-    return callRuntime('formatApiPendingReplyText', session) || '';
+    const pendingState = getApiPendingReplyDisplayState(session);
+    if (!pendingState.pending) return '';
+    if (pendingState.countdownSeconds > 0) {
+      return `${pendingState.countdownSeconds}秒后超时`;
+    }
+    const waitMinutes = pendingState.waitMinutes || 0;
+    if (waitMinutes <= 0) return '';
+    if (waitMinutes > 60) {
+      return `已等待${Math.floor(waitMinutes / 60)}小时`;
+    }
+    return `已等待${waitMinutes}分钟`;
   }
 
   function getApiConversationFollowStatus(session = null) {
-    const status = callRuntime('getApiConversationFollowStatus', session);
-    if (status && typeof status === 'object') return status;
+    if (!session) {
+      return { text: '', highlighted: false, visible: false };
+    }
+    const pendingReplyText = formatApiPendingReplyText(session);
+    if (pendingReplyText) {
+      return { text: pendingReplyText, highlighted: true, visible: true };
+    }
+    const isShopMember = typeof session.isShopMember === 'boolean'
+      ? session.isShopMember
+      : (typeof session.is_shop_member === 'boolean' ? session.is_shop_member : null);
     return {
-      text: session ? '已关注本店' : '',
+      text: isShopMember === true ? '已关注本店' : '',
       highlighted: false,
-      visible: !!session,
+      visible: isShopMember === true,
     };
   }
+
+  function formatApiTime(value) {
+    const num = Number(value);
+    if (!num) return '-';
+    const ms = num < 1e12 ? num * 1000 : num;
+    const date = new Date(ms);
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+  }
+
+  function formatApiDate(value) {
+    const num = Number(value);
+    if (!num) return '';
+    const ms = num < 1e12 ? num * 1000 : num;
+    const date = new Date(ms);
+    return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
+  }
+
+  function formatApiAmount(value) {
+    const amount = Number(value || 0);
+    return Number.isFinite(amount) ? `¥${amount.toFixed(2)}` : '¥0.00';
+  }
+
+  function getApiSessionVisibleStartMs() {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return startOfToday - 24 * 60 * 60 * 1000;
+  }
+
+  function isApiSessionWithinRecentDays(session = {}) {
+    return getApiTimeMs(session.lastMessageTime) >= getApiSessionVisibleStartMs();
+  }
+
+  function getApiSessionDedupKey(session = {}) {
+    const raw = session?.raw && typeof session.raw === 'object' ? session.raw : {};
+    const shopId = String(session?.shopId || '').trim();
+    const identity = String(
+      session?.customerId
+      || session?.userUid
+      || raw?.customer_id
+      || raw?.buyer_id
+      || raw?.user_info?.uid
+      || session?.sessionId
+      || session?.explicitSessionId
+      || session?.conversationId
+      || session?.chatId
+      || session?.rawId
+      || ''
+    ).trim();
+    return `${shopId}::${identity}`;
+  }
+
+  function normalizeApiVideoItem(item = {}) {
+    if (!item || typeof item !== 'object') return null;
+    const normalized = {
+      id: Number(item.id || item.fileId || 0) || 0,
+      name: String(item.name || item.fileName || '').trim(),
+      extension: String(item.extension || '').trim(),
+      url: String(item.url || item.videoUrl || '').trim(),
+      coverUrl: String(item.coverUrl || item.videoCoverUrl || item.video_cover_url || '').trim(),
+      duration: Number(item.duration || item.videoDuration || 0) || 0,
+      width: Number(item.width || 0) || 0,
+      height: Number(item.height || 0) || 0,
+      size: Number(item.size || 0) || 0,
+      checkStatus: Number(item.checkStatus || item.check_status || 0) || 0,
+    };
+    if (!normalized.url && !normalized.id) return null;
+    return normalized;
+  }
+
+  function buildApiSyntheticRefundMessageKey(payload = {}) {
+    const refundCard = payload?.refundCard && typeof payload.refundCard === 'object' ? payload.refundCard : {};
+    return [
+      String(payload.shopId || ''),
+      String(payload.sessionId || ''),
+      String(refundCard.localKey || ''),
+      String(refundCard.orderSn || ''),
+      String(refundCard.actionText || ''),
+      String(refundCard.amountText || '')
+    ].join('::');
+  }
+
+  function formatApiCacheRelativeTime(ms) {
+    const numeric = Number(ms || 0);
+    if (!numeric) return '刚刚';
+    const diff = Date.now() - numeric;
+    if (diff < 0) return '刚刚';
+    if (diff < 30 * 1000) return '刚刚';
+    if (diff < 60 * 60 * 1000) return `${Math.max(1, Math.round(diff / 60000))} 分钟前`;
+    if (diff < 24 * 60 * 60 * 1000) return `${Math.max(1, Math.round(diff / 3600000))} 小时前`;
+    return `${Math.max(1, Math.round(diff / 86400000))} 天前`;
+  }
+
+  function isUnknownApiCustomerName(value = '') {
+    return ['未知客户', '未知', '客户', '未选择客户'].includes(String(value || '').trim());
+  }
+
+  function pickApiDisplayText(sources = [], keys = []) {
+    for (const source of sources) {
+      if (!source || typeof source !== 'object') continue;
+      for (const key of keys) {
+        const value = String(source[key] || '').trim();
+        if (!value) continue;
+        if (keys.includes('customerName') && isUnknownApiCustomerName(value)) continue;
+        return value;
+      }
+    }
+    return '';
+  }
+
+  function getShopAvailabilityStatus(shop) {
+    return shop?.availabilityStatus || shop?.status || 'offline';
+  }
+
+  function isApiSelectableShop(shop) {
+    const availabilityStatus = getShopAvailabilityStatus(shop);
+    if (!shop?.id) return false;
+    if (availabilityStatus === 'expired' || availabilityStatus === 'invalid') return false;
+    return shop.loginMethod !== 'token' || availabilityStatus === 'online' || !!shop?.tokenFileName;
+  }
+
+  function matchApiSessionKeyword(session, keyword) {
+    if (!keyword) return true;
+    const text = [
+      session.customerName,
+      session.customerId,
+      session.sessionId,
+      session.lastMessage,
+      session.orderId,
+      session.shopName
+    ].join(' ').toLowerCase();
+    return text.includes(keyword);
+  }
+
+  function pickApiSessionCustomerName(session = {}) {
+    const raw = session.raw && typeof session.raw === 'object' ? session.raw : {};
+    const userInfo = raw.user_info && typeof raw.user_info === 'object' ? raw.user_info : {};
+    const buyerInfo = raw.buyer && typeof raw.buyer === 'object' ? raw.buyer : {};
+    const customerInfo = raw.customer && typeof raw.customer === 'object' ? raw.customer : {};
+    const fromObj = raw.from && typeof raw.from === 'object' ? raw.from : {};
+    const toObj = raw.to && typeof raw.to === 'object' ? raw.to : {};
+    const buyerUid = String(
+      session.customerId
+      || raw.customer_id
+      || raw.buyer_id
+      || userInfo.uid
+      || raw.uid
+      || ''
+    ).trim();
+    const participant = buyerUid && String(fromObj.uid || '').trim() === buyerUid
+      ? fromObj
+      : (buyerUid && String(toObj.uid || '').trim() === buyerUid ? toObj : (fromObj.uid ? fromObj : toObj));
+    return pickApiDisplayText(
+      [session, raw, userInfo, buyerInfo, customerInfo, participant, fromObj, toObj],
+      [
+        'customerName',
+        'displayName',
+        'nick',
+        'nickname',
+        'nick_name',
+        'buyer_name',
+        'buyer_nickname',
+        'buyer_nick_name',
+        'customer_name',
+        'customer_nickname',
+        'customer_nick_name',
+        'display_name',
+        'name',
+      ]
+    );
+  }
+
+  function buildApiSession(session = {}) {
+    const state = getState();
+    const shopsList = Array.isArray(state.shops) ? state.shops : [];
+    const shop = shopsList.find(item => item.id === session.shopId) || null;
+    const shopId = session.shopId || shop?.id || state.apiActiveSessionShopId || state.activeShopId || '';
+    const lastMessageActor = getApiSessionLastMessageActor(session);
+    const mallName = session.mallName || session.raw?.mallName || session.raw?.mall_name || '';
+    const preferredShopName = ['未命名店铺', '未知店铺'].includes(String(session.shopName || '').trim())
+      ? ''
+      : session.shopName;
+    const customerName = pickApiSessionCustomerName(session);
+    return {
+      ...session,
+      shopId,
+      mallName,
+      customerName,
+      dedupKey: getApiSessionDedupKey({ ...session, shopId }),
+      isShopMember: typeof session.isShopMember === 'boolean'
+        ? session.isShopMember
+        : (typeof session.is_shop_member === 'boolean'
+          ? session.is_shop_member
+          : (typeof session.raw?.is_shop_member === 'boolean'
+            ? session.raw.is_shop_member
+            : null)),
+      shopName: preferredShopName || mallName || shop?.name || '未命名店铺',
+      sessionKey: getApiSessionKey(shopId, session.sessionId),
+      lastMessageActor,
+      lastMessageIsFromBuyer: session.lastMessageIsFromBuyer === true || lastMessageActor === 'buyer',
+    };
+  }
+  window.buildApiSession = buildApiSession;
+
+  function getApiSessionSyncSignature(session = {}) {
+    const normalized = buildApiSession(session);
+    return [
+      normalized.shopId || '',
+      normalized.sessionId || '',
+      normalized.lastMessageTime || 0,
+      normalized.lastMessageActor || '',
+      normalized.unreadCount || 0,
+      normalized.waitTime || 0,
+      normalized.lastMessage || '',
+    ].join('::');
+  }
+  window.getApiSessionSyncSignature = getApiSessionSyncSignature;
+
+  function getApiSessionRealtimeSortTime(session = {}) {
+    const normalized = buildApiSession(session);
+    return Number(normalized.updatedAt || normalized.lastMessageTime || 0) || 0;
+  }
+  window.getApiSessionRealtimeSortTime = getApiSessionRealtimeSortTime;
+
+  function hasApiSessionRealtimeChange(existingSession = null, nextSession = null) {
+    if (!existingSession) return true;
+    return getApiSessionSyncSignature(existingSession) !== getApiSessionSyncSignature(nextSession);
+  }
+  window.hasApiSessionRealtimeChange = hasApiSessionRealtimeChange;
+
+  function dedupeApiSessions(list = []) {
+    const map = new Map();
+    (Array.isArray(list) ? list : []).forEach(session => {
+      const normalized = buildApiSession(session);
+      if (!normalized.shopId || !normalized.sessionId) return;
+      const dedupKey = normalized.dedupKey || getApiSessionDedupKey(normalized);
+      const existing = map.get(dedupKey);
+      if (!existing) {
+        map.set(dedupKey, normalized);
+        return;
+      }
+      const existingTime = Number(existing.lastMessageTime || 0) || 0;
+      const incomingTime = Number(normalized.lastMessageTime || 0) || 0;
+      const primary = incomingTime >= existingTime ? normalized : existing;
+      const secondary = primary === normalized ? existing : normalized;
+      map.set(dedupKey, buildApiSession({
+        ...secondary,
+        ...primary,
+        customerName: primary.customerName || secondary.customerName || '',
+        customerAvatar: primary.customerAvatar || secondary.customerAvatar || '',
+        lastMessage: primary.lastMessage || secondary.lastMessage || '',
+        unreadCount: Math.max(Number(existing.unreadCount || 0) || 0, Number(normalized.unreadCount || 0) || 0),
+        waitTime: Math.max(Number(existing.waitTime || 0) || 0, Number(normalized.waitTime || 0) || 0),
+      }));
+    });
+    return Array.from(map.values());
+  }
+  window.dedupeApiSessions = dedupeApiSessions;
 
   function applyApiChatFollowStatus(session = null) {
     const followStatusEl = document.getElementById('apiChatFollowStatus');
@@ -7509,6 +7922,121 @@
   window.closeApiSmallPaymentModal = closeApiSmallPaymentModal;
   window.openApiGoodsSpecModal = openApiGoodsSpecModal;
   window.closeApiGoodsSpecModal = closeApiGoodsSpecModal;
+
+  // 与 index.html inline script 完全等价的工具/谓词函数，统一在此暴露
+  // 让 inline script 删除同名副本后，依旧能通过全局调用走到模块版本
+  window.applyApiChatFollowStatus = applyApiChatFollowStatus;
+  window.buildApiRefundCardRows = buildApiRefundCardRows;
+  window.buildApiSystemActionHtml = buildApiSystemActionHtml;
+  window.extractApiStructuredNoticeEntryText = extractApiStructuredNoticeEntryText;
+  window.getApiImageMessageUrl = getApiImageMessageUrl;
+  window.getApiMessageReadState = getApiMessageReadState;
+  window.getApiRefundStatusUpdateMeta = getApiRefundStatusUpdateMeta;
+  window.getApiSessionGenderValue = getApiSessionGenderValue;
+  window.getApiSessionGroupNumber = getApiSessionGroupNumber;
+  window.getApiVideoMessageCoverUrl = getApiVideoMessageCoverUrl;
+  window.getApiVideoMessageDuration = getApiVideoMessageDuration;
+  window.getApiVideoMessageUrl = getApiVideoMessageUrl;
+  window.isApiImageMessage = isApiImageMessage;
+  window.isApiRefundDefaultSellerNoteText = isApiRefundDefaultSellerNoteText;
+  window.isApiRefundPendingNoticeText = isApiRefundPendingNoticeText;
+  window.isApiRefundSuccessNoticeText = isApiRefundSuccessNoticeText;
+  window.isApiVideoMessage = isApiVideoMessage;
+  window.isSameApiInviteOrderCard = isSameApiInviteOrderCard;
+  window.normalizeApiInviteOrderCard = normalizeApiInviteOrderCard;
+  window.normalizeApiInviteOrderComparableText = normalizeApiInviteOrderComparableText;
+  window.normalizeApiSystemActionText = normalizeApiSystemActionText;
+  window.normalizeApiSystemComparableText = normalizeApiSystemComparableText;
+  window.resolveApiRefundCardFooterText = resolveApiRefundCardFooterText;
+  window.resolveApiRefundStatusFooterText = resolveApiRefundStatusFooterText;
+  window.shouldShowApiMessageDivider = shouldShowApiMessageDivider;
+
+  // 历史上 inline script 通过 __chatApiModuleFns?.xxx 转发的纯 stub 函数，统一直接暴露
+  // 让 inline script 删除门面后，调用方走全局即可拿到模块版本
+  window.extractApiGoodsLinkInfo = extractApiGoodsLinkInfo;
+  window.pickApiGoodsText = pickApiGoodsText;
+  window.pickApiGoodsNumber = pickApiGoodsNumber;
+  window.formatApiGoodsPrice = formatApiGoodsPrice;
+  window.normalizeApiGoodsSpecItems = normalizeApiGoodsSpecItems;
+  window.buildApiGoodsSpecFallbackItems = buildApiGoodsSpecFallbackItems;
+  window.isMeaningfulApiGoodsCard = isMeaningfulApiGoodsCard;
+  window.describeApiGoodsCardResult = describeApiGoodsCardResult;
+  window.buildApiGoodsCardFallback = buildApiGoodsCardFallback;
+  window.renderApiGoodsCardHtml = renderApiGoodsCardHtml;
+  window.debugApiGoodsSourceMessage = debugApiGoodsSourceMessage;
+  window.resolveApiGoodsSourceCard = resolveApiGoodsSourceCard;
+  window.renderApiGoodsSourceNoticeCardHtml = renderApiGoodsSourceNoticeCardHtml;
+  window.extractApiInviteOrderCard = extractApiInviteOrderCard;
+  window.renderApiInviteOrderCardHtml = renderApiInviteOrderCardHtml;
+  window.ensureApiGoodsCardLoaded = ensureApiGoodsCardLoaded;
+  window.isApiUnmatchedReplyNoticeMessage = isApiUnmatchedReplyNoticeMessage;
+  window.renderApiVideoMessageHtml = renderApiVideoMessageHtml;
+  window.getApiSellerDisplayName = getApiSellerDisplayName;
+
+  // 历史 inline rich stub（fallback 与模块实现完全等价），统一暴露后删除 inline 副本
+  window.isApiGoodsSourceNoticeMessage = isApiGoodsSourceNoticeMessage;
+  window.getApiRefundSystemNoticeKind = getApiRefundSystemNoticeKind;
+  window.getApiRefundSystemNoticeDisplayText = getApiRefundSystemNoticeDisplayText;
+  window.isApiInviteOrderTemplateMessage = isApiInviteOrderTemplateMessage;
+  window.renderApiSystemMessageHtml = renderApiSystemMessageHtml;
+
+  // 历史 inline rich stub（fallback 是死代码、滞留旧实现），module 版本已是实际生效版本
+  // 一并暴露后删除 inline 副本，运行时行为不变，仅清理死代码
+  window.normalizeApiGoodsCard = normalizeApiGoodsCard;
+  window.renderApiRefundCardHtml = renderApiRefundCardHtml;
+  window.getApiSystemNoticeText = getApiSystemNoticeText;
+  window.renderApiRefundSystemNoticeCardHtml = renderApiRefundSystemNoticeCardHtml;
+  window.isApiSystemNoticeMessage = isApiSystemNoticeMessage;
+
+  // C2 step4：以下为 inline 与 module 双轨真实现差异函数，统一切换到 module 版本
+  // 各 inline 调用方传参与 module 签名兼容，行为差异为微调（更规整/更宽松 fallback）
+  window.formatApiVideoDuration = formatApiVideoDuration;
+  window.getApiSystemPromptContext = getApiSystemPromptContext;
+  window.findApiRefundStatusUpdateForCard = findApiRefundStatusUpdateForCard;
+  window.normalizeApiRefundCardAmountText = normalizeApiRefundCardAmountText;
+
+  // C2 step5：原 trampoline 函数（module 通过 callRuntime 调回 inline 真实现）
+  // 已就地改为真实现，inline 真实现可一并删除，所有调用方走全局即可
+  window.esc = esc;
+  window.addLog = addLog;
+  window.emitRendererDebug = emitRendererDebug;
+  window.getApiSessionKey = getApiSessionKey;
+
+  // C2 step6：纯函数时间格式化，原 trampoline 升格为真实现
+  window.formatApiDateTime = formatApiDateTime;
+  window.getApiTimeMs = getApiTimeMs;
+  window.formatApiListTime = formatApiListTime;
+
+  // C2 step7：会话超时回复 / 关注状态判定（纯函数子树，仅依赖 getApiTimeMs）
+  window.getApiSessionLastMessageActor = getApiSessionLastMessageActor;
+  window.isApiSessionLastMessageFromBuyer = isApiSessionLastMessageFromBuyer;
+  window.getApiPendingReplyElapsedMs = getApiPendingReplyElapsedMs;
+  window.getApiPendingReplyDisplayState = getApiPendingReplyDisplayState;
+  window.getApiPendingReplyMinutes = getApiPendingReplyMinutes;
+  window.hasApiPendingReply = hasApiPendingReply;
+  window.formatApiPendingReplyText = formatApiPendingReplyText;
+  window.getApiConversationFollowStatus = getApiConversationFollowStatus;
+
+  // C2 step8：批量纯函数（时间格式化、视频/退款/缓存归一化等）
+  window.formatApiTime = formatApiTime;
+  window.formatApiDate = formatApiDate;
+  window.formatApiAmount = formatApiAmount;
+  window.getApiSessionVisibleStartMs = getApiSessionVisibleStartMs;
+  window.isApiSessionWithinRecentDays = isApiSessionWithinRecentDays;
+  window.getApiSessionDedupKey = getApiSessionDedupKey;
+  window.normalizeApiVideoItem = normalizeApiVideoItem;
+  window.buildApiSyntheticRefundMessageKey = buildApiSyntheticRefundMessageKey;
+  window.formatApiCacheRelativeTime = formatApiCacheRelativeTime;
+
+  // C2 step9：客户名提取链（纯函数子树）
+  window.isUnknownApiCustomerName = isUnknownApiCustomerName;
+  window.pickApiDisplayText = pickApiDisplayText;
+  window.pickApiSessionCustomerName = pickApiSessionCustomerName;
+
+  // C2 step10：店铺可用性判定 + 会话关键字匹配（纯函数）
+  window.getShopAvailabilityStatus = getShopAvailabilityStatus;
+  window.isApiSelectableShop = isApiSelectableShop;
+  window.matchApiSessionKeyword = matchApiSessionKeyword;
 
   if (typeof window.registerRendererModule === 'function') {
     window.registerRendererModule('chat-api-module', bindChatApiModule);

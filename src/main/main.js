@@ -22,6 +22,8 @@ const {
   ensureApiTrafficLogReady,
   normalizeTrafficEntry,
 } = require('./traffic/api-traffic-recorder');
+const { createTrafficBridge } = require('./traffic/traffic-bridge');
+const { createApiClientRegistry } = require('./clients/api-client-registry');
 const chatApiCacheStore = require('./chat-api-cache-store');
 const { registerAiIpc, autoLoadAiIntentEngine } = require('./ipc/register-ai-ipc');
 const { registerShopIpc } = require('./ipc/register-shop-ipc');
@@ -71,46 +73,6 @@ if (!hasSingleInstanceLock) {
 
 const UNMATCHED_LOG_MAX = 200;
 const API_ALL_SHOPS = '__all__';
-
-function safeParseCapturedBody(text) {
-  if (!text || typeof text !== 'string') return null;
-  const source = String(text).trim();
-  if (!source) return null;
-  try {
-    return JSON.parse(source);
-  } catch {
-    if (!source.includes('=') || source.startsWith('<')) {
-      return null;
-    }
-    try {
-      const params = new URLSearchParams(source);
-      const result = {};
-      let hasEntry = false;
-      for (const [key, rawValue] of params.entries()) {
-        hasEntry = true;
-        const value = String(rawValue || '').trim();
-        let parsedValue = value;
-        if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
-          try {
-            parsedValue = JSON.parse(value);
-          } catch {}
-        }
-        if (Object.prototype.hasOwnProperty.call(result, key)) {
-          if (Array.isArray(result[key])) {
-            result[key].push(parsedValue);
-          } else {
-            result[key] = [result[key], parsedValue];
-          }
-        } else {
-          result[key] = parsedValue;
-        }
-      }
-      return hasEntry ? result : null;
-    } catch {
-      return null;
-    }
-  }
-}
 
 const store = new Store({
   defaults: {
@@ -185,7 +147,9 @@ const PDD_MAIL_URL = 'https://mms.pinduoduo.com/other/mail/mailList?type=-1&id=4
 const PDD_INVOICE_URL = 'https://mms.pinduoduo.com/invoice/center?msfrom=mms_sidenav&activeKey=0';
 const PDD_VIOLATION_URL = 'https://mms.pinduoduo.com/pg/violation_list/mall_manage?msfrom=mms_sidenav';
 const PDD_TICKET_URL = 'https://mms.pinduoduo.com/aftersales/work_order/list?msfrom=mms_sidenav';
-const PDD_AFTERSALE_URL = 'https://mms.pinduoduo.com/aftersales/refund/list?msfrom=mms_sidenav';
+const PDD_AFTERSALE_URL = 'https://mms.pinduoduo.com/aftersales/aftersale_list?msfrom=mms_sidenav';
+// 历史版本默认值，用于检测旧 store 值并迁移到新地址
+const LEGACY_AFTERSALE_URL_PATH = '/aftersales/refund/list';
 
 const MOCK_SHOPS = [
   { id: 'shop_1', name: '环球优品旗舰店', account: 'huanqiu_001', mallId: '', group: 'group_1', remark: '主力店铺', status: 'online', loginMethod: 'token', userAgent: '', bindTime: '2025-10-15', category: '日用百货', balance: 15280.50 },
@@ -249,12 +213,8 @@ let replyEngine = null;
 const tokenFileStore = new TokenFileStore(store);
 let aiIntentEngine = null;
 let networkMonitors = new Map();  // shopId -> NetworkMonitor
-let apiClients = new Map();
-let mailApiClients = new Map();
-let invoiceApiClients = new Map();
-let ticketApiClients = new Map();
-let violationApiClients = new Map();
-let deductionApiClients = new Map();
+// 6 套 API client 注册表统一收口在 ./clients/api-client-registry.js，
+// 这里不再持有 apiClients / mailApiClients / ... Map。
 let apiTrafficStore = new Map();
 let apiSessionStore = new Map();
 const apiPendingRendererSessionUpdates = new Map();
@@ -481,7 +441,12 @@ function normalizeStoredPddUrls() {
     store.set('ticketUrl', PDD_TICKET_URL);
   }
   const storedAfterSaleUrl = store.get('aftersaleUrl');
-  if (!storedAfterSaleUrl || isChatPageUrl(storedAfterSaleUrl) || isMailPageUrl(storedAfterSaleUrl) || isInvoicePageUrl(storedAfterSaleUrl) || isViolationPageUrl(storedAfterSaleUrl) || isTicketPageUrl(storedAfterSaleUrl)) {
+  const isLegacyAfterSaleUrl = typeof storedAfterSaleUrl === 'string'
+    && storedAfterSaleUrl.includes(LEGACY_AFTERSALE_URL_PATH);
+  if (!storedAfterSaleUrl || isLegacyAfterSaleUrl || isChatPageUrl(storedAfterSaleUrl) || isMailPageUrl(storedAfterSaleUrl) || isInvoicePageUrl(storedAfterSaleUrl) || isViolationPageUrl(storedAfterSaleUrl) || isTicketPageUrl(storedAfterSaleUrl)) {
+    if (isLegacyAfterSaleUrl) {
+      store.delete('aftersaleUrl');
+    }
     store.set('aftersaleUrl', getPddAfterSaleUrl());
   }
 }
@@ -553,21 +518,8 @@ function detectChatPage(view, shopId) {
 
 // 网络监控提取的消息去重（避免与 DOM 监听重复触发）
 const networkMsgDedup = new Map(); // text -> timestamp
-const apiSessionTrafficSnapshot = new Map();
-const apiTrafficMessageSnapshot = new Set();
 const API_RENDERER_SESSION_UPDATE_BATCH_DELAY_MS = 180;
 const API_RENDERER_SESSION_UPDATE_INITIAL_DELAY_MS = 900;
-
-function buildApiSessionTrafficSignature(sessions = []) {
-  if (!Array.isArray(sessions)) return '';
-  return sessions.map(item => [
-    item.sessionId || '',
-    item.lastMessageTime || 0,
-    item.unreadCount || 0,
-    item.waitTime || 0,
-    item.lastMessage || '',
-  ].join(':')).join('|');
-}
 
 // 防御：任何字段命中 [TEXT] / [ID] / [REDACTED] / [URL] 等脱敏占位符的会话条目，
 // 视为来自历史脱敏快照的污染数据，必须丢弃，避免渲染层出现"[TEXT]"假会话、
@@ -680,52 +632,6 @@ function enqueueRendererApiSessionUpdate(shopId, sessions = [], source = 'runtim
   scheduleRendererApiSessionUpdateFlush();
 }
 
-function extractApiSessionsFromTraffic(shopId) {
-  if (!shopId) return [];
-  const client = getApiClient(shopId);
-  const traffic = getApiTraffic(shopId);
-  const urlParts = ['/plateau/chat/latest_conversations', '/plateau/conv_list/status'];
-  for (const urlPart of urlParts) {
-    for (let i = traffic.length - 1; i >= 0; i--) {
-      const entry = traffic[i];
-      if (!String(entry?.url || '').includes(urlPart) || !entry?.responseBody) continue;
-      try {
-        const sessions = client._parseSessionList(entry.responseBody);
-        if (Array.isArray(sessions) && sessions.length > 0) {
-          return setApiSessionSnapshot(shopId, sessions, `traffic-fallback:${urlPart}`);
-        }
-      } catch {}
-    }
-  }
-  return [];
-}
-
-function pushApiSessionsFromTraffic(shopId, entry) {
-  if (!shopId || !entry?.url) return;
-  const url = String(entry.url || '');
-  if (!url.includes('/plateau/chat/latest_conversations') && !url.includes('/plateau/conv_list/status')) {
-    return;
-  }
-  const client = getApiClient(shopId);
-  if (!client || !entry.responseBody) return;
-  try {
-    const sessions = client._parseSessionList(entry.responseBody);
-    if (!Array.isArray(sessions) || sessions.length === 0) return;
-    const signature = buildApiSessionTrafficSignature(sessions);
-    if (apiSessionTrafficSnapshot.get(shopId) === signature) return;
-    apiSessionTrafficSnapshot.set(shopId, signature);
-    client._sessionCache = sessions;
-    setApiSessionSnapshot(shopId, sessions, 'traffic');
-    updateShopStatus(shopId, 'online');
-    enqueueRendererApiSessionUpdate(shopId, sessions, 'traffic');
-    if (isVerboseRuntimeLoggingEnabled()) {
-      console.log(`[PDD接口:${shopId}] 已从页面抓包同步会话: ${sessions.length}`);
-    }
-  } catch (error) {
-    console.log(`[PDD接口:${shopId}] 页面抓包解析会话失败: ${error.message}`);
-  }
-}
-
 function getShopDisplayName(shopId) {
   const shop = (store.get('shops') || []).find(item => item.id === shopId);
   return shop?.name || shopId || '未知店铺';
@@ -811,456 +717,81 @@ function notifyApiMessage(payload = {}) {
   });
 }
 
-function getApiRefundTemplateFallbackText() {
-  return '亲亲，这边帮您申请退款，您看可以吗？若同意可以点击下方卡片按钮哦～';
-}
+// 抓包数据 -> 业务运行时 的桥接层（会话/通知/已读位点/退款卡片回灌）。
+// 实际逻辑见 ./traffic/traffic-bridge.js；这里通过依赖注入把 main.js 已有
+// 的状态访问函数交给桥接层使用，避免双向 import 与隐式全局耦合。
+const trafficBridge = createTrafficBridge({
+  getApiClient: (shopId) => getApiClient(shopId),
+  getApiTraffic: (shopId) => getApiTraffic(shopId),
+  getApiSessionSnapshot: (shopId) => getApiSessionSnapshot(shopId),
+  setApiSessionSnapshot: (shopId, sessions, source) => setApiSessionSnapshot(shopId, sessions, source),
+  enqueueRendererApiSessionUpdate: (shopId, sessions, source) => enqueueRendererApiSessionUpdate(shopId, sessions, source),
+  updateShopStatus: (shopId, status) => updateShopStatus(shopId, status),
+  getShopDisplayName: (shopId) => getShopDisplayName(shopId),
+  notifyApiMessage: (payload) => notifyApiMessage(payload),
+  getMainWindow: () => mainWindow,
+  sendToDebug,
+  isVerboseRuntimeLoggingEnabled,
+});
 
-function getTrafficNotifyPayload(entry = {}) {
-  const decodedFrame = entry?.decodedFrame && typeof entry.decodedFrame === 'object' ? entry.decodedFrame : null;
-  return decodedFrame?.notifyPayload && typeof decodedFrame.notifyPayload === 'object'
-    ? decodedFrame.notifyPayload
-    : null;
-}
-
-function extractTrafficNotifyMessages(notifyPayload = {}) {
-  const records = [];
-  const pushDataList = Array.isArray(notifyPayload?.push_data?.data) ? notifyPayload.push_data.data : [];
-  pushDataList.forEach(item => {
-    const message = item?.message && typeof item.message === 'object'
-      ? item.message
-      : (item && typeof item === 'object' ? item : null);
-    if (!message) return;
-    records.push({
-      message,
-      sourceType: 'push-data',
-      notifyResponse: String(notifyPayload?.response || '').trim(),
-      requestId: String(notifyPayload?.request_id || '').trim(),
-    });
-  });
-  if (notifyPayload?.message && typeof notifyPayload.message === 'object') {
-    records.push({
-      message: notifyPayload.message,
-      sourceType: 'direct-message',
-      notifyResponse: String(notifyPayload?.response || '').trim(),
-      requestId: String(notifyPayload?.request_id || '').trim(),
-    });
-  }
-  return records;
-}
-
-function normalizeTrafficNotifyText(value = '') {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value).replace(/\s+/g, ' ').trim();
-  }
-  if (Array.isArray(value)) {
-    return value.map(item => normalizeTrafficNotifyText(item)).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-  }
-  if (typeof value === 'object') {
-    const preferredText = normalizeTrafficNotifyText(
-      value.text
-      || value.content
-      || value.message
-      || value.msg
-      || value.title
-      || value.label
-      || value.name
-      || value.desc
-      || value.value
-      || ''
-    );
-    if (preferredText) return preferredText;
-    return Object.values(value)
-      .map(item => normalizeTrafficNotifyText(item))
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-  return '';
-}
-
-function extractTrafficNotifyEntryText(entry = {}) {
-  if (!entry || typeof entry !== 'object') return '';
-  return normalizeTrafficNotifyText(
-    entry?.text
-    || entry?.content
-    || entry?.message
-    || entry?.msg
-    || entry?.title
-    || entry?.label
-    || entry?.name
-    || entry?.desc
-    || entry?.value
-    || ''
-  );
-}
-
-function extractTrafficStructuredMessageText(rawMessage = {}) {
-  const info = rawMessage?.info && typeof rawMessage.info === 'object' ? rawMessage.info : {};
-  const systemInfo = rawMessage?.system && typeof rawMessage.system === 'object' ? rawMessage.system : {};
-  const pushBizContext = rawMessage?.push_biz_context && typeof rawMessage.push_biz_context === 'object'
-    ? rawMessage.push_biz_context
-    : {};
-  const directText = normalizeTrafficNotifyText(
-    info?.mall_content
-    || info?.merchant_content
-    || info?.content
-    || info?.text
-    || info?.title
-    || info?.label
-    || info?.desc
-    || info?.tip
-    || info?.message
-    || systemInfo?.text
-    || systemInfo?.content
-    || pushBizContext?.replace_content
-    || pushBizContext?.replaceContent
-    || ''
-  );
-  if (directText) return directText;
-  const entryLists = [
-    Array.isArray(info?.item_content) ? info.item_content : [],
-    Array.isArray(info?.mall_item_content) ? info.mall_item_content : [],
-    Array.isArray(info?.items) ? info.items : [],
-  ];
-  for (const list of entryLists) {
-    const entryText = list.map(entry => extractTrafficNotifyEntryText(entry)).filter(Boolean).join(' ').trim();
-    if (entryText) return entryText;
-  }
-  return '';
-}
-
-function buildRefundCardStateDebugPayload(message = {}) {
-  const raw = message?.raw && typeof message.raw === 'object' ? message.raw : {};
-  const info = raw?.info && typeof raw.info === 'object' ? raw.info : {};
-  if (String(info.card_id || '').trim() !== 'ask_refund_apply') return null;
-  const state = info?.state && typeof info.state === 'object' ? info.state : {};
-  const itemRows = (Array.isArray(info?.item_list) ? info.item_list : [])
-    .map(item => {
-      const label = normalizeTrafficNotifyText(item?.left || item?.label || item?.name || '');
-      const value = Array.isArray(item?.right)
-        ? item.right.map(entry => normalizeTrafficNotifyText(entry?.text || entry?.value || '')).filter(Boolean).join(' ')
-        : '';
-      if (!label && !value) return null;
-      return { label, value };
-    })
-    .filter(Boolean);
-  const buttonTexts = (Array.isArray(info?.button_list) ? info.button_list : [])
-    .map(item => normalizeTrafficNotifyText(
-      item?.text || item?.title || item?.label || item?.button_text || item?.buttonText || item?.name || ''
-    ))
-    .filter(Boolean);
-  return {
-    shopId: message.shopId || '',
-    sessionId: message.sessionId || '',
-    messageId: message.messageId || '',
-    timestamp: Number(message?.timestamp || 0) || Date.now(),
-    type: Number(raw?.type ?? -1),
-    templateName: String(raw?.template_name || message?.templateName || '').trim(),
-    cardId: String(info.card_id || '').trim(),
-    title: normalizeTrafficNotifyText(info?.title || message?.refundCard?.title || ''),
-    content: normalizeTrafficNotifyText(message?.content || raw?.content || ''),
-    footerText: normalizeTrafficNotifyText(message?.refundCard?.footerText || ''),
-    stateStatus: state?.status ?? '',
-    stateExpireText: normalizeTrafficNotifyText(state?.expire_text || ''),
-    stateText: normalizeTrafficNotifyText(state?.text || state?.desc || state?.label || ''),
-    stateKeys: Object.keys(state),
-    buttonTexts,
-    itemRows,
-  };
-}
-
-function buildRefundCardFromNotify(rawMessage = {}) {
-  const info = rawMessage?.info && typeof rawMessage.info === 'object' ? rawMessage.info : {};
-  if (String(info.card_id || '').trim() !== 'ask_refund_apply') return null;
-  const goodsInfo = info?.goods_info && typeof info.goods_info === 'object' ? info.goods_info : {};
-  const displayState = info?.mstate && typeof info.mstate === 'object'
-    ? info.mstate
-    : (info?.state && typeof info.state === 'object' ? info.state : {});
-  const itemList = Array.isArray(info?.item_list) ? info.item_list : [];
-  const rows = itemList.map(item => {
-    const label = normalizeTrafficNotifyText(item?.left || item?.label || item?.name || '');
-    const values = Array.isArray(item?.right)
-      ? item.right.map(entry => normalizeTrafficNotifyText(entry?.text || entry?.value || '')).filter(Boolean)
-      : [];
-    return { label, value: values.join(' ') };
-  });
-  const findRowValue = (...keywords) => {
-    const row = rows.find(item => keywords.some(keyword => item.label.includes(keyword)));
-    return row?.value || '';
-  };
-  const resolveFooterText = () => {
-    const explicitText = normalizeTrafficNotifyText(
-      displayState?.text || displayState?.desc || displayState?.label || displayState?.expire_text || ''
-    );
-    if (explicitText && explicitText !== '已过期') return explicitText;
-    const statusValue = Number(displayState?.status);
-    if (statusValue === 2) return '消费者已同意';
-    if (statusValue === 3) return '消费者已拒绝';
-    return '等待消费者确认';
-  };
-  const amountFen = Number(goodsInfo?.total_amount || 0) || 0;
-  return {
-    localKey: String(rawMessage?.msg_id || rawMessage?.message_id || ''),
-    orderSn: String(goodsInfo?.order_sequence_no || ''),
-    title: normalizeTrafficNotifyText(info?.title || '') || '商家想帮您申请快捷退款',
-    actionText: findRowValue('申请类型') || '退款',
-    goodsTitle: normalizeTrafficNotifyText(goodsInfo?.goods_name || '') || '订单商品',
-    imageUrl: normalizeTrafficNotifyText(goodsInfo?.goods_thumb_url || ''),
-    specText: [normalizeTrafficNotifyText(goodsInfo?.extra || ''), goodsInfo?.count ? `x${goodsInfo.count}` : ''].filter(Boolean).join(' '),
-    reasonText: findRowValue('申请原因') || '其他原因',
-    amountText: findRowValue('退款金额') || (amountFen > 0 ? `¥${(amountFen / 100).toFixed(2)}` : ''),
-    noteText: findRowValue('申请说明') || '商家代消费者填写售后单',
-    contactText: findRowValue('联系方式'),
-    footerText: resolveFooterText(),
-  };
-}
-
-function buildRefundStatusUpdateFromNotify(rawMessage = {}) {
-  const messageType = Number(rawMessage?.type ?? -1);
-  const data = rawMessage?.data && typeof rawMessage.data === 'object' ? rawMessage.data : {};
-  if (messageType !== 90) return null;
-  const targetMessageId = String(data?.msg_id || '').trim();
-  const statusValue = Number(data?.status);
-  const statusText = normalizeTrafficNotifyText(data?.text || '');
-  if (!targetMessageId || !Number.isFinite(statusValue)) return null;
-  if (statusValue === 2) {
-    return {
-      kind: 'refund-pending',
-      targetMessageId,
-      status: statusValue,
-      displayText: '消费者已同意您发起的退款申请，请及时处理',
-    };
-  }
-  if (statusValue === 3) {
-    return {
-      kind: 'refund-rejected',
-      targetMessageId,
-      status: statusValue,
-      displayText: statusText || '消费者已拒绝',
-    };
-  }
-  return null;
-}
-
-function normalizeApiTrafficNotifyMessage(shopId, rawMessage = {}, options = {}) {
-  const fromRole = String(rawMessage?.from?.role || '').trim();
-  const toRole = String(rawMessage?.to?.role || '').trim();
-  const isFromBuyer = fromRole === 'user' || toRole === 'mall_cs' || toRole === 'mall';
-  const messageData = rawMessage?.data && typeof rawMessage.data === 'object' ? rawMessage.data : {};
-  const sessionId = String(
-    rawMessage?.session_id
-    || rawMessage?.sessionId
-    || rawMessage?.conversation_id
-    || rawMessage?.conversationId
-    || rawMessage?.chat_id
-    || rawMessage?.chatId
-    || messageData?.session_id
-    || messageData?.sessionId
-    || messageData?.conversation_id
-    || messageData?.conversationId
-    || messageData?.chat_id
-    || messageData?.chatId
-    || (
-      isFromBuyer
-        ? (rawMessage?.from?.uid || rawMessage?.to?.uid || '')
-        : (rawMessage?.to?.uid || rawMessage?.from?.uid || '')
-    )
-    || messageData?.user_id
-    || messageData?.uid
-    || messageData?.customer_id
-    || rawMessage?.buyer_id
-    || rawMessage?.customer_id
-  ).trim();
-  if (!sessionId) return null;
-  const messageType = Number(rawMessage?.type ?? -1);
-  const templateName = String(rawMessage?.template_name || options?.notifyResponse || '').trim();
-  const defaultContent = templateName === 'apply_after_sales_for_customer_automatic_message'
-    ? getApiRefundTemplateFallbackText()
-    : '';
-  const content = normalizeTrafficNotifyText(
-    rawMessage?.content
-    || extractTrafficStructuredMessageText(rawMessage)
-    || rawMessage?.push_biz_context?.replace_content
-    || rawMessage?.push_biz_context?.replaceContent
-    || rawMessage?.data?.content
-    || defaultContent
-  ) || defaultContent;
-  const refundCard = messageType === 19 ? buildRefundCardFromNotify(rawMessage) : null;
-  const refundStatusUpdate = buildRefundStatusUpdateFromNotify(rawMessage);
-  const normalizedContent = content || normalizeTrafficNotifyText(refundStatusUpdate?.displayText || '');
-  if (!normalizedContent && !refundCard && !refundStatusUpdate) return null;
-  const customerId = String(
-    messageData?.customer_id
-    || messageData?.buyer_id
-    || messageData?.user_id
-    || messageData?.uid
-    || rawMessage?.buyer_id
-    || rawMessage?.customer_id
-    || (isFromBuyer ? rawMessage?.from?.uid : rawMessage?.to?.uid)
-    || ''
-  ).trim();
-  return {
-    shopId,
-    sessionId,
-    customer: customerId,
-    messageId: String(rawMessage?.msg_id || rawMessage?.message_id || ''),
-    timestamp: Number(rawMessage?.ts || 0) * 1000 || Date.now(),
-    isFromBuyer,
-    senderName: isFromBuyer ? '买家' : getShopDisplayName(shopId),
-    readState: '',
-    content: normalizedContent,
-    templateName,
-    refundCard,
-    refundStatusUpdate,
-    trafficSourceType: String(options?.sourceType || '').trim(),
-    notifyRequestId: String(options?.requestId || '').trim(),
-    raw: rawMessage,
-  };
-}
-
-function extractApiTrafficReadMarkUpdate(shopId, entry) {
-  if (!shopId || !entry) return null;
-  const notifyPayload = getTrafficNotifyPayload(entry);
-  if (!notifyPayload || String(notifyPayload?.response || '') !== 'mall_system_msg') return null;
-  if (Number(notifyPayload?.message?.type) !== 20) return null;
-  const data = notifyPayload?.message?.data;
-  if (!data || typeof data !== 'object') return null;
-  const sessionId = String(data?.user_id || data?.uid || '').trim();
-  const userLastRead = String(data?.user_last_read || data?.userLastRead || '').trim();
-  if (!sessionId || !userLastRead) return null;
-  return {
-    shopId,
-    sessionId,
-    userLastRead,
-    minSupportedMsgId: String(data?.min_supported_msg_id || data?.minSupportedMsgId || '').trim(),
-    source: 'traffic-notify',
-    requestId: String(notifyPayload?.request_id || '').trim(),
-  };
-}
-
-function updateApiSessionSnapshotWithMessages(shopId, messages = []) {
-  if (!shopId || !Array.isArray(messages) || !messages.length) return null;
-  const currentSessions = getApiSessionSnapshot(shopId);
-  const existingMap = new Map(
-    currentSessions
-      .filter(session => session && session.sessionId)
-      .map(session => [String(session.sessionId), session])
-  );
-  let changed = false;
-  const groupedMessages = new Map();
-  messages.forEach(message => {
-    const sessionId = String(message?.sessionId || '').trim();
-    if (!sessionId) return;
-    const bucket = groupedMessages.get(sessionId) || [];
-    bucket.push(message);
-    groupedMessages.set(sessionId, bucket);
-  });
-  const nextSessions = currentSessions.map(session => {
-    const matched = groupedMessages.get(String(session?.sessionId || '')) || [];
-    if (!matched.length) return session;
-    const latest = matched.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0)).slice(-1)[0];
-    changed = true;
-    return {
-      ...session,
-      lastMessage: String(latest?.content || latest?.refundCard?.title || session?.lastMessage || '').trim(),
-      lastMessageTime: Number(latest?.timestamp || session?.lastMessageTime || 0),
-      unreadCount: Math.max(Number(session?.unreadCount || 0) || 0, latest?.isFromBuyer ? 1 : 0),
-    };
-  });
-  groupedMessages.forEach((matched, sessionId) => {
-    if (existingMap.has(sessionId) || !matched.length) return;
-    const latest = matched.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0)).slice(-1)[0];
-    changed = true;
-    nextSessions.unshift({
-      shopId,
-      sessionId,
-      customerId: String(latest?.customer || sessionId).trim(),
-      customerName: String(latest?.customer || '').trim(),
-      shopName: getShopDisplayName(shopId),
-      lastMessage: String(latest?.content || latest?.refundCard?.title || '').trim() || '新消息',
-      lastMessageTime: Number(latest?.timestamp || Date.now()),
-      unreadCount: latest?.isFromBuyer ? 1 : 0,
-      waitTime: 0,
-      isTimeout: false,
-      lastMessageActor: latest?.isFromBuyer ? 'buyer' : 'seller',
-      lastMessageIsFromBuyer: latest?.isFromBuyer === true,
-      raw: latest?.raw || {},
-    });
-  });
-  if (!changed) return null;
-  const sortedSessions = nextSessions
-    .slice()
-    .sort((a, b) => Number(b?.lastMessageTime || 0) - Number(a?.lastMessageTime || 0));
-  setApiSessionSnapshot(shopId, sortedSessions, 'traffic-notify');
-  return sortedSessions;
-}
-
-function pushApiMessagesFromTraffic(shopId, entry) {
-  if (!shopId || !entry) return;
-  const readMarkUpdate = extractApiTrafficReadMarkUpdate(shopId, entry);
-  if (readMarkUpdate) {
-    mainWindow?.webContents.send('api-read-mark-updated', readMarkUpdate);
-    sendToDebug('api-read-mark-updated', readMarkUpdate);
-  }
-  const notifyPayload = getTrafficNotifyPayload(entry);
-  const notifyMessages = extractTrafficNotifyMessages(notifyPayload);
-  if (!notifyMessages.length) return;
-  const normalizedMessages = notifyMessages
-    .map(item => normalizeApiTrafficNotifyMessage(shopId, item?.message || {}, item))
-    .filter(Boolean);
-  if (!normalizedMessages.length) return;
-  const dedupedMessages = normalizedMessages.filter(message => {
-    const key = `${shopId}::${message.sessionId}::${message.messageId || message.timestamp}`;
-    if (apiTrafficMessageSnapshot.has(key)) return false;
-    apiTrafficMessageSnapshot.add(key);
-    if (apiTrafficMessageSnapshot.size > 500) {
-      const firstKey = apiTrafficMessageSnapshot.values().next().value;
-      if (firstKey) apiTrafficMessageSnapshot.delete(firstKey);
+// 6 套 API client 工厂收口到 registry。store / shopManager / 流量入口
+// 等通过 deps 注入；与 chat client 销毁联动的「业务侧清理」通过
+// onChatClientDestroyed 回调留在 main.js,避免 registry 反向依赖业务状态。
+const apiClientRegistry = createApiClientRegistry({
+  PddApiClient,
+  MailApiClient,
+  InvoiceApiClient,
+  TicketApiClient,
+  ViolationApiClient,
+  DeductionApiClient,
+  store,
+  sendToDebug,
+  getMainWindow: () => mainWindow,
+  getShopManager: () => shopManager,
+  getApiTraffic: (shopId) => getApiTraffic(shopId),
+  getApiSessionSnapshot: (shopId) => getApiSessionSnapshot(shopId),
+  setApiSessionSnapshot: (shopId, sessions, source) => setApiSessionSnapshot(shopId, sessions, source),
+  enqueueRendererApiSessionUpdate: (shopId, sessions, source) => enqueueRendererApiSessionUpdate(shopId, sessions, source),
+  notifyApiMessage: (payload) => notifyApiMessage(payload),
+  updateShopStatus: (shopId, status) => updateShopStatus(shopId, status),
+  handleNewCustomerMessage: (data) => handleNewCustomerMessage(data),
+  requestViaPddPage: (shopId, request) => requestViaPddPage(shopId, request),
+  ensurePddPageViewReady: (shopId, options) => ensurePddPageViewReady(shopId, options),
+  shouldConsoleLogApiMessage,
+  chatApiCacheStore,
+  getPddMailUrl,
+  getPddInvoiceUrl,
+  getPddTicketUrl,
+  getPddAfterSaleUrl,
+  getPddViolationUrl,
+  onChatClientDestroyed(shopId) {
+    trafficBridge.clearShopState(shopId);
+    apiSessionStore.delete(shopId);
+    apiPendingRendererSessionUpdates.delete(shopId);
+    apiRendererSessionWarmupShops.delete(shopId);
+    // 显式销毁/重置店铺时把磁盘缓存也清掉，避免下次启动展示陌生人的会话。
+    try {
+      chatApiCacheStore.clearShop(shopId);
+    } catch (cacheError) {
+      console.warn(`[chat-api-cache] 清理 ${shopId} 缓存失败: ${cacheError.message}`);
     }
-    return true;
-  });
-  if (!dedupedMessages.length) return;
-  const nextSessions = updateApiSessionSnapshotWithMessages(shopId, dedupedMessages);
-  if (nextSessions) {
-    enqueueRendererApiSessionUpdate(shopId, nextSessions, 'traffic-notify');
-  }
-  dedupedMessages.forEach(message => {
-    const refundCardStateDebug = buildRefundCardStateDebugPayload(message);
-    if (refundCardStateDebug) {
-      sendToDebug('api-refund-card-state', refundCardStateDebug);
-      if (isVerboseRuntimeLoggingEnabled()) {
-        console.log(
-          `[PDD接口:${shopId}] 快捷退款卡片状态`,
-          JSON.stringify({
-            sessionId: refundCardStateDebug.sessionId,
-            messageId: refundCardStateDebug.messageId,
-            stateStatus: refundCardStateDebug.stateStatus,
-            stateExpireText: refundCardStateDebug.stateExpireText,
-            stateText: refundCardStateDebug.stateText,
-            buttonTexts: refundCardStateDebug.buttonTexts,
-          })
-        );
-      }
-    }
-    const payload = {
-      shopId,
-      sessionId: message.sessionId,
-      customer: message.customer,
-      session: nextSessions?.find(item => String(item?.sessionId || '') === String(message.sessionId || '')) || null,
-      source: 'traffic-notify',
-      messages: [message],
-    };
-    mainWindow?.webContents.send('api-new-message', payload);
-    notifyApiMessage({
-      ...payload,
-      messageId: message.messageId || '',
-      text: message.content || message.text || '',
-    });
-    sendToDebug('api-new-message', { shopId, sessionId: message.sessionId, source: 'traffic-notify', messageId: message.messageId || '' });
-  });
-}
+  },
+});
+
+const {
+  getApiClient,
+  destroyApiClient,
+  getMailApiClient,
+  destroyMailApiClient,
+  getInvoiceApiClient,
+  destroyInvoiceApiClient,
+  getTicketApiClient,
+  destroyTicketApiClient,
+  getViolationApiClient,
+  destroyViolationApiClient,
+  getDeductionApiClient,
+  destroyDeductionApiClient,
+} = apiClientRegistry;
 
 function startNetworkMonitor(view, shopId) {
   if (networkMonitors.has(shopId)) {
@@ -1293,7 +824,7 @@ function startNetworkMonitor(view, shopId) {
         const requestBody = typeof normalizedEntry?.requestBody === 'string' ? normalizedEntry.requestBody : '';
         if (requestBody) {
           try {
-            const parsedBody = safeParseCapturedBody(requestBody);
+            const parsedBody = trafficBridge.safeParseCapturedBody(requestBody);
             if (parsedBody && typeof parsedBody === 'object' && (parsedBody.crawlerInfo || parsedBody.crawler_info)) {
               store.set(`apiOrderPriceUpdateTemplate.${shopId}`, {
                 url: normalizedEntry.url,
@@ -1309,7 +840,7 @@ function startNetworkMonitor(view, shopId) {
         const requestBody = typeof normalizedEntry?.requestBody === 'string' ? normalizedEntry.requestBody : '';
         if (requestBody) {
           try {
-            const parsedBody = safeParseCapturedBody(requestBody);
+            const parsedBody = trafficBridge.safeParseCapturedBody(requestBody);
             const orderSn = String(parsedBody?.orderSn || parsedBody?.order_sn || '').trim();
             const hasSmallPaymentFields = [
               parsedBody?.playMoneyAmount,
@@ -1340,8 +871,8 @@ function startNetworkMonitor(view, shopId) {
         console.log(`[接口抓取:${shopId}] [${normalizedEntry.method}] ${normalizedEntry.url} -> ${normalizedEntry.status}`);
       }
       sendToDebug('api-traffic', { shopId, entry: normalizedEntry });
-      pushApiSessionsFromTraffic(shopId, normalizedEntry);
-      pushApiMessagesFromTraffic(shopId, normalizedEntry);
+      trafficBridge.pushApiSessionsFromTraffic(shopId, normalizedEntry);
+      trafficBridge.pushApiMessagesFromTraffic(shopId, normalizedEntry);
     },
     onCustomerMessage(msg) {
       if (!store.get('autoReplyEnabled')) return;
@@ -1473,142 +1004,6 @@ function rememberSmallPaymentSubmitTemplate(shopId, template = {}, parsedBody = 
     nextState.byRefundType[String(Math.max(0, Math.round(Number(refundType))))] = templateEntry;
   }
   store.set(`apiSmallPaymentSubmitTemplate.${shopId}`, nextState);
-}
-
-function getApiClient(shopId) {
-  if (!shopId) return null;
-  if (apiClients.has(shopId)) return apiClients.get(shopId);
-
-  const client = new PddApiClient(shopId, {
-    onLog(message, extra) {
-      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
-      if (message === '[API] Bootstrap检查会话') {
-        mainWindow?.webContents.send('api-bootstrap-inspect', {
-          shopId,
-          ...(extra && typeof extra === 'object' ? extra : {}),
-        });
-      }
-      if (!shouldConsoleLogApiMessage(message)) {
-        return;
-      }
-      if (extra && typeof extra === 'object' && Object.keys(extra).length) {
-        console.log(`[PDD接口:${shopId}] ${message}`, extra);
-      } else {
-        console.log(`[PDD接口:${shopId}] ${message}`);
-      }
-    },
-    getShopInfo() {
-      const shops = store.get('shops') || [];
-      return shops.find(item => item.id === shopId) || null;
-    },
-    getApiTraffic() {
-      return getApiTraffic(shopId);
-    },
-    getOrderPriceUpdateTemplate() {
-      return store.get(`apiOrderPriceUpdateTemplate.${shopId}`) || null;
-    },
-    setOrderPriceUpdateTemplate(template) {
-      if (!template || typeof template !== 'object') return;
-      store.set(`apiOrderPriceUpdateTemplate.${shopId}`, template);
-    },
-    getSmallPaymentSubmitTemplate() {
-      return store.get(`apiSmallPaymentSubmitTemplate.${shopId}`) || null;
-    },
-    refreshMainCookieContext(payload = {}) {
-      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
-    },
-    requestInPddPage(request) {
-      return requestViaPddPage(shopId, {
-        ...(request && typeof request === 'object' ? request : {}),
-        source: request?.source || 'pdd-api:page-request'
-      });
-    },
-    async executeInPddPage(script, options = {}) {
-      const view = await ensurePddPageViewReady(shopId, {
-        source: options?.source || 'pdd-api:execute-in-page'
-      });
-      return view.webContents.executeJavaScript(String(script || ''), true);
-    }
-  });
-
-  client.on('authExpired', payload => {
-    updateShopStatus(shopId, 'expired');
-    mainWindow?.webContents.send('api-auth-expired', payload);
-    sendToDebug('api-auth-expired', payload);
-  });
-
-  client.on('sessionUpdated', sessions => {
-    const stableSessions = Array.isArray(sessions) && sessions.length === 0
-      ? getApiSessionSnapshot(shopId)
-      : setApiSessionSnapshot(shopId, sessions, 'polling');
-    if (Array.isArray(stableSessions) && stableSessions.length >= 0) {
-      updateShopStatus(shopId, 'online');
-    }
-    enqueueRendererApiSessionUpdate(shopId, stableSessions, 'polling');
-  });
-
-  client.on('newMessage', payload => {
-    mainWindow?.webContents.send('api-new-message', payload);
-    notifyApiMessage({
-      ...payload,
-      shopId: payload?.shopId || shopId,
-    });
-    sendToDebug('api-new-message', payload);
-    // 把实时推送的消息追加到该会话的磁盘缓存末尾，下次启动可秒开。
-    try {
-      const cacheShopId = String(payload?.shopId || shopId || '').trim();
-      const cacheSessionId = String(payload?.sessionId || '').trim();
-      if (cacheShopId && cacheSessionId) {
-        chatApiCacheStore.appendIncomingMessage(cacheShopId, cacheSessionId, {
-          id: payload?.messageId || '',
-          messageId: payload?.messageId || '',
-          sessionId: cacheSessionId,
-          timestamp: payload?.timestamp || Date.now(),
-          content: payload?.text || '',
-          senderName: payload?.customer || '',
-          senderId: payload?.customerId || '',
-          isFromBuyer: true,
-          source: 'polling-push',
-        });
-      }
-    } catch (cacheError) {
-      console.warn(`[chat-api-cache] 追加实时消息失败: ${cacheError.message}`);
-    }
-    handleNewCustomerMessage({
-      message: payload.text,
-      customer: payload.customer,
-      conversationId: payload.sessionId,
-      sessionId: payload.sessionId,
-      messageId: payload.messageId || '',
-      session: payload.session || null,
-      source: 'api-polling',
-      shopId
-    }).catch(error => {
-      const message = error?.message || String(error || '未知错误');
-      console.error(`[PDD助手] 接口自动回复处理失败: ${message}`);
-      mainWindow?.webContents.send('auto-reply-error', {
-        shopId,
-        sessionId: payload.sessionId || '',
-        customer: payload.customer || '',
-        message: payload.text || '',
-        error: message,
-        errorCode: error?.errorCode || 0,
-      });
-      sendToDebug('auto-reply-error', {
-        shopId,
-        sessionId: payload.sessionId || '',
-        error: message,
-      });
-    });
-  });
-
-  client.on('messageSent', payload => {
-    mainWindow?.webContents.send('api-message-sent', { shopId, ...payload });
-    sendToDebug('api-message-sent', { shopId, sessionId: payload.sessionId });
-  });
-
-  apiClients.set(shopId, client);
-  return client;
 }
 
 function waitForViewLoad(view, targetUrl = '') {
@@ -2174,200 +1569,6 @@ async function uploadImageViaPddPage(shopId, filePath, options = {}) {
   return waitForViewUploadResult(view, filePath);
 }
 
-function destroyApiClient(shopId) {
-  const client = apiClients.get(shopId);
-  if (!client) return;
-  client.destroy();
-  apiClients.delete(shopId);
-  apiSessionTrafficSnapshot.delete(shopId);
-  apiSessionStore.delete(shopId);
-  apiPendingRendererSessionUpdates.delete(shopId);
-  apiRendererSessionWarmupShops.delete(shopId);
-  // 显式销毁/重置店铺时把磁盘缓存也清掉，避免下次启动展示陌生人的会话。
-  try {
-    chatApiCacheStore.clearShop(shopId);
-  } catch (cacheError) {
-    console.warn(`[chat-api-cache] 清理 ${shopId} 缓存失败: ${cacheError.message}`);
-  }
-}
-
-function getMailApiClient(shopId) {
-  if (!shopId) return null;
-  if (mailApiClients.has(shopId)) return mailApiClients.get(shopId);
-  const client = new MailApiClient(shopId, {
-    onLog(message, extra) {
-      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
-      if (extra && typeof extra === 'object' && Object.keys(extra).length) {
-        console.log(`[PDD站内信:${shopId}] ${message}`, extra);
-      } else {
-        console.log(`[PDD站内信:${shopId}] ${message}`);
-      }
-    },
-    getShopInfo() {
-      const shops = store.get('shops') || [];
-      return shops.find(item => item.id === shopId) || null;
-    },
-    getApiTraffic() {
-      return getApiTraffic(shopId);
-    },
-    getMailUrl() {
-      return getPddMailUrl();
-    },
-    refreshMainCookieContext(payload = {}) {
-      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
-    }
-  });
-  mailApiClients.set(shopId, client);
-  return client;
-}
-
-function destroyMailApiClient(shopId) {
-  if (!mailApiClients.has(shopId)) return;
-  mailApiClients.delete(shopId);
-}
-
-function getInvoiceApiClient(shopId) {
-  if (!shopId) return null;
-  if (invoiceApiClients.has(shopId)) return invoiceApiClients.get(shopId);
-  const client = new InvoiceApiClient(shopId, {
-    onLog(message, extra) {
-      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
-      console.log(`[PDD待开票:${shopId}] ${message}`);
-    },
-    getShopInfo() {
-      const shops = store.get('shops') || [];
-      return shops.find(item => item.id === shopId) || null;
-    },
-    getApiTraffic() {
-      return getApiTraffic(shopId);
-    },
-    getInvoiceUrl() {
-      return getPddInvoiceUrl();
-    },
-    getSubmitConfig() {
-      const all = store.get('invoiceSubmitApiConfig') || {};
-      return all[shopId] || all.__global || null;
-    },
-    setSubmitConfig(config) {
-      const all = store.get('invoiceSubmitApiConfig') || {};
-      all[shopId] = config || null;
-      if (config) {
-        all.__global = config;
-      }
-      store.set('invoiceSubmitApiConfig', all);
-    },
-    refreshMainCookieContext(payload = {}) {
-      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
-    }
-  });
-  invoiceApiClients.set(shopId, client);
-  return client;
-}
-
-function destroyInvoiceApiClient(shopId) {
-  if (!invoiceApiClients.has(shopId)) return;
-  invoiceApiClients.delete(shopId);
-}
-
-function getTicketApiClient(shopId) {
-  if (!shopId) return null;
-  if (ticketApiClients.has(shopId)) return ticketApiClients.get(shopId);
-  const client = new TicketApiClient(shopId, {
-    onLog(message, extra) {
-      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
-      console.log(`[PDD工单管理:${shopId}] ${message}`);
-    },
-    getShopInfo() {
-      const shops = store.get('shops') || [];
-      return shops.find(item => item.id === shopId) || null;
-    },
-    getApiTraffic() {
-      return getApiTraffic(shopId);
-    },
-    getTicketUrl() {
-      return getPddTicketUrl();
-    },
-    getAfterSaleUrl() {
-      return getPddAfterSaleUrl();
-    },
-    refreshMainCookieContext(payload = {}) {
-      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
-    },
-    requestInPddPage(request) {
-      return requestViaPddPage(shopId, {
-        ...(request && typeof request === 'object' ? request : {}),
-        source: request?.source || 'ticket-api:page-request'
-      });
-    },
-  });
-  ticketApiClients.set(shopId, client);
-  return client;
-}
-
-function destroyTicketApiClient(shopId) {
-  if (!ticketApiClients.has(shopId)) return;
-  ticketApiClients.delete(shopId);
-}
-
-function getViolationApiClient(shopId) {
-  if (!shopId) return null;
-  if (violationApiClients.has(shopId)) return violationApiClients.get(shopId);
-  const client = new ViolationApiClient(shopId, {
-    onLog(message, extra) {
-      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
-      console.log(`[PDD违规管理:${shopId}] ${message}`);
-    },
-    getShopInfo() {
-      const shops = store.get('shops') || [];
-      return shops.find(item => item.id === shopId) || null;
-    },
-    getApiTraffic() {
-      return getApiTraffic(shopId);
-    },
-    getViolationUrl() {
-      return getPddViolationUrl();
-    },
-    refreshMainCookieContext(payload = {}) {
-      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
-    }
-  });
-  violationApiClients.set(shopId, client);
-  return client;
-}
-
-function destroyViolationApiClient(shopId) {
-  if (!violationApiClients.has(shopId)) return;
-  violationApiClients.delete(shopId);
-}
-
-function getDeductionApiClient(shopId) {
-  if (!shopId) return null;
-  if (deductionApiClients.has(shopId)) return deductionApiClients.get(shopId);
-  const client = new DeductionApiClient(shopId, {
-    onLog(message, extra) {
-      sendToDebug('api-log', { shopId, message, extra, timestamp: Date.now() });
-      console.log(`[PDD扣款管理:${shopId}] ${message}`);
-    },
-    getShopInfo() {
-      const shops = store.get('shops') || [];
-      return shops.find(item => item.id === shopId) || null;
-    },
-    getApiTraffic() {
-      return getApiTraffic(shopId);
-    },
-    refreshMainCookieContext(payload = {}) {
-      return shopManager?._hydrateMainCookieContext?.(shopId, payload) || null;
-    }
-  });
-  deductionApiClients.set(shopId, client);
-  return client;
-}
-
-function destroyDeductionApiClient(shopId) {
-  if (!deductionApiClients.has(shopId)) return;
-  deductionApiClients.delete(shopId);
-}
-
 function getApiTraffic(shopId) {
   // 仅返回运行时实抓的请求/响应。
   // 持久化的 artifacts/api-traffic 已脱敏（content/nickname → [TEXT]，uid/session_id → [ID]，
@@ -2494,7 +1695,7 @@ async function loadShopApiSessions(shopId, page = 1, pageSize = 20) {
       fallback: 'traffic-or-snapshot',
     });
   }
-  const trafficSessions = extractApiSessionsFromTraffic(shopId);
+  const trafficSessions = trafficBridge.extractApiSessionsFromTraffic(shopId);
   if (page === 1 && trafficSessions.length > 0) {
     return trafficSessions.slice(0, pageSize);
   }
@@ -4062,24 +3263,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   cleanupRendererWatcher();
   shopManager?.stopShopInfoHydrationLoop();
-  for (const shopId of apiClients.keys()) {
-    destroyApiClient(shopId);
-  }
-  for (const shopId of mailApiClients.keys()) {
-    destroyMailApiClient(shopId);
-  }
-  for (const shopId of invoiceApiClients.keys()) {
-    destroyInvoiceApiClient(shopId);
-  }
-  for (const shopId of ticketApiClients.keys()) {
-    destroyTicketApiClient(shopId);
-  }
-  for (const shopId of violationApiClients.keys()) {
-    destroyViolationApiClient(shopId);
-  }
-  for (const shopId of deductionApiClients.keys()) {
-    destroyDeductionApiClient(shopId);
-  }
+  apiClientRegistry.destroyAll();
 });
 
 app.on('window-all-closed', () => {

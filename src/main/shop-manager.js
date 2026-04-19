@@ -463,6 +463,10 @@ class ShopManager {
     }
     if (targetShopId === this.activeShopId) {
       this.store.set('activeShopId', targetShopId);
+      // 已选中目标店铺但 BrowserView 还未创建（嵌入页首次切入），按需补创建
+      if (options.showView && this.mainWindow && !this.views.has(targetShopId)) {
+        this.switchTo(targetShopId, options.loadUrl || null);
+      }
       return shops.find(item => item.id === targetShopId) || this._getShop(targetShopId) || null;
     }
     if (options.showView && this.mainWindow) {

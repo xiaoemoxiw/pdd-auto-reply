@@ -53,36 +53,6 @@
     return collectReplySegments(reply).join('\n\n---\n\n');
   }
 
-  function renderQAReplySplitPreview(reply) {
-    const previewEl = getEl('qaReplySplitPreview');
-    if (!previewEl) return;
-
-    const rawText = String(reply || '').trim();
-    if (!rawText) {
-      previewEl.classList.remove('show');
-      previewEl.innerHTML = '';
-      return;
-    }
-
-    const segments = collectReplySegments(reply);
-    const summary = segments.length > 1
-      ? `预览拆分结果：当前会识别为 ${segments.length} 段回复，命中后随机发送其中一条。`
-      : '预览拆分结果：当前仅识别为 1 段回复；如需随机回复，请点击“插入分栏”后再填写下一段内容。';
-
-    previewEl.innerHTML = `
-      <div class="qa-reply-preview-title">${summary}</div>
-      <div class="qa-reply-preview-list">
-        ${segments.map((segment, index) => `
-          <div class="qa-reply-preview-item">
-            <div class="qa-reply-preview-label">回复 ${index + 1}</div>
-            <div class="qa-reply-preview-text">${esc(segment)}</div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-    previewEl.classList.add('show');
-  }
-
   async function persistRules(nextRules) {
     rules = sanitizeRules(nextRules);
     await window.pddApi.saveRules(rules);
@@ -137,79 +107,61 @@
     });
   }
 
-  function openQAModal(ruleId) {
-    editingQAId = ruleId || null;
-    const rule = ruleId ? rules.find(item => item.id === ruleId) : null;
-
-    getEl('qaModalTitle').textContent = rule ? '编辑QA场景' : '添加QA场景';
-    getEl('qaMatchType').value = rule?.matchType || 'contains';
-    if (rule?.requireAllGroups && rule.keywordGroups?.length) {
-      getEl('qaKeywords').value = rule.keywordGroups
+  function buildKeywordsTextFromRule(rule) {
+    if (!rule) return '';
+    if (rule.requireAllGroups && rule.keywordGroups?.length) {
+      return rule.keywordGroups
         .filter(group => group?.length)
         .map(group => group.join('\n'))
         .join('\n&\n');
-    } else if (rule?.keywordGroups?.length) {
-      getEl('qaKeywords').value = rule.keywordGroups.flat().join('\n');
-    } else {
-      getEl('qaKeywords').value = (rule?.keywords || []).join('\n');
     }
-    getEl('qaReply').value = formatReplyForEditor(rule?.reply);
-    renderQAReplySplitPreview(getEl('qaReply').value);
-    getEl('qaPriority').value = rule?.priority ?? 50;
-    getEl('qaEnabled').value = rule ? String(rule.enabled) : 'true';
-    getEl('qaProducts').value = (rule?.products || []).join(', ');
+    if (rule.keywordGroups?.length) {
+      return rule.keywordGroups.flat().join('\n');
+    }
+    return (rule?.keywords || []).join('\n');
+  }
 
-    const shopSelectEl = getEl('qaShopSelect');
-    const shopAllEl = getEl('qaShopSelectAll');
-    const shopCategoryEl = getEl('qaShopCategory');
-    const selectedShops = new Set(rule?.shops || []);
-    const isAll = !rule?.shops || rule.shops.length === 0;
-    shopAllEl.checked = isAll;
-    if (shopCategoryEl) shopCategoryEl.value = '';
-    shopSelectEl.innerHTML = shops.map(shop => {
-      const checked = isAll || selectedShops.has(shop.id);
-      return `
-        <label class="qa-shop-item">
-          <input type="checkbox" class="qa-shop-check" value="${shop.id}" ${checked ? 'checked' : ''}>
-          <span class="qa-shop-name">${esc(shop.name)}</span>
-        </label>
-      `;
-    }).join('');
-
-    const shopMap = new Map((shops || []).map(shop => [shop.id, shop]));
-    const shopChecks = [...shopSelectEl.querySelectorAll('input.qa-shop-check')];
-    shopAllEl.onchange = () => {
-      if (shopCategoryEl) shopCategoryEl.value = '';
-      shopChecks.forEach(chk => { chk.checked = shopAllEl.checked; });
+  function buildQAModalPayload({ mode = 'add', ruleId = null, prefillKeywords = '' } = {}) {
+    const rule = mode === 'edit' && ruleId ? rules.find(item => item.id === ruleId) : null;
+    const isEdit = !!rule;
+    return {
+      mode: isEdit ? 'edit' : (mode === 'prefill' ? 'prefill' : 'add'),
+      ruleId: isEdit ? rule.id : null,
+      title: isEdit ? '编辑QA场景' : '添加QA场景',
+      shops: Array.isArray(shops) ? shops.slice() : [],
+      form: {
+        matchType: rule?.matchType || 'contains',
+        keywords: isEdit
+          ? buildKeywordsTextFromRule(rule)
+          : (mode === 'prefill' ? String(prefillKeywords || '') : ''),
+        reply: formatReplyForEditor(rule?.reply),
+        priority: rule?.priority ?? 50,
+        enabled: rule ? String(rule.enabled) : 'true',
+        products: (rule?.products || []).join(', '),
+        shopAll: !rule?.shops || rule.shops.length === 0,
+        selectedShopIds: rule?.shops ? rule.shops.slice() : []
+      }
     };
-    shopChecks.forEach(chk => {
-      chk.addEventListener('change', () => {
-        const allChecked = shopChecks.length > 0 && shopChecks.every(item => item.checked);
-        shopAllEl.checked = allChecked;
-      });
+  }
+
+  function openQAModal(ruleId) {
+    editingQAId = ruleId || null;
+    const payload = buildQAModalPayload({
+      mode: ruleId ? 'edit' : 'add',
+      ruleId
     });
-
-    if (shopCategoryEl) {
-      shopCategoryEl.onchange = () => {
-        const category = String(shopCategoryEl.value || '').trim();
-        if (!category) return;
-        shopAllEl.checked = false;
-        let matchedCount = 0;
-        shopChecks.forEach(chk => {
-          const shop = shopMap.get(chk.value);
-          const hit = String(shop?.category || '').trim() === category;
-          chk.checked = hit;
-          if (hit) matchedCount += 1;
-        });
-        if (matchedCount === 0) qaToast('该类目下暂无店铺');
-      };
+    if (window.vueBridge && typeof window.vueBridge.openModal === 'function') {
+      window.vueBridge.openModal('modalQA', payload);
+      return;
     }
-
     showModal('modalQA');
   }
 
-  async function saveQA() {
-    const lines = getEl('qaKeywords').value.split('\n').map(keyword => keyword.trim()).filter(Boolean);
+  async function saveQAFromForm(formData = {}) {
+    const lines = String(formData.keywords || '')
+      .split('\n')
+      .map(keyword => keyword.trim())
+      .filter(Boolean);
     const keywordGroups = [];
     let current = [];
     let hasAnd = false;
@@ -225,34 +177,45 @@
     keywordGroups.push(current);
 
     const hasEmptyGroup = hasAnd && keywordGroups.some(group => group.length === 0);
-    if (hasEmptyGroup) return alert('使用 & 组词时，& 前后都需要关键词');
+    if (hasEmptyGroup) {
+      return { ok: false, message: '使用 & 组词时，& 前后都需要关键词' };
+    }
 
     const cleanedGroups = keywordGroups.filter(group => group.length > 0);
     const keywords = cleanedGroups.flat();
-    if (keywords.length === 0) return alert('请至少输入一个关键词');
+    if (keywords.length === 0) {
+      return { ok: false, message: '请至少输入一个关键词' };
+    }
 
-    const reply = getEl('qaReply').value.trim();
-    if (!reply) return alert('请输入回复内容');
+    const reply = String(formData.reply || '').trim();
+    if (!reply) {
+      return { ok: false, message: '请输入回复内容' };
+    }
 
-    const shopAllEl = getEl('qaShopSelectAll');
-    const selectedShops = shopAllEl.checked
+    const shopAll = !!formData.shopAll;
+    const selectedShops = shopAll
       ? []
-      : [...document.querySelectorAll('#qaShopSelect input.qa-shop-check:checked')].map(checkbox => checkbox.value);
-    if (!shopAllEl.checked && selectedShops.length === 0) return alert('请至少选择一个店铺或勾选应用到全部店铺');
-    const productsStr = getEl('qaProducts').value.trim();
-    const products = productsStr ? productsStr.split(/[,，]/).map(product => product.trim()).filter(Boolean) : [];
+      : (Array.isArray(formData.selectedShopIds) ? formData.selectedShopIds.slice() : []);
+    if (!shopAll && selectedShops.length === 0) {
+      return { ok: false, message: '请至少选择一个店铺或勾选应用到全部店铺' };
+    }
+
+    const productsStr = String(formData.products || '').trim();
+    const products = productsStr
+      ? productsStr.split(/[,，]/).map(product => product.trim()).filter(Boolean)
+      : [];
 
     const ruleData = {
       id: editingQAId || Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-      enabled: getEl('qaEnabled').value === 'true',
+      enabled: formData.enabled === true || formData.enabled === 'true',
       keywords,
       keywordGroups: cleanedGroups.length > 0 ? cleanedGroups : null,
       requireAllGroups: hasAnd && cleanedGroups.length > 1 ? true : undefined,
-      matchType: getEl('qaMatchType').value,
+      matchType: formData.matchType || 'contains',
       reply,
       shops: selectedShops.length > 0 ? selectedShops : null,
       products: products.length > 0 ? products : null,
-      priority: parseInt(getEl('qaPriority').value, 10) || 50
+      priority: parseInt(formData.priority, 10) || 50
     };
 
     if (editingQAId) {
@@ -263,8 +226,14 @@
     }
 
     await persistRules(rules);
-    hideModal('modalQA');
+    editingQAId = null;
+    if (window.vueBridge && typeof window.vueBridge.closeModal === 'function') {
+      window.vueBridge.closeModal('modalQA');
+    } else {
+      hideModal('modalQA');
+    }
     renderRules();
+    return { ok: true };
   }
 
   async function deleteRule(ruleId) {
@@ -307,15 +276,15 @@
 
   function openApplyShopCategoryModal() {
     if (selectedQAIds.size === 0) return alert('请先勾选要修改的规则');
-    const selectEl = getEl('qaApplyShopCategoryModal');
-    if (selectEl) selectEl.value = '__all__';
+    if (window.vueBridge && typeof window.vueBridge.openModal === 'function') {
+      window.vueBridge.openModal('modalApplyShopCategory', {});
+      return;
+    }
     showModal('modalApplyShopCategory');
   }
 
-  async function confirmApplyShopCategoryModal() {
-    const category = getEl('qaApplyShopCategoryModal')?.value;
-    await applyShopCategoryToSelectedQA(category);
-    hideModal('modalApplyShopCategory');
+  async function applyShopCategory(category) {
+    return applyShopCategoryToSelectedQA(category);
   }
 
   function importQA() {
@@ -600,65 +569,23 @@
   function prefillQARuleFromMessage(item = {}) {
     const sourceMessage = String(item.message || '').trim();
     if (!sourceMessage) return false;
-    const suggestedKeywords = item.message
+    const suggestedKeywords = sourceMessage
       .replace(/[，。！？、；：""（）\s]+/g, ',')
       .split(',')
       .map(segment => segment.trim())
       .filter(segment => segment.length >= 2)
       .slice(0, 5);
 
-    getEl('qaModalTitle').textContent = '添加QA场景';
-    getEl('qaMatchType').value = 'contains';
-    getEl('qaKeywords').value = suggestedKeywords.join('\n');
-    getEl('qaReply').value = '';
-    renderQAReplySplitPreview('');
-    getEl('qaPriority').value = 50;
-    getEl('qaEnabled').value = 'true';
-    getEl('qaProducts').value = '';
     editingQAId = null;
-
-    const shopSelectEl = getEl('qaShopSelect');
-    const shopAllEl = getEl('qaShopSelectAll');
-    const shopCategoryEl = getEl('qaShopCategory');
-    if (shopCategoryEl) shopCategoryEl.value = '';
-    shopAllEl.checked = true;
-    shopSelectEl.innerHTML = shops.map(shop => `
-      <label class="qa-shop-item">
-        <input type="checkbox" class="qa-shop-check" value="${shop.id}" checked>
-        <span class="qa-shop-name">${esc(shop.name)}</span>
-      </label>
-    `).join('');
-
-    const shopChecks = [...shopSelectEl.querySelectorAll('input.qa-shop-check')];
-    shopAllEl.onchange = () => {
-      if (shopCategoryEl) shopCategoryEl.value = '';
-      shopChecks.forEach(chk => { chk.checked = shopAllEl.checked; });
-    };
-    shopChecks.forEach(chk => {
-      chk.addEventListener('change', () => {
-        const allChecked = shopChecks.length > 0 && shopChecks.every(item => item.checked);
-        shopAllEl.checked = allChecked;
-      });
+    const payload = buildQAModalPayload({
+      mode: 'prefill',
+      prefillKeywords: suggestedKeywords.join('\n')
     });
-
-    if (shopCategoryEl) {
-      const shopMap = new Map((shops || []).map(shop => [shop.id, shop]));
-      shopCategoryEl.onchange = () => {
-        const category = String(shopCategoryEl.value || '').trim();
-        if (!category) return;
-        shopAllEl.checked = false;
-        let matchedCount = 0;
-        shopChecks.forEach(chk => {
-          const shop = shopMap.get(chk.value);
-          const hit = String(shop?.category || '').trim() === category;
-          chk.checked = hit;
-          if (hit) matchedCount += 1;
-        });
-        if (matchedCount === 0) qaToast('该类目下暂无店铺');
-      };
+    if (window.vueBridge && typeof window.vueBridge.openModal === 'function') {
+      window.vueBridge.openModal('modalQA', payload);
+    } else {
+      showModal('modalQA');
     }
-
-    showModal('modalQA');
     qaToast('已预填关键词，请补充回复内容');
     return true;
   }
@@ -743,54 +670,19 @@
     });
 
     getEl('btnAddQA')?.addEventListener('click', () => openQAModal(null));
-    getEl('btnSaveQA')?.addEventListener('click', saveQA);
-    getEl('btnInsertImage')?.addEventListener('click', () => {
-      const textarea = getEl('qaReply');
-      const pos = textarea.selectionStart;
-      const value = textarea.value;
-      const insert = '[img:https://example.com/image.jpg]';
-      textarea.value = value.slice(0, pos) + insert + value.slice(pos);
-      renderQAReplySplitPreview(textarea.value);
-      textarea.focus();
-      textarea.setSelectionRange(pos + 5, pos + insert.length - 1);
-    });
-    getEl('btnInsertDivider')?.addEventListener('click', () => {
-      const textarea = getEl('qaReply');
-      const pos = textarea.selectionStart;
-      const value = textarea.value;
-      const insert = '\n\n---\n\n';
-      textarea.value = value.slice(0, pos) + insert + value.slice(pos);
-      renderQAReplySplitPreview(textarea.value);
-      textarea.focus();
-      textarea.setSelectionRange(pos + insert.length, pos + insert.length);
-    });
-    getEl('btnInsertVar')?.addEventListener('click', () => {
-      const textarea = getEl('qaReply');
-      const pos = textarea.selectionStart;
-      const value = textarea.value;
-      const insert = '{time}';
-      textarea.value = value.slice(0, pos) + insert + value.slice(pos);
-      renderQAReplySplitPreview(textarea.value);
-      textarea.focus();
-      textarea.setSelectionRange(pos, pos + insert.length);
-    });
-    getEl('qaReply')?.addEventListener('input', event => {
-      renderQAReplySplitPreview(event.target.value);
-    });
     getEl('btnBatchDeleteQA')?.addEventListener('click', batchDeleteQA);
     getEl('btnImportQA')?.addEventListener('click', importQA);
     getEl('btnExportQA')?.addEventListener('click', exportQA);
     getEl('btnResetQA')?.addEventListener('click', resetQA);
     getEl('btnApplyShopCategory')?.addEventListener('click', openApplyShopCategoryModal);
-    getEl('btnConfirmApplyShopCategory')?.addEventListener('click', confirmApplyShopCategoryModal);
     getEl('btnTestQA')?.addEventListener('click', () => {
+      if (window.vueBridge && typeof window.vueBridge.openModal === 'function') {
+        window.vueBridge.openModal('modalTest', {});
+        return;
+      }
       getEl('testMessage').value = '';
       getEl('testResult').innerHTML = '';
       showModal('modalTest');
-    });
-    getEl('btnRunTest')?.addEventListener('click', runRuleTest);
-    getEl('testMessage')?.addEventListener('keydown', event => {
-      if (event.key === 'Enter') getEl('btnRunTest').click();
     });
     document.querySelectorAll('.qa-sub-tab').forEach(button => {
       button.addEventListener('click', () => switchQATab(button));
@@ -844,6 +736,11 @@
   window.umCreateRule = umCreateRule;
   window.openQAUnmatchedFromContext = openQAUnmatchedFromContext;
   window.fbConfig = fbConfig;
+  window.qaModule = Object.assign(window.qaModule || {}, {
+    applyShopCategory,
+    saveQAFromForm,
+    collectReplySegments,
+  });
 
   if (typeof window.registerRendererModule === 'function') {
     window.registerRendererModule('qa-module', bindQAModule);

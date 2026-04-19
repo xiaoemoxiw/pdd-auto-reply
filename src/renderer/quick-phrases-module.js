@@ -30,11 +30,17 @@
     return callRuntime('addLog', message, type);
   }
 
-  function showModal(id) {
+  function showModal(id, payload) {
+    if (window.vueBridge?.openModal) {
+      return window.vueBridge.openModal(id, payload || {});
+    }
     return callRuntime('showModal', id);
   }
 
   function hideModal(id) {
+    if (window.vueBridge?.closeModal) {
+      return window.vueBridge.closeModal(id);
+    }
     return callRuntime('hideModal', id);
   }
 
@@ -75,17 +81,18 @@
     });
   }
 
-  function openPhraseManager() {
-    const editor = document.getElementById('phrasesEditor');
-    if (!editor) return;
-    editor.value = (getState().quickPhrases || []).map(item => `${item.category || '通用'}|${item.text}`).join('\n');
-    showModal('modalPhrases');
+  function getQuickPhrasesText() {
+    return (getState().quickPhrases || [])
+      .map(item => `${item.category || '通用'}|${item.text}`)
+      .join('\n');
   }
 
-  async function saveQuickPhrases() {
-    const editor = document.getElementById('phrasesEditor');
-    if (!editor) return;
-    const lines = editor.value.split('\n').filter(line => line.trim());
+  function openPhraseManager() {
+    showModal('modalPhrases', { initialText: getQuickPhrasesText() });
+  }
+
+  async function saveQuickPhrasesFromText(rawText = '') {
+    const lines = String(rawText || '').split('\n').filter(line => line.trim());
     const nextPhrases = lines.map((line, index) => {
       const parts = line.split('|');
       return {
@@ -103,6 +110,7 @@
     }
     hideModal('modalPhrases');
     addLog('快捷短语已更新', 'info');
+    return nextPhrases;
   }
 
   function togglePhrasePanel() {
@@ -122,11 +130,14 @@
     document.getElementById('btnQuickReply')?.addEventListener('click', togglePhrasePanel);
     document.getElementById('btnManagePhrases')?.addEventListener('click', openPhraseManager);
     document.getElementById('btnApiManagePhrases')?.addEventListener('click', openPhraseManager);
-    document.getElementById('btnSavePhrases')?.addEventListener('click', saveQuickPhrases);
   }
 
   window.loadQuickPhrases = loadQuickPhrases;
   window.renderPhrasePanel = renderPhrasePanel;
+  window.quickPhrasesModule = Object.assign(window.quickPhrasesModule || {}, {
+    saveQuickPhrasesFromText,
+    getQuickPhrasesText,
+  });
 
   if (typeof window.registerRendererModule === 'function') {
     window.registerRendererModule('quick-phrases-module', bindQuickPhrasesModule);

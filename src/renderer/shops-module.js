@@ -82,14 +82,6 @@
     return callRuntime('setShops', value);
   }
 
-  function setExamQuestions(value) {
-    return callRuntime('setExamQuestions', value);
-  }
-
-  function setExamAnswers(value) {
-    return callRuntime('setExamAnswers', value);
-  }
-
   async function loadShops() {
     await refreshShopContext({ loadGroups: true });
     renderGroupTabs();
@@ -258,8 +250,11 @@
     setRemarkShopId(shopId);
     const shops = getState().shops || [];
     const shop = shops.find(item => item.id === shopId);
-    const input = document.getElementById('remarkInput');
-    if (input) input.value = shop?.remark || '';
+    const remark = shop?.remark || '';
+    if (window.vueBridge && typeof window.vueBridge.openModal === 'function') {
+      window.vueBridge.openModal('modalRemark', { shopId, remark });
+      return;
+    }
     showModal('modalRemark');
   }
 
@@ -270,52 +265,55 @@
       alert('请先选择店铺');
       return;
     }
-    const select = document.getElementById('groupSelect');
-    if (select) {
-      select.innerHTML = (state.shopGroups || []).map(group => `<option value="${group.id}">${esc(group.name)}</option>`).join('');
+    const groups = Array.isArray(state.shopGroups) ? state.shopGroups.slice() : [];
+    if (window.vueBridge && typeof window.vueBridge.openModal === 'function') {
+      window.vueBridge.openModal('modalGroup', { groups });
+      return;
     }
-    const newGroupName = document.getElementById('newGroupName');
-    if (newGroupName) newGroupName.value = '';
     showModal('modalGroup');
   }
 
-  async function saveShopGroup() {
+  async function saveShopGroup({ groupId, newGroupName } = {}) {
     const state = getState();
-    let groupId = document.getElementById('groupSelect')?.value || '';
-    const newName = document.getElementById('newGroupName')?.value.trim() || '';
+    let nextGroupId = String(groupId || '').trim();
+    const trimmedNewName = String(newGroupName || '').trim();
     let shopGroups = Array.isArray(state.shopGroups) ? state.shopGroups.slice() : [];
     let shops = Array.isArray(state.shops) ? state.shops.slice() : [];
     const selectedShopIds = state.selectedShopIds || new Set();
 
-    if (newName) {
-      groupId = `group_${Date.now()}`;
-      shopGroups.push({ id: groupId, name: newName });
-      await window.pddApi.saveShopGroups(shopGroups);
+    if (trimmedNewName) {
+      nextGroupId = `group_${Date.now()}`;
+      shopGroups.push({ id: nextGroupId, name: trimmedNewName });
+      if (window.pddApi && typeof window.pddApi.saveShopGroups === 'function') {
+        await window.pddApi.saveShopGroups(shopGroups);
+      }
       setShopGroups(shopGroups);
     }
 
-    shops = shops.map(shop => (selectedShopIds.has(shop.id) ? { ...shop, group: groupId } : shop));
-    await window.pddApi.saveShops(shops);
+    shops = shops.map(shop => (selectedShopIds.has(shop.id) ? { ...shop, group: nextGroupId } : shop));
+    if (window.pddApi && typeof window.pddApi.saveShops === 'function') {
+      await window.pddApi.saveShops(shops);
+    }
     setShops(shops);
     setSelectedShopIds(new Set());
-    hideModal('modalGroup');
     renderGroupTabs();
     renderShops();
+    return true;
   }
 
-  async function saveRemark() {
+  async function saveShopRemark(shopId, remark) {
+    const trimmed = String(remark || '').trim();
     const state = getState();
-    const remark = document.getElementById('remarkInput')?.value.trim() || '';
     const shops = Array.isArray(state.shops) ? state.shops.slice() : [];
-    const remarkShopId = state.remarkShopId;
-    const nextShops = shops.map(shop => (shop.id === remarkShopId ? { ...shop, remark } : shop));
+    const nextShops = shops.map(shop => (shop && shop.id === shopId ? { ...shop, remark: trimmed } : shop));
     const changed = nextShops.some((shop, index) => shop !== shops[index]);
-    if (changed) {
+    if (!changed) return false;
+    if (window.pddApi && typeof window.pddApi.saveShops === 'function') {
       await window.pddApi.saveShops(nextShops);
-      setShops(nextShops);
-      renderShops();
     }
-    hideModal('modalRemark');
+    setShops(nextShops);
+    renderShops();
+    return true;
   }
 
   async function syncShops() {
@@ -465,171 +463,62 @@
   }
 
   function openBindModal() {
-    const bindStep1 = document.getElementById('bindStep1');
-    const bindStep2 = document.getElementById('bindStep2');
-    const btnConfirmBind = document.getElementById('btnConfirmBind');
-    const scanStatus = document.getElementById('scanStatus');
-    if (bindStep1) bindStep1.style.display = '';
-    if (bindStep2) bindStep2.style.display = 'none';
-    if (btnConfirmBind) btnConfirmBind.style.display = 'none';
-    if (scanStatus) {
-      scanStatus.innerHTML = '<div class="scan-icon">🔍</div><div class="scan-text">点击下方按钮开始扫描可绑定的店铺</div>';
-    }
     setScannedShops([]);
+    if (window.vueBridge?.openModal) {
+      window.vueBridge.openModal('modalBind', {});
+      return;
+    }
     showModal('modalBind');
   }
 
-  async function startShopScan() {
-    const status = document.getElementById('scanStatus');
-    const button = document.getElementById('btnStartScan');
-    if (status) {
-      status.innerHTML = '<div class="scan-icon" style="animation:pulse 1s infinite">📡</div><div class="scan-text">正在扫描，请稍候...</div>';
-    }
-    if (button) button.disabled = true;
+  // Vue 组件调用：执行扫描并返回扫描到的店铺列表
+  async function scanAvailableShops() {
     await new Promise(resolve => setTimeout(resolve, 1500));
     const scannedShops = await window.pddApi.scanShops();
-    setScannedShops(scannedShops);
-    if (button) button.disabled = false;
-    const bindStep1 = document.getElementById('bindStep1');
-    const bindStep2 = document.getElementById('bindStep2');
-    const btnConfirmBind = document.getElementById('btnConfirmBind');
-    if (bindStep1) bindStep1.style.display = 'none';
-    if (bindStep2) bindStep2.style.display = '';
-    if (btnConfirmBind) btnConfirmBind.style.display = '';
-
-    const list = document.getElementById('scanResultList');
-    if (!list) return;
-    list.innerHTML = (scannedShops || []).map((shop, index) => `
-      <div class="scan-result-item">
-        <input type="checkbox" class="bind-check" data-idx="${index}" checked>
-        <div>
-          <div class="shop-name">${esc(shop.name)}</div>
-          <div class="shop-account">${esc(shop.account)}</div>
-        </div>
-      </div>
-    `).join('');
+    setScannedShops(Array.isArray(scannedShops) ? scannedShops : []);
+    return getState().scannedShops || [];
   }
 
-  function toggleSelectAllBind(event) {
-    document.querySelectorAll('.bind-check').forEach(checkbox => {
-      checkbox.checked = event.target.checked;
-    });
-  }
-
-  async function confirmBindShops() {
-    const state = getState();
-    const scannedShops = state.scannedShops || [];
-    const selected = [...document.querySelectorAll('.bind-check:checked')].map(checkbox => scannedShops[checkbox.dataset.idx]);
-    if (selected.length === 0) {
+  // Vue 组件调用：根据已选中的店铺列表完成绑定
+  async function confirmBindShops(selected = []) {
+    const list = Array.isArray(selected) ? selected.filter(Boolean) : [];
+    if (list.length === 0) {
       alert('请至少选择一个店铺');
-      return;
+      return false;
     }
-    await window.pddApi.bindShops(selected);
-    hideModal('modalBind');
-    addLog(`成功绑定 ${selected.length} 个店铺`, 'reply');
+    await window.pddApi.bindShops(list);
+    if (window.vueBridge?.closeModal) {
+      window.vueBridge.closeModal('modalBind');
+    } else {
+      hideModal('modalBind');
+    }
+    addLog(`成功绑定 ${list.length} 个店铺`, 'reply');
     if (getState().currentView === 'shops') {
       await loadShops();
     }
+    return true;
   }
 
-  function updateExamProgress() {
-    const state = getState();
-    const answered = Object.keys(state.examAnswers || {}).length;
-    const total = (state.examQuestions || []).length;
-    document.getElementById('examProgressText').textContent = `${answered}/${total}`;
-    document.getElementById('examProgressFill').style.width = total ? `${answered / total * 100}%` : '0%';
-  }
-
-  function renderExam() {
-    const state = getState();
-    const body = document.getElementById('examBody');
-    if (!body) return;
-    body.innerHTML = (state.examQuestions || []).map((question, index) => {
-      const typeLabel = question.type === 'judge' ? '判断题' : '单选题';
-      return `<div class="exam-question" data-qid="${question.id}">
-        <div class="exam-question-title">
-          <span class="q-num">${index + 1}</span>
-          ${esc(question.question)}
-          <span class="q-type">[${typeLabel}]</span>
-        </div>
-        <div class="exam-options">
-          ${question.options.map((option, optionIndex) => `
-            <label class="exam-option" data-qid="${question.id}" data-oi="${optionIndex}">
-              <input type="radio" name="exam_${question.id}" value="${optionIndex}">
-              ${esc(option)}
-            </label>
-          `).join('')}
-        </div>
-      </div>`;
-    }).join('');
-
-    updateExamProgress();
-
-    body.querySelectorAll('.exam-option').forEach(option => {
-      option.addEventListener('click', () => {
-        const qid = option.dataset.qid;
-        const oi = parseInt(option.dataset.oi, 10);
-        const nextAnswers = {
-          ...(getState().examAnswers || {}),
-          [qid]: oi,
-        };
-        setExamAnswers(nextAnswers);
-        body.querySelectorAll(`.exam-option[data-qid="${qid}"]`).forEach(item => item.classList.remove('selected'));
-        option.classList.add('selected');
-        updateExamProgress();
-      });
-    });
-  }
-
+  // 考试题目与答卷状态由 Vue 组件本地管理，shops-module 只负责 IPC + 入口。
   async function startShopExam() {
-    const questions = await window.pddApi.getExamQuestions();
-    setExamQuestions(Array.isArray(questions) ? questions : []);
-    setExamAnswers({});
-    renderExam();
-    document.getElementById('btnSubmitExam').style.display = '';
-    document.getElementById('btnRetakeExam').style.display = 'none';
+    if (window.vueBridge?.openModal) {
+      window.vueBridge.openModal('modalExam', {});
+      return;
+    }
     showModal('modalExam');
   }
 
-  async function submitShopExam() {
-    const state = getState();
-    const examAnswers = state.examAnswers || {};
-    const examQuestions = state.examQuestions || [];
-    if (Object.keys(examAnswers).length < examQuestions.length) {
-      if (!confirm(`还有 ${examQuestions.length - Object.keys(examAnswers).length} 题未作答，确定提交？`)) return;
-    }
-
-    const result = await window.pddApi.submitExam(examAnswers);
-
-    examQuestions.forEach(question => {
-      const options = document.querySelectorAll(`.exam-option[data-qid="${question.id}"]`);
-      options.forEach(option => {
-        option.style.pointerEvents = 'none';
-        const oi = parseInt(option.dataset.oi, 10);
-        if (oi === question.answer) option.classList.add('correct');
-        else if (examAnswers[question.id] === oi) option.classList.add('wrong');
-      });
-    });
-
-    const scoreHtml = document.createElement('div');
-    scoreHtml.className = 'exam-score';
-    scoreHtml.innerHTML = `
-      <div class="score-num">${result.score}</div>
-      <div class="score-label">考试得分</div>
-      <div class="score-detail">共 ${result.total} 题，答对 ${result.correct} 题</div>
-    `;
-    document.getElementById('examBody').prepend(scoreHtml);
-
-    document.getElementById('btnSubmitExam').style.display = 'none';
-    document.getElementById('btnRetakeExam').style.display = '';
-    addLog(`考试完成: ${result.score}分 (${result.correct}/${result.total})`, 'info');
+  async function loadExamQuestions() {
+    const questions = await window.pddApi.getExamQuestions();
+    return Array.isArray(questions) ? questions : [];
   }
 
-  function retakeShopExam() {
-    setExamAnswers({});
-    renderExam();
-    document.getElementById('btnSubmitExam').style.display = '';
-    document.getElementById('btnRetakeExam').style.display = 'none';
+  async function submitExam(answers = {}) {
+    const result = await window.pddApi.submitExam(answers || {});
+    if (result && typeof result === 'object') {
+      addLog(`考试完成: ${result.score}分 (${result.correct}/${result.total})`, 'info');
+    }
+    return result;
   }
 
   function bindShopsModule() {
@@ -651,17 +540,11 @@
     });
     document.getElementById('btnSetGroup')?.addEventListener('click', openGroupModal);
     document.getElementById('btnConfirmGroup')?.addEventListener('click', saveShopGroup);
-    document.getElementById('btnConfirmRemark')?.addEventListener('click', saveRemark);
     document.getElementById('btnSyncShops')?.addEventListener('click', syncShops);
     document.getElementById('btnRefreshShops')?.addEventListener('click', refreshShops);
     document.getElementById('btnUnbindShops')?.addEventListener('click', unbindShops);
     document.getElementById('btnBindShops')?.addEventListener('click', openBindModal);
-    document.getElementById('btnStartScan')?.addEventListener('click', startShopScan);
-    document.getElementById('bindSelectAll')?.addEventListener('change', toggleSelectAllBind);
-    document.getElementById('btnConfirmBind')?.addEventListener('click', confirmBindShops);
     document.getElementById('btnExamShop')?.addEventListener('click', startShopExam);
-    document.getElementById('btnSubmitExam')?.addEventListener('click', submitShopExam);
-    document.getElementById('btnRetakeExam')?.addEventListener('click', retakeShopExam);
   }
 
   window.loadShops = loadShops;
@@ -672,8 +555,14 @@
   window.refreshShopProfile = refreshShopProfile;
   window.refreshShopBrowserSession = refreshShopBrowserSession;
   window.probeShopBusinessApis = probeShopBusinessApis;
-  window.renderExam = renderExam;
-  window.updateExamProgress = updateExamProgress;
+  window.shopsModule = Object.assign(window.shopsModule || {}, {
+    saveShopRemark,
+    saveShopGroup,
+    scanAvailableShops,
+    confirmBindShops,
+    loadExamQuestions,
+    submitExam,
+  });
 
   if (typeof window.registerRendererModule === 'function') {
     window.registerRendererModule('shops-module', bindShopsModule);

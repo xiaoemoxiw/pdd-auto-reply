@@ -1,5 +1,6 @@
 node_modules/
 dist/
+src/renderer/dist-vue/
 .vscode/
 .DS_Store
 *.log

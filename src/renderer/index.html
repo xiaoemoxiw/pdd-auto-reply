@@ -728,12 +728,6 @@
       font-weight: 600;
     }
 
-    .modal-header-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
     .modal-close {
       background: none;
       border: none;
@@ -6439,253 +6433,9 @@
       font-size: 15px;
     }
 
-    /* ---- 考试相关 ---- */
-    .exam-question {
-      margin-bottom: 20px;
-      padding: 16px;
-      background: #fafafa;
-      border-radius: 8px;
-      border: 1px solid #f0f0f0;
-    }
-
-    .exam-question-title {
-      font-size: 14px;
-      font-weight: 500;
-      margin-bottom: 10px;
-      line-height: 1.5;
-    }
-
-    .exam-question-title .q-num {
-      display: inline-block;
-      width: 24px;
-      height: 24px;
-      background: #e02e24;
-      color: #fff;
-      border-radius: 50%;
-      text-align: center;
-      line-height: 24px;
-      font-size: 12px;
-      margin-right: 8px;
-    }
-
-    .exam-question-title .q-type {
-      font-size: 11px;
-      color: #999;
-      margin-left: 4px;
-    }
-
-    .exam-options {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .exam-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-      transition: all 0.15s;
-    }
-
-    .exam-option:hover {
-      border-color: #e02e24;
-      background: #fff8f7;
-    }
-
-    .exam-option.selected {
-      border-color: #e02e24;
-      background: #fff1f0;
-      color: #e02e24;
-    }
-
-    .exam-option.correct {
-      border-color: #4caf50;
-      background: #e8f5e9;
-      color: #2e7d32;
-    }
-
-    .exam-option.wrong {
-      border-color: #f44336;
-      background: #fef0f0;
-      color: #d32f2f;
-    }
-
-    .exam-option input {
-      display: none;
-    }
-
-    .exam-score {
-      text-align: center;
-      padding: 30px;
-    }
-
-    .exam-score .score-num {
-      font-size: 64px;
-      font-weight: 700;
-      color: #e02e24;
-    }
-
-    .exam-score .score-label {
-      font-size: 14px;
-      color: #666;
-      margin-top: 8px;
-    }
-
-    .exam-score .score-detail {
-      font-size: 13px;
-      color: #999;
-      margin-top: 4px;
-    }
-
-    .exam-progress {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: #999;
-    }
-
-    .exam-progress-bar {
-      flex: 1;
-      height: 4px;
-      background: #e8e8e8;
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .exam-progress-fill {
-      height: 100%;
-      background: #e02e24;
-      border-radius: 2px;
-      transition: width 0.3s;
-    }
-
-    /* ---- 绑定扫描相关 ---- */
-    .scan-status {
-      text-align: center;
-      padding: 30px;
-    }
-
-    .scan-status .scan-icon {
-      font-size: 48px;
-      margin-bottom: 12px;
-    }
-
-    .scan-status .scan-text {
-      font-size: 14px;
-      color: #666;
-    }
-
-    .scan-result-list {
-      margin-top: 12px;
-    }
-
-    .scan-result-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      border: 1px solid #e8e8e8;
-      border-radius: 6px;
-      margin-bottom: 8px;
-    }
-
-    .scan-result-item .shop-name {
-      flex: 1;
-      font-size: 13px;
-      font-weight: 500;
-    }
-
-    .scan-result-item .shop-account {
-      font-size: 12px;
-      color: #999;
-    }
-
-    /* ---- 回复内容编辑工具栏 ---- */
-    .reply-edit-toolbar {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 6px;
-    }
-
-    .reply-edit-btn {
-      background: #f5f5f5;
-      border: 1px solid #e0e0e0;
-      padding: 3px 10px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      color: #666;
-      transition: all 0.15s;
-    }
-
-    .reply-edit-btn:hover {
-      background: #e8e8e8;
-      color: #333;
-    }
-
-    .qa-reply-preview {
-      margin-top: 8px;
-      padding: 10px 12px;
-      border: 1px dashed #d9d9d9;
-      border-radius: 6px;
-      background: #fafafa;
-      display: none;
-    }
-
-    .qa-reply-preview.show {
-      display: block;
-    }
-
-    .qa-reply-preview-title {
-      font-size: 12px;
-      color: #666;
-      margin-bottom: 8px;
-    }
-
-    .qa-reply-preview-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .qa-reply-preview-item {
-      background: #fff;
-      border: 1px solid #f0f0f0;
-      border-radius: 4px;
-      padding: 8px 10px;
-    }
-
-    .qa-reply-preview-label {
-      font-size: 12px;
-      color: #999;
-      margin-bottom: 4px;
-    }
-
-    .qa-reply-preview-text {
-      font-size: 13px;
-      color: #333;
-      line-height: 1.6;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    /* ---- 教程链接 ---- */
-    .tutorial-link {
-      font-size: 12px;
-      color: #1890ff;
-      cursor: pointer;
-      text-decoration: none;
-    }
-
-    .tutorial-link:hover {
-      text-decoration: underline;
-    }
+    /* 考试相关样式已迁移到 vue/modals/ModalExam.vue */
+    /* 绑定扫描相关样式已迁移到 vue/modals/ModalBind.vue */
+    /* QA 弹窗回复编辑、预览、教程链接等样式已迁移到 vue/modals/ModalQA.vue */
 
     /* ---- 店铺切换器 ---- */
     .shop-switcher {
@@ -6866,6 +6616,7 @@
   <link rel="stylesheet" href="./qa-module.css">
   <link rel="stylesheet" href="./test-flow-module.css">
   <link rel="stylesheet" href="./ops-center-aftersale.css">
+  <link rel="stylesheet" href="./dist-vue/style.css">
 </head>
 
 <body>
@@ -7467,93 +7218,7 @@
           </div>
         </div>
       </div>
-      <div class="modal-overlay" id="modalInvoiceApiEntry">
-        <div class="modal invoice-api-entry-modal">
-          <div class="invoice-api-entry-head">
-            <div class="invoice-api-entry-title">录入发票</div>
-            <button class="invoice-api-entry-close" onclick="hideModal('modalInvoiceApiEntry')" aria-label="关闭">×</button>
-          </div>
-          <div class="invoice-api-entry-body">
-            <div class="invoice-api-entry-order">
-              <div class="invoice-api-entry-order-sn-row">
-                <span class="invoice-api-entry-order-sn-label">订单号：</span>
-                <a class="invoice-api-entry-order-sn" id="invoiceApiEntryOrderSn" href="javascript:void(0)"></a>
-                <span class="invoice-api-entry-order-status" id="invoiceApiEntryOrderStatus"></span>
-              </div>
-              <div class="invoice-api-entry-order-goods">
-                <button class="invoice-api-entry-thumb-btn" id="invoiceApiEntryThumbBtn" type="button" aria-label="查看商品图片">
-                  <img class="invoice-api-entry-thumb" id="invoiceApiEntryThumb" alt="" />
-                  <div class="invoice-api-entry-thumb-placeholder" id="invoiceApiEntryThumbPlaceholder">暂无图片</div>
-                </button>
-                <div class="invoice-api-entry-goods-main">
-                  <div class="invoice-api-entry-goods-title" id="invoiceApiEntryGoodsTitle">-</div>
-                  <div class="invoice-api-entry-goods-spec">
-                    <span id="invoiceApiEntryGoodsSpec">-</span>
-                    <span class="invoice-api-entry-goods-spec-date" id="invoiceApiEntryOrderSnDate" hidden></span>
-                  </div>
-                  <div class="invoice-api-entry-goods-amount">发票金额：<span id="invoiceApiEntryInvoiceAmount">-</span></div>
-                </div>
-              </div>
-            </div>
-
-            <div class="invoice-api-entry-meta">
-              <div class="invoice-api-entry-meta-row">
-                <span class="invoice-api-entry-meta-label">抬头类型：</span><span id="invoiceApiEntryLetterheadType">-</span>
-              </div>
-              <div class="invoice-api-entry-meta-row">
-                <span class="invoice-api-entry-meta-label">发票抬头：</span><span id="invoiceApiEntryLetterhead">-</span>
-              </div>
-              <div class="invoice-api-entry-meta-row">
-                <span class="invoice-api-entry-meta-label">企业税号：</span><span id="invoiceApiEntryTaxNo">-</span>
-              </div>
-            </div>
-
-            <div class="invoice-api-entry-form">
-              <div class="invoice-api-entry-field invoice-api-entry-field--file">
-                <div class="invoice-api-entry-field-head">
-                  <label class="invoice-api-entry-required">发票文件</label>
-                </div>
-                <div class="invoice-api-entry-file-layout">
-                  <div class="invoice-api-entry-file-left">
-                    <label class="invoice-api-entry-upload-box" id="invoiceApiEntryUploadBox" for="invoiceApiEntryFile">
-                      <input id="invoiceApiEntryFile" type="file" accept=".pdf,.ofd,application/pdf,application/octet-stream">
-                      <svg class="invoice-api-entry-upload-icon" id="invoiceApiEntryUploadIconDefault" viewBox="0 0 24 24"
-                        width="34" height="34" aria-hidden="true">
-                        <path d="M4 6.5C4 5.12 5.12 4 6.5 4h4.8c.53 0 1.04.21 1.41.59l1.2 1.2c.19.19.44.3.71.3h2.89C18.88 6.09 20 7.21 20 8.59v8.91C20 18.88 18.88 20 17.5 20h-11C5.12 20 4 18.88 4 17.5V6.5zm2.5-.5c-.28 0-.5.22-.5.5v11c0 .28.22.5.5.5h11c.28 0 .5-.22.5-.5V8.59c0-.28-.22-.5-.5-.5h-3.1c-.8 0-1.57-.32-2.13-.88l-1.03-1.03a.5.5 0 0 0-.35-.15H6.5z" fill="currentColor"></path>
-                      </svg>
-                      <div class="invoice-api-entry-upload-file-icon" id="invoiceApiEntryUploadIconFile" hidden aria-hidden="true">
-                        <span>PDF</span>
-                      </div>
-                      <div class="invoice-api-entry-upload-text" id="invoiceApiEntryFileName">上传文件</div>
-                      <button class="invoice-api-entry-upload-preview" id="invoiceApiEntryPreviewBtn" type="button">预览</button>
-                    </label>
-                  </div>
-                  <div class="invoice-api-entry-file-right">
-                    <div class="invoice-api-entry-hint invoice-api-entry-hint--file">支持上传PDF和OFD文件，大小不超过5M</div>
-                    <div class="invoice-api-entry-upload-warning" id="invoiceApiEntryUploadWarning" hidden>
-                      请再次核实上传发票的抬头，若开具或提供的发票抬头与消费者申请不一致的，平台有权依据平台协议、《拼多多商家发票管理细则》及相关规定对店铺采取处理措施。如确认无误请继续提交。
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="invoice-api-entry-field-row">
-                <div class="invoice-api-entry-field invoice-api-entry-field--number">
-                  <label class="invoice-api-entry-required" for="invoiceApiEntryNumber">发票号码</label>
-                  <input class="form-input" id="invoiceApiEntryNumber" placeholder="请输入">
-                </div>
-                <div class="invoice-api-entry-field invoice-api-entry-field--code">
-                  <label class="invoice-api-entry-label" for="invoiceApiEntryCode">发票代码</label>
-                  <input class="form-input" id="invoiceApiEntryCode" placeholder="如果开具的发票无“发票代码”，可不填写">
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="invoice-api-entry-footer">
-            <button class="btn btn-primary" id="btnInvoiceApiEntrySubmit">确认</button>
-            <button class="btn btn-secondary" onclick="hideModal('modalInvoiceApiEntry')">取消</button>
-          </div>
-        </div>
-      </div>
+      <!-- 模态框：录入发票 → 已迁移到 Vue (src/renderer/vue/modals/ModalInvoiceApiEntry.vue) -->
       <div class="view-page" id="viewViolationApi">
         <div class="violation-api-page">
           <div class="violation-api-page-state" id="violationApiListShell">
@@ -8195,606 +7860,37 @@
     </div>
   </div>
 
-  <!-- 模态框：设置分组 -->
-  <div class="modal-overlay" id="modalGroup">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>设置分组</h3>
-        <button class="modal-close" onclick="hideModal('modalGroup')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">选择分组</label>
-          <select class="form-select" id="groupSelect"></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">或新建分组</label>
-          <input class="form-input" id="newGroupName" placeholder="输入新分组名称">
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="hideModal('modalGroup')">取消</button>
-        <button class="btn btn-primary" id="btnConfirmGroup">确定</button>
-      </div>
-    </div>
-  </div>
+  <!-- 模态框：设置分组 → 已迁移到 Vue (src/renderer/vue/modals/ModalGroup.vue) -->
+  <!-- 模态框：添加备注 → 已迁移到 Vue (src/renderer/vue/modals/ModalRemark.vue) -->
 
-  <!-- 模态框：添加备注 -->
-  <div class="modal-overlay" id="modalRemark">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>添加备注</h3>
-        <button class="modal-close" onclick="hideModal('modalRemark')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">备注内容</label>
-          <input class="form-input" id="remarkInput" placeholder="输入备注信息">
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="hideModal('modalRemark')">取消</button>
-        <button class="btn btn-primary" id="btnConfirmRemark">确定</button>
-      </div>
-    </div>
-  </div>
+  <!-- 模态框：添加/编辑 QA → 已迁移到 Vue (src/renderer/vue/modals/ModalQA.vue) -->
 
-  <!-- 模态框：添加/编辑 QA -->
-  <div class="modal-overlay" id="modalQA">
-    <div class="modal wide">
-      <div class="modal-header">
-        <h3 id="qaModalTitle">添加QA场景</h3>
-        <div class="modal-header-actions">
-          <a class="tutorial-link" id="qaTutorialLink" onclick="alert('教程页面开发中，敬请期待')">查看教程</a>
-          <button class="modal-close" onclick="hideModal('modalQA')">&times;</button>
-        </div>
-      </div>
-      <div class="modal-body">
-        <div class="qa-modal-top-row">
-          <div class="qa-modal-col qa-modal-col-left">
-            <div class="form-group">
-              <label class="form-label">指定商品（可选）</label>
-              <input class="form-input" id="qaProducts" placeholder="输入商品ID，多个用逗号分隔，留空则不限商品">
-              <div class="form-hint">仅当客户咨询指定商品时触发此规则</div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">匹配类型</label>
-              <select class="form-select" id="qaMatchType">
-                <option value="contains">包含关键词</option>
-                <option value="exact">完全匹配</option>
-                <option value="regex">正则匹配</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">触发关键词（每行一个，多个关键词组词 & 连接）</label>
-              <textarea class="form-textarea" id="qaKeywords" placeholder="你好&#10;在吗&#10;有人吗"></textarea>
-            </div>
-            <div class="form-group" style="display:flex;gap:16px">
-              <div style="flex:1">
-                <label class="form-label">优先级</label>
-                <input class="form-input" type="number" id="qaPriority" value="50" min="0" max="999">
-                <div class="form-hint">数字越大优先级越高</div>
-              </div>
-              <div style="flex:1">
-                <label class="form-label">状态</label>
-                <select class="form-select" id="qaEnabled">
-                  <option value="true">启用</option>
-                  <option value="false">禁用</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="qa-modal-col qa-modal-col-right">
-            <div class="qa-shop-panel">
-              <div style="display:flex;gap:8px;align-items:center">
-                <label class="qa-shop-all" style="margin:0">
-                  <input type="checkbox" id="qaShopSelectAll">
-                  应用到全部店铺
-                </label>
-                <select class="form-select" id="qaShopCategory" style="flex:1;padding:4px 8px;font-size:12px">
-                  <option value="">选择类目</option>
-                  <option value="水果生鲜">水果生鲜</option>
-                  <option value="美容个护">美容个护</option>
-                  <option value="家居生活">家居生活</option>
-                  <option value="服饰箱包">服饰箱包</option>
-                  <option value="母婴玩具">母婴玩具</option>
-                  <option value="食品保健">食品保健</option>
-                  <option value="虚拟商品">虚拟商品</option>
-                  <option value="运动户外">运动户外</option>
-                  <option value="数码电器">运动户外</option>
-                  <option value="家纺家具家装">家纺家具家装</option>
-                  <option value="汽配摩托">汽配摩托</option>
-                </select>
-              </div>
-              <div class="qa-shop-list" id="qaShopSelect"></div>
-            </div>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">回复内容</label>
-          <div class="reply-edit-toolbar">
-            <button class="reply-edit-btn" id="btnInsertImage" title="插入图片占位符">插入图片</button>
-            <button class="reply-edit-btn" id="btnInsertDivider" title="插入分栏分隔符">插入分栏</button>
-            <button class="reply-edit-btn" id="btnInsertVar" title="插入变量">插入变量</button>
-          </div>
-          <textarea class="form-textarea" id="qaReply" style="min-height:100px"
-            placeholder="输入回复话术，支持变量：{time} {date}"></textarea>
-          <div class="form-hint">支持变量: {time} 当前时间、{date} 当前日期 | 图片: [img:URL] | 每段回复之间可点击“插入分栏”，命中后随机发送其中一条</div>
-          <div class="qa-reply-preview" id="qaReplySplitPreview"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="hideModal('modalQA')">取消</button>
-        <button class="btn btn-primary" id="btnSaveQA">保存</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 模态框：测试规则 -->
-  <div class="modal-overlay" id="modalTest">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>测试规则</h3>
-        <button class="modal-close" onclick="hideModal('modalTest')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">模拟客户消息</label>
-          <input class="form-input" id="testMessage" placeholder="输入一条客户消息来测试匹配...">
-        </div>
-        <button class="btn btn-success" id="btnRunTest" style="width:100%">开始测试</button>
-        <div id="testResult"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 模态框：应用类目店铺 -->
-  <div class="modal-overlay" id="modalApplyShopCategory">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>应用类目店铺</h3>
-        <button class="modal-close" onclick="hideModal('modalApplyShopCategory')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">选择类目</label>
-          <select class="form-select" id="qaApplyShopCategoryModal">
-            <option value="__all__">全部店铺</option>
-            <option value="水果生鲜">水果生鲜</option>
-            <option value="美容个护">美容个护</option>
-            <option value="家居生活">家居生活</option>
-            <option value="服饰箱包">服饰箱包</option>
-            <option value="母婴玩具">母婴玩具</option>
-            <option value="食品保健">食品保健</option>
-            <option value="虚拟商品">虚拟商品</option>
-            <option value="运动户外">运动户外</option>
-            <option value="数码电器">数码电器</option>
-            <option value="家纺家具家装">家纺家具家装</option>
-            <option value="汽配摩托">汽配摩托</option>
-          </select>
-          <div class="form-hint">将所选 QA 规则的适用店铺批量改为该类目下的店铺</div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="hideModal('modalApplyShopCategory')">取消</button>
-        <button class="btn btn-primary" id="btnConfirmApplyShopCategory">应用</button>
-      </div>
-    </div>
-  </div>
+  <!-- 模态框：测试规则 → 已迁移到 Vue (src/renderer/vue/modals/ModalTest.vue) -->
+  <!-- 模态框：应用类目店铺 → 已迁移到 Vue (src/renderer/vue/modals/ModalApplyShopCategory.vue) -->
 
   <!-- 模态框：批量绑定店铺 -->
-  <div class="modal-overlay" id="modalBind">
-    <div class="modal wide">
-      <div class="modal-header">
-        <h3>批量绑定店铺</h3>
-        <button class="modal-close" onclick="hideModal('modalBind')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div id="bindStep1">
-          <div class="scan-status" id="scanStatus">
-            <div class="scan-icon">🔍</div>
-            <div class="scan-text">点击下方按钮开始扫描可绑定的店铺</div>
-          </div>
-          <div style="text-align:center;margin-top:16px">
-            <button class="btn btn-primary" id="btnStartScan">开始扫描</button>
-          </div>
-        </div>
-        <div id="bindStep2" style="display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <span style="font-size:14px;font-weight:500">扫描到以下店铺</span>
-            <label style="font-size:13px;cursor:pointer"><input type="checkbox" id="bindSelectAll" checked> 全选</label>
-          </div>
-          <div class="scan-result-list" id="scanResultList"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="hideModal('modalBind')">取消</button>
-        <button class="btn btn-primary" id="btnConfirmBind" style="display:none">确认绑定</button>
-      </div>
-    </div>
-  </div>
+  <!-- modalBind 已迁移到 vue/modals/ModalBind.vue -->
 
-  <!-- 模态框：店铺考试 -->
-  <div class="modal-overlay" id="modalExam">
-    <div class="modal exam-wide">
-      <div class="modal-header">
-        <h3>客服规则考试</h3>
-        <div class="modal-header-actions">
-          <div class="exam-progress" id="examProgress">
-            <span id="examProgressText">0/0</span>
-            <div class="exam-progress-bar">
-              <div class="exam-progress-fill" id="examProgressFill"></div>
-            </div>
-          </div>
-          <button class="modal-close" onclick="hideModal('modalExam')">&times;</button>
-        </div>
-      </div>
-      <div class="modal-body" id="examBody"></div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="hideModal('modalExam')">取消</button>
-        <button class="btn btn-primary" id="btnSubmitExam">提交答卷</button>
-        <button class="btn btn-primary" id="btnRetakeExam" style="display:none">重新考试</button>
-      </div>
-    </div>
-  </div>
+  <!-- modalExam 已迁移到 vue/modals/ModalExam.vue -->
 
-  <!-- 模态框：管理快捷短语 -->
-  <div class="modal-overlay" id="modalPhrases">
-    <div class="modal wide">
-      <div class="modal-header">
-        <h3>管理快捷短语</h3>
-        <button class="modal-close" onclick="hideModal('modalPhrases')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">短语列表（每行一条，格式：分类|内容）</label>
-          <textarea class="form-textarea" id="phrasesEditor" style="min-height:200px"
-            placeholder="欢迎|亲，您好！请问有什么可以帮您？&#10;通用|好的呢，马上为您处理"></textarea>
-          <div class="form-hint">格式示例: 欢迎|亲，您好！ 不填分类默认为"通用"</div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="hideModal('modalPhrases')">取消</button>
-        <button class="btn btn-primary" id="btnSavePhrases">保存</button>
-      </div>
-    </div>
-  </div>
+  <!-- modalPhrases 已迁移到 vue/modals/ModalPhrases.vue -->
 
-  <div class="modal-overlay" id="modalApiRefundOrderSelect">
-    <div class="modal api-refund-order-select-modal">
-      <div class="modal-header">
-        <h3>帮消费者申请售后</h3>
-        <button class="modal-close" onclick="hideModal('modalApiRefundOrderSelect')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="api-refund-order-select-tip">仅展示该买家近三年内的支付成功订单</div>
-        <div class="api-refund-order-select-list" id="apiRefundOrderList"></div>
-        <div class="api-refund-order-empty" id="apiRefundOrderEmpty" style="display:none;">当前会话暂无可选订单</div>
-      </div>
-    </div>
-  </div>
+  <!-- modalApiRefundOrderSelect / modalApiRefund 已迁移到 vue/modals/ModalApiRefundOrderSelect.vue 与 ModalApiRefund.vue -->
 
-  <div class="modal-overlay" id="modalApiRefund">
-    <div class="modal api-refund-modal">
-      <div class="modal-header">
-        <h3>帮消费者申请售后</h3>
-        <button class="modal-close" onclick="hideModal('modalApiRefund')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="api-refund-order-card">
-          <div class="api-refund-order-media">
-            <img id="apiRefundGoodsImage" alt="商品主图">
-            <span id="apiRefundGoodsPlaceholder">商品</span>
-          </div>
-          <div class="api-refund-order-info">
-            <div class="api-refund-order-id" id="apiRefundOrderId">订单编号：-</div>
-            <div class="api-refund-order-title" id="apiRefundGoodsTitle">当前会话暂无订单商品信息</div>
-            <div class="api-refund-order-price" id="apiRefundGoodsPrice">-</div>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label"><span class="api-refund-required">*</span>申请类型</label>
-          <div class="api-refund-type-group">
-            <label class="api-refund-radio">
-              <input type="radio" name="apiRefundType" value="refund" checked>
-              <span>退款</span>
-            </label>
-            <label class="api-refund-radio">
-              <input type="radio" name="apiRefundType" value="returnRefund">
-              <span>退货退款</span>
-            </label>
-            <label class="api-refund-radio">
-              <input type="radio" name="apiRefundType" value="resend">
-              <span>补寄</span>
-            </label>
-          </div>
-        </div>
-        <div class="form-group" id="apiRefundReceiptStatusGroup" style="display:none;">
-          <label class="form-label"><span class="api-refund-required">*</span>收货状态</label>
-          <div class="api-refund-type-group">
-            <label class="api-refund-radio">
-              <input type="radio" name="apiRefundReceiptStatus" value="not_received">
-              <span>未收到货</span>
-            </label>
-            <label class="api-refund-radio">
-              <input type="radio" name="apiRefundReceiptStatus" value="received">
-              <span>已收到货</span>
-            </label>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" id="apiRefundReasonLabel"><span class="api-refund-required">*</span>退款原因</label>
-          <select class="form-select" id="apiRefundReason">
-            <option value="" id="apiRefundReasonPlaceholder" disabled selected hidden>请选择退款原因</option>
-            <option value="不喜欢">不喜欢、效果不好</option>
-            <option value="不想要了">不想要了</option>
-            <option value="缺货">缺货</option>
-            <option value="发货慢">发货慢</option>
-            <option value="质量问题">质量问题</option>
-            <option value="卖家发错货">卖家发错货</option>
-            <option value="空包裹">空包裹</option>
-            <option value="其他原因">其他原因</option>
-            <option value="收到商品少件（含少配件）">收到商品少件（含少配件）</option>
-            <option value="商品破损或污渍">商品破损或污渍</option>
-          </select>
-        </div>
-        <div class="form-group" id="apiRefundAmountGroup">
-          <label class="form-label" id="apiRefundAmountLabel"><span class="api-refund-required">*</span>退款金额</label>
-          <input class="form-input api-refund-amount" id="apiRefundAmount" type="number" inputmode="decimal" min="0"
-            step="0.01" placeholder="请输入退款金额">
-        </div>
-        <div class="form-group">
-          <div class="api-refund-note-header">
-            <label class="form-label" for="apiRefundNote">添加留言</label>
-            <span class="api-refund-note-count" id="apiRefundNoteCount">0 / 200</span>
-          </div>
-          <textarea class="form-textarea api-refund-note" id="apiRefundNote" maxlength="200"></textarea>
-          <div class="form-hint" id="apiRefundNoteHint">请友好说明您希望消费者申请退款的意愿，避免产生误解和纠纷</div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" id="btnApiRefundBack">重选订单</button>
-        <button class="btn btn-secondary" onclick="hideModal('modalApiRefund')">取消</button>
-        <button class="btn btn-primary" id="btnApiRefundSubmit">提交</button>
-      </div>
-    </div>
-  </div>
 
-  <div class="modal-overlay" id="modalApiSmallPaymentOrderSelect">
-    <div class="modal api-small-payment-select-modal">
-      <div class="modal-header">
-        <h3>选择打款订单</h3>
-        <button class="modal-close" type="button"
-          onclick="window.closeApiSmallPaymentOrderSelector ? window.closeApiSmallPaymentOrderSelector() : hideModal('modalApiSmallPaymentOrderSelect')">&times;</button>
-      </div>
-      <div class="modal-body api-small-payment-select-body">
-        <div class="api-small-payment-select-list" id="apiSmallPaymentSelectList"></div>
-        <div class="api-small-payment-select-empty" id="apiSmallPaymentSelectEmpty" style="display:none;">当前会话暂无可选订单</div>
-      </div>
-      <div class="api-small-payment-select-footer">
-        <span>仅展示近3个月内的支付成功订单，3个月前的订单请使用订单号搜索</span>
-        <span id="apiSmallPaymentSelectSummary">0条数据</span>
-      </div>
-    </div>
-  </div>
+  <!-- modalApiSmallPaymentOrderSelect / modalApiSmallPayment 已迁移到 vue/modals/ModalApiSmallPaymentOrderSelect.vue 与 ModalApiSmallPayment.vue -->
 
-  <div class="modal-overlay" id="modalApiSmallPayment">
-    <div class="modal api-small-payment-modal">
-      <div class="modal-header">
-        <h3>小额打款</h3>
-        <button class="modal-close" type="button"
-          onclick="window.closeApiSmallPaymentModal ? window.closeApiSmallPaymentModal() : hideModal('modalApiSmallPayment')">&times;</button>
-      </div>
-      <div class="modal-body api-small-payment-body">
-        <div class="api-small-payment-intro">
-          <strong>功能说明：</strong>
-          如您与消费者之间存在补运费、补差价等小额补偿需求，请使用小额打款功能，打款成功后消费者将收到您的补偿金。
-        </div>
 
-        <div class="api-small-payment-section">
-          <div class="api-small-payment-form-row">
-            <div class="api-small-payment-form-label">已选订单</div>
-            <div class="api-small-payment-order-card">
-              <div class="api-small-payment-order-media">
-                <img id="apiSmallPaymentGoodsImage" alt="商品主图" style="display:none;">
-                <span id="apiSmallPaymentGoodsPlaceholder">商品</span>
-              </div>
-              <div class="api-small-payment-order-main">
-                <div class="api-small-payment-order-id" id="apiSmallPaymentOrderId">订单编号：-</div>
-                <div class="api-small-payment-order-title" id="apiSmallPaymentGoodsTitle">当前订单信息待加载</div>
-                <div class="api-small-payment-order-meta">
-                  <div class="api-small-payment-order-detail" id="apiSmallPaymentGoodsDetail">所拍规格待确认</div>
-                  <div class="api-small-payment-order-price" id="apiSmallPaymentGoodsPrice"><strong>0</strong></div>
-                </div>
-              </div>
-              <div class="api-small-payment-order-action">
-                <button class="api-small-payment-order-btn" type="button" id="btnApiSmallPaymentChangeOrder">修改订单</button>
-              </div>
-            </div>
-            <div class="api-small-payment-order-selector" id="apiSmallPaymentOrderSelector" style="display:none;"></div>
-          </div>
+  <!-- modalApiInviteOrder 已迁移到 vue/modals/ModalApiInviteOrder.vue -->
 
-          <div class="api-small-payment-form-row">
-            <div class="api-small-payment-form-label">打款类型</div>
-            <div class="api-small-payment-type-group">
-              <label class="api-small-payment-type-option">
-                <input type="radio" name="apiSmallPaymentType" value="shipping" checked>
-                <span>补运费</span>
-              </label>
-              <label class="api-small-payment-type-option">
-                <input type="radio" name="apiSmallPaymentType" value="difference">
-                <span>补差价</span>
-              </label>
-              <label class="api-small-payment-type-option">
-                <input type="radio" name="apiSmallPaymentType" value="other">
-                <span>其他</span>
-              </label>
-            </div>
-          </div>
 
-          <div class="api-small-payment-form-row">
-            <div class="api-small-payment-form-label">打款金额</div>
-            <div class="api-small-payment-amount-row">
-              <div class="api-small-payment-amount-input-wrap">
-                <span class="api-small-payment-amount-prefix">¥</span>
-                <input class="form-input api-small-payment-amount-input" id="apiSmallPaymentAmount" type="text"
-                  inputmode="decimal" placeholder="单次上限¥0.00">
-              </div>
-              <div class="api-small-payment-amount-tip" id="apiSmallPaymentAmountTip">最多可打款3次</div>
-            </div>
-          </div>
+  <!-- 模态框：图片预览 → 已迁移到 Vue (src/renderer/vue/modals/ModalApiImagePreview.vue) -->
+  <!-- 模态框：发票文件预览 → 已迁移到 Vue (src/renderer/vue/modals/ModalInvoiceApiFilePreview.vue) -->
 
-          <div class="api-small-payment-form-row">
-            <div class="api-small-payment-form-label">给消费者留言</div>
-            <div class="api-small-payment-note-wrap">
-              <textarea class="form-textarea api-small-payment-note" id="apiSmallPaymentNote"
-                maxlength="60" placeholder="已补偿给您，请查收"></textarea>
-              <div class="api-small-payment-note-count" id="apiSmallPaymentNoteCount">0/60</div>
-            </div>
-          </div>
-        </div>
+  <!-- modalApiInviteOrderSpec 已迁移到 vue/modals/ModalApiInviteOrderSpec.vue -->
 
-        <div class="api-small-payment-status-card" id="apiSmallPaymentStatusCard" style="display:none;">
-          <div class="api-small-payment-status-row" id="apiSmallPaymentStatusRow"></div>
-          <div class="api-small-payment-status-tips" id="apiSmallPaymentStatusTips"></div>
-        </div>
 
-        <div class="api-small-payment-permission" id="apiSmallPaymentPermission">无管理员权限？点击提交打款申请给店铺管理员</div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" type="button"
-          onclick="window.closeApiSmallPaymentModal ? window.closeApiSmallPaymentModal() : hideModal('modalApiSmallPayment')">取消</button>
-        <button class="btn btn-primary" type="button" id="btnApiSmallPaymentSubmit">确认</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modalApiInviteOrder">
-    <div class="modal api-invite-order-modal">
-      <div class="modal-header">
-        <h3>邀请消费者下单</h3>
-        <button class="modal-close" type="button"
-          onclick="window.closeApiInviteOrderModal ? window.closeApiInviteOrderModal() : hideModal('modalApiInviteOrder')">&times;</button>
-      </div>
-      <div class="modal-body api-invite-order-body">
-        <div class="api-invite-order-toolbar">
-          <div class="api-invite-order-toolbar-main">
-            <div class="api-invite-order-toolbar-title">选择商品</div>
-            <div class="api-invite-order-toolbar-note" id="apiInviteOrderHint">将优先对齐嵌入页真实邀请下单能力</div>
-          </div>
-          <div class="api-invite-order-search">
-            <input class="form-input" id="apiInviteOrderKeyword" type="text" placeholder="请输入商品关键词">
-            <button class="btn btn-secondary" type="button" id="btnApiInviteOrderSearch">搜索</button>
-          </div>
-        </div>
-        <div class="api-invite-order-content">
-          <div class="api-invite-order-panel">
-            <div class="api-invite-order-panel-header">
-              <span>店铺商品</span>
-            </div>
-            <div class="api-invite-order-list" id="apiInviteOrderGoodsList"></div>
-          </div>
-          <div class="api-invite-order-panel">
-            <div class="api-invite-order-panel-header">
-              <span>邀请下单的商品清单</span>
-              <button class="api-invite-order-panel-header-action" type="button" id="btnApiInviteOrderClear">清空</button>
-            </div>
-            <div class="api-invite-order-list api-invite-order-selected-list" id="apiInviteOrderSelectedList"></div>
-            <div class="api-invite-order-summary">
-              <div class="api-invite-order-summary-meta">
-                <span id="apiInviteOrderCountText">已选 0 件商品</span>
-                <span class="api-invite-order-summary-sub">加入清单后可直接发送给买家</span>
-              </div>
-              <span class="api-invite-order-summary-total">合计：<strong id="apiInviteOrderTotalText">¥0.00</strong></span>
-            </div>
-            <div class="api-invite-order-status" id="apiInviteOrderStatusText">未添加任何商品，请从左侧列表选择商品</div>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" type="button"
-          onclick="window.closeApiInviteOrderModal ? window.closeApiInviteOrderModal() : hideModal('modalApiInviteOrder')">取消</button>
-        <button class="btn btn-primary" type="button" id="btnApiInviteOrderSubmit">发送</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modalApiImagePreview">
-    <div class="modal api-image-preview-modal">
-      <div class="modal-header">
-        <h3>查看图片</h3>
-        <button class="modal-close" type="button" onclick="hideApiImagePreview()">&times;</button>
-      </div>
-      <div class="modal-body api-image-preview-body">
-        <img class="api-image-preview-content" id="apiImagePreviewContent" alt="对话图片预览">
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modalInvoiceApiFilePreview">
-    <div class="modal invoice-api-file-preview-modal">
-      <div class="modal-header">
-        <h3>预览发票</h3>
-        <button class="modal-close" type="button"
-          onclick="window.hideInvoiceApiFilePreview ? window.hideInvoiceApiFilePreview() : hideModal('modalInvoiceApiFilePreview')">&times;</button>
-      </div>
-      <div class="modal-body invoice-api-file-preview-body">
-        <iframe class="invoice-api-file-preview-frame" id="invoiceApiFilePreviewFrame" title="发票预览"></iframe>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modalApiInviteOrderSpec">
-    <div class="modal api-invite-order-spec-modal">
-      <div class="modal-header">
-        <h3>选择商品规格</h3>
-        <button class="modal-close" type="button"
-          onclick="window.closeApiInviteOrderSpecModal ? window.closeApiInviteOrderSpecModal() : hideModal('modalApiInviteOrderSpec')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="api-invite-order-spec-summary" id="apiInviteOrderSpecSummary"></div>
-        <div class="api-invite-order-spec-loading" id="apiInviteOrderSpecLoading" style="display:none;">正在加载可邀请规格...</div>
-        <div class="api-invite-order-spec-error" id="apiInviteOrderSpecError" style="display:none;"></div>
-        <div class="api-invite-order-spec-empty" id="apiInviteOrderSpecEmpty" style="display:none;">当前商品暂无可邀请规格</div>
-        <div class="api-invite-order-spec-label" id="apiInviteOrderSpecLabel">规格</div>
-        <div class="api-invite-order-spec-options" id="apiInviteOrderSpecOptions"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary" type="button" id="btnApiInviteOrderSpecConfirm">确定</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="modalApiGoodsSpec">
-    <div class="modal api-goods-spec-modal">
-      <!-- <div class="modal-header">
-        <h3>商品规格</h3>
-        <button class="modal-close" type="button" onclick="window.closeApiGoodsSpecModal ? window.closeApiGoodsSpecModal() : hideModal('modalApiGoodsSpec')">&times;</button>
-      </div> -->
-      <div class="modal-body">
-        <div class="api-goods-spec-summary" id="apiGoodsSpecSummary"></div>
-        <div class="api-goods-spec-loading" id="apiGoodsSpecLoading" style="display:none;">正在加载商品规格...</div>
-        <div class="api-goods-spec-error" id="apiGoodsSpecError" style="display:none;"></div>
-        <div class="api-goods-spec-empty" id="apiGoodsSpecEmpty" style="display:none;">暂未解析到可展示的商品规格</div>
-        <div class="api-goods-spec-table-wrap" id="apiGoodsSpecTableWrap">
-          <table class="api-goods-spec-table">
-            <thead>
-              <tr>
-                <th>规格</th>
-                <th>款式</th>
-                <th>价格</th>
-                <th>库存</th>
-              </tr>
-            </thead>
-            <tbody id="apiGoodsSpecTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary" type="button" onclick="window.closeApiGoodsSpecModal ? window.closeApiGoodsSpecModal() : hideModal('modalApiGoodsSpec')">我知道了</button>
-      </div>
-    </div>
-  </div>
+  <!-- 模态框：商品规格 → 已迁移到 Vue (src/renderer/vue/modals/ModalApiGoodsSpec.vue) -->
 
   <div class="api-video-popover-backdrop" id="apiVideoLibraryBackdrop" onclick="hideApiVideoLibraryPopover()"></div>
 
@@ -8817,6 +7913,9 @@
 
   <div class="toast-msg" id="toastMsg"></div>
 
+  <!-- Vue 子树挂载点：承载迁移后的 modal 等 SFC，原生 JS 通过 window.vueBridge 调用 -->
+  <div id="app-vue"></div>
+
   <!-- 底部状态栏 -->
   <div class="status-bar">
     <span class="status-dot" id="statusDot"></span>
@@ -8831,6 +7930,10 @@
   <script src="./license-status-module.js"></script>
   <script src="./ai-module.js"></script>
   <script src="./chat-api-module.js"></script>
+  <script src="./chat-api/modules/small-payment-modal.js"></script>
+  <script src="./chat-api/modules/invite-order-modal.js"></script>
+  <script src="./chat-api/modules/refund-modal.js"></script>
+  <script src="./chat-api/modules/goods-spec-modal.js"></script>
   <script src="./quick-phrases-module.js"></script>
   <script src="./mail-api-module.js"></script>
   <script src="./invoice-api-module.js"></script>
@@ -8865,8 +7968,7 @@
     let shopSearchText = '';
     let remarkShopId = null;
     let replyCount = 0;
-    let examAnswers = {};
-    let examQuestions = [];
+    // examAnswers / examQuestions 已迁移至 vue/modals/ModalExam.vue 内部状态
     let scannedShops = [];
     const API_ALL_SHOPS = '__all__';
     const API_EMOJI_GROUPS = [
@@ -9169,8 +8271,6 @@
           shopSearchText,
           remarkShopId,
           scannedShops,
-          examAnswers,
-          examQuestions,
           activeShopId,
           currentView,
         };
@@ -9203,12 +8303,6 @@
       },
       setShops(value) {
         shops = Array.isArray(value) ? value : [];
-      },
-      setExamQuestions(value) {
-        examQuestions = Array.isArray(value) ? value : [];
-      },
-      setExamAnswers(value) {
-        examAnswers = value && typeof value === 'object' ? value : {};
       },
     };
     if (typeof window.initOpsCenterViews === 'function') {
@@ -11588,34 +10682,8 @@
       renderShops();
     });
 
-    // 设置分组
-    document.getElementById('btnSetGroup')?.addEventListener('click', () => {
-      if (selectedShopIds.size === 0) return alert('请先选择店铺');
-      const sel = document.getElementById('groupSelect');
-      sel.innerHTML = shopGroups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
-      document.getElementById('newGroupName').value = '';
-      showModal('modalGroup');
-    });
-
-    document.getElementById('btnConfirmGroup')?.addEventListener('click', async () => {
-      let groupId = document.getElementById('groupSelect').value;
-      const newName = document.getElementById('newGroupName').value.trim();
-
-      if (newName) {
-        groupId = 'group_' + Date.now();
-        shopGroups.push({ id: groupId, name: newName });
-        await window.pddApi.saveShopGroups(shopGroups);
-      }
-
-      shops.forEach(s => {
-        if (selectedShopIds.has(s.id)) s.group = groupId;
-      });
-      await window.pddApi.saveShops(shops);
-      selectedShopIds.clear();
-      hideModal('modalGroup');
-      renderGroupTabs();
-      renderShops();
-    });
+    // 设置分组：按钮绑定与保存逻辑已统一收口到 shops-module.js（openGroupModal / saveShopGroup），
+    // 经由 window.vueBridge 弹出 ModalGroup.vue。
 
     // 备注
     function openRemarkModal(shopId) {
@@ -11806,143 +10874,10 @@
     });
 
     // ==================== 批量绑定 ====================
-    document.getElementById('btnBindShops')?.addEventListener('click', () => {
-      document.getElementById('bindStep1').style.display = '';
-      document.getElementById('bindStep2').style.display = 'none';
-      document.getElementById('btnConfirmBind').style.display = 'none';
-      document.getElementById('scanStatus').innerHTML = '<div class="scan-icon">🔍</div><div class="scan-text">点击下方按钮开始扫描可绑定的店铺</div>';
-      scannedShops = [];
-      showModal('modalBind');
-    });
-
-    document.getElementById('btnStartScan')?.addEventListener('click', async () => {
-      const status = document.getElementById('scanStatus');
-      status.innerHTML = '<div class="scan-icon" style="animation:pulse 1s infinite">📡</div><div class="scan-text">正在扫描，请稍候...</div>';
-      document.getElementById('btnStartScan').disabled = true;
-
-      await new Promise(r => setTimeout(r, 1500));
-      scannedShops = await window.pddApi.scanShops();
-
-      document.getElementById('btnStartScan').disabled = false;
-      document.getElementById('bindStep1').style.display = 'none';
-      document.getElementById('bindStep2').style.display = '';
-      document.getElementById('btnConfirmBind').style.display = '';
-
-      const list = document.getElementById('scanResultList');
-      list.innerHTML = scannedShops.map((s, i) => `
-        <div class="scan-result-item">
-          <input type="checkbox" class="bind-check" data-idx="${i}" checked>
-          <div>
-            <div class="shop-name">${esc(s.name)}</div>
-            <div class="shop-account">${esc(s.account)}</div>
-          </div>
-        </div>
-      `).join('');
-    });
-
-    document.getElementById('bindSelectAll')?.addEventListener('change', (e) => {
-      document.querySelectorAll('.bind-check').forEach(cb => cb.checked = e.target.checked);
-    });
-
-    document.getElementById('btnConfirmBind')?.addEventListener('click', async () => {
-      const selected = [...document.querySelectorAll('.bind-check:checked')].map(cb => scannedShops[cb.dataset.idx]);
-      if (selected.length === 0) return alert('请至少选择一个店铺');
-      await window.pddApi.bindShops(selected);
-      hideModal('modalBind');
-      addLog(`成功绑定 ${selected.length} 个店铺`, 'reply');
-      if (currentView === 'shops') await loadShops();
-    });
+    // modalBind 已迁移到 vue/modals/ModalBind.vue，绑定与扫描入口由 shops-module 接管。
 
     // ==================== 店铺考试 ====================
-    document.getElementById('btnExamShop')?.addEventListener('click', async () => {
-      examQuestions = await window.pddApi.getExamQuestions();
-      examAnswers = {};
-      renderExam();
-      document.getElementById('btnSubmitExam').style.display = '';
-      document.getElementById('btnRetakeExam').style.display = 'none';
-      showModal('modalExam');
-    });
-
-    function renderExam() {
-      const body = document.getElementById('examBody');
-      body.innerHTML = examQuestions.map((q, i) => {
-        const typeLabel = q.type === 'judge' ? '判断题' : '单选题';
-        return `<div class="exam-question" data-qid="${q.id}">
-          <div class="exam-question-title">
-            <span class="q-num">${i + 1}</span>
-            ${esc(q.question)}
-            <span class="q-type">[${typeLabel}]</span>
-          </div>
-          <div class="exam-options">
-            ${q.options.map((opt, oi) => `
-              <label class="exam-option" data-qid="${q.id}" data-oi="${oi}">
-                <input type="radio" name="exam_${q.id}" value="${oi}">
-                ${esc(opt)}
-              </label>
-            `).join('')}
-          </div>
-        </div>`;
-      }).join('');
-
-      updateExamProgress();
-
-      body.querySelectorAll('.exam-option').forEach(opt => {
-        opt.addEventListener('click', () => {
-          const qid = opt.dataset.qid;
-          const oi = parseInt(opt.dataset.oi);
-          examAnswers[qid] = oi;
-
-          body.querySelectorAll(`.exam-option[data-qid="${qid}"]`).forEach(o => o.classList.remove('selected'));
-          opt.classList.add('selected');
-          updateExamProgress();
-        });
-      });
-    }
-
-    function updateExamProgress() {
-      const answered = Object.keys(examAnswers).length;
-      const total = examQuestions.length;
-      document.getElementById('examProgressText').textContent = `${answered}/${total}`;
-      document.getElementById('examProgressFill').style.width = total ? (answered / total * 100) + '%' : '0%';
-    }
-
-    document.getElementById('btnSubmitExam')?.addEventListener('click', async () => {
-      if (Object.keys(examAnswers).length < examQuestions.length) {
-        if (!confirm(`还有 ${examQuestions.length - Object.keys(examAnswers).length} 题未作答，确定提交？`)) return;
-      }
-
-      const result = await window.pddApi.submitExam(examAnswers);
-
-      examQuestions.forEach(q => {
-        const opts = document.querySelectorAll(`.exam-option[data-qid="${q.id}"]`);
-        opts.forEach(o => {
-          o.style.pointerEvents = 'none';
-          const oi = parseInt(o.dataset.oi);
-          if (oi === q.answer) o.classList.add('correct');
-          else if (examAnswers[q.id] === oi) o.classList.add('wrong');
-        });
-      });
-
-      const scoreHtml = document.createElement('div');
-      scoreHtml.className = 'exam-score';
-      scoreHtml.innerHTML = `
-        <div class="score-num">${result.score}</div>
-        <div class="score-label">考试得分</div>
-        <div class="score-detail">共 ${result.total} 题，答对 ${result.correct} 题</div>
-      `;
-      document.getElementById('examBody').prepend(scoreHtml);
-
-      document.getElementById('btnSubmitExam').style.display = 'none';
-      document.getElementById('btnRetakeExam').style.display = '';
-      addLog(`考试完成: ${result.score}分 (${result.correct}/${result.total})`, 'info');
-    });
-
-    document.getElementById('btnRetakeExam')?.addEventListener('click', async () => {
-      examAnswers = {};
-      renderExam();
-      document.getElementById('btnSubmitExam').style.display = '';
-      document.getElementById('btnRetakeExam').style.display = 'none';
-    });
+    // modalExam 已迁移到 vue/modals/ModalExam.vue，IPC 与入口由 shops-module 接管。
 
     // ==================== 快捷短语 ====================
     async function loadQuickPhrases() {
@@ -11978,41 +10913,7 @@
 
     renderApiEmojiPanel();
 
-    document.getElementById('btnTogglePhrases')?.addEventListener('click', () => {
-      const panel = document.getElementById('phrasePanel');
-      panel.classList.toggle('visible');
-      if (panel.classList.contains('visible')) loadQuickPhrases();
-    });
-
-    document.getElementById('btnManagePhrases')?.addEventListener('click', () => {
-      const editor = document.getElementById('phrasesEditor');
-      editor.value = quickPhrases.map(p => `${p.category || '通用'}|${p.text}`).join('\n');
-      showModal('modalPhrases');
-    });
-
-    document.getElementById('btnApiManagePhrases')?.addEventListener('click', () => {
-      const editor = document.getElementById('phrasesEditor');
-      editor.value = quickPhrases.map(p => `${p.category || '通用'}|${p.text}`).join('\n');
-      showModal('modalPhrases');
-    });
-
-    document.getElementById('btnSavePhrases')?.addEventListener('click', async () => {
-      const lines = document.getElementById('phrasesEditor').value.split('\n').filter(l => l.trim());
-      quickPhrases = lines.map((line, i) => {
-        const parts = line.split('|');
-        return {
-          id: 'qp_' + Date.now() + '_' + i,
-          category: parts.length > 1 ? parts[0].trim() : '通用',
-          text: (parts.length > 1 ? parts.slice(1).join('|') : parts[0]).trim()
-        };
-      }).filter(p => p.text);
-
-      await window.pddApi.saveQuickPhrases(quickPhrases);
-      renderPhrasePanel();
-      renderApiPhrasePanel();
-      hideModal('modalPhrases');
-      addLog('快捷短语已更新', 'info');
-    });
+    // 快捷短语相关入口与持久化由 quick-phrases-module.js 接管，modalPhrases 已迁移到 Vue。
 
     // 聊天功能栏按钮（暂为提示）
     document.getElementById('btnOrderInfo')?.addEventListener('click', () => alert('订单查询功能开发中'));
@@ -12320,8 +11221,16 @@
 
     function showApiImagePreview(url) {
       const normalizedUrl = String(url || '').trim();
+      if (!normalizedUrl) {
+        showToast('图片地址无效');
+        return;
+      }
+      if (window.vueBridge && typeof window.vueBridge.openModal === 'function') {
+        window.vueBridge.openModal('modalApiImagePreview', { url: normalizedUrl });
+        return;
+      }
       const previewImage = document.getElementById('apiImagePreviewContent');
-      if (!normalizedUrl || !previewImage) {
+      if (!previewImage) {
         showToast('图片地址无效');
         return;
       }
@@ -12330,6 +11239,10 @@
     }
 
     function hideApiImagePreview() {
+      if (window.vueBridge && typeof window.vueBridge.closeModal === 'function') {
+        window.vueBridge.closeModal('modalApiImagePreview');
+        return;
+      }
       hideModal('modalApiImagePreview');
       const previewImage = document.getElementById('apiImagePreviewContent');
       if (previewImage) {
@@ -12388,6 +11301,7 @@
 
     addLog('客服助手已启动', 'info');
   </script>
+  <script type="module" src="./dist-vue/main.js"></script>
 </body>
 
 </html>

@@ -7,8 +7,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
+    "vue:build": "vite build",
+    "vue:watch": "vite build --watch",
     "version:patch": "node tools/bump-version.js patch",
-    "build:win:raw": "electron-builder --win nsis --x64",
+    "build:win:raw": "pnpm vue:build && electron-builder --win nsis --x64",
     "build:win": "pnpm version:patch && pnpm build:win:raw",
     "smoke:api": "electron test/run-pdd-api-smoke.js",
     "snapshot:api-traffic": "electron tools/snapshot-api-traffic.js",
@@ -57,11 +59,16 @@
     }
   },
   "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.6",
     "electron": "^33.0.0",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "vite": "^8.0.8"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
     "@huggingface/transformers": "^3.8.1",
-    "electron-store": "8"
+    "electron-store": "8",
+    "element-plus": "^2.13.7",
+    "vue": "^3.5.32"
   }
 }

@@ -1,0 +1,59 @@
+---
+description: 当任务涉及 Vue 子树（src/renderer/vue）、AppModal/弹窗、vueBridge、Element Plus 或新增/修改 modal 行为时使用此规则
+alwaysApply: false
+---
+
+# Vue 子树与 Modal 编码规则
+
+仓库已经把 18 个 modal 全部从 `src/renderer/index.html` 迁到 Vue 3 子树（`src/renderer/vue`），并通过 `vueBridge` 与原生 IIFE 模块协作。本规则用于约束后续在 Vue 子树里的修改方向。
+
+## 适用范围
+- 在 `src/renderer/vue/**/*.vue`、`src/renderer/vue/main.js`、`src/renderer/vue/bridge.js` 上的修改。
+- 新增 modal 或调整既有 modal 行为。
+- 修改业务模块（`src/renderer/*.js`、`src/renderer/chat-api/modules/*.js`）中暴露给 Vue 的 `window.xxxModule.*`。
+
+## 必须遵守
+
+- Vue 子树**只做 UI 与表单状态**；业务规则、IPC、持久化、远程数据加载，全部留在原生 IIFE 业务模块里，通过 `window.xxxModule.*` 暴露给 SFC 调用。
+- 新增 modal 必须挂在 `<AppModal>` 上，并在 `src/renderer/vue/modals/ModalHost.vue` 的 `ownedModals` 数组中登记 modalId。
+- modalId 命名遵循既有 `modalXxx` camelCase；与业务模块文件名（`xxx-modal.js`、`xxx-module.js`）对应。
+- SFC 通过 `props.visible` + `props.payload` 接收外部状态，通过 `emit('update:visible', false)` + `emit('close')` 关闭；不要在 SFC 内直接读写 `vueBridge.state.activeModals`。
+- payload 由调用方在 `vueBridge.openModal('modalXxx', payload)` 时一次性传入；SFC 应在 `watch(() => props.visible)` 里 hydrate 表单初值，不要假设 payload 在弹窗打开后会再变。
+- 所有跨模块通信必须经过桥接：
+  - 业务模块 → Vue：`window.vueBridge.openModal/closeModal` + `window.xxxModule.*`；
+  - Vue → 业务模块：调用 `window.xxxModule.*` 暴露的纯函数，函数应返回 `{ ok, ...}` 形状以便 SFC 处理 ok / warn / error 三态；
+  - 同模块跨 SFC 共享状态：通过 `vueBridge.state` 或 `inject`，不要写共享单例。
+
+## 禁止做的事
+
+- 禁止在 `index.html` 里恢复任何 `id="modalXxx"` 的 `modal-overlay` DOM；老 DOM 已有迁移注释占位符，需要可读懂。
+- 禁止在 SFC 内直接 `window.pddApi.*`、直接读 `electron-store`、直接操作其它模块的 DOM（如 `document.getElementById('xxxList').innerHTML = ...`）。新接口请加到对应业务模块。
+- 禁止新增无前缀的全局 CSS class；所有 SFC 内样式必须 `modal-xxx-*` 或 `app-modal-*` 命名空间。
+- 禁止把整段业务实现搬进 SFC（哪怕是临时方案）；如某段逻辑不属于 UI，请在原生模块里加 helper。
+- 禁止把 `window.showModal` / `window.hideModal` 调用替换成 `vueBridge.openModal/closeModal` 之外的"新发明"；现有劫持机制保证已注册 modalId 自动转发，旧代码无需改。
+- 禁止为单个 modal 引入额外打包配置或独立产物；统一进 `pnpm vue:build`，输出到 `src/renderer/dist-vue/`。
+
+## 样式与 ElDialog
+
+- 默认沿用 `<AppModal>` props（`title` / `width` / `show-footer` / `hide-header` / `destroy-on-close`）。
+- 如果 SFC 内要复用既有 namespaced CSS（自带 header/body/footer）并需要去掉 ElDialog body 默认 padding：
+  - 给 AppModal 传 `dialog-class="modal-xxx-dialog"`；
+  - 在 SFC `<style>` 里写 `.modal-xxx-dialog .el-dialog__body { padding: 0; }`。
+- 复杂表单建议加 `:destroy-on-close="true"`，并在 `watch(visible)` 中 reset 本地 ref，避免输入跨次残留。
+
+## 反馈与日志
+
+- 弱提示用 `ElMessage`（来自 element-plus）。
+- 与原生模块保持一致的"灰色 toast + addLog" 流：调用业务模块暴露的 `notifyStatus(type, text)` 等 helper（参考 `window.invoiceApiModule.notifyStatus`）。
+- SFC 内不要直接 `console.log`；调试请用 `console.debug` 并在合并前移除。
+
+## 构建与验证
+
+- 修改完执行 `pnpm vue:build`，确认 0 报错；
+- 通过 lint / IDE 提示确认无新增告警；
+- 改 modal 行为的，必须在 dev 模式（`pnpm dev`）下手工冒烟一次该 modal 的主要路径（打开、提交、关闭、错误态）。
+
+## 与既有规则的衔接
+- 协作 / 共享入口：遵守 `collaboration-guardrails.md`，不要把整段业务回流进 `index.html`。
+- 渲染层通用：遵守 `renderer-ui.md` 中"单一事实来源"等约束；本规则在 Vue 子树场景下是其细化补充。
+- 安全边界：与 `pdd-core.md` 一致，渲染/Vue 层不直接访问 Node API、store、敏感凭据。
